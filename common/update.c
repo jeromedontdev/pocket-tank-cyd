@@ -607,13 +607,13 @@ static void spinner(uint16_t *fb, int stride, int cx, int cy, float clock) {
 }
 static void wrap2(const char *src, char *l1, char *l2, size_t cap) {   /* two lines of at most cap-1, broken at a space */
     size_t n = strlen(src), lim = cap - 1;
-    if (n <= lim) { snprintf(l1, cap, "%s", src); l2[0] = 0; return; }
+    if (n <= lim) { memcpy(l1, src, n + 1); l2[0] = 0; return; }
     size_t cut = lim;
     while (cut > 0 && src[cut] != ' ') cut--;
     if (!cut) cut = lim;
     snprintf(l1, cap, "%.*s", (int)cut, src);
     const char *rest = src + cut; while (*rest == ' ') rest++;
-    snprintf(l2, cap, "%s", rest);
+    snprintf(l2, cap, "%.*s", (int)lim, rest);
     if (strlen(rest) > lim) { l2[lim - 3] = '.'; l2[lim - 2] = '.'; l2[lim - 1] = '.'; l2[lim] = 0; }
 }
 void render_clock_sync(uint16_t *fb, int stride, float clock) {

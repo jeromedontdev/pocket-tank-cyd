@@ -33,7 +33,8 @@ bool net_port_creds_get(char *ssid, char *pass) {
     bool ok = fgets(a, sizeof a, f) != NULL; if (ok) { chomp(a); if (!fgets(b, sizeof b, f)) b[0] = 0; chomp(b); }
     fclose(f);
     if (!ok || !a[0]) return false;
-    snprintf(ssid, NET_SSID_MAX + 1, "%s", a); snprintf(pass, NET_PASS_MAX + 1, "%s", b);
+    snprintf(ssid, NET_SSID_MAX + 1, "%.*s", NET_SSID_MAX, a);
+    snprintf(pass, NET_PASS_MAX + 1, "%.*s", NET_PASS_MAX, b);
     return true;
 }
 bool net_port_creds_set(const char *ssid, const char *pass) {
