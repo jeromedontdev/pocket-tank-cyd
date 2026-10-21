@@ -63,7 +63,17 @@ replace the working RAM needed by the original model.
 
 Prebuilt CYD firmware, SD update packages, matching artwork and installation
 instructions are available under
-[Releases](https://github.com/jeromedontdev/pocket-tank-cyd/releases).
+[Latest built release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest).
+
+| Download | Use |
+|---|---|
+| [SD update: update.ptu](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/update.ptu) | Existing CYD installations; place at `pocket-tank/update.ptu` on SD |
+| [Initial-flash binary](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/pocket-tank-cyd-factory.bin) | New boards only; flash at `0x0` |
+| [Install instructions](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/INSTALL.txt) | SD placement, USB flashing and warnings |
+| [Checksums](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/SHA256SUMS.txt) | Verify downloaded files |
+
+Download the matching `icons-<crc>.bin` artwork from the same release and put
+it at the SD card root. No source build is needed for these downloads.
 Use the SD update for an existing installation. **Factory images overwrite
 saved tanks and settings** and are only for new boards or deliberate resets.
 See [release instructions](firmware/CYD.md#downloadable-releases).

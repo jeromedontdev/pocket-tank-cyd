@@ -48,5 +48,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" dist/* --verify-tag --prerelease \
+          gh release create "$RELEASE_TAG" dist/* --verify-tag --latest \
             --title "Pocket Tank CYD ${RELEASE_TAG#v}" --notes-file dist/RELEASE-NOTES.md

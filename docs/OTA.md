@@ -107,7 +107,10 @@ or replace signing failures with unsigned downloads.
 Push `main`, then a new immutable tag matching `vMAJOR.MINOR.PATCH-cyd.N`,
 for example `v0.3.8-cyd.2`. The label without `v` must fit 15 characters.
 The [release workflow](../.github/workflows/release.yml) builds with ESP-IDF
-v6.1, runs Python/native/emulator checks, and publishes a GitHub prerelease.
+v6.1, runs Python/native/emulator checks, and publishes a normal GitHub release
+marked Latest. The firmware remains alpha-quality; omitting GitHub's prerelease
+flag makes the built downloads available at
+[Latest release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest).
 It includes the bundle, app-only image, new-board factory image, SD package,
 matching icon bank, install instructions, license and SHA-256 checksums.
 Normal branch pushes run checks without creating a release.

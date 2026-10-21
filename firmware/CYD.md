@@ -22,7 +22,7 @@ for existing configured build directories.
 
 ## Downloadable releases
 
-[GitHub Releases](https://github.com/jeromedontdev/pocket-tank-cyd/releases)
+[Latest built release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest)
 provides tagged CYD alpha builds. Download the complete ZIP and read its
 `INSTALL.txt`. For an existing CYD installation, back up first and use
 `update.ptu` at `pocket-tank/update.ptu` on SD. Copy the included
@@ -35,10 +35,49 @@ slot selection. It is not a save-preserving upgrade. The app-only image must
 be written to the detected active OTA slot, not blindly to a fixed offset.
 Every release includes SHA-256 checksums and the matching SD artwork.
 
+### Install a downloaded build (no ESP-IDF required)
+
+**Existing CYD installation, keeping your tanks:**
+
+1. Make an SD tank backup in Settings and keep a separate copy of the card.
+2. Download [update.ptu](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/update.ptu)
+   and the matching `icons-<crc>.bin` from the latest release.
+3. Power off before moving the card. Put the artwork at the card root and
+   the update at `pocket-tank/update.ptu` (create `pocket-tank` if needed).
+4. Reinsert the card, power on, open **Settings > Updates > Check SD Card**,
+   then **Install and Restart**. Keep power connected until it finishes.
+
+**Brand-new board or deliberate factory reset:**
+
+1. Download [pocket-tank-cyd-factory.bin](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/pocket-tank-cyd-factory.bin)
+   and verify it against the release's `SHA256SUMS.txt`.
+2. Close any serial monitor. In a terminal in the download directory:
+
+   ```powershell
+   python -m pip install esptool==5.6.0
+   python -m esptool --chip esp32 --port COM4 --baud 460800 write-flash 0x0 pocket-tank-cyd-factory.bin
+   ```
+
+   Replace COM4 with the board's actual port. **This overwrites tank saves
+   and settings. Do not run it as a normal upgrade.**
+3. Power off and put the matching `icons-<crc>.bin` at the SD card root.
+   Reinsert the card, power on and complete first-time setup/calibration.
+
+The factory binary already contains the bootloader, partition table, initial
+OTA data and application at the correct offsets. It is flashed once at `0x0`;
+do not flash the application-only binary there.
+[INSTALL.txt](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/INSTALL.txt)
+also accompanies every release. Builds remain alpha-quality, but are published
+as normal GitHub releases so the Latest link resolves to built downloads.
+
+### Publish another release
+
 Maintainers publish by pushing a tag such as `v0.3.8-cyd.2`. The CYD release
 workflow builds with ESP-IDF v6.1, runs tool/native/emulator tests, packages
 the application, factory image, SD updater and icon bank, and creates a
-GitHub prerelease. The version label without `v` must fit 15 characters.
+normal GitHub release marked Latest. The version label without `v` must fit
+15 characters. Alpha quality is indicated in the release notes, not by the
+GitHub prerelease flag (which would hide it from `/releases/latest`).
 Normal pushes run checks but do not publish releases. Locally, after building:
 
 ```powershell
