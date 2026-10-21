@@ -20,6 +20,36 @@ see the initial-install instructions in [README](../README.md).
 `sdkconfig.defaults` is canonical; `sdkconfig.cyd` remains an identical alias
 for existing configured build directories.
 
+## Downloadable releases
+
+[GitHub Releases](https://github.com/jeromedontdev/pocket-tank-cyd/releases)
+provides tagged CYD alpha builds. Download the complete ZIP and read its
+`INSTALL.txt`. For an existing CYD installation, back up first and use
+`update.ptu` at `pocket-tank/update.ptu` on SD. Copy the included
+`icons-<crc>.bin` to the card root. These packages are verified but unsigned;
+install only trusted releases.
+
+**The factory image is for new boards or deliberate resets only.** Flashing
+it at `0x0` overwrites NVS, tank saves, Wi-Fi credentials, calibration and OTA
+slot selection. It is not a save-preserving upgrade. The app-only image must
+be written to the detected active OTA slot, not blindly to a fixed offset.
+Every release includes SHA-256 checksums and the matching SD artwork.
+
+Maintainers publish by pushing a tag such as `v0.3.8-cyd.1`. The CYD release
+workflow builds with ESP-IDF v6.1, runs tool/native/emulator tests, packages
+the application, factory image, SD updater and icon bank, and creates a
+GitHub prerelease. The version label without `v` must fit 15 characters.
+Normal pushes run checks but do not publish releases. Locally, after building:
+
+```powershell
+python ..\tools\package_cyd_release.py --build build_cyd --out ..\dist --version v0.3.8-cyd.1
+```
+
+Run this in the ESP-IDF Python environment (esptool v5 is required).
+The output directory must not already exist; release files are never silently
+overwritten. GitHub tags/releases provide the CYD distribution revision;
+the firmware's base version remains 0.3.8 with its CYD-fork build identity.
+
 The LCD uses SPI2; the XPT2046 uses a separate, software-driven SPI bus.
 Pins and touch ADC calibration limits are in [main/board_pins.h](main/board_pins.h).
 Touch readings discard the first conversion after a channel change, use a

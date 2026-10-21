@@ -8,4 +8,5 @@ firmware/dependencies.lock
 firmware/managed_components/
 firmware/keys/
 ota/
+dist/
 sim/tank.sav

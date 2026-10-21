@@ -59,6 +59,13 @@ replace the working RAM needed by the original model.
 
 ## Build and upgrade
 
+Prebuilt CYD firmware, SD update packages, matching artwork and installation
+instructions are available under
+[Releases](https://github.com/jeromedontdev/pocket-tank-cyd/releases).
+Use the SD update for an existing installation. **Factory images overwrite
+saved tanks and settings** and are only for new boards or deliberate resets.
+See [release instructions](firmware/CYD.md#downloadable-releases).
+
 Install ESP-IDF (verified with v6.1), then open its PowerShell terminal:
 
 ```powershell

@@ -1,0 +1,52 @@
+name: CYD release
+on:
+  push:
+    tags:
+      - "v*-cyd.*"
+permissions:
+  contents: write
+concurrency:
+  group: cyd-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate CYD release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python -c "import os,sys; sys.path.insert(0,'tools'); from package_cyd_release import release_version; release_version(os.environ['RELEASE_TAG'])"
+      - uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.1
+          target: esp32
+          path: firmware
+          command: idf.py -B build_cyd build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test tools and actual CYD renderer
+        run: |
+          python -m unittest discover -s tools -p "test_*.py"
+          python tools/test_tank_backup.py --cc gcc
+          python sim/run.py --cc gcc --smoke
+      - name: Package verified firmware
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python -m pip install esptool==5.6.0
+          python tools/package_cyd_release.py --build firmware/build_cyd --out dist --version "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyd-release
+          path: dist/*
+          if-no-files-found: error
+      - name: Publish alpha release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/* --verify-tag --prerelease \
+            --title "Pocket Tank CYD ${RELEASE_TAG#v}" --notes-file dist/RELEASE-NOTES.md
