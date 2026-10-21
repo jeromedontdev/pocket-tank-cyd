@@ -76,6 +76,7 @@ void setup_begin_place(tank_t *t, int item);   /* the placement page for SD item
  * card opens it (MS_TAP_RENAME); when it closes, setup_take_renamed gives
  * the platform the fish once (else -1) so it can put that card back up. */
 void setup_begin_rename(tank_t *t, int fish);
+void setup_begin_customize(tank_t *t, int fish);
 bool setup_is_rename(void);
 int  setup_take_renamed(void);
 bool setup_active(void);
@@ -116,6 +117,13 @@ enum { SETUP_PG_BORN = SETUP_PG_N, SETUP_PG_NAME_NEW, SETUP_PG_FAMILY, SETUP_PG_
 enum { SETUP_PG_PLACE = SETUP_PG_BIRTH_END };
 /* the rename page (one page too) */
 enum { SETUP_PG_RENAME = SETUP_PG_PLACE + 1 };
+enum { SETUP_PG_CUSTOM = SETUP_PG_RENAME + 1 };
+#define SETUP_CUSTOM_X 32
+#define SETUP_CUSTOM_Y 166
+#define SETUP_CUSTOM_W 384
+#define SETUP_CUSTOM_H 36
+#define SETUP_CUSTOM_DY 44
+#define SETUP_HIT_CUSTOM0 200
 /* element ids (setup_hit / setup_activate) */
 #define SETUP_HIT_NEXT  1
 #define SETUP_HIT_BACK  2
@@ -200,9 +208,10 @@ enum { SETUP_PG_RENAME = SETUP_PG_PLACE + 1 };
  * teal, the bar in the calm ink, so "choose" and "finish" read apart. The
  * water below SETUP_PLACE_Y is the drag zone. */
 #define SETUP_DEPTH_SEG_W  110
-#define SETUP_DEPTH_W      (DECOR_Z_N * SETUP_DEPTH_SEG_W)      /* the plant's three segments; the castle's two (BEHIND / IN
+/* the plant's three segments; the castle's two (BEHIND / IN
                                                              * FRONT, Strato: no AMONG) are centred the same way - setup.c
                                                              * sizes the bar from tank_decor_z_count */
+#define SETUP_DEPTH_W      (DECOR_Z_N * SETUP_DEPTH_SEG_W)
 #define SETUP_DEPTH_X      ((PAGE_W - SETUP_DEPTH_W) / 2)
 #define SETUP_DEPTH_Y      (SETUP_TOP_BTN_Y + SETUP_BTN_H + 24)
 #define SETUP_DEPTH_H      70
@@ -233,6 +242,6 @@ enum { SETUP_PG_RENAME = SETUP_PG_PLACE + 1 };
 /* the stage: the clear spot each page leaves for the fish being edited
  * (tank_t.stage_*), top centre between the buttons */
 #define SETUP_STAGE_X   (TANK_W / 2)                    /* the stage is in the TANK: the frame's coordinates, under the page's title */
-#define SETUP_STAGE_NAME_Y (PAGE_Y + 94)
-#define SETUP_STAGE_LOOK_Y (PAGE_Y + 112)
+#define SETUP_STAGE_NAME_Y render_frame_y(94)
+#define SETUP_STAGE_LOOK_Y render_frame_y(112)
 #endif

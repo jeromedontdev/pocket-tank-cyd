@@ -5,9 +5,7 @@
 #include "tank.h"
 #include "display_port.h"
 #include "touch_port.h"
-#include "battery_port.h"
 #include "brightness.h"
-#include "battery.h"
 #include "director.h"
 #include "esp_attr.h"
 #include "esp_log.h"
@@ -38,12 +36,8 @@ void update_mode_run(uint16_t *fb) {
     const esp_partition_t *run = esp_ota_get_running_partition();
     ESP_LOGI(TAG, "update mode: running from %s | internal heap %u KB, psram %u KB free (the measurement docs/OTA.md waits for)",
              run ? run->label : "?", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
-    float frac = 0; bool charging = false;
-    int pct = battery_port_read(&frac, &charging) ? (int)(frac * 100 + 0.5f) : -1;
-    bool on_power = pct >= 0 && BAT_ON_POWER(battery_port_state());
-    ESP_LOGI(TAG, "battery %d%%, %s", pct, on_power ? "on the cable" : "on battery");
     director_init();                       /* the console, for the hands-free test channel (main.c's later call is a no-op) */
-    update_begin(pct, on_power);
+    update_begin();
     int64_t last = esp_timer_get_time(), t0 = last, last_log = last;
     int last_page = -1;
     while (!update_outcome()) {
@@ -63,8 +57,6 @@ void update_mode_run(uint16_t *fb) {
         if (update_page() != last_page) { last_page = update_page(); ESP_LOGI(TAG, "page %d", last_page); }
         if (fb) { render_update(fb, TANK_W, (now - t0) / 1e6f); display_port_flush(fb); }
         brightness_apply(false);
-        int k = battery_port_key_poll();   /* the PWR key: a long press cuts the power, as in the tank */
-        if (k == 2) { ESP_LOGW(TAG, "PWR held in update mode: power off"); net_port_abort(); net_port_off(); display_port_sleep(); battery_port_poweroff(); esp_restart(); }
         if (now - last_log > 10000000) { last_log = now; ESP_LOGI(TAG, "page %d | internal heap %u KB free", update_page(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024); }
         vTaskDelay(pdMS_TO_TICKS(30));
     }

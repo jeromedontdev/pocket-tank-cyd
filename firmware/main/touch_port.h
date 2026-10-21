@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include "tank.h"
 bool touch_port_init(void);
-bool touch_port_deep_sleep(void);   /* the night's deep sleep: the chip's own sleep, its reset left high (true = it took it); the wake is a reboot */
 void touch_port_poll(tank_t *t);
 int  touch_port_selected(void);   /* tapped fish for the stats card, RENDER_CARD_SNAIL for the snail's, -1 = none */
 /* milestones page: a tap ON the open stats card (its MORE button, or any of
@@ -12,6 +11,10 @@ int  touch_port_selected(void);   /* tapped fish for the stats card, RENDER_CARD
  * auto-dismiss - the next tap anywhere closes it (and the card, if still up).
  * touch_port_show_milestones is the director's cue (needs no card). */
 bool touch_port_milestones(void);
+bool touch_port_journal(void);
+void touch_port_show_journal(void);
+bool touch_port_bank(void);
+void touch_port_show_bank(void);
 void touch_port_show_milestones(bool on);
 void touch_port_dismiss(void);    /* drop the card and the page: a flow (the birth flow) took the glass */
 void touch_port_set_inverted(bool inverted);   /* mirror coords when the screen is flipped */
@@ -37,14 +40,10 @@ int  touch_port_take_setting(int *value);       /* SET_TAP_* or 0 */
  * the raw tap code (SHOP_TAP_BUY / SHOP_TAP_MOVE + item; 0 = none) to main
  * once, which buys (progression_buy) or opens the placement page */
 bool touch_port_shop(void);
+bool touch_port_aquariums(void);
+void touch_port_show_aquariums(const tank_t *t);
 void touch_port_show_shop(bool on);
 int  touch_port_take_shop(void);
-/* the battery pill and its page (2026-09-24): main.c says each frame whether
- * it drew the pill (a tap in RENDER_BAT_HIT counts only then); the page is up
- * until any release, or 30 s; touch_port_show_battery is the director's cue */
-void touch_port_set_pill(bool up);
-bool touch_port_battery(void);
-void touch_port_show_battery(bool on);
 /* the UPDATES page (2026-09-30, docs/OTA.md): from the settings page's
  * UPDATES button; its CHECK is handed to main once (UPD_TAP_CHECK), which
  * saves and restarts into update mode; CLOSE returns to the settings page */
@@ -53,16 +52,11 @@ void touch_port_show_updates(bool on);
 int  touch_port_take_update(void);              /* UPD_TAP_CHECK once, else 0 */
 /* update mode's raw read (no tank, no pages): the finger in tank space, true while down */
 bool touch_port_read_raw(float *x, float *y);
+void touch_port_calibrate(void);
+bool touch_port_calibrating(void);
+void touch_port_render_calibration(uint16_t *fb, int stride);
 void touch_port_set_bias(int px);              /* finger-landing correction: reported y moves up by px */
 int  touch_port_bias(void);
 void touch_port_set_log(bool on);              /* one log line per press, at its release (director `touch log on|off`) */
-/* the round board's lift rule (2026-10-03): silence of ms inside a press is a
- * lift (0 = keep), and said 1/0 = a "no finger" report lifts at once or not
- * (-1 = keep); director `touch lift <ms>` / `touch said on|off`, not saved */
-void touch_port_set_lift(int ms, int said);
-int  touch_port_lift_ms(void);
-bool touch_port_lift_said(void);
-void touch_port_set_mirror(int m);               /* the CST92xx boards: bit 0 x mirrored, bit 1 y mirrored, bit 2 axes swapped (the bench) */
-int  touch_port_mirror(void);
 void touch_port_raw_seen(int *x0, int *x1, int *y0, int *y1);   /* the raw report's extremes since boot, in tank space (x1 < x0: no touch yet) */
 #endif

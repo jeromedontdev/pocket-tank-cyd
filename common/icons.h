@@ -4,7 +4,13 @@
 #define POCKET_TANK_ICONS_H
 #include <stdint.h>
 
-typedef struct { uint8_t w, h; const uint16_t *rgb; const uint8_t *a; } icon_t;
+typedef struct {
+    uint8_t w, h;
+    const uint16_t *rgb;
+    const uint8_t *a;
+    uint32_t offset;
+} icon_t;
+const icon_t *icons_resolve(const icon_t *icon);
 
 extern const icon_t icon_bold;
 extern const icon_t icon_cautious;

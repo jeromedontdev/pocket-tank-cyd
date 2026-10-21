@@ -56,73 +56,16 @@ float tank_dist(float ax, float ay, float bx, float by) {
 
 /* ---- the glass (tank.h). The rectangle's is its frame; the bowl's is the
  * circle, with the flat bottom at TANK_BOT. ---- */
-#ifdef TANK_ROUND
-static float glass_half(float d) {                 /* half the chord, d px off the centre line */
-    float r2 = TANK_RAD * TANK_RAD - d * d;
-    return r2 > 0 ? sqrtf(r2) : 0;
-}
-float tank_glass_x0(float y) { return TANK_RAD - glass_half(y - TANK_RAD); }
-float tank_glass_x1(float y) { return TANK_RAD + glass_half(y - TANK_RAD); }
-float tank_glass_top(float x) { return TANK_RAD - glass_half(x - TANK_RAD); }
-void tank_glass_clamp(float *x, float *y, float m) {
-    if (*y > TANK_BOT - m) *y = TANK_BOT - m;
-    float dx = *x - TANK_RAD, dy = *y - TANK_RAD, d = sqrtf(dx * dx + dy * dy), lim = TANK_RAD - m;
-    if (d > lim && d > 0) {
-        *x = TANK_RAD + dx * lim / d; *y = TANK_RAD + dy * lim / d;
-        if (*y > TANK_BOT - m) {                   /* the corner where the glass meets the floor: along the floor to the glass */
-            *y = TANK_BOT - m;
-            float h = glass_half(*y - TANK_RAD) - m; if (h < 0) h = 0;
-            *x = dx < 0 ? TANK_RAD - h : TANK_RAD + h;
-        }
-    }
-}
-#elif defined(TANK_CORNER_R)
-/* the watch: the rectangle's frame, and in each corner's R x R square the
- * arc. corner_in says how far a point stands off its corner's centre (0 = it
- * is in no corner's square: the straight glass is the limit there). */
-static float corner_in(float x, float y, float *cx, float *cy) {
-    const float R = TANK_CORNER_R;
-    if (x < R) *cx = R; else if (x > TANK_W - R) *cx = TANK_W - R; else return 0;
-    if (y < R) *cy = R; else if (y > TANK_H - R) *cy = TANK_H - R; else return 0;
-    return sqrtf((x - *cx) * (x - *cx) + (y - *cy) * (y - *cy));
-}
-static float corner_inset(float v, float len) {    /* how far the glass stands in from the frame, v px along a side of length len */
-    const float R = TANK_CORNER_R;
-    float d = v < R ? R - v : v > len - R ? v - (len - R) : 0;
-    if (d <= 0) return 0;
-    return d >= R ? R : R - sqrtf(R * R - d * d);
-}
-float tank_glass_x0(float y) { return corner_inset(y, TANK_H); }
-float tank_glass_x1(float y) { return TANK_W - corner_inset(y, TANK_H); }
-float tank_glass_top(float x) { return corner_inset(x, TANK_W); }
-static void corner_clamp(float *x, float *y, float m) {   /* out of a corner: back along its radius to m inside the arc */
-    float cx, cy, d = corner_in(*x, *y, &cx, &cy), lim = TANK_CORNER_R - m;
-    if (d > lim && d > 0) { *x = cx + (*x - cx) * lim / d; *y = cy + (*y - cy) * lim / d; }
-}
-void tank_glass_clamp(float *x, float *y, float m) {
-    *x = clampf(*x, m, TANK_W - m); *y = clampf(*y, m, TANK_H - m);
-    corner_clamp(x, y, m);
-}
-#else
 float tank_glass_x0(float y) { (void)y; return 0; }
 float tank_glass_x1(float y) { (void)y; return TANK_W; }
 float tank_glass_top(float x) { (void)x; return 0; }
 void tank_glass_clamp(float *x, float *y, float m) {
     *x = clampf(*x, m, TANK_W - m); *y = clampf(*y, m, TANK_H - m);
 }
-#endif
-#ifndef TANK_CORNER_R
 #define corner_clamp(x, y, m) ((void)0)            /* the plain rectangle (and the bowl, which has its own): no corners */
-#endif
 /* a random point of open water: y in [y0, y1], x at least mx off the side glass at that height */
 static void rand_water(tank_t *t, float mx, float y0, float y1, float *x, float *y) {
-#if defined(TANK_ROUND) || defined(TANK_CORNER_R)
-    *y = tank_randf(t, y0, y1);
-    float lo = tank_glass_x0(*y) + mx, hi = tank_glass_x1(*y) - mx;
-    *x = lo < hi ? tank_randf(t, lo, hi) : TANK_W * 0.5f;
-#else
     *x = tank_randf(t, mx, TANK_W - mx); *y = tank_randf(t, y0, y1);
-#endif
 }
 
 int tank_nearest_food(const tank_t *t, const fish_t *f, float *dist_out) {
@@ -172,6 +115,16 @@ const char *tank_roster_name(int preset) { return preset >= 0 && preset < ROSTER
  * silver; the roster's five accents + white, the stress red and a dark ink */
 const uint32_t LOOK_BODY[LOOK_N]   = { 0x38dcc7, 0xff725c, 0x78d67d, 0xa799ff, 0xffd166, 0xf48fb1, 0x4da3ff, 0xe8f1f2 };
 const uint32_t LOOK_ACCENT[LOOK_N] = { 0xffbd59, 0xffe08a, 0xa799ff, 0x78d67d, 0x38dcc7, 0xffffff, 0xf25b65, 0x1a2a30 };
+const uint32_t FISH_BODY_COLORS[FISH_COLOR_N] = {
+    0x38dcc7, 0xff725c, 0x78d67d, 0xa799ff, 0xffd166, 0xf48fb1, 0x4da3ff, 0xe8f1f2,
+    0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
+    0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xffffff, 0x263d50
+};
+const uint32_t FISH_MARKING_COLORS[FISH_COLOR_N] = {
+    0xffbd59, 0xffe08a, 0xa799ff, 0x78d67d, 0x38dcc7, 0xffffff, 0xf25b65, 0x1a2a30,
+    0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
+    0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xe8f1f2, 0x263d50
+};
 /* the coral's swatches (2026-09-23): the reference art's orange first, then
  * reef colours - pink, magenta, violet, blue, teal, green, gold */
 const uint32_t CORAL_PAL[CORAL_N] = { 0xff7a1e, 0xf2698f, 0xd24bb4, 0x8a5be0, 0x3f8ff0, 0x2ec9b4, 0x7fc64a, 0xf2c23a };
@@ -206,13 +159,15 @@ static uint32_t fin_for(uint32_t body) {
     return (r << 16) | (g << 8) | b;
 }
 uint32_t tank_fin_for(uint32_t body) { return fin_for(body); }
-void tank_set_look(tank_t *t, int slot, uint32_t body, uint32_t accent) {
-    if (slot < 0 || slot >= N_FISH_MAX) return;
-    fish_t *f = &t->fish[slot];
+void tank_fish_set_look(fish_t *f, uint32_t body, uint32_t accent) {
     if (body)   { f->color = body; f->fin = fin_for(body); }
     if (accent) f->accent = accent;
     if (f->accent == f->color)                        /* stripes the body's own colour would vanish */
         for (int i = 0; i < LOOK_N; i++) if (LOOK_ACCENT[i] != f->color) { f->accent = LOOK_ACCENT[i]; break; }
+}
+void tank_set_look(tank_t *t, int slot, uint32_t body, uint32_t accent) {
+    if (slot < 0 || slot >= N_FISH_MAX) return;
+    tank_fish_set_look(&t->fish[slot], body, accent);
 }
 
 void tank_fish_face(fish_t *f) {
@@ -236,8 +191,8 @@ void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold,
     f->stage = stage;
     f->starve_flagged = false;
     f->trust = 5.0f;
-    f->goal.id = GOAL_EXPLORE; f->goal.urgency = 3; f->goal.confidence = 1; f->goal.runner_up = GOAL_COUNT;
-    f->goal_age = 0; f->ask_age = 99; f->dart_timer = 0; f->dart_x = f->x; f->dart_y = f->y; f->hesitate = 0;
+    f->goal.id = GOAL_EXPLORE; f->goal.urgency = 3;
+    f->goal_age = 0; f->ask_age = 99; f->dart_timer = 0; f->dart_x = f->x; f->dart_y = f->y;
     f->bored = 0; f->goal_prev = GOAL_COUNT; f->zone_last = -1; f->explore_set = false;
     /* its own order of first visits - from the slot, not the tank's RNG, so a
      * seeded run (the selftests) draws the same numbers it did before */
@@ -247,6 +202,7 @@ void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold,
     f->rest_dx = 8 + slot * 24 + bold * 14; f->rest_dy = -slot * 9 - tank_randf(t, 0, 10);   /* a body apart (was 9 px per slot) */
     f->sig = 0xffffffffu; f->ms_bits = 0; f->ms_seen = 0;
     f->color = p->color; f->fin = p->fin; f->accent = p->accent;
+    f->variety = FISH_CLASSIC; f->pattern = PATTERN_STRIPES;
     f->parent_a = f->parent_b = -1;
 }
 
@@ -303,6 +259,7 @@ int tank_add_fish(tank_t *t, int parent_a, int parent_b) {
        which; tank_set_look keeps the markings off a matching body */
     if (tank_randf(t, 0, 1) < 0.5f) { int x = ia; ia = ib; ib = x; pa = &t->fish[ia]; pb = &t->fish[ib]; }
     tank_set_look(t, slot, pa->color, pb->accent);
+    t->fish[slot].variety = pa->variety; t->fish[slot].pattern = pb->pattern;
     t->fish[slot].parent_a = (int8_t)ia; t->fish[slot].parent_b = (int8_t)ib;
     place_near_reef(t, &t->fish[slot]);
     t->fish[slot].hunger = 4; t->fish[slot].trust = 4;
@@ -357,6 +314,9 @@ bool tank_remove_fish(tank_t *t, int idx) {
 }
 
 void tank_init(tank_t *t, uint32_t seed) {
+    memset(&t->journal, 0, sizeof t->journal);
+    memset(t->bank, 0, sizeof t->bank); t->bank_count = 0;
+    memset(&t->aquariums, 0, sizeof t->aquariums); t->aquariums.count = 1;
     t->rng = seed ? seed : 0xC0FFEE;
     t->n_fish = 0;                 /* progression_boot restores or calls tank_new_population */
     for (int i = 0; i < MAX_FOOD; i++) t->food[i].alive = false;
@@ -405,6 +365,7 @@ void tank_init(tank_t *t, uint32_t seed) {
     t->sd_colonies_paid = t->sd_inches_paid = 0;
     t->snail_x = -1; t->snail_y = -1; t->snail_heading = 0; t->snail_cell = -1; t->snail_graze = 0;
     t->snail_grazed = 0; t->snail_sleep_acc = 0;
+    t->shrimp_n = 0; t->shrimp_food = 0; t->shrimp_cool = 0; t->shrimp_eaten = 0;
     t->urchin_x = -1; t->urchin_bed = t->urchin_frond = -1; t->urchin_appetite = 0; t->urchin_chew = 0;
     t->urchin_to = -1; t->urchin_rest = 0; t->urchin_grazed_px = 0;
     t->sh_x = -1; t->sh_y = 0; t->sh_bed = t->sh_frond = -1; t->sh_mode = SH_DRIFT; t->sh_facing = 1;
@@ -418,6 +379,12 @@ void tank_init(tank_t *t, uint32_t seed) {
     t->castle_x = 0; t->castle_z = DECOR_Z_FRONT;
     t->coral_x = 0; t->coral_z = DECOR_Z_FRONT; t->coral_rgb = 0; t->coral_growth = 0; t->coral_acc = 0;
     t->cluster_x = 0; t->cluster_z = DECOR_Z_FRONT; t->cluster_scheme = 0; t->cluster_growth = 0; t->cluster_acc = 0;
+    t->pumpkin_x = 0; t->pumpkin_z = DECOR_Z_BACK;
+    t->chest_x = 0; t->chest_z = DECOR_Z_BACK;
+    memset(t->ornament_x, 0, sizeof t->ornament_x);
+    memset(t->ornament_z, DECOR_Z_BACK, sizeof t->ornament_z);
+    t->sand_style = t->water_style = 0;
+    memset(t->decor_rank, 0, sizeof t->decor_rank);
     t->tank_ms_bits = 0; t->tank_ms_seen = 0; t->ask_rr = 0; t->advisor_asks = 0;
     tank_scatter_food(t, 2);
 }
@@ -425,19 +392,23 @@ void tank_init(tank_t *t, uint32_t seed) {
 #define TAP_WINDOW      0.5f    /* taps closer than this form a burst */
 #define STARTLE_RADIUS  140.0f  /* fish this close to an aggressive tap bolt */
 #define STARTLE_COOLDOWN 6.0f   /* calm seconds before the spook wears off */
-#define HOLD_RADIUS     1000.0f /* a resting finger is seen from anywhere on the
+/* a resting finger is seen from anywhere on the
                                  * glass (2026-09-04, was 160: a fish only came
                                  * when you held next to it, which hid the
                                  * trust tell) */
-#define HOLD_ATTRACT_S  2.7f    /* hold_time before fish approach; platforms
+#define HOLD_RADIUS     1000.0f
+/* hold_time before fish approach; platforms
                                  * report holds ~0.3 s in, so ≈3 s of contact */
+#define HOLD_ATTRACT_S  2.7f
 #define HOLD_HUNGER_VETO 7.5f   /* this hungry, a fish ignores the finger */
 #define SPAWN_NEAR_PX   20.0f   /* past the courtship loop's reach: a parent this close is circling in the fronds */
-#define HOLD_APPROACH_FROM 60.0f /* a hold-approach must START at least this far out:
+/* a hold-approach must START at least this far out:
                                  * a fish already under the finger earns nothing */
+#define HOLD_APPROACH_FROM 60.0f
 #define HOLD_APPROACH_AT   30.0f /* ... and come in this close */
-#define TRUST_PER_S        0.012f /* trust a fish earns a second under a resting finger (0.3.6: was 0.02;
+/* trust a fish earns a second under a resting finger (0.3.6: was 0.02;
                                    * Strato: "a bit slower" so the seahorse's double is worth having) */
+#define TRUST_PER_S        0.012f
 #define SEAHORSE_TRUST_X   2.0f   /* ... times this while the seahorse hangs on the finger */
 
 /* ---- hunger economy (2026-09-01) ----
@@ -473,40 +444,49 @@ void tank_init(tank_t *t, uint32_t seed) {
  * unease that lifts as soon as one tuft regrows. Rates are per real second;
  * tank_tick runs them awake, tank_tick_sleep runs them faster (an untended
  * dark tank is where the garden gets away from you). */
-#define VEG_GROW_AWAKE_S    162000.0f /* nubs -> the ceiling in ~45 h awake (was 30 h
+/* nubs -> the ceiling in ~45 h awake (was 30 h
                                        * until 2026-09-23: a few hours' sleep put
                                        * every bed at the surface, every time) */
-#define VEG_GROW_SLEEP_S    72000.0f  /* ~20 h of sleep (was 10 h): one night takes a
+#define VEG_GROW_AWAKE_S    162000.0f
+/* ~20 h of sleep (was 10 h): one night takes a
                                        * trimmed bed from a third of the glass to
                                        * two thirds, the second reaches the ceilings */
-#define VEG_SWORD_GROW      1.25f     /* the sword plant grows a bit faster than the
+#define VEG_GROW_SLEEP_S    72000.0f
+/* the sword plant grows a bit faster than the
                                        * grass (~36 h awake / ~16 h asleep) */
+#define VEG_SWORD_GROW      1.25f
 #define VEG_SLOW            0.60f     /* cruise speed factor inside a canopy */
 #define ALGAE_STEP_AWAKE_S  240.0f    /* one film growth step per 4 min awake */
-#define ALGAE_STEP_SLEEP_S  180.0f    /* (120 until 2026-09-23: a 7 h night filmed the
+/* (120 until 2026-09-23: a 7 h night filmed the
                                        * glass to the cap, so every morning looked the
                                        * same; now a night lands near ALGAE_DIRTY) */
+#define ALGAE_STEP_SLEEP_S  180.0f
 #define ALGAE_COVER_CAP     0.30f     /* growth stops claiming new cells here */
 #define WIPE_RADIUS      20.0f  /* squeegee half-width around the drag path */
-#define WIPE_ENGAGE_PX   18.0f  /* stroke travel before a drag starts wiping
+/* stroke travel before a drag starts wiping
                                  * (a rolly fingertip tap stays under this) */
-#define SLASH_PX         16.0f  /* sideways travel before a stroke is scissors (a
+#define WIPE_ENGAGE_PX   18.0f
+/* sideways travel before a stroke is scissors (a
                                  * rolly fingertip tap stays under this; one
                                  * frond pitch is 12 px, so a flick takes 1-2) */
+#define SLASH_PX         16.0f
 #define SLASH_RATIO      1.5f   /* ... and it must be this much more h than v */
-#define SLASH_TOOL_PX    10.0f  /* the SCISSORS picked from the toolbox: the keeper
+/* the SCISSORS picked from the toolbox: the keeper
                                  * said "cut", so a shorter stroke, merely more
                                  * sideways than not, is enough */
-#define SLASH_START_PX   10.0f  /* a slash must START this close to a FROND's tip
+#define SLASH_TOOL_PX    10.0f
+/* a slash must START this close to a FROND's tip
                                  * (upward) - not the bed's box: a cleaning scrub
                                  * begun mid-glass over a tall bed used to arm the
                                  * scissors (Strato, 2026-09-04) */
-#define SLASH_START_SIDE_PX 16.0f /* ... and this close to a spine SIDEWAYS: the pad
+#define SLASH_START_PX   10.0f
+/* ... and this close to a spine SIDEWAYS: the pad
                                  * of a fingertip is ~6 mm = 75 px on this glass, so
                                  * a landing a pitch beside a bed's outer frond has
                                  * that frond under the finger (a stroke begun at
                                  * the glass, heading in, used to arm nothing) */
-#define SLASH_REACH_PX    8.0f  /* the fingertip's reach past its REPORTED point: a
+#define SLASH_START_SIDE_PX 16.0f
+/* the fingertip's reach past its REPORTED point: a
                                  * stroke cuts the frond up to this far beyond where
                                  * it lands and where it lifts. The touch point is
                                  * the pad's centre; the outer frond of a bed stands
@@ -514,8 +494,9 @@ void tank_init(tank_t *t, uint32_t seed) {
                                  * it, so "the last blade never trips" (Strato,
                                  * 2026-09-14). Two thirds of the 12 px pitch: a flick
                                  * still takes only the fronds it visibly covers. */
+#define SLASH_REACH_PX    8.0f
 #define SLASH_WALL_PX       48.0f /* a frond this close to a side wall is a WALL frond ... */
-#define SLASH_WALL_SIDE_PX  96.0f /* ... and a stroke that starts on no frond of its bed,
+/* ... and a stroke that starts on no frond of its bed,
                                  * but this close to it on its OPEN side (no higher
                                  * than its tip), is aimed at it: armed, and once it
                                  * is in among the wall fronds, heading for the wall,
@@ -528,6 +509,7 @@ void tank_init(tank_t *t, uint32_t seed) {
                                  * starting 29..106 px from the wall, lifting at
                                  * 39..66). A stroke that starts ON a frond of that
                                  * bed keeps the precise reach above. */
+#define SLASH_WALL_SIDE_PX  96.0f
 
 static int popcount32u(uint32_t v) { int n = 0; while (v) { n += v & 1; v >>= 1; } return n; }
 
@@ -546,23 +528,10 @@ static void veg_bed_base(const tank_t *t, int b, float *bx0, int *n) {
     int lush = popcount32u(t->tank_ms_bits); if (lush > 4) lush = 4;
     int base_n;
     if (b == 0)      { *bx0 = t->reef_x - 24 - lush * 6; base_n = 5 + lush; }
-#ifdef TANK_ROUND                                          /* the bowl's floor is 358 px, not 448: the two right-hand beds keep
+/* the bowl's floor is 358 px, not 448: the two right-hand beds keep
                                                               their place against the right glass, the reef bed gives up two fronds */
-    else if (b == 1) { *bx0 = TANK_FX1 - 72; base_n = 4; }
-    else if (b == 2) { *bx0 = TANK_FX1 - 170; base_n = 2; }
-#elif defined(TANK_WATCH)                                  /* the watch's portrait floor is 322 px: bed 1 against the right glass, bed 2
-                                                              five fronds beside it, the reef bed four fronds fewer - open sand between */
-    else if (b == 1) { *bx0 = TANK_FX1 - 72; base_n = 4; }
-    else if (b == 2) { *bx0 = TANK_FX1 - 146; base_n = -1; }
-#elif defined(TANK_SQUARE)                                 /* the square's floor is 460 px, 12 more than the rectangle's: the two right-hand
-                                                              beds keep their place against the right glass (the rectangle's 0.84 x 480
-                                                              left bed 1 a frond short of the wall) */
-    else if (b == 1) { *bx0 = TANK_FX1 - 72; base_n = 4; }
-    else if (b == 2) { *bx0 = TANK_FX1 - 170; base_n = 2; }
-#else
     else if (b == 1) { *bx0 = TANK_W * 0.84f; base_n = 4; }
     else if (b == 2) { *bx0 = TANK_W * 0.62f; base_n = 2; }
-#endif
     else             { *bx0 = tank_decor_x(t, 0) - PLANT_HALF_W; *n = 4; return; }   /* the sword plant
                                                               (2026-09-15): four broad leaves, by default on
                                                               the open floor between the reef bed's widest
@@ -572,11 +541,6 @@ static void veg_bed_base(const tank_t *t, int b, float *bx0, int *n) {
        with fronds cut one at a time, a bed's outer fronds can't be allowed
        to vanish because its MEAN height dropped */
     int nn = base_n + 6;
-#ifdef TANK_ROUND
-    if (b == 0) nn -= 2;
-#elif defined(TANK_WATCH)
-    if (b == 0) nn -= 4;
-#endif
     if (nn > VEG_FRONDS_MAX) nn = VEG_FRONDS_MAX;
     while (nn > 1 && *bx0 + nn * 12 > TANK_FX1 - 8) nn--;   /* beds stop at the glass */
     *n = nn;
@@ -659,19 +623,9 @@ static float veg_slot_rand(int b, int i, uint32_t salt) {
  * profile, so a tall start does not mean a tall ceiling) */
 float tank_veg_cap(int b, int i) {
     float cap = VEG_CAP_LO + veg_slot_rand(b, i, 0x5EA62A55u) * (VEG_CAP_HI - VEG_CAP_LO);
-#if defined(TANK_ROUND) || defined(TANK_CORNER_R)          /* the bowl closes in over the outer fronds: a tip stops 12 px under the glass
+/* the bowl closes in over the outer fronds: a tip stops 12 px under the glass
                                                               (the reef bed taken at its widest, the sword plant wherever it stands);
                                                               the watch's and the square's upper corners do the same to the beds by its walls */
-    if (b < 3) {
-#ifdef TANK_WATCH
-        float x = (b == 0 ? TANK_FX0 + TANK_FW * 0.15f - 48 : b == 1 ? TANK_FX1 - 72 : TANK_FX1 - 146) + i * 12;
-#else                                                      /* (the bowl's and the square's bed spots) */
-        float x = (b == 0 ? TANK_FX0 + TANK_FW * 0.15f - 48 : b == 1 ? TANK_FX1 - 72 : TANK_FX1 - 170) + i * 12;
-#endif
-        float room = (TANK_BOT - 16 - tank_glass_top(x) - VEG_GLASS_GAP) / (VEG_SEGS_FULL * VEG_SEG_PX);
-        if (cap > room) cap = room;
-    }
-#endif
     return cap;
 }
 /* a bed's mean ceiling: what "full" means for it (the smother band) */
@@ -683,7 +637,8 @@ static float veg_cap_mean(const tank_t *t, int b) {
 }
 static void veg_grow(tank_t *t, float dg) {
     for (int b = 0; b < tank_veg_beds(t); b++) {
-        float dgb = tank_veg_kind(t, b) == VEG_KIND_SWORD ? dg * VEG_SWORD_GROW : dg;
+        float dgb = tank_veg_kind(t, b) == VEG_KIND_SWORD ? dg * VEG_SWORD_GROW :
+            dg * ((t->sd_unlocks & SD_ITEM_GARDEN) ? 0.5f : 1);
         for (int i = 0; i < VEG_FRONDS_MAX; i++) {
             float h = t->veg_h[b][i], cap = tank_veg_cap(b, i);
             if (h >= cap) continue;                   /* at (or staged above) its ceiling */
@@ -792,19 +747,7 @@ static int veg_cut(tank_t *t, float x0, float y0, float x1, float y1, bool landi
 /* a film cell that is on the glass: every one in the rectangle; in the bowl,
  * the ones whose centre the circle holds (the grid is the square around it) */
 static bool algae_ok(int cx, int cy) {
-#ifdef TANK_ROUND
-    if (cx < 0 || cx >= ALGAE_COLS || cy < 0 || cy >= ALGAE_ROWS) return false;
-    float dx = cx * ALGAE_CELL + ALGAE_CELL * 0.5f - TANK_RAD, dy = cy * ALGAE_CELL + ALGAE_CELL * 0.5f - TANK_RAD;
-    return dx * dx + dy * dy <= (TANK_RAD - 6) * (TANK_RAD - 6);
-#elif defined(TANK_CORNER_R)                               /* the watch: not the cells its round corners hide (the last column and
-                                                              row hang off the frame: their centres are still on the glass) */
-    float px = cx * ALGAE_CELL + ALGAE_CELL * 0.5f, py = cy * ALGAE_CELL + ALGAE_CELL * 0.5f, ccx, ccy;
-    if (px > TANK_W - 1) px = TANK_W - 1;
-    if (py > TANK_H - 1) py = TANK_H - 1;
-    return corner_in(px, py, &ccx, &ccy) <= TANK_CORNER_R - 4;
-#else
     (void)cx; (void)cy; return true;
-#endif
 }
 int tank_algae_cells(void) {
     static int n;
@@ -912,11 +855,7 @@ static void wipe_algae(tank_t *t, float x0, float y0, float x1, float y1) {
 #define SNAIL_PX_S        4.0f     /* crawl toward a patch (6 was "a bit fast" - Strato) */
 #define SNAIL_AMBLE_PX_S  3.0f     /* nothing to eat: the edge walk */
 #define SNAIL_GRAZE_PER_S 45.0f    /* film units per second on a cell (a fresh 90 cell in 2 s) */
-#if defined(TANK_ROUND)
-#define SNAIL_SLEEP_FRAC_H 0.26f   /* the bowl films faster (a night alone 0.24, not 0.175): its own
-                                    * share keeps the week under ALGAE_DIRTY there too (0.3.6) */
-#else
-#define SNAIL_SLEEP_FRAC_H 0.20f   /* the night shift (tank_tick_sleep): this share of the film's cells
+/* the night shift (tank_tick_sleep): this share of the film's cells
                                     * an hour - the more film, the less it crawls between meals - so a
                                     * night ends cleaner than it would and a long absence settles under
                                     * the cap instead of on it, and there is still film to wipe (tuned
@@ -924,22 +863,19 @@ static void wipe_algae(tank_t *t, float x0, float y0, float x1, float y1) {
                                     * 0.12 until 0.3.6 (a night 0.12, a week 0.18 of the glass); now a
                                     * night ~0.10 and a week ~0.12, under ALGAE_DIRTY: a snail's tank
                                     * comes back from days away fit to breed, still filmed (Strato) */
-#endif
-#define SNAIL_MARGIN      30.0f    /* it keeps inside the visible window: the panel's corners are
+#define SNAIL_SLEEP_FRAC_H 0.20f
+/* it keeps inside the visible window: the panel's corners are
                                     * rounded and the bezel curve hides the outer ~24 px (Strato,
                                     * 2026-09-15: "stuck in the bottom left corner, I can barely
                                     * see it" - the film seeds from the corners and it went there) */
-#define SNAIL_REACH       16.0f    /* it grazes a cell from this close (one cell): a corner cell
+#define SNAIL_MARGIN      30.0f
+/* it grazes a cell from this close (one cell): a corner cell
                                     * under the bezel is eaten from the visible edge */
+#define SNAIL_REACH       16.0f
 /* where the snail may stand: SNAIL_MARGIN inside the rectangle's frame; on the
  * bowl, whose glass hides nothing, 16 px inside the circle */
 static void snail_clamp(float *x, float *y, float ymax) {
-#if defined(TANK_ROUND) || defined(TANK_CORNER_R)
-    tank_glass_clamp(x, y, 16);
-    if (*y > ymax) *y = ymax;
-#else
     *x = clampf(*x, SNAIL_MARGIN, TANK_W - SNAIL_MARGIN); *y = clampf(*y, SNAIL_MARGIN, ymax);
-#endif
 }
 static int snail_nearest_cell(const tank_t *t) {
     int best = -1; float bd = 1e9f;
@@ -952,10 +888,11 @@ static int snail_nearest_cell(const tank_t *t) {
     return best;
 }
 bool tank_snail_upright(const tank_t *t) { return t->snail_cell < 0 && t->snail_y >= SNAIL_FLOOR_Y - 1; }
-#define SNAIL_TAP_RADIUS 48.0f     /* generous round the 32 px sprite: a fingertip on this 322 ppi
+/* generous round the 32 px sprite: a fingertip on this 322 ppi
                                     * panel covers ~60 px, and the snail is small and low on the glass
                                     * (Strato, 2026-09-16: "challenging to tap the little guy" at 30;
                                     * the fish take 38 and are tested first) */
+#define SNAIL_TAP_RADIUS 48.0f
 bool tank_snail_hit(const tank_t *t, float x, float y) {
     if (!(t->sd_unlocks & SD_ITEM_SNAIL) || t->snail_x < 0) return false;
     return tank_dist(t->snail_x, t->snail_y, x, y) <= SNAIL_TAP_RADIUS;
@@ -1047,10 +984,11 @@ void tank_snail_place(tank_t *t) {
  * absence settles below the ceilings instead of on them. */
 #define URCHIN_PX_S          1.6f     /* tube feet: slower than the snail */
 #define URCHIN_AWAKE_PER_H   0.50f    /* (0.30 until 0.3.6: 6 h awake from 0.57 climbed to 0.63; now ~flat) */
-#define URCHIN_SLEEP_FRAC_H  0.35f    /* of the height over the keep line, an hour asleep (tuned in
+/* of the height over the keep line, an hour asleep (tuned in
                                        * selftest-sleep: a 7 h night from a trimmed 0.35 lands ~0.52
                                        * where it lands 0.69 alone; days away settle ~0.54, not 0.83.
                                        * 0.20 until 0.3.6: 0.57 a night, 0.64 a week) */
+#define URCHIN_SLEEP_FRAC_H  0.35f
 #define URCHIN_BITE          0.05f    /* one sitting: ~17 px off a frond on the 1.8 */
 #define URCHIN_CHEW_S        14.0f
 #define URCHIN_TAP_RADIUS    40.0f    /* a fingertip round a ~32 px urchin */
@@ -1667,9 +1605,6 @@ static void shrimp_tick(tank_t *t, float dt) {
         q->y += q->vy * dt + sinf(q->ph * 2.1f) * dt * 1.2f;
         q->x = clampf(q->x, TANK_FX0 + 12, TANK_FX1 - 12);
         q->y = clampf(q->y, 40, FOOD_FLOOR_Y - 1);
-#if defined(TANK_ROUND) || defined(TANK_CORNER_R)
-        tank_glass_clamp(&q->x, &q->y, 10);          /* up a tall frond by the wall, the bowl closes in */
-#endif
         if (q->dart <= 0) {                                             /* the committed turn */
             int8_t want = q->vx > 1.5f ? 1 : q->vx < -1.5f ? -1 : q->facing;
             if (want != q->facing) { q->behind += dt; if (q->behind > 0.35f) { q->facing = want; q->behind = -0.6f; } }
@@ -1734,8 +1669,22 @@ static void cluster_grow(tank_t *t, float seconds) {
 }
 void     tank_coral_set_rgb(tank_t *t, uint32_t rgb) { t->coral_rgb = rgb & 0xffffff; }
 /* the decor's spot and layer (see tank.h): item 0 is the plant, item 2 the castle, item 3 the coral, item 4 the cluster, item 8 the pumpkin */
-bool  tank_decor_placeable(int item) { return item == 0 || item == 2 || item == 3 || item == 4 || item == 8; }
-float tank_decor_half_w(int item) { return item == 0 ? PLANT_HALF_W : item == 2 ? CASTLE_HALF_W : item == 3 ? CORAL_HALF_W : item == 4 ? CLUSTER_HALF_W : item == 8 ? PUMPKIN_HALF_W : 0; }
+const char *const FISH_VARIETY_NAMES[FISH_VARIETY_COUNT] = {
+    "CLASSIC", "ANGEL", "GUPPY", "TETRA", "PUFFER",
+    "SHARK", "JELLYFISH", "STINGRAY", "CLOWNFISH", "BETTA"
+};
+const char *const FISH_PATTERN_NAMES[FISH_PATTERN_COUNT] = { "STRIPES", "SPOTS", "BAND", "PLAIN" };
+int tank_ornament_index(int item) { return item >= 10 && item <= 13 ? item - 10 : item >= 16 && item < 22 ? item - 12 : -1; }
+int tank_ornament_w(int item) {
+    static const int widths[6] = {64, 30, 42, 48, 58, 36};
+    return item >= 22 && item < SD_ITEM_COUNT ? 40 : item >= 16 && item < 22 ? widths[item - 16] : item == 9 ? CHEST_W : item == 10 ? 36 : item == 11 ? 34 : item == 12 ? 32 : item == 13 ? 36 : 0;
+}
+int tank_ornament_h(int item) {
+    static const int heights[6] = {52, 40, 46, 68, 64, 110};
+    return item >= 22 && item < SD_ITEM_COUNT ? 40 : item >= 16 && item < 22 ? heights[item - 16] : item == 9 ? CHEST_H : item == 10 ? 24 : item == 11 ? 32 : item == 12 ? 40 : item == 13 ? 104 : 0;
+}
+bool  tank_decor_placeable(int item) { return item == 0 || item == 2 || item == 3 || item == 4 || item == 8 || item == 9 || tank_ornament_index(item) >= 0; }
+float tank_decor_half_w(int item) { return item == 0 ? PLANT_HALF_W : item == 2 ? CASTLE_HALF_W : item == 3 ? CORAL_HALF_W : item == 4 ? CLUSTER_HALF_W : item == 8 ? PUMPKIN_HALF_W : tank_ornament_w(item) / 2; }
 /* only the plant weaves AMONG the fish; the castle and both corals are
  * BEHIND or IN FRONT (Strato, 2026-09-24: "remove the among option for
  * corals, it doesn't really make as much sense") */
@@ -1750,34 +1699,36 @@ float tank_decor_x(const tank_t *t, int item) {
     if (item == 3) return t->coral_x > 0 ? t->coral_x : CORAL_X_DEFAULT;
     if (item == 4) return t->cluster_x > 0 ? t->cluster_x : CLUSTER_X_DEFAULT;
     if (item == 8) return t->pumpkin_x > 0 ? t->pumpkin_x : PUMPKIN_X_DEFAULT;
+    if (item == 9) return t->chest_x > 0 ? t->chest_x : TANK_FLOOR_X(320);
+    int oi = tank_ornament_index(item);
+    if (oi >= 0) return t->ornament_x[oi] > 0 ? t->ornament_x[oi] : TANK_FLOOR_X(80 + (oi % 4) * 85);
     if (item != 0) return 0;
     return t->plant_x > 0 ? t->plant_x : PLANT_X_DEFAULT;
 }
-int tank_decor_z(const tank_t *t, int item) { return item == 0 ? t->plant_z : item == 2 ? t->castle_z : item == 3 ? t->coral_z : item == 4 ? t->cluster_z : item == 8 ? t->pumpkin_z : DECOR_Z_MIDDLE; }
+int tank_decor_z(const tank_t *t, int item) { int oi = tank_ornament_index(item); return item == 0 ? t->plant_z : item == 2 ? t->castle_z : item == 3 ? t->coral_z : item == 4 ? t->cluster_z : item == 8 ? t->pumpkin_z : item == 9 ? t->chest_z : oi >= 0 ? t->ornament_z[oi] : DECOR_Z_MIDDLE; }
 static float decor_top(const tank_t *t, int item) {         /* the piece's highest pixel */
     if (item == 0) { float top; tank_veg_bed(t, 3, NULL, NULL, &top, NULL); return top; }
     if (item == 2) return TANK_BOT - 16 - 146;
     if (item == 3) return TANK_BOT - 14 + DECOR_SINK - 92;
     if (item == 8) return TANK_BOT - 14 + DECOR_SINK - 82;
+    if (tank_ornament_h(item)) return TANK_BOT - 14 + DECOR_SINK - tank_ornament_h(item);
     return TANK_BOT - 14 + DECOR_SINK - 120;
 }
 int tank_decor_hit(const tank_t *t, float x, float y) {
-    static const int order[5] = { 3, 0, 8, 2, 4 };            /* the coral, the plant, the pumpkin, the castle, the cluster */
-    static const uint32_t bits[9] = { SD_ITEM_PLANT, 0, SD_ITEM_CASTLE, SD_ITEM_CORAL, SD_ITEM_CLUSTER, 0, 0, 0, SD_ITEM_PUMPKIN };
-    for (int k = 0; k < 5; k++) {
+    static const int order[DECOR_SLOTS] = { 21, 20, 19, 18, 17, 16, 13, 12, 11, 10, 9, 3, 0, 8, 2, 4 };
+    for (int k = 0; k < DECOR_SLOTS; k++) {
         int item = order[k];
-        if (!(t->sd_unlocks & bits[item])) continue;
+        if (!tank_decor_owned(t, item)) continue;
         float cx = tank_decor_x(t, item), half = tank_decor_half_w(item) + 8;
         if (x >= cx - half && x <= cx + half && y >= decor_top(t, item) - 8 && y <= TANK_BOT) return item;
     }
     return -1;
 }
 /* ---- the order of the pieces (2026-10-17; tank.h) ---- */
-static const int DECOR_SLOT_ITEM[DECOR_SLOTS] = { 2, 3, 4, 8, 0 };                 /* the tie order: castle, coral, cluster, pumpkin, plant */
-static const uint32_t DECOR_SLOT_BIT[DECOR_SLOTS] = { SD_ITEM_CASTLE, SD_ITEM_CORAL, SD_ITEM_CLUSTER, SD_ITEM_PUMPKIN, SD_ITEM_PLANT };
+static const int DECOR_SLOT_ITEM[DECOR_SLOTS] = { 2, 3, 4, 8, 0, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21 };
 int  tank_decor_slot(int item) { for (int s = 0; s < DECOR_SLOTS; s++) if (DECOR_SLOT_ITEM[s] == item) return s; return -1; }
 int  tank_decor_slot_item(int slot) { return slot >= 0 && slot < DECOR_SLOTS ? DECOR_SLOT_ITEM[slot] : -1; }
-bool tank_decor_owned(const tank_t *t, int item) { int s = tank_decor_slot(item); return s >= 0 && (t->sd_unlocks & DECOR_SLOT_BIT[s]); }
+bool tank_decor_owned(const tank_t *t, int item) { return tank_decor_slot(item) >= 0 && (t->sd_unlocks & (1u << item)); }
 static bool decor_before(const tank_t *t, int ia, int ib) {       /* a is painted before (under) b at one depth */
     int sa = tank_decor_slot(ia), sb = tank_decor_slot(ib);
     return t->decor_rank[sa] != t->decor_rank[sb] ? t->decor_rank[sa] < t->decor_rank[sb] : sa < sb;
@@ -1785,7 +1736,7 @@ static bool decor_before(const tank_t *t, int ia, int ib) {       /* a is painte
 int  tank_decor_rank(const tank_t *t, int item) { int s = tank_decor_slot(item); return s < 0 ? 0 : t->decor_rank[s]; }
 int  tank_decor_order(const tank_t *t, int items[DECOR_SLOTS]) {
     int n = 0;
-    for (int s = 0; s < DECOR_SLOTS; s++) if (t->sd_unlocks & DECOR_SLOT_BIT[s]) items[n++] = DECOR_SLOT_ITEM[s];
+    for (int s = 0; s < DECOR_SLOTS; s++) if (tank_decor_owned(t, DECOR_SLOT_ITEM[s])) items[n++] = DECOR_SLOT_ITEM[s];
     for (int i = 1; i < n; i++) {                                 /* an insertion sort of five */
         int v = items[i], j = i;
         while (j > 0 && decor_before(t, v, items[j - 1])) { items[j] = items[j - 1]; j--; }
@@ -1828,6 +1779,9 @@ void tank_decor_reset(tank_t *t, int item) {
     if (item == 3) { t->coral_x = 0; t->coral_z = DECOR_Z_FRONT; t->coral_rgb = 0; t->coral_growth = 0; t->coral_acc = 0; }
     if (item == 4) { t->cluster_x = 0; t->cluster_z = DECOR_Z_FRONT; t->cluster_scheme = 0; t->cluster_growth = 0; t->cluster_acc = 0; }
     if (item == 8) tank_pumpkin_place(t);
+    if (item == 9) { t->chest_x = 0; t->chest_z = DECOR_Z_BACK; }
+    int oi = tank_ornament_index(item);
+    if (oi >= 0) { t->ornament_x[oi] = 0; t->ornament_z[oi] = DECOR_Z_BACK; }
 }
 void tank_decor_set(tank_t *t, int item, float x, int z) {
     if (!tank_decor_placeable(item)) return;
@@ -1841,6 +1795,9 @@ void tank_decor_set(tank_t *t, int item, float x, int z) {
     if (item == 3) { t->coral_x = x; t->coral_z = z2; return; }
     if (item == 4) { t->cluster_x = x; t->cluster_z = z2; return; }
     if (item == 8) { t->pumpkin_x = x; t->pumpkin_z = z2; return; }
+    if (item == 9) { t->chest_x = x; t->chest_z = z2; return; }
+    int oi = tank_ornament_index(item);
+    if (oi >= 0) { t->ornament_x[oi] = x; t->ornament_z[oi] = z2; return; }
     t->plant_x = x; t->plant_z = (uint8_t)z;
 }
 
@@ -2006,10 +1963,11 @@ static void touch_tick(tank_t *t, float dt) {
                 /* 0.3.6: the base rate is slower than it was (0.02/s, 2026-09-04
                  * .. 0.3.5) and a hitched seahorse doubles it - "twice as fast"
                  * on its shop row. What it adds over the base is its tally. */
-                float rate = TRUST_PER_S * (t->sh_hitched ? SEAHORSE_TRUST_X : 1.0f);
+                float base_rate = TRUST_PER_S * ((t->aquariums.stat_upgrades & STAT_TRAINING) ? 1.25f : 1);
+                float rate = base_rate + (t->sh_hitched ? TRUST_PER_S * (SEAHORSE_TRUST_X - 1) : 0);
                 float was_t = f->trust;
                 f->trust = fminf(10, f->trust + dt * rate);
-                if (t->sh_hitched) t->sh_trust_passed += fmaxf(0, (f->trust - was_t) - fminf(10 - was_t, dt * TRUST_PER_S));
+                if (t->sh_hitched) t->sh_trust_passed += fmaxf(0, (f->trust - was_t) - fminf(10 - was_t, dt * base_rate));
             }
             /* a hold-approach = a fish that was out in the tank when the
              * settled hold began its draw and then came all the way in.
@@ -2077,14 +2035,11 @@ void tank_toggle_light(tank_t *t) {
 
 void tank_light_auto(tank_t *t) { t->light_override = false; }
 
-/* the worn tank's way up (tank.h) */
-bool tank_screen_turned(const tank_t *t) { return TANK_WORN && t->screen_turned; }
-void tank_screen_set(tank_t *t, bool turned) { t->screen_turned = TANK_WORN && turned; }
 bool tank_orient(tank_t *t, bool live_inverted) {
-    if (!t->orient_lock) t->orient_inv = live_inverted;
+    (void)live_inverted;
+    t->orient_inv = false;
     return t->orient_inv;
 }
-void tank_orient_lock(tank_t *t, bool lock) { t->orient_lock = lock; }
 
 const int LIGHT_IDLE_CHOICES[LIGHT_IDLE_N] = { 5, 15, 30, 60, 180, 300, 600, 1800 };
 int tank_light_choice(const tank_t *t) {
@@ -2125,8 +2080,8 @@ void tank_tick_sleep(tank_t *t, float seconds) {
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
         f->hunger = clampf(f->hunger + SLEEP_HUNGER_PER_H * h, 0, 10);
-        f->energy = clampf(f->energy + SLEEP_ENERGY_PER_H * h, 0, 10);
-        f->stress = clampf(f->stress - SLEEP_STRESS_PER_H * h, 0, 10);
+        f->energy = clampf(f->energy + SLEEP_ENERGY_PER_H * h * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1), 0, 10);
+        f->stress = clampf(f->stress - SLEEP_STRESS_PER_H * h * ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1), 0, 10);
         f->speed = 0; f->target_speed = 0; f->bored = 0;  /* a night's sleep is a fresh start */
         f->goal_age += seconds; f->ask_age += seconds;  /* wake re-asks the advisor at once */
     }
@@ -2152,7 +2107,7 @@ void tank_tick_sleep(tank_t *t, float seconds) {
          * bit of algae from forming overnight (2026-09-04). Nothing is banked
          * past the slice: the awake tick once paid a long sleep's overflow out
          * a step per frame, film refilling under the keeper's wipe (2026-09-29). */
-        t->algae_acc += dt;
+        t->algae_acc += dt * ((t->sd_unlocks & SD_ITEM_FILTER) ? 0.5f : 1);
         int steps = (int)(t->algae_acc / ALGAE_STEP_SLEEP_S);
         t->algae_acc -= steps * ALGAE_STEP_SLEEP_S;
         tank_grow_algae(t, steps);
@@ -2171,9 +2126,7 @@ static int zone_of(float x, float y) {
 /* ---- goal → target point + cruise speed (prototype targetForGoal, x0.55) ---- */
 typedef struct { float x, y, speed; bool valid; } target_t;
 
-/* `goal` is normally f->goal.id; the hesitation glance asks for the runner-up's
- * target, in which case nothing is mutated (no dart burst is started). */
-static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal, bool glance) {
+static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
     fish_t *f = &t->fish[idx];
     float tm = t->clock;
     target_t tg = {
@@ -2231,7 +2184,6 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal, bool glance)
         tg.speed = 6 + f->bold * 4;
         break;
     case GOAL_DART_PLAY:
-        if (glance) { tg.valid = false; break; }
         if (f->dart_timer <= 0) {
             rand_water(t, 38, 40, TANK_BOT - 64, &f->dart_x, &f->dart_y);
             f->dart_timer = tank_randf(t, 0.8f, 1.5f);
@@ -2256,7 +2208,6 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal, bool glance)
          * cruises to a point inside it, and on arrival picks the next. The
          * model still owns the goal; this is the reflex layer resolving the
          * concrete target, as it does for every other goal. */
-        if (glance) { if (!f->explore_set) tg.valid = false; else { tg.x = f->explore_x; tg.y = f->explore_y; } break; }
         if (!f->explore_set || tank_dist(f->x, f->y, f->explore_x, f->explore_y) < 26) {
             int cur = zone_of(f->x, f->y), best = -1, second = -1;
             for (int z = 0; z < 6; z++) {
@@ -2268,9 +2219,6 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal, bool glance)
             int col = z % 3, row = z / 3;
             f->explore_x = tank_randf(t, col * (TANK_W / 3.0f) + 40, (col + 1) * (TANK_W / 3.0f) - 40);
             f->explore_y = tank_randf(t, row * (TANK_BOT / 2.0f) + 42, (row + 1) * (TANK_BOT / 2.0f) - 40);
-#if defined(TANK_ROUND) || defined(TANK_CORNER_R)
-            tank_glass_clamp(&f->explore_x, &f->explore_y, 44);   /* a zone's corner is outside the bowl */
-#endif
             f->explore_set = true;
         }
         /* the wander wobble bends the line so it reads as a swim, not a bee-line */
@@ -2278,36 +2226,22 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal, bool glance)
         tg.y = f->explore_y + cosf(f->wander * 0.7f) * 12;
         break;
     }
-    default: if (glance) tg.valid = false; break;
+    default: break;
     }
     float m = 23;
-#ifdef TANK_ROUND
-    tank_glass_clamp(&tg.x, &tg.y, m + 4);
-#else
     tg.x = clampf(tg.x, m, TANK_W - m);
     tg.y = clampf(tg.y, m + 9, TANK_H - m);
     corner_clamp(&tg.x, &tg.y, m + 4);
-#endif
     return tg;
 }
 
 static float wall_avoidance(const fish_t *f, bool *hit) {
     const float m = 34;
     float vx = 0, vy = 0;
-#ifdef TANK_ROUND                                          /* the bowl: away from the glass along its radius, and up off the floor */
-    float dx = f->x - TANK_RAD, dy = f->y - TANK_RAD, d = sqrtf(dx * dx + dy * dy), gap = TANK_RAD - d;
-    if (gap < m && d > 1) { float p = 1 - (gap < 0 ? 0 : gap) / m; vx -= dx / d * p; vy -= dy / d * p; }
-    if (f->y > TANK_BOT - m) vy -= 1 - (TANK_BOT - f->y) / m;
-#else
     if (f->x < m)          vx += 1 - f->x / m;
     if (f->x > TANK_W - m) vx -= 1 - (TANK_W - f->x) / m;
     if (f->y < m + 6)      vy += 1 - (f->y - 6) / m;
     if (f->y > TANK_H - m) vy -= 1 - (TANK_H - f->y) / m;
-#ifdef TANK_CORNER_R                                       /* the watch: in a corner the arc is nearer than either straight wall */
-    { float cx, cy, d = corner_in(f->x, f->y, &cx, &cy), gap = TANK_CORNER_R - d;
-      if (d > 1 && gap < m) { float p = 1 - (gap < 0 ? 0 : gap) / m; vx -= (f->x - cx) / d * p; vy -= (f->y - cy) / d * p; } }
-#endif
-#endif
     *hit = (vx != 0 || vy != 0);
     return *hit ? atan2f(vy, vx) : 0;
 }
@@ -2361,15 +2295,17 @@ static void update_fish(tank_t *t, int idx, float dt) {
             if (bub && at && !f->at_bubbles) tank_emit(TEV_BUBBLES, idx);   /* arrival at the column: the play cue */
             f->at_bubbles = bub && at;
         } else f->at_bubbles = false;
+        if (dc > 0 && (t->aquariums.stat_upgrades & STAT_ENRICHMENT)) dc *= 1.25f;
         f->curiosity = clampf(f->curiosity + dt * dc, 0, 10);
     }
-    f->stress    = clampf(f->stress - dt * (f->goal.id == GOAL_REST ? 0.48f : 0.18f), 0, 10);
+    f->stress    = clampf(f->stress - dt * (f->goal.id == GOAL_REST ? 0.48f : 0.18f) *
+                         ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1), 0, 10);
     /* energy: the prototype's per-second drain (full to empty in ~3 min of
      * cruising) kept the school at energy ~3 - permanently tired, so the
      * advisor never had a fish fit enough to dart and read every content
      * fish as "relaxed": bubbles, reef, follow (2026-09-01 census). Now a
      * fish cruises ~10 min on a full tank and a rest refills it in ~35 s. */
-    f->energy    = clampf(f->energy + dt * (f->goal.id == GOAL_REST ? 0.30f
+    f->energy    = clampf(f->energy + dt * (f->goal.id == GOAL_REST ? 0.30f * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1)
                           : -0.012f - f->speed / 4000.0f), 0, 10);
     /* a canopy is a place to hide: a fish inside one calms faster (below) */
     bool hidden = false;
@@ -2431,7 +2367,7 @@ static void update_fish(tank_t *t, int idx, float dt) {
         f->zone_seen[z] = t->clock;
     }
 
-    target_t tg = target_for_goal(t, idx, f->goal.id, false);
+    target_t tg = target_for_goal(t, idx, f->goal.id);
     /* fish prefer shallow climb/dive angles while cruising; full vertical
      * agility stays available for urgent goals */
     bool agile = f->goal.id == GOAL_FLEE_SHADOW || f->goal.id == GOAL_DART_PLAY;
@@ -2443,19 +2379,6 @@ static void update_fish(tank_t *t, int idx, float dt) {
     bool hit; float push = wall_avoidance(f, &hit);
     if (hit && !final_approach)
         desired = norm_ang(desired + norm_ang(push - desired) * 0.62f);
-
-    /* hesitation: a low-confidence decision is shown, not hidden - the fish
-     * hovers and glances between its new target and the runner-up's for a
-     * moment before committing. Never for flight or high urgency. */
-    float hes_speed = -1;
-    if (f->hesitate > 0) {
-        f->hesitate -= dt;
-        target_t alt = f->goal.runner_up < GOAL_COUNT
-                     ? target_for_goal(t, idx, f->goal.runner_up, true) : (target_t){0, 0, 0, false};
-        float phase = sinf(t->clock * 5.0f + f->wander);
-        if (alt.valid && phase < 0) desired = atan2f((alt.y - f->y) * 0.72f, alt.x - f->x);
-        hes_speed = 5;
-    }
 
     /* touch: spooked fish bolt from the tap site; trusting fish drift to a
      * resting finger (reflex-layer, independent of the advisor's goal) */
@@ -2598,7 +2521,7 @@ static void update_fish(tank_t *t, int idx, float dt) {
     float yrate = f->turn_rate * 1.2f * (1 + f->goal.urgency * 0.06f) * dt;
     f->yaw += clampf(face - f->yaw, -yrate, yrate);
     f->yaw_tail += (f->yaw - f->yaw_tail) * clampf(dt * 10, 0, 1);
-    float want = touch_speed >= 0 ? touch_speed : hes_speed >= 0 ? hes_speed : tg.speed * ugain;
+    float want = touch_speed >= 0 ? touch_speed : tg.speed * ugain;
     f->target_speed = want * (f->energy < 1.2f ? 0.45f : 1) * (glancing ? 0.6f : 1);
     /* swimming through a canopy is slow going (a fleeing fish crashes through) */
     if (f->goal.id != GOAL_FLEE_SHADOW)
@@ -2618,42 +2541,16 @@ static void update_fish(tank_t *t, int idx, float dt) {
      * INTO the glass: the facing lags the mirror, and a second bounce on the
      * next frame would send the fish back into the glass */
     float m = 15 * f->size;
-#ifdef TANK_ROUND                                          /* the bowl's glass: back onto the circle m inside it, the heading mirrored
+/* the bowl's glass: back onto the circle m inside it, the heading mirrored
                                                               in the glass while it points out, the body turned to swim back in */
-    { float dx = f->x - TANK_RAD, dy = f->y - TANK_RAD, d = sqrtf(dx * dx + dy * dy), lim = TANK_RAD - m;
-      if (d > lim && d > 1) {
-          float nx = dx / d, ny = dy / d;
-          f->x = TANK_RAD + nx * lim; f->y = TANK_RAD + ny * lim;
-          float hx = cosf(f->heading), hy = sinf(f->heading), out = hx * nx + hy * ny;
-          if (out > 0) {
-              hx -= 2 * out * nx; hy -= 2 * out * ny; f->heading = atan2f(hy, hx);
-              if (nx < -0.5f && f->facing < 0) { f->facing = 1; f->behind = -TURN_SETTLE; }
-              if (nx > 0.5f && f->facing > 0)  { f->facing = -1; f->behind = -TURN_SETTLE; }
-          }
-      }
-      if (f->y > TANK_BOT - m) { f->y = TANK_BOT - m; f->heading = -f->heading; } }
-#else
     if (f->x < m)          { f->x = m;          if (cosf(f->heading) < 0) f->heading = norm_ang(3.14159f - f->heading);
                                                 if (f->facing < 0) { f->facing = 1; f->behind = -TURN_SETTLE; } }
     if (f->x > TANK_W - m) { f->x = TANK_W - m; if (cosf(f->heading) > 0) f->heading = norm_ang(3.14159f - f->heading);
                                                 if (f->facing > 0) { f->facing = -1; f->behind = -TURN_SETTLE; } }
     if (f->y < m)          { f->y = m;          f->heading = -f->heading; }
     if (f->y > TANK_H - m) { f->y = TANK_H - m; f->heading = -f->heading; }
-#ifdef TANK_CORNER_R                                       /* the watch's corners: back onto the arc m inside it, the heading mirrored
+/* the watch's corners: back onto the arc m inside it, the heading mirrored
                                                               in the glass while it points out (the bowl's rule, a corner at a time) */
-    { float cx, cy, d = corner_in(f->x, f->y, &cx, &cy), lim = TANK_CORNER_R - m;
-      if (d > lim && d > 1) {
-          float nx = (f->x - cx) / d, ny = (f->y - cy) / d;
-          f->x = cx + nx * lim; f->y = cy + ny * lim;
-          float hx = cosf(f->heading), hy = sinf(f->heading), out = hx * nx + hy * ny;
-          if (out > 0) {
-              hx -= 2 * out * nx; hy -= 2 * out * ny; f->heading = atan2f(hy, hx);
-              if (nx < -0.5f && f->facing < 0) { f->facing = 1; f->behind = -TURN_SETTLE; }
-              if (nx > 0.5f && f->facing > 0)  { f->facing = -1; f->behind = -TURN_SETTLE; }
-          }
-      } }
-#endif
-#endif
 
     eat_nearby_food(t, f);
 }
@@ -2664,19 +2561,9 @@ static void update_fish(tank_t *t, int idx, float dt) {
 static int band3(float v) { return v < 3.5f ? 0 : v < 7 ? 1 : 2; }
 static uint32_t state_signature(const tank_t *t, int idx) {
     const fish_t *f = &t->fish[idx];
-    /* 2026-09-11 (the battery pass): the device's LLM core was saturated by
-     * this gate, not by the idle ceiling - measured in the sim at 25 fps,
-     * 2 fish: food distance flipped 6.3x per fish-minute (every bucket a
-     * sinking pellet crossed), the (since removed) roaming shadow's distance
-     * 5.8x, the wall flag 4x, against 0.4 for hunger. So the twitchy fields
-     * are now events:
-     *  food   - only for a fish that could want it (not full): none / in the
-     *           tank / within reach. A pellet appearing, or coming close, is a
-     *           reason to re-decide; its every metre of sinking is not.
-     *  wall   - dropped: it is steering, and the state line still says
-     *           near/clear whenever a decision is made for another reason.
-     * The model sees the exact distances in its state line either way; this
-     * only decides WHEN it is asked. */
+    /* Reconsider on meaningful events, not every change in pellet distance.
+     * Food matters only to a hungry fish: absent, available or within reach.
+     * Wall avoidance remains steering rather than a goal-change trigger. */
     float fd = 1e9f; int fi = tank_nearest_food(t, f, &fd);
     int food = (fi < 0 || band3(f->hunger) == 0) ? 0 : fd < 70 ? 2 : 1;
     return (uint32_t)band3(f->hunger) | (uint32_t)band3(f->energy) << 2 | (uint32_t)band3(f->stress) << 4
@@ -2738,7 +2625,7 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
     if (t->coral_acc >= 60) { coral_grow(t, t->coral_acc); t->coral_acc = 0; }
     t->cluster_acc += dt;
     if (t->cluster_acc >= 60) { cluster_grow(t, t->cluster_acc); t->cluster_acc = 0; }
-    t->algae_acc += dt;
+    t->algae_acc += dt * ((t->sd_unlocks & SD_ITEM_FILTER) ? 0.5f : 1);
     if (t->algae_acc >= ALGAE_STEP_AWAKE_S) {
         t->algae_acc = 0;                                   /* one step per 4 min, never a backlog */
         tank_grow_algae(t, 1);
@@ -2793,21 +2680,14 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
                 if (g.id == GOAL_EXPLORE) f->explore_set = false;   /* pick a fresh destination */
                 f->goal = g;
                 f->goal_age = 0;
-                /* visible deliberation, scaled by how torn the advisor was */
-                bool calm = g.id != GOAL_FLEE_SHADOW && g.urgency < 8 && g.confidence < 0.6f;
-                f->hesitate = calm ? (0.6f - g.confidence) * 2.5f : 0;
             } else if (g.id == f->goal.id) {
                 f->goal.urgency = g.urgency;
-                f->goal.confidence = g.confidence; f->goal.runner_up = g.runner_up;
             }
         }
     }
 
-    /* Starvation instrument (was a TEMPORARY survival-reflex override; retired
-     * 2026-08-21 after the retrained model chose seek_food on 92% of starving
-     * states with defensible misses - per Strato: the LLM owns decisions).
-     * Counts moments a starving fish ignores available food for >4s. Pure
-     * diagnostic, never changes a goal. */
+    /* Count moments a starving fish ignores available food for >4s.
+     * Pure diagnostic, never changes a goal. */
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
         if (f->hunger > 8.5f && f->goal.id != GOAL_SEEK_FOOD &&

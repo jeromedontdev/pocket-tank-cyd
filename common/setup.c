@@ -15,8 +15,8 @@
 #define C_KEY    0x0e2229
 #define C_TEXT   0xffffff
 #define C_CAPT   0x9fd8e2
-#define C_GO     0x155e58      /* BEGIN: the teal of a charging battery */
-#define C_GO_E   0x38dcc7
+#define C_GO     C_INNER
+#define C_GO_E   C_EDGE
 #define C_FILL   0x5f8a92      /* the family page's trait bars: a muted teal the parents' ticks stand out on */
 
 static bool s_active;
@@ -24,6 +24,10 @@ static bool s_birth;           /* the birth flow (three pages about s_fish), not
 static bool s_place;           /* the placement page (one page about s_item) */
 static bool s_rename;          /* the rename page (one page about s_fish: the letter wheel, CANCEL / DONE) */
 static char s_old_name[FISH_NAME_MAX + 1];   /* ... the name it came in with (CANCEL puts it back) */
+static uint32_t s_old_body, s_old_fin, s_old_accent;
+static uint8_t s_old_variety, s_old_pattern;
+static fish_t s_custom_draft;
+static bool s_save_error;
 static int  s_renamed;         /* a rename page just closed: the fish's slot + 1, until the platform takes it */
 static int  s_item;            /* placement: the SD item being placed */
 static int  s_fish;            /* birth flow: the newborn's slot */
@@ -44,7 +48,7 @@ static int  s_kb_page;         /* SETUP_KBD_PAGES: 0 = A-M, 1 = N-Z */
 
 static int page_fish(void) { return s_birth || s_rename ? s_fish : s_place ? 0 : (s_page == SETUP_PG_NAME_A || s_page == SETUP_PG_LOOK_A) ? 0 : 1; }
 static bool page_is_name(void) { return s_page == SETUP_PG_NAME_A || s_page == SETUP_PG_NAME_B || s_page == SETUP_PG_NAME_NEW || s_page == SETUP_PG_RENAME; }
-static bool page_is_look(void) { return s_page == SETUP_PG_LOOK_A || s_page == SETUP_PG_LOOK_B; }
+static bool page_is_look(void) { return s_page == SETUP_PG_LOOK_A || s_page == SETUP_PG_LOOK_B || s_page == SETUP_PG_CUSTOM; }
 static bool page_is_last(void) { return s_page == SETUP_PG_CARE || s_page == SETUP_PG_FAMILY; }
 static bool page_one_button(void) { return s_page == SETUP_PG_WELCOME || s_page == SETUP_PG_BORN; }   /* a lone NEXT at the foot */
 static int  first_page(void) { return s_rename ? SETUP_PG_RENAME : s_place ? SETUP_PG_PLACE : s_birth ? SETUP_PG_BORN : SETUP_PG_WELCOME; }
@@ -68,7 +72,13 @@ void setup_begin_rename(tank_t *t, int fish) {
     s_active = true; s_birth = false; s_place = false; s_rename = true; s_fish = fish; s_page = SETUP_PG_RENAME; s_slot = 0; s_down = false;
     s_typed = false; s_kb_page = 0; s_renamed = 0;
     memcpy(s_old_name, t->fish[fish].name, sizeof s_old_name);
+    s_old_body = t->fish[fish].color; s_old_fin = t->fish[fish].fin; s_old_accent = t->fish[fish].accent;
+    s_old_variety = t->fish[fish].variety; s_old_pattern = t->fish[fish].pattern; s_save_error = false;
     stage(t);
+}
+void setup_begin_customize(tank_t *t, int fish) {
+    if (s_active || fish < 0 || fish >= t->n_fish) return;
+    setup_begin_rename(t, fish); s_custom_draft = t->fish[fish]; s_page = SETUP_PG_CUSTOM; stage(t);
 }
 bool setup_is_rename(void) { return s_active && s_rename; }
 int  setup_take_renamed(void) { int f = s_renamed - 1; s_renamed = 0; return f; }
@@ -101,8 +111,23 @@ int  setup_fish(void) { return s_active && (page_is_name() || page_is_look() || 
    way the platform is owed the way back to the fish's card (setup_take_renamed). */
 static void rename_end(tank_t *t, bool keep) {
     if (s_fish >= 0 && s_fish < t->n_fish) {
-        if (keep) { tidy_name(t, s_fish); progression_save(t); }
-        else tank_set_name(t, s_fish, s_old_name);
+        if (keep) {
+            fish_t *f = &t->fish[s_fish];
+            uint32_t body = f->color, fin = f->fin, accent = f->accent;
+            uint8_t variety = f->variety, pattern = f->pattern;
+            if (s_page == SETUP_PG_CUSTOM) {
+                f->color = s_custom_draft.color; f->fin = s_custom_draft.fin; f->accent = s_custom_draft.accent;
+                f->variety = s_custom_draft.variety; f->pattern = s_custom_draft.pattern;
+            } else tidy_name(t, s_fish);
+            if (!progression_save(t)) {
+                f->color = body; f->fin = fin; f->accent = accent; f->variety = variety; f->pattern = pattern;
+                s_save_error = true; return;
+            }
+        } else {
+            tank_set_name(t, s_fish, s_old_name);
+            t->fish[s_fish].color = s_old_body; t->fish[s_fish].fin = s_old_fin; t->fish[s_fish].accent = s_old_accent;
+            t->fish[s_fish].variety = s_old_variety; t->fish[s_fish].pattern = s_old_pattern;
+        }
         s_renamed = s_fish + 1;
     }
     s_active = false; s_rename = false; stage(t);
@@ -255,8 +280,15 @@ static int nearest_slot(float x) {
 }
 int setup_hit(float x, float y) {
     if (!s_active) return 0;
-    x -= PAGE_X; y -= PAGE_Y;                           /* the page's own coordinates (render.h) */
+    x = render_page_x(x); y = render_page_y(y);
     const int m = 10;                                   /* a fingertip's slop, as on the reset prompt */
+    if (s_page == SETUP_PG_CUSTOM) {
+        if (in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_NEXT;
+        if (in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_BACK;
+        for (int i = 0; i < 4; i++)
+            if (in_box(x, y, SETUP_CUSTOM_X, SETUP_CUSTOM_Y + i * SETUP_CUSTOM_DY, SETUP_CUSTOM_W, SETUP_CUSTOM_H, 2)) return SETUP_HIT_CUSTOM0 + i;
+        return 0;
+    }
     if (page_one_button())
         return in_box(x, y, SETUP_MID_X, SETUP_BTN_Y, SETUP_BTN_W, SETUP_BTN_H, m) ? SETUP_HIT_NEXT : 0;
     if (nav_on_top()) {
@@ -326,6 +358,20 @@ int setup_hit(float x, float y) {
 void setup_activate(tank_t *t, int id) {
     if (!s_active || !id) return;
     fish_t *f = &t->fish[page_fish()];
+    if (s_page == SETUP_PG_CUSTOM && id >= SETUP_HIT_CUSTOM0 && id < SETUP_HIT_CUSTOM0 + 4) {
+        f = &s_custom_draft;
+        int which = id - SETUP_HIT_CUSTOM0;
+        if (which == 0) f->variety = (uint8_t)((f->variety + 1) % FISH_VARIETY_COUNT);
+        else if (which == 1) f->pattern = (uint8_t)((f->pattern + 1) % FISH_PATTERN_COUNT);
+        else {
+            const uint32_t *colors = which == 2 ? FISH_BODY_COLORS : FISH_MARKING_COLORS;
+            uint32_t old = which == 2 ? f->color : f->accent;
+            int next = 0;
+            for (int i = 0; i < FISH_COLOR_N; i++) if (colors[i] == old) { next = (i + 1) % FISH_COLOR_N; break; }
+            tank_fish_set_look(f, which == 2 ? colors[next] : 0, which == 3 ? colors[next] : 0);
+        }
+        return;
+    }
     if (s_place) {                                      /* DONE saves the spot; a layer button sets the depth; SELL twice sells */
         if (id == SETUP_HIT_SELL) {
             if (!s_sell_armed) { s_sell_armed = true; return; }
@@ -387,10 +433,10 @@ void setup_touch(tank_t *t, float x, float y, bool down) {
         int h = setup_hit(x, y);
         if (page_is_name() && h >= SETUP_HIT_SLOT0 && h < SETUP_HIT_SLOT0 + FISH_NAME_MAX)
             pick_slot(&t->fish[page_fish()], h - SETUP_HIT_SLOT0);   /* picked on touch: the drag turns it */
-        if (s_page == SETUP_PG_BUBBLES && !h && y - PAGE_Y > SETUP_TOP_BTN_Y + SETUP_BTN_H + 8) {
+        if (s_page == SETUP_PG_BUBBLES && !h && render_page_y(y) > SETUP_TOP_BTN_Y + SETUP_BTN_H + 8) {
             tank_set_bubble_x(t, x); s_spun = true;         /* the column comes to the finger */
         }
-        if (s_page == SETUP_PG_PLACE && !h && y - PAGE_Y > place_y()) {
+        if (s_page == SETUP_PG_PLACE && !h && render_page_y(y) > place_y()) {
             tank_decor_set(t, s_item, x, tank_decor_z(t, s_item)); s_spun = true;   /* the piece comes to the finger */
         }
     } else if (down && s_page == SETUP_PG_BUBBLES && s_spun) {
@@ -438,7 +484,7 @@ static void dots(uint16_t *fb, int stride, int y) {
    the page - on a glass the page does not start at (the bowl, the watch) the
    ring sat PAGE_X / PAGE_Y off its fish until 2026-10-01 */
 static void fish_ring(uint16_t *fb, int stride, const fish_t *f, float r, uint32_t rgb) {
-    render_ring(fb, stride, f->x - PAGE_X, f->y - PAGE_Y, r, rgb);
+    render_ring(fb, stride, render_page_x(f->x), render_page_y(f->y), r, rgb);
 }
 /* a caption with a name in it, the name in its own colour: `pre` NAME `post` */
 static void text_named(uint16_t *fb, int stride, int x, int y, const char *pre, const char *name, uint32_t name_rgb, const char *post) {
@@ -524,10 +570,28 @@ static void pumpkin_glyph(uint16_t *fb, int stride, int cx, int y_bot) {
  * FRONT: the fish, then both leaves over it. The castle's (2026-09-16):
  * the castle and two leaves - BEHIND: the castle, the leaves over it; IN
  * FRONT: the leaves, the castle over them (its depths mean the plant layer) */
+static void chest_glyph(uint16_t *fb, int stride, int cx, int bottom) {
+    render_rect(fb, stride, cx - 16, bottom - 22, 32, 22, 0x976039);
+    render_rect_edge(fb, stride, cx - 16, bottom - 22, 32, 22, 0xd9aa40);
+    render_rect(fb, stride, cx - 15, bottom - 14, 30, 4, 0xffd55a);
+    render_rect(fb, stride, cx - 3, bottom - 10, 6, 6, 0xd9aa40);
+}
 static void depth_tile(const tank_t *t, uint16_t *fb, int stride, int x, int y, int w, int h, int z, int item, float clock) {
     const int cx = x + w / 2, cy = y + h / 2, lh = h - 6, yb = y + h - 3;
     const uint32_t la = 0x8dbb48, lb = 0x6c9d38;
     const fish_t *who = t->n_fish > 0 ? &t->fish[0] : NULL;
+    if (item == 9) {
+        if (z == DECOR_Z_BACK) chest_glyph(fb, stride, cx, yb);
+        leaf_glyph(fb, stride, cx - 14, yb, lh, la); leaf_glyph(fb, stride, cx + 15, yb, lh, lb);
+        if (z != DECOR_Z_BACK) chest_glyph(fb, stride, cx, yb);
+        return;
+    }
+    if (item >= 10 && item <= 13) {
+        if (z == DECOR_Z_BACK) render_ornament_preview(fb, stride, item, cx, yb);
+        leaf_glyph(fb, stride, cx - 14, yb, lh, la); leaf_glyph(fb, stride, cx + 15, yb, lh, lb);
+        if (z != DECOR_Z_BACK) render_ornament_preview(fb, stride, item, cx, yb);
+        return;
+    }
     if (item == 8) {                                    /* the pumpkin: the castle's reading, the lantern between two leaves */
         if (z == DECOR_Z_BACK) pumpkin_glyph(fb, stride, cx, yb);
         leaf_glyph(fb, stride, cx - 14, yb, lh, la); leaf_glyph(fb, stride, cx + 15, yb, lh, lb);
@@ -589,8 +653,23 @@ static void panel(uint16_t *fb, int stride) {
 void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
     if (!s_active) return;
     const int CX = PAGE_W / 2;
-    const int FLOOR = TANK_BOT - 16 - PAGE_Y;           /* the tank's sand line, in the page's coordinates */
-    if (s_page == SETUP_PG_WELCOME) {
+    const int FLOOR = render_page_y(TANK_BOT - 16);
+    if (s_page == SETUP_PG_CUSTOM) {
+        render_rect(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, C_PANEL);
+        text_c(fb, stride, CX, 10, 2, C_TEXT, s_save_error ? "SAVE FAILED - RETRY DONE" : "CUSTOMIZE YOUR FISH");
+        nav(fb, stride, true, "DONE", true);
+        fish_t preview = s_custom_draft; preview.stage = STAGE_ADULT;
+        render_fish_portrait(fb, stride, CX, 126, 1.6f, &preview, clock);
+        char line[40];
+        for (int i = 0; i < 4; i++) {
+            const fish_t *f = &s_custom_draft;
+            if (i == 0) snprintf(line, sizeof line, "VARIETY: %s", FISH_VARIETY_NAMES[f->variety % FISH_VARIETY_COUNT]);
+            else if (i == 1) snprintf(line, sizeof line, "PATTERN: %s", FISH_PATTERN_NAMES[f->pattern % FISH_PATTERN_COUNT]);
+            else snprintf(line, sizeof line, "%s COLOR: %06lX", i == 2 ? "BODY" : "MARKING", (unsigned long)(i == 2 ? f->color : f->accent));
+            render_button(fb, stride, SETUP_CUSTOM_X, SETUP_CUSTOM_Y + i * SETUP_CUSTOM_DY, SETUP_CUSTOM_W, SETUP_CUSTOM_H, C_INNER, C_EDGE, line, 2);
+        }
+        text_c(fb, stride, CX, 350, 2, C_CAPT, "TAP TO CYCLE - ADULT PREVIEW");
+    } else if (s_page == SETUP_PG_WELCOME) {
         panel(fb, stride);
         text_c(fb, stride, CX, SETUP_Y + 36, 3, C_TEXT, "WELCOME");
         static const char *const ls[] = {
@@ -607,7 +686,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         /* the live tank with a stripe down the column: drag it anywhere */
         text_c(fb, stride, CX, SETUP_Y + 7, 2, C_CAPT, "PLACE THE BUBBLES");
         nav(fb, stride, true, "NEXT", false);
-        int bx = (int)t->bubble_x - PAGE_X;
+        int bx = render_page_x(t->bubble_x);
         render_rect_blend(fb, stride, bx - 22, SETUP_TOP_BTN_Y + SETUP_BTN_H + 10, 44, FLOOR - (SETUP_TOP_BTN_Y + SETUP_BTN_H + 10), C_EDGE, 46);
         chevron(fb, stride, bx, FLOOR - 34, true, C_EDGE);
         text_c(fb, stride, CX, 296, 2, C_CAPT, "DRAG THEM LEFT OR RIGHT");
@@ -666,7 +745,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
             /* the cluster: a LOOK row of three tiles - the coral, the tubes and
                the brain as three bands over the look's name - the pick ringed */
             int look = tank_cluster_scheme(t);
-            render_rect_blend(fb, stride, -PAGE_X, SETUP_LOOK_Y - 22, TANK_W, SETUP_LOOK_H + 30, C_PANEL, 110);
+            render_rect_blend(fb, stride, -PAGE_X, SETUP_LOOK_Y - 22, PAGE_FRAME_W, SETUP_LOOK_H + 30, C_PANEL, 110);
             render_text(fb, stride, SETUP_LOOK_X + 2, SETUP_LOOK_Y - 18, 2, C_CAPT, "LOOK");
             if (rel[0]) render_text(fb, stride, SETUP_LOOK_X + SETUP_LOOK_N * SETUP_LOOK_PX - SETUP_LOOK_PX + SETUP_LOOK_W - 2 - render_text_w(rel, 2), SETUP_LOOK_Y - 18, 2, C_CAPT, rel);
             for (int i = 0; i < SETUP_LOOK_N; i++) {
@@ -686,7 +765,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                page's swatches, shorter), the pick ringed, the hint under the
                row's caption */
             uint32_t rgb = tank_coral_rgb(t);
-            render_rect_blend(fb, stride, -PAGE_X, SETUP_COL_Y - 22, TANK_W, SETUP_COL_H + 30, C_PANEL, 110);   /* a band the swatches read on, like the colour page's */
+            render_rect_blend(fb, stride, -PAGE_X, SETUP_COL_Y - 22, PAGE_FRAME_W, SETUP_COL_H + 30, C_PANEL, 110);
             render_text(fb, stride, SETUP_COL_X + 2, SETUP_COL_Y - 18, 2, C_CAPT, "COLOR");
             if (rel[0]) render_text(fb, stride, SETUP_COL_X + (SETUP_COL_N - 1) * SETUP_COL_PX + SETUP_COL_W - 2 - render_text_w(rel, 2), SETUP_COL_Y - 18, 2, C_CAPT, rel);
             (void)coral_hint;
@@ -697,14 +776,15 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                 render_rect_edge(fb, stride, x, SETUP_COL_Y, SETUP_COL_W, SETUP_COL_H, on ? C_TEXT : C_DIM);
                 if (on) render_rect_edge(fb, stride, x + 1, SETUP_COL_Y + 1, SETUP_COL_W - 2, SETUP_COL_H - 2, C_TEXT);
             }
-        } else text_c(fb, stride, CX, SETUP_DEPTH_HINT_Y, 2, C_CAPT, rel[0] ? rel : s_item == 2 || s_item == 8 ? castle_hint[z] : hint[z]);
+        } else text_c(fb, stride, CX, SETUP_DEPTH_HINT_Y, 2, C_CAPT, rel[0] ? rel : s_item == 2 || s_item >= 8 ? castle_hint[z] : hint[z]);
         float x0 = tank_decor_x(t, s_item) - tank_decor_half_w(s_item) - 10, x1 = tank_decor_x(t, s_item) + tank_decor_half_w(s_item) + 10, top = TANK_BOT - 16 - 40;
         if (s_item == 0) tank_veg_bed(t, 3, NULL, NULL, &top, NULL);   /* the leaves' reach */
         if (s_item == 2) top = TANK_BOT - 16 - 146;                    /* the tallest spire */
         if (s_item == 3) top = TANK_BOT - 14 + DECOR_SINK - 92;        /* the coral's top tip */
         if (s_item == 4) top = TANK_BOT - 14 + DECOR_SINK - 120;       /* the cluster's tallest tube */
         if (s_item == 8) top = TANK_BOT - 14 + DECOR_SINK - 82;        /* the pumpkin's stem */
-        x0 -= PAGE_X; x1 -= PAGE_X; top -= PAGE_Y;                     /* the piece is in the tank; the stripe is drawn on the page */
+        if (s_item >= 9) top = TANK_BOT - 14 + DECOR_SINK - tank_ornament_h(s_item);
+        x0 = render_page_x(x0); x1 = render_page_x(x1); top = render_page_y(top);
         int sy = (int)top - 8; if (sy < place_y()) sy = place_y();
         render_rect_blend(fb, stride, (int)x0, sy, (int)(x1 - x0), FLOOR - sy + 4, C_EDGE, 46);
         chevron(fb, stride, (int)((x0 + x1) * 0.5f), FLOOR - 34, true, C_EDGE);
@@ -752,7 +832,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
            blank are just faint underlines */
         const fish_t *f = &t->fish[page_fish()];
         fish_ring(fb, stride, f, 17 * f->size + 6, f->color);
-        render_rect_blend(fb, stride, -PAGE_X, SETUP_SLOT_Y - SETUP_ARROW_GAP - 2, TANK_W, SETUP_SLOT_H + 2 * SETUP_ARROW_GAP + 36, C_PANEL, 150);
+        render_rect_blend(fb, stride, -PAGE_X, SETUP_SLOT_Y - SETUP_ARROW_GAP - 2, PAGE_FRAME_W, SETUP_SLOT_H + 2 * SETUP_ARROW_GAP + 36, C_PANEL, 150);
         text_c(fb, stride, CX, SETUP_Y + 7, 2, C_CAPT, s_rename ? "RENAME YOUR FISH" : s_birth ? "NAME THE NEW FRY" : page_fish() == 0 ? "NAME THE FIRST FISH" : "NAME THE SECOND FISH");
         nav(fb, stride, true, s_rename ? "DONE" : "NEXT", s_rename);
         int n = name_len(f);
@@ -778,7 +858,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
            accent a "?" that its first growth spurt answers */
         const fish_t *f = &t->fish[page_fish()];
         fish_ring(fb, stride, f, 17 * f->size + 6, f->color);
-        render_rect_blend(fb, stride, -PAGE_X, SETUP_SW_Y - 30, TANK_W, SETUP_ACC_Y + SETUP_SW_H + 16 - (SETUP_SW_Y - 30), C_PANEL, 110);
+        render_rect_blend(fb, stride, -PAGE_X, SETUP_SW_Y - 30, PAGE_FRAME_W, SETUP_ACC_Y + SETUP_SW_H + 16 - (SETUP_SW_Y - 30), C_PANEL, 110);
         char cap[FISH_NAME_MAX + 16]; snprintf(cap, sizeof cap, "A COLOR FOR %s", f->name);
         text_c(fb, stride, CX, SETUP_Y + 7, 2, C_CAPT, cap);
         nav(fb, stride, true, "NEXT", false);
@@ -805,7 +885,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         float r = 17 * f->size + 6 + 3 * sinf(clock * 3);          /* a ring that breathes */
         fish_ring(fb, stride, f, r, f->color);
         fish_ring(fb, stride, f, r + 8, C_EDGE);
-        render_rect_blend(fb, stride, -PAGE_X, 92, TANK_W, 116, C_PANEL, 150);
+        render_rect_blend(fb, stride, -PAGE_X, 92, PAGE_FRAME_W, 116, C_PANEL, 150);
         text_c(fb, stride, CX, 104, 3, C_TEXT, "A NEW FRY!");
         char l1[FISH_NAME_MAX * 2 + 24];
         bool shop = f->parent_a < 0 && f->parent_b < 0;              /* bought (0.3.5): no parents, in at the surface */

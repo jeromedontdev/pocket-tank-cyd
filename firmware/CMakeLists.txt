@@ -1,5 +1,6 @@
-# pocket-tank firmware — ESP32-S3 (Waveshare ESP32-S3-Touch-AMOLED-1.8)
+# Pocket Tank CYD-only firmware.
 cmake_minimum_required(VERSION 3.16)
+set(IDF_TARGET esp32)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # the build id: the commit's short hash (+ "-dirty"), never a tag - the
 # release number lives in common/version.h and is shown beside it (ESP-IDF's

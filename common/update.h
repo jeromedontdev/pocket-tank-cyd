@@ -8,14 +8,15 @@
  * Two things live here:
  *
  * 1. THE UPDATES PAGE in the tank (from the settings page's UPDATES
- *    button): the version, the saved network or NO NETWORK, CHECK FOR
- *    UPDATES, FORGET NETWORK, CLOSE. No radio. CHECK hands the platform
- *    UPD_TAP_CHECK; the tank saves and restarts into update mode.
+ *    button): the installed version, SD package status, CHECK SD CARD /
+ *    INSTALL AND RESTART, CLOSE. No radio. UPD_TAP_CHECK hands validation
+ *    and installation to the platform. The legacy Wi-Fi flow below is
+ *    accessible through the serial console only.
  *
  * 2. UPDATE MODE, at boot, before the tank exists (main.c): the display,
  *    the glass and the radio only, so the Wi-Fi driver has the whole
- *    internal heap. update_begin decides the first page (the battery gate,
- *    a saved network or the wizard), update_tick polls the port and
+ *    internal heap. update_begin chooses a saved network or the wizard,
+ *    update_tick polls the port and
  *    advances, update_touch takes the finger every frame, render_update
  *    draws. The platform loops until update_outcome says BACK (radio off,
  *    fall through to the normal boot) or RESTART (the new image is in the
@@ -32,6 +33,7 @@
 #ifndef UPDATE_H
 #define UPDATE_H
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* ---- the net port (platform) ---- */
@@ -47,17 +49,15 @@ typedef struct {
     uint32_t min_from;           /* the oldest release this one updates from (0 = any) */
     char     note[72];           /* one plain line for the offer page */
     uint32_t app_size;           /* bytes */
-    bool     needs_cable;        /* the model changed and this build cannot fetch it */
-    char     model_version[16];  /* the model this release needs ("" = unchanged) */
-    bool     model_offered;      /* phase two: the model is downloadable */
-    uint32_t model_size;
+    bool     needs_cable;
     char     board[24];          /* the board the image is for (PT_BOARD); another board's manifest is refused */
 } update_manifest_t;
+bool update_parse_manifest(const char *json, update_manifest_t *manifest, char *app_url, size_t url_size);
 
 enum { NET_IDLE = 0, NET_BUSY, NET_DONE, NET_FAILED };
 enum { NET_ERR_NONE = 0, NET_ERR_NO_SIGNAL, NET_ERR_PASSWORD, NET_ERR_NO_NET, NET_ERR_BAD_MANIFEST,
        NET_ERR_DOWNLOAD, NET_ERR_VERIFY, NET_ERR_SPACE, NET_ERR_ABORTED, NET_ERR_RADIO,
-       NET_ERR_BOARD };            /* the image's board marker named another board (2026-10-02): refused, nothing written past its first sector */
+       NET_ERR_BOARD, NET_ERR_CHANNEL };
 
 bool net_port_creds_get(char *ssid, char *pass);            /* the saved network (buffers NET_*_MAX + 1); false = none */
 bool net_port_creds_set(const char *ssid, const char *pass);
@@ -83,8 +83,9 @@ const char *update_message_title(void);
 /* ---- the UPDATES page in the tank ---- */
 enum { UPD_TAP_NONE = 0, UPD_TAP_CLOSE, UPD_TAP_CHECK, UPD_TAP_FORGET };
 void render_updates_page(uint16_t *fb, int stride);
+void updates_sd_status(const char *message, bool ready);
 int  updates_page_tap(float x, float y);                    /* the bare hit test */
-int  updates_page_touch(float x, float y, bool down);       /* every frame: UPD_TAP_* on a tap's release; FORGET is applied here */
+int  updates_page_touch(float x, float y, bool down);       /* every frame: UPD_TAP_* on a tap's release */
 
 /* the pages' layout (PAGE coordinates, render.h; 2026-10-01: out of update.c,
  * setup.h's way, so the sim's selftest taps where the layout says on every board) */
@@ -97,8 +98,8 @@ int  updates_page_touch(float x, float y, bool down);       /* every frame: UPD_
 #define UPD_FORGET_Y  264
 #define UPD_FORGET_W  212
 #define UPD_FORGET_H  34
-#define UPD_CLOSE_X   (PAGE_BOWL ? 296 : 324)   /* the settings page's CLOSE, same place (in from the glass on the bowl) */
-#define UPD_CLOSE_Y   (PAGE_BOWL ? 318 : 312)
+#define UPD_CLOSE_X   324
+#define UPD_CLOSE_Y   312
 #define UPD_CLOSE_W   92
 #define UPD_CLOSE_H   30
 /* update mode: the keyboard's 7 x 3 keys, the foot's buttons, the network list */
@@ -112,13 +113,14 @@ int  updates_page_touch(float x, float y, bool down);       /* every frame: UPD_
 #define UPD_KB_Y    96
 #define UPD_BTN_H     38
 #define UPD_BTN_Y     296
-#define UPD_BTN_L_X   (PAGE_BOWL ? 62 : 32)       /* (the bowl: the pair drawn in from the glass) */
-#define UPD_BTN_R_X   (PAGE_BOWL ? 230 : 240)
-#define UPD_BTN_W     (PAGE_BOWL ? 156 : 176)
-#define UPD_BTN_MID_X ((PAGE_W - UPD_BTN_W) / 2)   /* a button on its own: CANCEL, a lone BACK TO TANK (the PLUG IN page's too,
+#define UPD_BTN_L_X   32
+#define UPD_BTN_R_X   240
+#define UPD_BTN_W     176
+/* a button on its own: CANCEL, a lone BACK TO TANK (the PLUG IN page's too,
                                                       Strato 2026-10-01; it stood at the left) - the page's middle
                                                       (until 2026-10-01 it was measured from the left button, which the bowl
                                                       draws in: its CANCEL sat 30 px right of center) */
+#define UPD_BTN_MID_X ((PAGE_W - UPD_BTN_W) / 2)
 #define UPD_ROW_Y0    58
 #define UPD_ROW_H     38
 #define UPD_ROWS_PER  6
@@ -126,9 +128,8 @@ int  updates_page_touch(float x, float y, bool down);       /* every frame: UPD_
 
 /* ---- update mode ---- */
 enum { UPD_RUNNING = 0, UPD_BACK, UPD_RESTART };
-enum { UPD_PG_NONE = 0, UPD_PG_POWER, UPD_PG_BUSY, UPD_PG_SCAN, UPD_PG_PASSWORD, UPD_PG_OFFER, UPD_PG_MESSAGE, UPD_PG_CALIB };
-/* battery_pct < 0 = no gauge (allowed); on_power = the cable is in */
-void update_begin(int battery_pct, bool on_power);
+enum { UPD_PG_NONE = 0, UPD_PG_BUSY = 2, UPD_PG_SCAN, UPD_PG_PASSWORD, UPD_PG_OFFER, UPD_PG_MESSAGE, UPD_PG_CALIB };
+void update_begin(void);
 void update_tick(float dt);
 void update_touch(float x, float y, bool down);
 void render_update(uint16_t *fb, int stride, float clock);
@@ -145,7 +146,6 @@ const char *update_typed(void);                             /* the password fiel
 void update_debug_keyboard(void);                           /* the keyboard page for a pretend network, the store untouched (touch calibration) */
 void update_debug_calib(void);                              /* nine crosshairs, a press each: the platform logs where the panel says the finger was */
 int  update_calib_target(int *x, int *y);                   /* the crosshair up (0..8, -1 = none), its centre */
-#define UPD_BATTERY_MIN_PCT 20                              /* below this on battery: PLUG IN first */
 #define UPD_UP_TO_DATE_S    8.0f                            /* the up-to-date page goes back by itself */
 
 /* the case-sensitive 5x7 text (SSIDs and passwords are not upper case):

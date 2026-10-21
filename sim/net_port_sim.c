@@ -74,13 +74,14 @@ void net_sim_advance(float dt) {                     /* the sim's clock */
     case OP_CHECK:
         if (s_t >= 1.0f) {
             memset(&s_m, 0, sizeof s_m);
-            const char *rel = fake && *fake ? fake : "0.9.9";
+            if (!fake || !*fake) { s_state = NET_FAILED; s_err = NET_ERR_CHANNEL; break; }
+            const char *rel = fake;
             if (!strcmp(rel, "fail")) { s_state = NET_FAILED; s_err = NET_ERR_NO_NET; break; }
             if (!strcmp(rel, "none")) rel = PT_RELEASE;
             if (!strcmp(rel, "cable")) { rel = "0.9.9"; s_m.needs_cable = true; }
             if (!strcmp(rel, "downloadfail") || !strcmp(rel, "boardimage")) rel = "0.9.9";
             snprintf(s_m.board, sizeof s_m.board, "%s", PT_BOARD);
-            if (!strcmp(rel, "otherboard")) { rel = "0.9.9"; snprintf(s_m.board, sizeof s_m.board, "%s", strcmp(PT_BOARD, "amoled18") ? "amoled18" : "round175c"); }
+            if (!strcmp(rel, "otherboard")) { rel = "0.9.9"; snprintf(s_m.board, sizeof s_m.board, "unsupported"); }
             int a = 0, b = 0, c = 0; sscanf(rel, "%d.%d.%d", &a, &b, &c);
             snprintf(s_m.release, sizeof s_m.release, "%d.%d.%d", a, b, c);
             s_m.release_num = ((uint32_t)a << 16) | ((uint32_t)b << 8) | (uint32_t)c;

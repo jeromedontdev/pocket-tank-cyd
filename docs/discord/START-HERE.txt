@@ -1,0 +1,24 @@
+DISCORD POSTING KIT
+
+Discord does not turn local Markdown image links into uploaded pictures.
+Post the text and attach its matching PNG together:
+
+1. Open 01-customization.txt, select all, and copy.
+2. Paste into the Discord message box.
+3. Drag 01-customization.png into the SAME message.
+4. Send.
+5. Repeat for 02, 03 and 04.
+
+Each post is below 2,000 characters. The images are labeled boards made
+from the fresh emulator captures, not links to pictures.
+
+To paste a picture instead of dragging it: open the PNG in an image viewer,
+use Copy Image (not Copy File or Copy Path), then paste into Discord.
+Dragging the PNG is usually simpler.
+
+The ZIP is a convenient way to move/share the whole kit. Extract it first
+to post the four illustrated messages; uploading only the ZIP will not
+display the pictures inline.
+
+All screenshots use an isolated demonstration tank. Some content is
+unlocked for illustration; the real aquarium was not changed.

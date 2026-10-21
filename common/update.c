@@ -5,8 +5,40 @@
 #include "tank.h"
 #include "version.h"
 #include "progression.h"     /* version_port_string */
+#include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
+
+static uint32_t parse_release(const char *s) {
+    int a = 0, b = 0, c = 0; if (sscanf(s, "%d.%d.%d", &a, &b, &c) < 2) return 0;
+    return ((uint32_t)a << 16) | ((uint32_t)b << 8) | (uint32_t)c;
+}
+bool update_parse_manifest(const char *json, update_manifest_t *m, char *app_url, size_t url_size) {
+    if (!json || !m || !app_url || !url_size) return false;
+    cJSON *root = cJSON_Parse(json); if (!root) return false;
+    memset(m, 0, sizeof *m); app_url[0] = 0;
+    const cJSON *rel = cJSON_GetObjectItem(root, "release"), *app = cJSON_GetObjectItem(root, "app");
+    const cJSON *fork = cJSON_GetObjectItem(root, "fork");
+    if (!cJSON_IsString(fork) || strcmp(fork->valuestring, "pocket-tank-cyd") ||
+        !cJSON_IsString(rel) || !cJSON_IsObject(app)) { cJSON_Delete(root); return false; }
+    snprintf(m->release, sizeof m->release, "%s", rel->valuestring);
+    const cJSON *num = cJSON_GetObjectItem(root, "release_num");
+    m->release_num = cJSON_IsNumber(num) ? (uint32_t)num->valuedouble : parse_release(m->release);
+    const cJSON *v;
+    if (cJSON_IsString(v = cJSON_GetObjectItem(root, "build"))) snprintf(m->build, sizeof m->build, "%s", v->valuestring);
+    if (cJSON_IsString(v = cJSON_GetObjectItem(root, "board"))) snprintf(m->board, sizeof m->board, "%s", v->valuestring);
+    if (cJSON_IsString(v = cJSON_GetObjectItem(root, "min_from"))) m->min_from = parse_release(v->valuestring);
+    else if (cJSON_IsNumber(v)) m->min_from = (uint32_t)v->valuedouble;
+    if (cJSON_IsString(v = cJSON_GetObjectItem(root, "note"))) snprintf(m->note, sizeof m->note, "%s", v->valuestring);
+    if (cJSON_IsBool(v = cJSON_GetObjectItem(root, "needs_cable"))) m->needs_cable = cJSON_IsTrue(v);
+    if (cJSON_IsString(v = cJSON_GetObjectItem(app, "url"))) {
+        if (strlen(v->valuestring) >= url_size) { cJSON_Delete(root); return false; }
+        snprintf(app_url, url_size, "%s", v->valuestring);
+    }
+    if (cJSON_IsNumber(v = cJSON_GetObjectItem(app, "size"))) m->app_size = (uint32_t)v->valuedouble;
+    cJSON_Delete(root);
+    return app_url[0] != 0 && m->release_num != 0;
+}
 
 /* the setup's palette (setup.c), so the pages read as one family */
 #define C_INK    0x031015
@@ -17,8 +49,8 @@
 #define C_KEY    0x0e2229
 #define C_TEXT   0xffffff
 #define C_CAPT   0x9fd8e2
-#define C_GO     0x155e58
-#define C_GO_E   0x38dcc7
+#define C_GO     C_INNER
+#define C_GO_E   C_EDGE
 #define C_WARN   0xf2b65b     /* amber: never the only signal (Strato is color blind) */
 
 /* the panel the setup uses: inside the bezel curve */
@@ -144,7 +176,7 @@ static void atext_c(uint16_t *fb, int stride, int y, int scale, uint32_t rgb, co
     update_text(fb, stride, CX - update_text_w(s, scale) / 2, y, scale, rgb, s);
 }
 static void page_bg(uint16_t *fb, int stride) {
-    render_rect(fb, stride, -PAGE_X, -PAGE_Y, TANK_W, TANK_H, C_INK);   /* the whole frame, not just the page (render.h) */
+    render_rect(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, C_INK);
 }
 static bool in_box(float x, float y, int bx, int by, int bw, int bh, int slop) {
     return x >= bx - slop && x < bx + bw + slop && y >= by - slop && y < by + bh + slop;
@@ -154,6 +186,12 @@ static bool in_box(float x, float y, int bx, int by, int bw, int bh, int slop) {
  * 1. THE UPDATES PAGE in the tank (no radio)
  * ==================================================================== */
 
+static char s_sd_message[48] = "COPY UPDATE.PTU TO POCKET-TANK";
+static bool s_sd_ready;
+void updates_sd_status(const char *message, bool ready) {
+    snprintf(s_sd_message, sizeof s_sd_message, "%s", message);
+    s_sd_ready = ready;
+}
 void render_updates_page(uint16_t *fb, int stride) {
     page_bg(fb, stride);
     text_c(fb, stride, 14, 3, C_TEXT, "UPDATES");
@@ -162,24 +200,18 @@ void render_updates_page(uint16_t *fb, int stride) {
     render_text(fb, stride, 32, 62, 2, C_TEXT, line);
     snprintf(line, sizeof line, "BUILD %s", version_port_string());
     render_text(fb, stride, 32, 84, 2, C_DIM, line);
-    char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];
-    if (net_port_creds_get(ssid, pass)) {
-        render_text(fb, stride, 32, 122, 2, C_CAPT, "NETWORK");
-        update_text(fb, stride, 32 + render_text_w("NETWORK", 2) + 14, 122, 2, C_TEXT, ssid);
-    } else render_text(fb, stride, 32, 122, 2, C_CAPT, "NO NETWORK SAVED YET");
-    render_text(fb, stride, 32, 152, 2, C_DIM, "THE TANK PAUSES FOR A MOMENT");
-    render_text(fb, stride, 32, 174, 2, C_DIM, "AND COMES BACK BY ITSELF");
-    render_button(fb, stride, UPD_CHECK_X, UPD_CHECK_Y, UPD_CHECK_W, UPD_CHECK_H, C_GO, C_GO_E, "CHECK FOR UPDATES", 2);
-    if (net_port_creds_get(ssid, pass))
-        render_button(fb, stride, UPD_FORGET_X, UPD_FORGET_Y, UPD_FORGET_W, UPD_FORGET_H, C_INNER, C_DIM, "FORGET NETWORK", 2);
+    render_text(fb, stride, 32, 122, 2, C_CAPT, "OFFLINE UPDATE FROM SD");
+    render_text_wrap(fb, stride, 32, 146, 384, C_TEXT, s_sd_message);
+    render_text(fb, stride, 32, 184, 2, C_CAPT, "TRUSTED FILES ONLY - NOT SIGNED");
+    render_button(fb, stride, UPD_CHECK_X, UPD_CHECK_Y, UPD_CHECK_W, UPD_CHECK_H, C_GO, C_GO_E, s_sd_ready ? "INSTALL AND RESTART" : "CHECK SD CARD", 2);
+    render_text(fb, stride, 32, 268, 2, C_CAPT, "KEEP POWER ON WHILE INSTALLING");
+    render_text(fb, stride, 32, 286, 2, C_CAPT, "TANK AND BACKUP ARE PRESERVED");
     render_button(fb, stride, UPD_CLOSE_X, UPD_CLOSE_Y, UPD_CLOSE_W, UPD_CLOSE_H, C_INNER, C_EDGE, "CLOSE", 2);
 }
 int updates_page_tap(float x, float y) {
-    x -= PAGE_X; y -= PAGE_Y;                           /* the page's own coordinates (render.h) */
+    x = render_page_x(x); y = render_page_y(y);
     if (x >= UPD_CLOSE_X - 8 && y >= UPD_CLOSE_Y - 4) return UPD_TAP_CLOSE;
     if (in_box(x, y, UPD_CHECK_X, UPD_CHECK_Y, UPD_CHECK_W, UPD_CHECK_H, 8)) return UPD_TAP_CHECK;
-    char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];
-    if (in_box(x, y, UPD_FORGET_X, UPD_FORGET_Y, UPD_FORGET_W, UPD_FORGET_H, 8) && net_port_creds_get(ssid, pass)) return UPD_TAP_FORGET;
     return UPD_TAP_NONE;
 }
 int updates_page_touch(float x, float y, bool down) {
@@ -203,7 +235,7 @@ int updates_page_touch(float x, float y, bool down) {
 /* ====================================================================
  * 2. UPDATE MODE
  * ==================================================================== */
-enum { STEP_NONE = 0, STEP_POWER, STEP_SCANNING, STEP_LIST, STEP_PASSWORD, STEP_CONNECTING, STEP_CHECKING,
+enum { STEP_NONE = 0, STEP_SCANNING, STEP_LIST, STEP_PASSWORD, STEP_CONNECTING, STEP_CHECKING,
        STEP_OFFER, STEP_UP_TO_DATE, STEP_INSTALLING, STEP_MESSAGE, STEP_RESTART };
 /* what the message page's buttons do */
 enum { ACT_NONE = 0, ACT_RETRY_CONNECT, ACT_RETYPE, ACT_SCAN, ACT_RETRY_CHECK, ACT_RETRY_INSTALL };
@@ -213,7 +245,6 @@ enum { HIT_NONE = 0, HIT_BACK, HIT_CANCEL, HIT_RESCAN, HIT_YES, HIT_NO, HIT_PRIM
 
 static struct {
     int  step, outcome, page;
-    int  battery_pct; bool on_power;
     char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];
     bool saved;                              /* the network came from the store */
     bool secured;
@@ -287,7 +318,7 @@ static void draw_keyboard(uint16_t *fb, int stride) {
             const char *lbl = fk == FK_MODE ? (s.kb_mode ? "ABC" : "123") : FK_LABEL[fk];
             bool lit = (fk == FK_SHIFT && s.kb_caps && !s.kb_mode) || fk == FK_JOIN;
             bool dim = (fk == FK_SHIFT && s.kb_mode) || fk == FK_BACK;   /* BACK: rare, and it leaves the page - quieter */
-            render_button(fb, stride, x, y, UPD_KB_W, UPD_KB_H, lit ? C_GO : dim ? C_KEY : C_INNER, dim ? C_DIM : lit ? C_GO_E : C_EDGE, lbl, 2);
+            render_button(fb, stride, x, y, UPD_KB_W, UPD_KB_H, lit ? C_GO : dim ? C_KEY : C_INNER, dim ? C_DIM : lit ? C_TEXT : C_EDGE, lbl, 2);
             if (fk == FK_SPACE) render_rect(fb, stride, x + 10, y + UPD_KB_H / 2 + 4, UPD_KB_W - 20, 3, C_TEXT);   /* the space bar's bar */
             if (fk == FK_MORE) {                      /* the page pips under MORE */
                 int n = kb_pages(), px0 = x + UPD_KB_W / 2 - (n * 8 - 4) / 2;
@@ -305,7 +336,7 @@ static void draw_field(uint16_t *fb, int stride, float clock) {    /* the typed 
     update_text(fb, stride, x, y, 2, C_TEXT, p);
     if ((int)(clock * 2) & 1) render_rect(fb, stride, x + update_text_w(p, 2) + (*p ? 4 : 0), y, 2, 14, C_EDGE);
     char count[12]; snprintf(count, sizeof count, "%d", (int)n);
-    render_text(fb, stride, UX + UW - render_text_w(count, 1) - 8, FIELD_Y - 10, 1, C_DIM, count);
+    render_text(fb, stride, UX + UW - render_text_w(count, 2) - 8, FIELD_Y - 18, 2, C_DIM, count);
 }
 
 /* ---- the pages ---- */
@@ -352,13 +383,7 @@ static void type_password(bool fresh) {
 /* touch calibration (2026-09-30): nine crosshairs over the glass, a press
  * each; the platform logs the panel's position for each known centre and
  * the mapping is fitted from the log */
-#ifdef TANK_ROUND                                       /* the bowl: a 3 x 3 the circle holds (the targets are the FRAME's px, as the panel reports) */
-static const int CAL_X[3] = { 110, TANK_W / 2, TANK_W - 110 }, CAL_Y[3] = { 110, TANK_H / 2, TANK_H - 110 };
-#elif defined(TANK_WATCH)                               /* the watch: in from its round corners */
-static const int CAL_X[3] = { 70, TANK_W / 2, TANK_W - 70 }, CAL_Y[3] = { 70, TANK_H / 2, TANK_H - 70 };
-#else
 static const int CAL_X[3] = { 48, TANK_W / 2, TANK_W - 48 }, CAL_Y[3] = { 40, TANK_H / 2, TANK_H - 40 };
-#endif
 static int s_cal = -1;
 int update_calib_target(int *x, int *y) { if (s_cal < 0 || s_cal > 8) return -1; *x = CAL_X[s_cal % 3]; *y = CAL_Y[s_cal / 3]; return s_cal; }
 void update_debug_calib(void) {
@@ -372,10 +397,8 @@ void update_debug_keyboard(void) {
     snprintf(s.ssid, sizeof s.ssid, "calibration"); s.secured = true; s.saved = false;
     type_password(true);
 }
-void update_begin(int battery_pct, bool on_power) {
+void update_begin(void) {
     memset(&s, 0, sizeof s);
-    s.battery_pct = battery_pct; s.on_power = on_power;
-    if (!on_power && battery_pct >= 0 && battery_pct < UPD_BATTERY_MIN_PCT) { go(STEP_POWER, UPD_PG_POWER); return; }
     if (net_port_creds_get(s.ssid, s.pass)) { s.saved = true; s.secured = s.pass[0] != 0; start_connect(); }
     else start_scan();
 }
@@ -398,6 +421,7 @@ static void fail(int err) {
     case NET_ERR_ABORTED:   message("CANCELED", "NOTHING HAS CHANGED", false, "", NULL, 0, NULL, 0); break;
     case NET_ERR_RADIO:     message("NO RADIO", "THE WI-FI RADIO DID NOT", false, "START. TRY AGAIN LATER", NULL, 0, NULL, 0); break;
     case NET_ERR_BOARD:     message("WRONG BOARD", "THIS UPDATE IS FOR", false, "ANOTHER BOARD. NOTHING CHANGED", NULL, 0, NULL, 0); break;
+    case NET_ERR_CHANNEL:   message("NO UPDATE CHANNEL", "THIS CYD FORK HAS NO", false, "UPDATE SERVER. USE USB TO FLASH", NULL, 0, NULL, 0); break;
     default:                message("SOMETHING WENT WRONG", "NOTHING HAS CHANGED", false, "", "TRY AGAIN", ACT_SCAN, NULL, 0); break;
     }
 }
@@ -442,7 +466,7 @@ void update_tick(float dt) {
                 message("WRONG BOARD", "THIS UPDATE IS FOR", false, "ANOTHER BOARD. NOTHING CHANGED", NULL, 0, NULL, 0);
             else if (!newer(m)) { message("UP TO DATE", "YOUR TANK HAS THE LATEST", false, "VERSION", NULL, 0, NULL, 0); s.step = STEP_UP_TO_DATE; }
             else if (m->needs_cable || (m->min_from && m->min_from > (uint32_t)PT_RELEASE_NUM))
-                message("NEEDS THE CABLE", "THIS UPDATE IS INSTALLED", false, "FROM POCKETANK.COM/INSTALL", NULL, 0, NULL, 0);
+                message("NEEDS THE CABLE", "INSTALL THIS CYD FORK", false, "OVER USB. NOTHING CHANGED", NULL, 0, NULL, 0);
             else go(STEP_OFFER, UPD_PG_OFFER);
         } else if (st == NET_FAILED) fail(net_port_fail_reason());
         break; }
@@ -465,10 +489,8 @@ void update_tick(float dt) {
 
 /* ---- hits ---- */
 int update_hit(float x, float y) {
-    x -= PAGE_X; y -= PAGE_Y;                           /* the page's own coordinates (render.h) */
+    x = render_page_x(x); y = render_page_y(y);
     switch (s.page) {
-    case UPD_PG_POWER:
-        return in_box(x, y, UPD_BTN_MID_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, 10) ? HIT_BACK : HIT_NONE;
     case UPD_PG_BUSY:
         if (s.step == STEP_RESTART) return HIT_NONE;
         return in_box(x, y, UPD_BTN_MID_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, 10) ? HIT_CANCEL : HIT_NONE;
@@ -516,7 +538,6 @@ const char *update_hit_name(int id) {
 static void activate(int id) {
     if (id == HIT_NONE) return;
     switch (s.page) {
-    case UPD_PG_POWER: leave(UPD_BACK); break;
     case UPD_PG_BUSY:
         if (id != HIT_CANCEL) break;
         net_port_abort();
@@ -605,13 +626,6 @@ void render_update(uint16_t *fb, int stride, float clock) {
     page_bg(fb, stride);
     char line[80];
     switch (s.page) {
-    case UPD_PG_POWER:
-        text_c(fb, stride, 96, 3, C_TEXT, "PLUG IN TO UPDATE");
-        snprintf(line, sizeof line, "THE BATTERY IS AT %d%%", s.battery_pct);
-        text_c(fb, stride, 150, 2, C_CAPT, line);
-        text_c(fb, stride, 176, 2, C_DIM, "AN UPDATE NEEDS THE CABLE IN");
-        render_button(fb, stride, UPD_BTN_MID_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, C_INNER, C_EDGE, "BACK TO TANK", 2);
-        break;
     case UPD_PG_BUSY:
         text_c(fb, stride, 96, 3, C_TEXT, s.title);
         if (s.step == STEP_CONNECTING) atext_c(fb, stride, 134, 2, C_CAPT, s.ssid);
@@ -638,7 +652,7 @@ void render_update(uint16_t *fb, int stride, float clock) {
             render_rect_edge(fb, stride, UX, y, UW - (pages > 1 ? 36 : 0), UPD_ROW_H - 4, C_INNER);
             update_text(fb, stride, UX + 12, y + (UPD_ROW_H - 4 - 14) / 2, 2, C_TEXT, s.aps[i].ssid);
             signal_bars(fb, stride, UX + UW - (pages > 1 ? 36 : 0) - 44, y + 8, s.aps[i].rssi);
-            if (!s.aps[i].secured) render_text(fb, stride, UX + UW - (pages > 1 ? 36 : 0) - 44 - 8 - render_text_w("OPEN", 1), y + 12, 1, C_DIM, "OPEN");
+            if (!s.aps[i].secured) render_text(fb, stride, UX + UW - (pages > 1 ? 36 : 0) - 44 - 8 - render_text_w("OPEN", 2), y + 12, 2, C_DIM, "OPEN");
         }
         if (pages > 1) {                                       /* chevrons and pips on the right */
             int cx = UPD_ARROW_X + 4;
@@ -650,14 +664,14 @@ void render_update(uint16_t *fb, int stride, float clock) {
         render_button(fb, stride, UPD_BTN_R_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, C_INNER, C_EDGE, "SCAN AGAIN", 2);
         break; }
     case UPD_PG_PASSWORD:
-        render_text(fb, stride, UX + (PAGE_BOWL ? 30 : 0), 22, 2, C_CAPT, "PASSWORD FOR");
-        update_text(fb, stride, UX + (PAGE_BOWL ? 30 : 0) + render_text_w("PASSWORD FOR", 2) + 12, 22, 2, C_TEXT, s.ssid);
+        render_text(fb, stride, UX, 22, 2, C_CAPT, "PASSWORD FOR");
+        update_text(fb, stride, UX + render_text_w("PASSWORD FOR", 2) + 12, 22, 2, C_TEXT, s.ssid);
         draw_field(fb, stride, clock);
         draw_keyboard(fb, stride);
         break;
     case UPD_PG_OFFER: {
         text_c(fb, stride, 52, 3, C_TEXT, "UPDATE READY");
-        uint32_t bytes = s.m.app_size + (s.m.model_offered ? s.m.model_size : 0);
+        uint32_t bytes = s.m.app_size;
         snprintf(line, sizeof line, "VERSION %s %s, %.1f MB", s.m.release, PT_RELEASE_STAGE, bytes / 1048576.0);
         text_c(fb, stride, 92, 2, C_CAPT, line);
         char l1[32], l2[32]; wrap2(s.m.note, l1, l2, sizeof l1);
@@ -674,7 +688,7 @@ void render_update(uint16_t *fb, int stride, float clock) {
     case UPD_PG_CALIB: {
         int tx, ty, i = update_calib_target(&tx, &ty);
         if (i < 0) break;
-        tx -= PAGE_X; ty -= PAGE_Y;                      /* drawn on the page */
+        tx = render_page_x(tx); ty = render_page_y(ty);
         render_rect(fb, stride, tx - 24, ty - 1, 49, 3, C_EDGE); render_rect(fb, stride, tx - 1, ty - 24, 3, 49, C_EDGE);
         render_rect(fb, stride, tx - 4, ty - 4, 9, 9, C_TEXT);
         snprintf(line, sizeof line, "TAP THE CROSS  %d OF 9", i + 1);

@@ -1,0 +1,409 @@
+# Pocket Tank CYD: a more personal little ocean
+
+**An illustrated tour of the CYD fork, based on Pocket Tank v0.3.8**  
+Updated October 21, 2026
+
+**Sharing on Discord?** Use the [Discord posting kit](discord/START-HERE.txt):
+four short copy/paste posts with matching PNG image boards. Paste each text
+and drag its matching PNG into the same Discord message. Local Markdown
+image links will not upload pictures when copied as text.
+
+This fork keeps Pocket Tank's feeding, growth, personality, trust and
+aquarium care, while adding more ways to decorate, collect, progress and
+keep favorite fish. It is built specifically for the **ESP32-2432S028
+Cheap Yellow Display**, rather than trying to fit every supported board.
+
+The headline additions:
+
+- **A 20-slot Fish Bank** with confirmed deposits, returns and swaps.
+- **Purchasable aquariums:** 500 sand dollars each, up to eight named tanks.
+- **Ten creature appearances**, four patterns and 24 colors for both body
+  and markings.
+- **An Aquarium Journal** with 15 Keeper levels, objectives, an appearance
+  album and unlockable backdrops.
+- **Nineteen added decorations**, plus vivid sand and water palettes and two upkeep upgrades.
+- **Readable menus**, reorganized Settings, SD backups and offline updates.
+
+> **About the imagery:** every image below is a fresh capture from the
+> desktop emulator's actual CYD C renderer, not a mockup or webcam photo.
+> Captures use a separate staged demonstration tank with unlocked content;
+> the real aquarium was not read or changed. Each 240 x 180 framebuffer is
+> enlarged exactly 3x using nearest-neighbor pixels, without smoothing,
+> retouching or added interface elements. The emulator is built with the
+> hardware's five-active-fish limit for these captures. SD operations,
+> flashing and touch calibration still run on the physical CYD, not in
+> the emulator.
+
+## 1. Keep favorites in the Fish Bank
+
+The active aquarium still holds **five fish**. The new bank adds **20
+separate storage slots**, so making room no longer has to mean selling a
+favorite.
+
+Open **Keeper > FISH BANK**:
+
+1. Choose **IN TANK**, select a fish and confirm **STORE**.
+2. Choose **STORED > CHOOSE** to inspect a saved fish.
+3. Use **RETURN** when the tank has room.
+4. If the tank is full, choose **SWAP**, select the active fish to trade
+   places with it, then confirm.
+
+| Browse stored fish | Inspect a favorite |
+|---|---|
+| ![Fish Bank showing 20 occupied slots, five active fish and paginated stored fish](media/cyd-features/bank-stored.png) | ![Stored fish detail with its appearance, age, trust, Return and Swap buttons](media/cyd-features/bank-details.png) |
+
+| Choose the outgoing fish | Confirm before moving either fish |
+|---|---|
+| ![Active fish selection while swapping with a banked fish](media/cyd-features/bank-swap-selection.png) | ![Swap confirmation naming both the stored and active fish](media/cyd-features/bank-swap-confirmation.png) |
+
+### What storage preserves
+
+Names, body and marking colors, variety, pattern, stage, age, personality,
+trust, care state, food counts and milestone reward records travel with the
+fish. Stored fish **do not age, grow, eat or need attention**, and do not
+earn care rewards while stored.
+
+Storage is free. At least **two fish must stay active**, but swaps still
+work at that minimum, at the five-fish tank limit, or with all 20 bank
+slots occupied. Finish naming a new fry before moving fish.
+
+Every move saves immediately. If saving fails, neither fish is moved.
+Swimming positions and current goals restart on return. Parent links that
+refer to a departing active slot are cleared, rather than accidentally
+pointing at its replacement.
+
+![Successful swap with 20 banked fish and five active fish still present](media/cyd-features/bank-swap-saved.png)
+
+The bank is included in internal saves and SD backups. Removing the card
+does not remove stored fish. Restoring an older, pre-bank backup restores
+an empty bank; **Wipe clears the bank along with the aquarium**.
+
+## Additional aquariums: room for another little ocean
+
+Open **Keeper > UPGRADES > TANKS**. Each additional aquarium costs
+**500 sand dollars from the tank you are leaving**. The original is free,
+with up to **eight total**. Confirming a purchase enters a fresh tank with
+two fry and the normal welcome, naming and customization setup.
+
+| Buy another aquarium | Confirm its price |
+|---|---|
+| ![Aquarium selection with a new tank costing 500 sand dollars](media/cyd-features/aquariums.png) | ![Purchase confirmation explaining shared sand dollars and separate fish, items, Journal and Bank](media/cyd-features/aquarium-purchase.png) |
+
+**Sand dollars are shared across all tanks.** Each tank has its **own fish,
+decorations, layout, palettes, Journal and 20-slot Fish Bank**.
+Switching among owned tanks is free. **NAME TANK** edits the active tank's
+name, up to 15 characters: select a letter, use `<` / `>` and SAVE. BACK cancels.
+Names persist across switches and restarts.
+
+| Name your active tank | Keep your tanks recognizable |
+|---|---|
+| ![Tank-name editor with letter selection and left/right arrow controls](media/cyd-features/aquarium-name.png) | ![Saved Reef Garden name in the aquarium selector](media/cyd-features/aquariums-named.png) |
+Inactive tanks are fully paused on SD: no aging, hunger, growth or rewards
+while you play another aquarium. Finish naming any new fry before leaving.
+
+| A fresh start, without wiping the first tank | Return whenever you like |
+|---|---|
+| ![Welcome flow for the newly purchased aquarium with two new fry](media/cyd-features/aquarium-welcome.png) | ![Two owned aquariums, one active, with free Open controls and another purchase available](media/cyd-features/aquariums-owned.png) |
+
+Buying or switching requires the card. The outgoing aquarium is saved to
+alternating, checksummed SD files and read back before the new active tank
+is committed to internal storage. A failed transaction does not charge you
+or replace the live tank. The selected tank can keep running without SD,
+but the card is needed to access inactive tanks.
+
+**Backup/Restore and Wipe now apply to the active aquarium only.**
+Purchased slots and other aquariums remain. Individual JSON backups do not
+contain the entire collection; also copy the SD card's `pocket-tank/tanks`
+directory when archiving it. Avoid downgrading to older firmware, which
+does not preserve the collection identity.
+
+## 2. Make each fish your own
+
+Open **Keeper > fish portrait > CUSTOMIZE** to edit an existing fish for
+free. The adult preview makes the shape and markings easy to judge before
+committing.
+
+![Fish customization showing a hot-pink shark, Band pattern, body and marking color controls](media/cyd-features/customization.png)
+
+### Ten creature appearances
+
+**Classic, Angel, Guppy, Tetra, Puffer, Shark, Jellyfish, Stingray,
+Clownfish and Betta.**
+
+These are more than palette swaps: sharks have pointed snouts, dorsal
+fins and gills; jellyfish pulse and wave their tentacles; stingrays flap
+their wings; bettas have flowing fins.
+
+Each appearance supports:
+
+- **Four patterns:** Stripes, Spots, Band and Plain.
+- **24 body colors** and **24 marking colors**, chosen independently.
+- Vivid pinks, reds, oranges, yellows, lime, cyan, electric blue, purple,
+  magenta, pastels, white and dark slate.
+- **DONE** to save, or **CANCEL** to discard the preview.
+
+Fry offers show their appearance, and bred fry inherit appearance traits
+from their parents. The varieties share the existing peaceful fish-care
+system: sharks do not hunt tankmates, and jellyfish do not introduce a
+separate species simulation. A jellyfish-looking fish uses a normal fish
+slot; the decorative Jelly Lantern is a different shop item.
+
+## 3. Give everyday care a sense of progression
+
+Open **Keeper > JOURNAL** for **Goals**, **Album** and **Themes**.
+
+### Keeper levels and objectives
+
+There are **15 Keeper levels** and **15 one-time objectives**, with three
+objectives active at a time. When a goal is ready, tap it to claim its XP
+and coin reward; the next objective takes its place.
+
+![Aquarium Journal Goals tab showing Keeper level, XP and three objectives with readable requirements and rewards](media/cyd-features/journal-goals.png)
+
+Care earns ongoing XP:
+
+| Activity | XP |
+|---|---:|
+| Eaten meal batches | 8 |
+| Cleaned algae colonies | 2 |
+| Each 10 cm of plant trimming | 2 |
+| A successful calm-hold approach | 10 |
+
+Spending sand dollars does not lower your Keeper level. Level 15 starts at
+**4,200 XP**. There are no daily streaks or absence penalties in this
+progression system. Existing care totals can qualify for objectives,
+but old care does not award a bulk retroactive XP payout.
+
+### A permanent appearance album
+
+The album records which appearances you have seen and which have reached
+adulthood. Records remain after a fish is sold or stored. Customizing a
+fish counts too: this is an **appearance album**, not a checklist requiring
+you to buy every variety.
+
+![Album tab with all ten creature looks and adult records in the staged demonstration tank](media/cyd-features/journal-album.png)
+
+### Unlockable backdrops
+
+| Backdrop | Unlock |
+|---|---|
+| Original | Always available |
+| Kelp Forest | Keeper level 3 |
+| Coral Reef | Keeper level 6 |
+| Deep Glow | Keeper level 10 |
+
+![Themes tab listing Original, Kelp Forest, Coral Reef and Deep Glow](media/cyd-features/journal-themes.png)
+
+Themes change the backdrop without replacing your chosen sand or water
+palette. XP, claimed objectives, album records and the selected theme are
+included in saves and SD backups.
+
+| Kelp Forest | Coral Reef |
+|---|---|
+| ![Decorated demonstration aquarium against the Kelp Forest backdrop](media/cyd-features/tank-kelp.png) | ![The same demonstration layout against the Coral Reef backdrop](media/cyd-features/tank-coral.png) |
+
+![Demonstration aquarium with the Deep Glow backdrop](media/cyd-features/tank-deep-glow.png)
+
+## 4. Decorate beyond the original tank
+
+The fork adds these shop decorations and sets their prices as follows.
+Prices are in sand dollars.
+
+![Shop overview showing the existing aquarium upgrades and navigation to further pages](media/cyd-features/shop.png)
+
+| Added decoration | Price |
+|---|---:|
+| Treasure chest | 120 |
+| Scallop shell | 60 |
+| Starfish ornament | 60 |
+| Sunken anchor | 80 |
+| Tethered buoy | 80 |
+| Shipwreck | 200 |
+| Treasure urn | 60 |
+| Crystals | 100 |
+| Sea fan | 80 |
+| Sunken ruins | 160 |
+| Jelly lantern | 120 |
+| Zen pebbles | 40 |
+| Duck float | 60 |
+| Pearl clam | 70 |
+| Lily pads | 80 |
+| Floating log | 90 |
+| Tube sponges | 100 |
+| Lost barrel | 110 |
+| Dive helmet | 140 |
+
+The shop now sorts unlocks **cheapest first**, keeping equal-price choices
+in a stable order. The optional nursery FRY row remains a separate first row.
+
+### More scenery, including the surface
+
+The eight new scenic unlocks have **fixed positions** and stay in their tank;
+they have no MOVE control, but SELL refunds the usual 20 percent after two
+taps. The shop describes
+this before purchase. The **lily pads, floating log and duck float** gently
+bob in three separate surface positions and can all be displayed together.
+
+![New fixed floor and surface scenery](media/cyd-features/tank-new-scenery.png)
+
+![Three surface decorations together](media/cyd-features/tank-surface-floats.png)
+
+### Optional upkeep upgrades
+
+- **Slow Garden - 160 sand dollars:** grass grows at half its usual speed.
+- **Bio Filter - 180 sand dollars:** new algae grows at half its usual speed.
+
+Both work awake and asleep, only in the tank that owns them. They are
+permanent upgrades; they do not remove existing growth, generate cleaning or
+trimming rewards, change fish care or slow coral growth. Inactive SD tanks
+remain completely paused.
+
+![Price-sorted shop with functional unlocks](media/cyd-features/shop-upkeep.png)
+
+Placeable decorations support positioning, depth/layering, moving and
+selling. The buoy and jelly lantern bob above their bottom tethers rather
+than sitting on the sand. Placements and ownership survive saves and
+backup/restore.
+
+| Decorations and palette upgrades | More decoration choices |
+|---|---|
+| ![Shop page showing anchor, tethered buoy, Sand Palette and Mood Lights with prices](media/cyd-features/shop-decorations.png) | ![Shop expansion page showing additional decoration choices and prices](media/cyd-features/shop-expansion.png) |
+
+### Fish-care upgrades
+
+Each aquarium can buy its own permanent improvements in the price-sorted shop:
+
+| Upgrade | Sand dollars | Benefit |
+|---|---:|---|
+| Calm Current | 160 | Resting and sleep restore energy 25% faster |
+| Cozy Shelter | 180 | Natural stress decay is 25% faster, awake and asleep |
+| Play Kit | 200 | Exploring restores curiosity 25% faster |
+| Training Ring | 240 | Calm holds earn an extra 25% of the normal trust rate |
+
+Training Ring adds to the seahorse bonus: together they give 225% of the normal
+rate while hitched, not an unlimited multiplier. Stats still cap at 10.
+No changes to food rewards, hunger, aging, size or breeding requirements.
+Nothing stacks repeatedly; extra tanks and banked fish remain paused.
+These upgrades are saved with their own aquarium, not shared between tanks.
+
+![Fish-care upgrades in the shop](media/cyd-features/shop-fish-care.png)
+![Training Ring purchase details](media/cyd-features/training-ring.png)
+
+### Loud colors, without flashing
+
+**Sand Palette** and **Mood Lights** each cost **300** as one-time
+upgrades. After purchase, use the separate **SAND** and **WATER** rows in
+Settings to cycle freely.
+
+- **Sand:** Original, Gold, Pearl, Volcanic, Rainbow, Hot Pink,
+  Electric Cyan and Neon Lime.
+- **Water:** Original, Blue, Teal, Violet, Amber, Rainbow, Hot Pink
+  and Neon Lime.
+
+The original look remains selectable. Rainbow is a colorful palette, not
+a flashing or strobing effect.
+
+![Demonstration aquarium with Rainbow sand and Rainbow water selected](media/cyd-features/tank-rainbow.png)
+
+## 5. Menus made for a small screen
+
+The CYD uses a 240 x 180 rendering framebuffer on its 320 x 240 panel.
+Previously, small logical text could shrink until strokes disappeared.
+Text now lands on the framebuffer pixel grid with a complete minimum
+**5 x 7 glyph**, brighter secondary labels and wrapped status messages.
+
+Journal cards, fish-bank rows, customization controls and Settings use
+readable captions rather than tiny downscaled subtext.
+
+| Keeper navigation | Reorganized Settings |
+|---|---|
+| ![Keeper page with fish portraits, milestones, Settings, Upgrades, Journal and Fish Bank navigation](media/cyd-features/keeper.png) | ![Settings with brightness, SD Backup and Restore, separate sand and water rows, Updates and Touch Calibration](media/cyd-features/settings.png) |
+
+Settings puts **CLOSE** at the top right, **TOUCH CALIBRATION** at the
+bottom right, and **UPDATES** at the bottom left. Sand and water have their
+own lines. The old Lights Out setting button is no longer on this page.
+
+### A deliberate fresh start
+
+**Settings > WIPE** opens a separate confirmation before starting over
+with two fry and first-time setup. Cancel, or wait 20 seconds, to keep
+the aquarium.
+
+![Separate Wipe Tank confirmation with Cancel and Wipe choices](media/cyd-features/wipe-confirmation.png)
+
+Wipe clears the active tank's fish, bank contents, decorations and Journal
+progress. With multiple tanks, the global sand-dollar wallet is kept; with
+only the original tank, its wallet resets too. It **does not delete purchased
+slots, other tanks, SD backup files or touch calibration**.
+Restore a compatible SD snapshot to bring back the saved tank and bank.
+
+## 6. Make the SD card useful
+
+### Tank backups and restores
+
+Settings provides versioned JSON backups on SD, including fish,
+appearance, economy, owned items, placement, palettes, Journal and bank.
+Backups are written and read back for validation. A restore first creates
+a safety snapshot of the current aquarium.
+
+New backups use **schema 5**. Schemas 1 through 4 remain importable;
+older firmware cannot restore schema 5 files. Keep a matching backup
+when deliberately downgrading.
+
+Full-bank backup handling processes stored fish one record at a time to
+reduce RAM use on the no-PSRAM CYD. Restore releases the input buffer
+before writing its safety snapshot, then rereads and checks the original
+file before committing. The compact internal save stays within its
+4,000-byte budget (including aquarium identity and name), so normal play and bank storage do not depend on keeping
+the card inserted.
+
+### Offline firmware updates
+
+**Settings > Updates** checks a local package at
+`pocket-tank/update.ptu` on SD. It does not require Wi-Fi or install
+anything automatically at boot.
+
+![Offline SD update screen explaining the package location and trusted-file requirement](media/cyd-features/sd-updates.png)
+
+The installer checks the board, image, size and SHA-256, asks for explicit
+confirmation, and creates a verified pre-update tank backup. It writes
+the inactive application slot and changes the boot selection only after
+successful verification.
+
+Packages are **local and unsigned**: the checksum detects corruption,
+not an untrusted publisher. Only install trusted packages and keep power
+connected. See [the update guide](OTA.md) for packaging and installation.
+
+The SD card also holds the icon art. It provides useful storage, but does
+not substitute for the RAM that rendering and JSON processing need.
+
+## 7. A focused CYD fork, not a different game
+
+The underlying aquarium still has personality-aware goals, feeding,
+growth, trust, milestones, breeding and maintenance. This fork uses a
+**rules-based advisor**, not an LLM or learned model. Other board targets,
+inference/training, audio, battery/PMIC and IMU support were removed from
+this CYD-specific build.
+
+The desktop emulator runs the actual gameplay and renderer with an
+isolated save. It is useful for feature previews and regression tests,
+but is not hardware emulation: the card, LCD, touch controller and update
+flashing still need physical-board checks.
+
+## Recreate these screenshots
+
+From the project root, with Python 3.9+, an existing GCC/Clang-compatible
+compiler (or Zig), and the firmware's managed cJSON dependency available:
+
+```powershell
+python tools\capture_cyd_gallery.py --cc clang
+```
+
+Use `--cc C:\path\to\zig.exe` for Zig, or `--out C:\path\to\gallery`
+for another destination. The capture tool compiles the emulator, stages
+its own temporary demonstration save, navigates the real UI and exports
+24 PNGs. It never opens a serial port, touches the board, or replaces
+the normal desktop save.
+
+For build instructions and live usage, see the [project README](../README.md)
+and [CYD hardware guide](../firmware/CYD.md).

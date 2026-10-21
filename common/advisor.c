@@ -1,4 +1,4 @@
-/* advisor.c — rule-based advisor stub (prototype chooseCompanionGoal). */
+/* advisor.c — personality-aware rules advisor. */
 #include "advisor.h"
 
 /* stateless PRNG: advisor must not mutate the tank */
@@ -19,7 +19,6 @@ goal_t advisor_rules(const tank_t *t, int fish_idx, bool request) {
     float r = frand(t, fish_idx);
 
     goal_t g = f->goal;                      /* default: keep current */
-    g.confidence = 1.0f; g.runner_up = GOAL_COUNT;   /* rules are never torn */
     if (f->goal_age < 2.5f && f->goal.id != GOAL_FLEE_SHADOW) return g;
 
     if (f->energy < 2.5f || f->stress > 7.5f ||

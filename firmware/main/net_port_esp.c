@@ -11,17 +11,13 @@
  *   the store     NVS namespace "wifi": ssid, pass, url (the director's
  *                 manifest override - the test channel). Its own namespace:
  *                 the tank's reset wipes "tank", never this.
- *   the manifest  OTA_MANIFEST_URL (a GitHub Release's "latest" asset), one
- *                 per board: latest-<PT_BOARD>.json. Small JSON: release,
- *                 board, build, min_from, app{url,size,sha256}, note,
- *                 needs_cable, model{version,size,url}. A manifest naming
- *                 another board is refused (common/update.c)
+ *   the manifest  no default server. A configured fork channel must name
+ *                 fork "pocket-tank-cyd", release, board, and app{url,size}.
+ *                 See common/update.c for the shared parser and board gate.
  *   the board     every image carries a board marker right after its app
  *                 descriptor (pt_board_marker below, PT_BOARD_MARKER_OFFSET):
  *                 the download reads it back from the slot at the first
- *                 sector and stops on another board's - all three boards
- *                 share the signing key, so the signature alone would let a
- *                 bowl install the 1.8's image (2026-10-02)
+ *                 sector and stops if it is not the CYD board marker.
  *   the download  esp_https_ota into the other slot; the image must carry
  *                 the project's signature (SECURE_SIGNED_ON_UPDATE, verified
  *                 against the running image's own key) or it is refused
@@ -44,7 +40,6 @@
 #include "net_time.h"
 #include "lwip/sockets.h"
 #include "lwip/netdb.h"
-#include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -53,9 +48,7 @@
 
 static const char *TAG = "net";
 #define WIFI_NVS_NS   "wifi"
-#ifndef OTA_MANIFEST_URL
-#define OTA_MANIFEST_URL "https://github.com/mediacutlet/pocket-tank/releases/latest/download/latest-" PT_BOARD ".json"
-#endif
+#include "sdkconfig.h"
 /* the board marker: in .rodata_custom_desc, which the linker places right
  * after esp_app_desc_t - a fixed offset in the image (PT_BOARD_MARKER_OFFSET;
  * tools/make_ota_manifest.py and make_installer.py read it back from the .bin) */
@@ -89,7 +82,7 @@ void net_port_creds_forget(void) {
 const char *net_port_manifest_url(void) {                   /* the director's override, else the release channel */
     static char url[NET_URL_MAX + 1];
     if (nvs_get_str_ns("url", url, sizeof url) && url[0]) return url;
-    return OTA_MANIFEST_URL;
+    return CONFIG_POCKET_TANK_OTA_URL;
 }
 bool net_port_set_manifest_url(const char *url) {           /* NULL / "" = back to the default */
     nvs_handle_t h; if (nvs_open(WIFI_NVS_NS, NVS_READWRITE, &h) != ESP_OK) return false;
@@ -145,12 +138,29 @@ static bool radio_up(void) {
 
 static void do_scan(void) {
     wifi_scan_config_t sc = { .show_hidden = false, .scan_type = WIFI_SCAN_TYPE_ACTIVE };
-    if (esp_wifi_scan_start(&sc, true) != ESP_OK) { s_err = NET_ERR_RADIO; s_state = NET_FAILED; return; }
-    uint16_t n = 0; esp_wifi_scan_get_ap_num(&n);
+    esp_err_t err = esp_wifi_scan_start(&sc, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "scan start: %s", esp_err_to_name(err));
+        s_err = NET_ERR_RADIO; s_state = NET_FAILED; return;
+    }
+    uint16_t n = 0;
+    err = esp_wifi_scan_get_ap_num(&n);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "scan count: %s", esp_err_to_name(err));
+        esp_wifi_clear_ap_list(); s_err = NET_ERR_RADIO; s_state = NET_FAILED; return;
+    }
     if (n > 40) n = 40;
-    wifi_ap_record_t *recs = heap_caps_calloc(n ? n : 1, sizeof *recs, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!recs) { esp_wifi_clear_ap_list(); s_err = NET_ERR_RADIO; s_state = NET_FAILED; return; }
-    esp_wifi_scan_get_ap_records(&n, recs);
+    wifi_ap_record_t *recs = heap_caps_calloc(n ? n : 1, sizeof *recs,
+                                            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!recs) {
+        ESP_LOGE(TAG, "no memory for %u scan records", (unsigned)n);
+        esp_wifi_clear_ap_list(); s_err = NET_ERR_RADIO; s_state = NET_FAILED; return;
+    }
+    err = esp_wifi_scan_get_ap_records(&n, recs);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "scan records: %s", esp_err_to_name(err));
+        free(recs); esp_wifi_clear_ap_list(); s_err = NET_ERR_RADIO; s_state = NET_FAILED; return;
+    }
     s_n_aps = 0;
     for (int i = 0; i < n; i++) {                            /* strongest first (the driver sorts by rssi), names unique, no hidden */
         const char *name = (const char *)recs[i].ssid;
@@ -186,7 +196,7 @@ static void do_connect_n(int attempts, int wait_ms) {
         ESP_LOGW(TAG, "connect attempt %d: %s (reason %d)", attempt + 1, b & EV_DISCONNECTED ? "disconnected" : "timed out", r);
         if (r == WIFI_REASON_NO_AP_FOUND) { err = NET_ERR_NO_SIGNAL; break; }
         if (r == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT || r == WIFI_REASON_AUTH_FAIL || r == WIFI_REASON_HANDSHAKE_TIMEOUT
-            || r == WIFI_REASON_AUTH_EXPIRE || r == WIFI_REASON_ASSOC_EXPIRE || r == WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY
+            || r == WIFI_REASON_AUTH_EXPIRE || r == WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY
             || r == WIFI_REASON_CONNECTION_FAIL) err = NET_ERR_PASSWORD;
         else err = NET_ERR_NO_SIGNAL;
         vTaskDelay(pdMS_TO_TICKS(1000 + attempt * 500));
@@ -246,45 +256,20 @@ bool net_time_sync(int64_t *unix_out, int64_t *at_us) {
     ESP_LOGI(TAG, "time from the internet: %s in %d ms", ok ? "got it" : "FAILED", (int)((esp_timer_get_time() - t0) / 1000));
     return ok;
 }
-static uint32_t parse_release(const char *s) {
-    int a = 0, b = 0, c = 0; if (sscanf(s, "%d.%d.%d", &a, &b, &c) < 2) return 0;
-    return ((uint32_t)a << 16) | ((uint32_t)b << 8) | (uint32_t)c;
-}
-static bool parse_manifest(const char *json, update_manifest_t *m) {
-    cJSON *root = cJSON_Parse(json); if (!root) return false;
-    memset(m, 0, sizeof *m); s_app_url[0] = 0;
-    const cJSON *rel = cJSON_GetObjectItem(root, "release"), *app = cJSON_GetObjectItem(root, "app"), *model = cJSON_GetObjectItem(root, "model");
-    if (!cJSON_IsString(rel) || !cJSON_IsObject(app)) { cJSON_Delete(root); return false; }
-    snprintf(m->release, sizeof m->release, "%s", rel->valuestring);
-    const cJSON *num = cJSON_GetObjectItem(root, "release_num");
-    m->release_num = cJSON_IsNumber(num) ? (uint32_t)num->valuedouble : parse_release(m->release);
-    const cJSON *v;
-    if (cJSON_IsString(v = cJSON_GetObjectItem(root, "build"))) snprintf(m->build, sizeof m->build, "%s", v->valuestring);
-    if (cJSON_IsString(v = cJSON_GetObjectItem(root, "board"))) snprintf(m->board, sizeof m->board, "%s", v->valuestring);   /* none = refused */
-    if (cJSON_IsString(v = cJSON_GetObjectItem(root, "min_from"))) m->min_from = parse_release(v->valuestring);
-    else if (cJSON_IsNumber(v)) m->min_from = (uint32_t)v->valuedouble;
-    if (cJSON_IsString(v = cJSON_GetObjectItem(root, "note"))) snprintf(m->note, sizeof m->note, "%s", v->valuestring);
-    if (cJSON_IsBool(v = cJSON_GetObjectItem(root, "needs_cable"))) m->needs_cable = cJSON_IsTrue(v);
-    if (cJSON_IsString(v = cJSON_GetObjectItem(app, "url"))) snprintf(s_app_url, sizeof s_app_url, "%s", v->valuestring);
-    if (cJSON_IsNumber(v = cJSON_GetObjectItem(app, "size"))) m->app_size = (uint32_t)v->valuedouble;
-    if (cJSON_IsObject(model)) {
-        if (cJSON_IsString(v = cJSON_GetObjectItem(model, "version"))) snprintf(m->model_version, sizeof m->model_version, "%s", v->valuestring);
-        if (cJSON_IsNumber(v = cJSON_GetObjectItem(model, "size"))) m->model_size = (uint32_t)v->valuedouble;
-        m->model_offered = cJSON_IsString(cJSON_GetObjectItem(model, "url"));
-        /* phase one cannot fetch a model: a release that needs a different one takes the cable */
-        if (m->model_version[0] && strcmp(m->model_version, PT_MODEL_TAG) != 0) m->needs_cable = true;
-    }
-    cJSON_Delete(root);
-    return s_app_url[0] != 0 && m->release_num != 0;
-}
 static void do_check(void) {
     const char *url = net_port_manifest_url();
+    if (!url[0]) {
+        ESP_LOGW(TAG, "no CYD fork OTA channel configured; Wi-Fi remains available");
+        s_err = NET_ERR_CHANNEL; s_state = NET_FAILED; return;
+    }
     ESP_LOGI(TAG, "manifest: %s", url);
     esp_http_client_config_t hc = { .url = url, .crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 12000,
                                     .buffer_size = 2048, .buffer_size_tx = 2048, .max_redirection_count = 8 };
     esp_http_client_handle_t c = esp_http_client_init(&hc);
     if (!c) { s_err = NET_ERR_NO_NET; s_state = NET_FAILED; return; }
-    char *buf = heap_caps_malloc(4096, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    char *buf = heap_caps_malloc(4096,
+                                 MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!buf) ESP_LOGE(TAG, "no memory for update manifest");
     int err = NET_ERR_NO_NET, n = 0;
     /* GitHub answers a release asset's address with a redirect, twice (releases/latest/download ->
      * releases/download/<tag> -> the asset host, a 900-byte signed address). The open / fetch_headers
@@ -306,7 +291,7 @@ static void do_check(void) {
     if (buf && status) {
         while (n < 4095) { int r = esp_http_client_read(c, buf + n, 4095 - n); if (r <= 0) break; n += r; }
         buf[n] = 0;
-        if (status == 200 && n > 0) err = parse_manifest(buf, &s_m) ? NET_ERR_NONE : NET_ERR_BAD_MANIFEST;
+        if (status == 200 && n > 0) err = update_parse_manifest(buf, &s_m, s_app_url, sizeof s_app_url) ? NET_ERR_NONE : NET_ERR_BAD_MANIFEST;
         else { ESP_LOGW(TAG, "manifest: HTTP %d, %d bytes", status, n); err = status == 404 ? NET_ERR_BAD_MANIFEST : NET_ERR_NO_NET; }
     }
     esp_http_client_close(c); esp_http_client_cleanup(c); free(buf);

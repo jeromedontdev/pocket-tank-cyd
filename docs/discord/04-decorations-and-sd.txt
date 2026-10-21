@@ -1,0 +1,27 @@
+**More decorations, readable menus and useful SD storage**
+
+**11 added decorations** (prices in sand dollars):
+• Treasure chest: 120
+• Scallop shell / starfish: 60 each
+• Sunken anchor / tethered buoy: 80 each
+• Shipwreck: 200
+• Treasure urn: 60
+• Crystals: 100
+• Sea fan: 80
+• Sunken ruins: 160
+• Jelly lantern: 120
+
+Place, layer, move and sell decorations. The buoy and jelly lantern bob above their tethers. Sand Palette and Mood Lights are 300 each; cycling their colors afterward is free.
+
+**Menus that fit the small screen**
+Pixel-aligned text, brighter secondary labels, wrapped messages and separate sand/water rows. Settings has Updates, clearly labeled Touch Calibration, and Wipe with a second confirmation. Wipe keeps SD backups and calibration, but clears the aquarium, bank and progression.
+
+**SD backup and restore**
+Versioned JSON snapshots include fish, bank, customization, coins, decorations, layout and Journal progress. Backups are read back and validated; restores create a safety snapshot first. Older backup schemas remain importable.
+
+**Offline SD updates**
+Settings > Updates checks pocket-tank/update.ptu. It validates the board, image size and checksum, asks for confirmation and makes a pre-update tank backup. Keep power connected.
+
+Packages are local and unsigned: checksums detect corruption, not an untrusted publisher. Only install trusted files.
+
+These screenshots show the real emulator UI; actual SD I/O, calibration and flashing run on the physical CYD.

@@ -35,6 +35,35 @@
  * --selftest-saves pins the spelling. */
 #define SAVE_NVS_NS  "tank"
 #define SAVE_NVS_KEY "save"
+#define JOURNAL_GOAL_N 15
+#define JOURNAL_LEVEL_MAX 15
+#define JOURNAL_XP_MAX 1000000u
+typedef struct { const char *name, *detail; uint8_t metric; uint16_t target, xp, coins; } journal_goal_t;
+extern const journal_goal_t JOURNAL_GOALS[JOURNAL_GOAL_N];
+extern const char *const JOURNAL_THEME_NAMES[4];
+int journal_level(const tank_t *t);
+uint32_t journal_level_xp(int level);
+int journal_active(const tank_t *t, int slot);
+unsigned journal_progress(const tank_t *t, int goal);
+bool journal_claim(tank_t *t, int goal);
+/* -1 bank index deposits; -1 active index withdraws; both indices swap.
+ * NULL means saved successfully; otherwise a user-readable error. */
+const char *progression_bank_move(tank_t *t, int bank, int active);
+#define AQUARIUM_CAP 8
+#define AQUARIUM_PRICE 500
+#define AQUARIUM_SAVE_BYTES 4000
+/* target == count buys and enters a new tank; otherwise switches to an owned tank.
+ * Success loads the tank in memory after its atomic internal-save commit. */
+const char *progression_aquarium_move(tank_t *t, int target);
+const char *progression_aquarium_rename(tank_t *t, const char *name);
+bool progression_aquarium_label(const tank_t *t, int slot, char name[16]);
+bool aquarium_port_ready(void);
+void aquarium_port_id(uint32_t id[2]);
+bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size);
+bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_t size);
+bool journal_theme_unlocked(const tank_t *t, int theme);
+bool journal_set_theme(tank_t *t, int theme);
+void journal_tick(tank_t *t);
 bool    persist_port_load(void *buf, size_t max, size_t *got); /* the saved blob, whatever length an older
                                                             * build wrote (*got = it); a NEWER build's longer one
                                                             * loads its first max bytes (*got = max); false = nothing */
@@ -81,6 +110,10 @@ void progression_tick(tank_t *t, float dt);
 /* Save the current tank. False means the port rejected the write; the state
  * remains dirty so the periodic saver will retry. */
 bool progression_save(tank_t *t);
+/* Caller frees the JSON string. Import validates fully before committing NVS;
+ * restart after success so all runtime state is rebuilt through the normal loader. */
+char *progression_backup_json(const tank_t *t);
+bool progression_restore_json(const char *json, size_t len, bool commit, char *error, size_t error_size);
 
 /* sim/debug: multiply time (aging, drift) - `./fishsim --fast 60` */
 extern float progression_time_scale;
@@ -111,12 +144,12 @@ void progression_set_age(tank_t *t, int idx, float seconds);
  * milestones, nothing tended yet. Saves over the current save on the next
  * heartbeat: stash it first (firmware director: `stash`). */
 void progression_fresh(tank_t *t);
-/* the keeper's RESET (device: hold BOOT + tap the glass, then YES on the
- * prompt; sim: X): every save is erased - a director-parked tank too - the
+/* Settings > WIPE, then confirm: every tank save is erased, parked copies too.
  * tank is re-initialised with `seed`, the new-tank path runs and the fresh
  * pair is saved at once, so a reboot lands on them. Two fry, clean glass,
- * the default garden, nothing tended yet. */
-void progression_reset(tank_t *t, uint32_t seed);
+ * the default garden, nothing tended yet. False reports an erase/save failure;
+ * an erase failure leaves the live tank unchanged. SD files are not erased. */
+bool progression_reset(tank_t *t, uint32_t seed);
 /* first-run setup (setup.c, 2026-09-13): a tank born through
  * progression_fresh - a fresh install, a reset - is PENDING setup until the
  * keeper walks the welcome / names / colours flow; the flag rides in the
@@ -207,12 +240,23 @@ const char *const *progression_fry_tip(int kind);
 #define SD_PRICE_SEAHORSE 220     /* 0.3.6, Strato 2026-10-15: between the shrimp (180) and the cluster (240) */
 #define SD_PRICE_PUMPKIN 75       /* 0.3.6, Strato 2026-10-17: the seasonal lantern, "affordable" */
 typedef struct {
-    uint32_t    bit;               /* SD_ITEM_* */
+    uint32_t    bit;               /* SD_ITEM_*, zero for separately stored fish-care flags */
     const char *name;              /* <= 12 chars, the pixel font */
     const char *words, *words2;    /* what it does, two lines of <= 25 chars */
     int         price;
 } sd_item_t;
 extern const sd_item_t SD_ITEMS[SD_ITEM_COUNT];
+/* Stable IDs stay fixed in saves; only the shop's presentation is price-sorted. */
+int progression_shop_item(const tank_t *t, int row);
+int progression_shop_count(const tank_t *t);
+bool progression_item_owned(const tank_t *t, int item);
+#define SD_PRICE_CHEST 120
+#define SD_PRICE_SHELL 60
+#define SD_PRICE_STARFISH 60
+#define SD_PRICE_ANCHOR 80
+#define SD_PRICE_BUOY 80
+#define SD_PRICE_SAND 300
+#define SD_PRICE_LIGHTS 300
 /* the shop's sale: false when the balance is short or it is already owned;
  * true = unlocked, placed in the tank (tank_plant_place / tank_snail_place)
  * and saved at once */
@@ -267,7 +311,7 @@ bool progression_sell(tank_t *t, int item);
 #define SD_PRICE_FRY   200
 #define FRY_OFFER_N    3
 #define FRY_OFFER_S    (24 * 3600.0f)
-typedef struct { uint32_t body, accent; bool sold; } fry_offer_t;
+typedef struct { uint32_t body, accent; bool sold; uint8_t variety, pattern; } fry_offer_t;
 bool  progression_fry_for_sale(const tank_t *t);   /* the first sale's badge is earned */
 bool  progression_fry_room(const tank_t *t);       /* a slot free and no welcome owed */
 void  progression_fry_offer(int k, fry_offer_t *o);
@@ -311,8 +355,9 @@ const char *const *progression_sd_earn_lines(void);
 /* trait drift: one full unit (0.11 of the 0..1 trait) per this many hours of
  * sustained pressure */
 #define DRIFT_HOURS      2.0f
-#define DRIFT_CHANGE     0.11f  /* CHANGE gate: this much accumulated drift pressure on the
+/* CHANGE gate: this much accumulated drift pressure on the
                                  * youngest fish (~26 lit minutes fed and calm, or following) */
+#define DRIFT_CHANGE     0.11f
 
 /* milestone labels (UI / logs); order = bit order in tank.h */
 extern const char *const MS_NAMES[MS_FISH_COUNT];
