@@ -223,6 +223,10 @@ typedef struct {
     goal_id_t goal_prev;    /* the goal before the current one: returning to it is no relief */
     int8_t zone_last;       /* schema zone 0..5 the fish was in last frame; -1 = none yet */
     bool   at_bubbles;      /* inside the column's play radius on a VISIT_BUBBLES goal (the bubbles cue fires on entry) */
+    float  breather;        /* the breather (2026-10-21): seconds spent ducking into the nearest canopy
+                             * because the fish is spent (energy under BREATHER_AT by day), 0 = none.
+                             * The advisor keeps its goal; the body answers it again with its wind back.
+                             * Not saved: a boot starts fresh. */
     bool   hold_far;        /* was HOLD_APPROACH_FROM+ px from the finger when this hold's draw
                              * began (transient): only such a fish can earn a hold-approach */
     float  zone_seen[6];    /* tank clock when the fish was last in each zone */

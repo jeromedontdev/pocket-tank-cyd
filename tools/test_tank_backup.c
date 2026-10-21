@@ -503,6 +503,24 @@ static void test_shop_expansion(void) {
         tank_tick_sleep(&capped, 60);
         assert(f->energy == 10 && f->stress == 0);
     }
+    {
+        tank_t resting, boosted;
+        tank_init(&resting, 108); tank_new_population(&resting); resting.n_fish = 1;
+        for (int bed = 0; bed < VEG_BEDS_MAX; bed++) tank_veg_set(&resting, bed, 0);
+        fish_t *f = &resting.fish[0];
+        f->energy = 0.5f; f->hunger = 2; f->goal.id = GOAL_EXPLORE;
+        f->x = resting.reef_x + 13 + f->rest_dx; f->y = TANK_BOT - 50 + f->rest_dy;
+        tank_tick(&resting, 0.1f, NULL);
+        assert(f->breather > 0 && f->goal.id == GOAL_EXPLORE);
+        boosted = resting; boosted.aquariums.stat_upgrades = STAT_CURRENT;
+        float before = f->energy;
+        tank_tick(&resting, 0.1f, NULL); tank_tick(&boosted, 0.1f, NULL);
+        assert(fabsf((boosted.fish[0].energy - before) - 1.25f * (f->energy - before)) < 0.000001f);
+        f->energy = 4; tank_tick(&resting, 0.1f, NULL);
+        assert(!f->breather && f->goal.id == GOAL_EXPLORE);
+        boosted.fish[0].breather = 2; tank_tick_sleep(&boosted, 60);
+        assert(!boosted.fish[0].breather);
+    }
     json = progression_backup_json(&loaded); assert(json);
     cJSON *root = cJSON_Parse(json); free(json); assert(root);
     cJSON *tank = cJSON_GetObjectItemCaseSensitive(root, "tank");

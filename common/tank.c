@@ -193,7 +193,7 @@ void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold,
     f->trust = 5.0f;
     f->goal.id = GOAL_EXPLORE; f->goal.urgency = 3;
     f->goal_age = 0; f->ask_age = 99; f->dart_timer = 0; f->dart_x = f->x; f->dart_y = f->y;
-    f->bored = 0; f->goal_prev = GOAL_COUNT; f->zone_last = -1; f->explore_set = false;
+    f->bored = 0; f->goal_prev = GOAL_COUNT; f->zone_last = -1; f->explore_set = false; f->breather = 0;
     /* its own order of first visits - from the slot, not the tank's RNG, so a
      * seeded run (the selftests) draws the same numbers it did before */
     for (int z = 0; z < 6; z++) f->zone_seen[z] = -(float)((slot * 37 + z * 13) % 60);
@@ -429,6 +429,18 @@ void tank_init(tank_t *t, uint32_t seed) {
  * the reef, a friend: the fed-fish repertoire. The advisor sees only banded
  * hunger, so its training distribution is untouched. */
 #define HUNGER_PER_S       0.010f   /* fed -> starving in ~17 min (shy fish) */
+/* the breather (2026-10-21, Strato's 1.8 after a reset: "sluggish", no "first
+ * rest in the seagrass"; a Discord keeper's tank the same for days): the v4
+ * brain rests at NIGHT - its teacher rested a lit fish only at energy <= 1,
+ * one roll in twenty - while the energy economy below (09-04) was tuned for a
+ * brain that rested by day. So a lit tank ran its fish down to 0 in ten
+ * minutes and kept them there, crawling at 45%, and a keeper who never turns
+ * the light off never saw the seagrass badge. Physiology, like the famine's
+ * begging: a spent fish ducks into the nearest canopy and hovers until it has
+ * its wind back (the rest rate, ~10 s). The advisor still owns the goal. */
+#define BREATHER_AT   1.0f    /* energy under this by day: a breather */
+#define BREATHER_TO   4.0f    /* ... until this */
+#define BREATHER_NEAR 22.0f   /* settled in the fronds within this: the wind comes back */
 #define HUNGER_BOLD_PER_S  0.008f   /* bold fish burn hotter: ~9 min */
 #define HUNGER_DART_PER_S  0.012f   /* play costs extra */
 #define TRICKLE_HUNGER     7.5f     /* the tank feeds itself only past this (someone) */
@@ -586,6 +598,21 @@ void tank_court_puff(tank_t *t, int n) {
  * rather than printed (reflex presentation; the advisor still owns both
  * goals). Down in the fronds, not mid-water: Strato (2026-09-04) - by the
  * reef it read as two friends at the bubbles. */
+/* the breather's spot: low in the nearest seagrass bed with real cover, a
+ * body apart per slot; with every bed shaved, the rest spot in the corner */
+static void breather_spot(const tank_t *t, const fish_t *f, int idx, float *x, float *y) {
+    int best = -1; float bd = 1e9f, bx = 0;
+    for (int b = 0; b < tank_veg_beds(t); b++) {
+        if (tank_veg_kind(t, b) != VEG_KIND_GRASS || t->veg_growth[b] < VEG_BARE) continue;
+        float x0, x1; tank_veg_bed(t, b, &x0, &x1, NULL, NULL);
+        float cx = (x0 + x1) * 0.5f, d = fabsf(cx - f->x);
+        if (d < bd) { bd = d; best = b; bx = cx; }
+    }
+    if (best < 0) { *x = t->reef_x + 13 + f->rest_dx; *y = TANK_BOT - 50 + f->rest_dy; return; }
+    *x = bx + (idx % 2 ? 14 : -14) + (idx / 2) * 10;
+    *y = TANK_BOT - 16 - 14 - (idx % 3) * 6;
+    tank_glass_clamp(x, y, 20);
+}
 static void court_steer(const tank_t *t, const fish_t *f, int idx, float *desired, float *speed) {
     float ph = t->clock * 1.7f + (idx == t->court_b ? 3.14159f : 0);
     float cx, cy, rx; court_site(t, &cx, &cy, &rx);
@@ -2082,7 +2109,7 @@ void tank_tick_sleep(tank_t *t, float seconds) {
         f->hunger = clampf(f->hunger + SLEEP_HUNGER_PER_H * h, 0, 10);
         f->energy = clampf(f->energy + SLEEP_ENERGY_PER_H * h * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1), 0, 10);
         f->stress = clampf(f->stress - SLEEP_STRESS_PER_H * h * ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1), 0, 10);
-        f->speed = 0; f->target_speed = 0; f->bored = 0;  /* a night's sleep is a fresh start */
+        f->speed = 0; f->target_speed = 0; f->bored = 0; f->breather = 0;  /* a night's sleep is a fresh start */
         f->goal_age += seconds; f->ask_age += seconds;  /* wake re-asks the advisor at once */
     }
     t->idle_s = 0;                                      /* the wake press is handling: lights up */
@@ -2305,8 +2332,17 @@ static void update_fish(tank_t *t, int idx, float dt) {
      * advisor never had a fish fit enough to dart and read every content
      * fish as "relaxed": bubbles, reef, follow (2026-09-01 census). Now a
      * fish cruises ~10 min on a full tank and a rest refills it in ~35 s. */
-    f->energy    = clampf(f->energy + dt * (f->goal.id == GOAL_REST ? 0.30f * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1)
+    bool settled = false;                        /* a breather, settled in the fronds */
+    if (f->breather > 0) { float bx, by; breather_spot(t, f, idx, &bx, &by); settled = tank_dist(f->x, f->y, bx, by) < BREATHER_NEAR; }
+    f->energy    = clampf(f->energy + dt * ((f->goal.id == GOAL_REST || settled) ? 0.30f * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1)
                           : -0.012f - f->speed / 4000.0f), 0, 10);
+    /* the breather (see BREATHER_AT): in when spent by day, out with the wind
+       back, never over a flight, the famine's begging or the night's own rest */
+    if (f->breather > 0) {
+        if (f->energy >= BREATHER_TO || t->night || f->goal.id == GOAL_FLEE_SHADOW || (t->ravenous && f->hunger > 6.5f)) f->breather = 0;
+        else f->breather += dt;
+    } else if (!t->night && f->energy < BREATHER_AT && f->goal.id != GOAL_FLEE_SHADOW && !(t->ravenous && f->hunger > 6.5f))
+        f->breather = dt;
     /* a canopy is a place to hide: a fish inside one calms faster (below) */
     bool hidden = false;
     for (int b = 0; b < tank_veg_beds(t) && !hidden; b++)
@@ -2456,6 +2492,13 @@ static void update_fish(tank_t *t, int idx, float dt) {
             touch_speed = tank_dist(f->x, f->y, wx, wy) > 18
                         ? lerpf(40, 68, clampf(f->hunger / 10.0f, 0, 1)) : 22;
         }
+    } else if (f->breather > 0) {
+        /* the breather: to the fronds at a tired cruise, then a hover (the
+         * canopy's own slowing below keeps it gentle); the goal stays */
+        float bx, by; breather_spot(t, f, idx, &bx, &by);
+        float d = tank_dist(f->x, f->y, bx, by);
+        if (d > 10) { float to = atan2f(by - f->y, bx - f->x); desired = norm_ang(desired + norm_ang(to - desired) * 0.85f); }
+        touch_speed = d > BREATHER_NEAR ? 18 : 3;
     } else if (t->court_active > 0 && !t->ravenous &&
                (idx == t->court_a || idx == t->court_b) &&
                f->goal.id != GOAL_FLEE_SHADOW && f->hunger < HOLD_HUNGER_VETO) {
@@ -2522,7 +2565,7 @@ static void update_fish(tank_t *t, int idx, float dt) {
     f->yaw += clampf(face - f->yaw, -yrate, yrate);
     f->yaw_tail += (f->yaw - f->yaw_tail) * clampf(dt * 10, 0, 1);
     float want = touch_speed >= 0 ? touch_speed : tg.speed * ugain;
-    f->target_speed = want * (f->energy < 1.2f ? 0.45f : 1) * (glancing ? 0.6f : 1);
+    f->target_speed = want * (f->energy < 1.2f && f->breather <= 0 ? 0.45f : 1) * (glancing ? 0.6f : 1);
     /* swimming through a canopy is slow going (a fleeing fish crashes through) */
     if (f->goal.id != GOAL_FLEE_SHADOW)
         for (int b = 0; b < tank_veg_beds(t); b++)

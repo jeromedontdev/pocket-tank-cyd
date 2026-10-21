@@ -1336,7 +1336,7 @@ void progression_tick(tank_t *t, float dt) {
         /* the seagrass: resting inside a canopy, or tucked into one while
            rattled - the grass as the place to be safe (2026-10-02, in the
            badge slot "first reef" had) */
-        if (((f->goal.id == GOAL_REST && f->goal_age > 2.0f) || f->stress >= 5.0f) && tank_in_grass(t, f->x, f->y))
+        if (((f->goal.id == GOAL_REST && f->goal_age > 2.0f) || f->stress >= 5.0f || f->breather > 2.0f) && tank_in_grass(t, f->x, f->y))
             set_ms(f, MS_FIRST_GRASS);
         if (f->goal.id == GOAL_FOLLOW_FRIEND && f->goal_age > 2.0f) set_ms(f, MS_FIRST_FOLLOW);
         if (f->goal.id == GOAL_DART_PLAY) n_dart++;

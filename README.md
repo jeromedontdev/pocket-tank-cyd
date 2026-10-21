@@ -166,6 +166,11 @@ stay paused. Purchases travel with their own tank, survive reboot and JSON
 backups, and clear when that tank is wiped. Older backups start without them.
 The binary save remains 4000 bytes; a formerly reserved byte holds the flags.
 
+The fork also includes upstream's daytime breather fix: exhausted fish duck
+into nearby seagrass (or their resting corner) to recover without changing
+their advisor goal. Calm Current also boosts this resting recovery. The CYD
+fork retains its separate update channel and existing release-number format.
+
 ## Display readability
 
 CYD menu text is pixel-aligned in the 240x180 framebuffer, with a minimum
