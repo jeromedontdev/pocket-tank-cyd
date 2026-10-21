@@ -7,7 +7,7 @@ Post the text and attach its matching PNG together:
 2. Paste into the Discord message box.
 3. Drag 01-customization.png into the SAME message.
 4. Send.
-5. Repeat for 02, 03 and 04.
+5. Repeat for 02, 03, 04 and 05.
 
 Each post is below 2,000 characters. The images are labeled boards made
 from the fresh emulator captures, not links to pictures.
@@ -17,8 +17,15 @@ use Copy Image (not Copy File or Copy Path), then paste into Discord.
 Dragging the PNG is usually simpler.
 
 The ZIP is a convenient way to move/share the whole kit. Extract it first
-to post the four illustrated messages; uploading only the ZIP will not
+to post the five illustrated messages; uploading only the ZIP will not
 display the pictures inline.
 
 All screenshots use an isolated demonstration tank. Some content is
 unlocked for illustration; the real aquarium was not changed.
+
+Updated October 21, 2026: includes 19 added decorations, surface floats,
+per-tank upkeep/care upgrades, global sand dollars, named aquariums,
+ownership-colored shop icons and downloadable CYD releases.
+
+Downloads: https://github.com/jeromedontdev/pocket-tank-cyd/releases
+Full guide: https://github.com/jeromedontdev/pocket-tank-cyd/blob/main/docs/CYD-FEATURES.md

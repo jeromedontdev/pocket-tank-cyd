@@ -35,14 +35,14 @@ slot selection. It is not a save-preserving upgrade. The app-only image must
 be written to the detected active OTA slot, not blindly to a fixed offset.
 Every release includes SHA-256 checksums and the matching SD artwork.
 
-Maintainers publish by pushing a tag such as `v0.3.8-cyd.1`. The CYD release
+Maintainers publish by pushing a tag such as `v0.3.8-cyd.2`. The CYD release
 workflow builds with ESP-IDF v6.1, runs tool/native/emulator tests, packages
 the application, factory image, SD updater and icon bank, and creates a
 GitHub prerelease. The version label without `v` must fit 15 characters.
 Normal pushes run checks but do not publish releases. Locally, after building:
 
 ```powershell
-python ..\tools\package_cyd_release.py --build build_cyd --out ..\dist --version v0.3.8-cyd.1
+python ..\tools\package_cyd_release.py --build build_cyd --out ..\dist --version v0.3.8-cyd.2
 ```
 
 Run this in the ESP-IDF Python environment (esptool v5 is required).
@@ -153,7 +153,7 @@ supported: power off before inserting or removing the card.
 
 The icon bank was the worthwhile image payload to offload. Fish and tank
 decorations are mostly drawn procedurally, not read from large sprite files.
-The remaining font bitmap is only 329 bytes, and the palettes and roster are
+The remaining font bitmap, palettes and roster are
 small; keeping them in flash preserves usable text without a card. Audio and
 model weights are already absent from the CYD image, so copying them to SD
 would not save more flash or supply the RAM needed by the LLM. Future large
@@ -173,8 +173,10 @@ The binary save keeps every previous field at its original offset. The
 chest's original 1920-byte layout is intact; the new decoration/palette tail
 extends it to 1952 bytes; the customization expansion appends another 48 bytes
 to reach 2000; the Journal appends 40 bytes to reach 2040; the 20-slot fish
-bank extends this to 3968; 16 bytes of aquarium collection identity extend
-the live save to 4000, within the 4000-byte NVS budget.
+bank extends this to 3968; a 32-byte tail for aquarium collection identity,
+active slot, tank name and care-upgrade flags extends the live save to 4000,
+within the 4000-byte NVS budget. The four care flags reuse one reserved byte;
+they do not shift older fields.
 Reconcile extensions explicitly when changing saves.
 
 ## More decorations and color upgrades
@@ -194,13 +196,13 @@ Reconcile extensions explicitly when changing saves.
 | Sunken ruins | 160 | Mossy stone arch |
 | Jelly lantern | 120 | Bobbing jellyfish-shaped ornament tethered to a floor weight |
 
-Use the shop's page arrows to find them. New decorations have the same
+Use the shop's page arrows to find them. The placeable decorations listed above have the same
 drag/depth/order/MOVE/SELL controls as the chest. Selling follows the existing
 20% refund rule, rounded down. The buoy animates in either depth layer,
 including with the optional scene cache, without reserving another large
 sprite or scratch buffer. These small procedural pieces require no SD-bank update.
 The jelly lantern uses the same lightweight animation approach. Console aliases
-for the six newest decorations are `wreck`, `urn`, `crystal`, `fan`, `ruins`, `jelly`.
+for these six decorations are `wreck`, `urn`, `crystal`, `fan`, `ruins`, `jelly`.
 
 ## Fish appearance
 
@@ -240,8 +242,11 @@ Tap the red **WIPE** button at the top left of Settings. The separate
 **WIPE TANK?** prompt explains what is erased. Tap **CANCEL**, or wait 20 seconds,
 to keep the tank; only a new tap on **WIPE** in the prompt starts over.
 
-Wiping erases the active tank and any console-parked copy: fish, purchases,
-sand dollars, milestones, palette selections and gameplay settings. It creates and
+Wiping erases the active tank and any console-parked copy: fish, bank, purchases
+(including care/upkeep upgrades), milestones, Journal, palette selections and
+gameplay settings. **With multiple tanks, the shared wallet is preserved;
+with only the original tank, its sand dollars reset.** Purchased aquarium
+slots, their names and the other tanks remain. Wipe creates and
 saves a fresh pair of fry and opens first-time setup, just like a new tank.
 It does not erase touch calibration, Wi-Fi credentials, SD assets, SD JSON
 backups or firmware packages. Brightness is retained. Back up to SD first if
@@ -304,10 +309,13 @@ the same NVS blob as the save, so failed writes do not charge or switch.
 Sand dollars and lifetime earnings are global; switching cannot restore a
 stale balance. Each tank has its own Journal, decorations, fish and Fish Bank.
 NAME TANK edits the active tank's persistent name (15 characters, `<` / `>` editor).
-The shop has 32 stable item IDs, presented in ascending price order (ties keep
-their item order); the optional nursery row stays first. New unlocks use the
-remaining ownership bits, including bit 31, without changing the 4000-byte save
-or schema 5. Do not downgrade after buying these items: older firmware masks
+The shop has 36 stable item IDs, presented in ascending price order (ties keep
+their item order); the optional nursery row stays first. The scenery/upkeep
+extension uses ownership bits through bit 31 without changing the 4000-byte save
+or schema 5. IDs 0..31 use the full 32-bit ownership mask; IDs 32..35 use the
+four care flags in the reserved aquarium-metadata byte. Ownership queries
+handle both stores; there are no shifts past bit 31. Do not downgrade after
+buying these items: older firmware masks
 off ownership bits it does not recognize.
 
 New fixed scenery: Zen Pebbles (40), Duck Float (60), Pearl Clam
@@ -323,6 +331,9 @@ generates chore rewards or changes other care rates; both are per tank.
 New purchases roll back their balance/ownership if the internal save fails.
 Menu actions share the dark fill and pale teal outline; selected tabs and
 letters use a white outline. Aquarium and bank pagination use `<` / `>`.
+All original and added shop icons are muted gray while unowned and full color
+after purchase, both in rows and detail dialogs. This indicates ownership,
+not affordability; the price and UNLOCK button show whether you can buy.
 JSON backup/restore and Wipe affect the active tank only; purchased slots
 and inactive tanks remain. Multi-tank Wipe preserves the shared wallet; JSON
 restore replaces it with the backup's balance. Names remain tied to slots.

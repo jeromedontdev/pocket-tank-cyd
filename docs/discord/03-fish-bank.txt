@@ -15,6 +15,6 @@ Stored fish don't age, grow, eat or need attention. Their names, colors, pattern
 
 Every move asks for confirmation and saves immediately. If saving fails, neither fish moves.
 
-The bank is included in internal saves and SD backups. Removing the SD card won't make stored fish disappear. Wipe clears the bank; restoring an older pre-bank snapshot starts with an empty bank.
+Each aquarium has its own 20-slot bank, included in internal saves and SD backups. Removing the SD card won't make stored fish disappear. Wipe clears only the active bank; restoring an older pre-bank snapshot starts with an empty bank.
 
 The attached screens show a full 20-slot bank and a swap with all five active slots occupied.

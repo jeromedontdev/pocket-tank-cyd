@@ -4,7 +4,7 @@
 Updated October 21, 2026
 
 **Sharing on Discord?** Use the [Discord posting kit](discord/START-HERE.txt):
-four short copy/paste posts with matching PNG image boards. Paste each text
+five short copy/paste posts with matching PNG image boards. Paste each text
 and drag its matching PNG into the same Discord message. Local Markdown
 image links will not upload pictures when copied as text.
 
@@ -21,7 +21,9 @@ The headline additions:
   and markings.
 - **An Aquarium Journal** with 15 Keeper levels, objectives, an appearance
   album and unlockable backdrops.
-- **Nineteen added decorations**, plus vivid sand and water palettes and two upkeep upgrades.
+- **Nineteen added decorations**, including three simultaneous surface floats.
+- **Two upkeep and four fish-care upgrades**, purchased separately for each tank.
+- **A price-sorted shop:** gray icons before purchase, full color afterward.
 - **Readable menus**, reorganized Settings, SD backups and offline updates.
 
 > **About the imagery:** every image below is a fresh capture from the
@@ -33,6 +35,25 @@ The headline additions:
 > hardware's five-active-fish limit for these captures. SD operations,
 > flashing and touch calibration still run on the physical CYD, not in
 > the emulator.
+
+## Get the CYD build
+
+Download a complete bundle from
+[GitHub Releases](https://github.com/jeromedontdev/pocket-tank-cyd/releases).
+These are CYD-only alpha builds, not upstream multi-board releases.
+Read the included `INSTALL.txt` and check `SHA256SUMS.txt`.
+
+- **Already using this CYD fork:** back up your active aquarium, power off
+  before moving SD, copy the matching `icons-<crc>.bin` to the card root and
+  `update.ptu` to `pocket-tank/update.ptu`, then install through Settings > Updates.
+- **New board:** use the factory image at `0x0` and install the matching SD art.
+  **Factory flashing overwrites saved tanks, Wi-Fi credentials, calibration
+  and collection identity. Never use it for a normal upgrade.**
+- **Advanced USB upgrades:** the application-only image belongs in the detected
+  active OTA slot, not blindly at a fixed address.
+
+Packages are verified but unsigned; only install trusted files. See
+[installation and release details](../firmware/CYD.md#downloadable-releases).
 
 ## 1. Keep favorites in the Fish Bank
 
@@ -81,7 +102,7 @@ an empty bank; **Wipe clears the bank along with the aquarium**.
 ## Additional aquariums: room for another little ocean
 
 Open **Keeper > UPGRADES > TANKS**. Each additional aquarium costs
-**500 sand dollars from the tank you are leaving**. The original is free,
+**500 sand dollars from your shared wallet**. The original is free,
 with up to **eight total**. Confirming a purchase enters a fresh tank with
 two fry and the normal welcome, naming and customization setup.
 
@@ -90,7 +111,8 @@ two fry and the normal welcome, naming and customization setup.
 | ![Aquarium selection with a new tank costing 500 sand dollars](media/cyd-features/aquariums.png) | ![Purchase confirmation explaining shared sand dollars and separate fish, items, Journal and Bank](media/cyd-features/aquarium-purchase.png) |
 
 **Sand dollars are shared across all tanks.** Each tank has its **own fish,
-decorations, layout, palettes, Journal and 20-slot Fish Bank**.
+decorations, upkeep/fish-care upgrades, layout, palettes, Journal and
+20-slot Fish Bank**. Buying an upgrade in one tank does not unlock it elsewhere.
 Switching among owned tanks is free. **NAME TANK** edits the active tank's
 name, up to 15 characters: select a letter, use `<` / `>` and SAVE. BACK cancels.
 Names persist across switches and restarts.
@@ -113,9 +135,12 @@ but the card is needed to access inactive tanks.
 
 **Backup/Restore and Wipe now apply to the active aquarium only.**
 Purchased slots and other aquariums remain. Individual JSON backups do not
-contain the entire collection; also copy the SD card's `pocket-tank/tanks`
-directory when archiving it. Avoid downgrading to older firmware, which
-does not preserve the collection identity.
+contain the entire collection, slot ownership or tank names; a JSON restore
+keeps the current device's slot identity/name and replaces the active tank's
+contents **and the shared wallet**. Also copy the SD card's `pocket-tank/tanks`
+directory when archiving it. There is no one-click whole-collection recovery:
+SD copies alone cannot recreate collection identity after NVS is erased.
+Avoid downgrading to older firmware, which does not preserve the collection.
 
 ## 2. Make each fish your own
 
@@ -156,7 +181,7 @@ Open **Keeper > JOURNAL** for **Goals**, **Album** and **Themes**.
 
 There are **15 Keeper levels** and **15 one-time objectives**, with three
 objectives active at a time. When a goal is ready, tap it to claim its XP
-and coin reward; the next objective takes its place.
+and sand-dollar reward; the next objective takes its place.
 
 ![Aquarium Journal Goals tab showing Keeper level, XP and three objectives with readable requirements and rewards](media/cyd-features/journal-goals.png)
 
@@ -235,6 +260,11 @@ Prices are in sand dollars.
 
 The shop now sorts unlocks **cheapest first**, keeping equal-price choices
 in a stable order. The optional nursery FRY row remains a separate first row.
+There are **36 stable unlock IDs** in the catalog (the seasonal pumpkin can
+be unavailable), plus the separate nursery offers. All original and added
+item icons follow the same ownership rule in both the list and detail dialog:
+**muted gray before purchase, full color after purchase**. Gray does not mean
+you cannot afford an item; the price/button indicates affordability.
 
 ### More scenery, including the surface
 
@@ -255,7 +285,7 @@ bob in three separate surface positions and can all be displayed together.
 
 Both work awake and asleep, only in the tank that owns them. They are
 permanent upgrades; they do not remove existing growth, generate cleaning or
-trimming rewards, change fish care or slow coral growth. Inactive SD tanks
+trimming rewards, change fish care or slow coral/sword-plant growth. Inactive SD tanks
 remain completely paused.
 
 ![Price-sorted shop with functional unlocks](media/cyd-features/shop-upkeep.png)
@@ -267,7 +297,7 @@ backup/restore.
 
 | Decorations and palette upgrades | More decoration choices |
 |---|---|
-| ![Shop page showing anchor, tethered buoy, Sand Palette and Mood Lights with prices](media/cyd-features/shop-decorations.png) | ![Shop expansion page showing additional decoration choices and prices](media/cyd-features/shop-expansion.png) |
+| ![Price-sorted decoration choices with gray unowned icons](media/cyd-features/shop-decorations.png) | ![Original and added items using the same locked-icon style](media/cyd-features/shop-expansion.png) |
 
 ### Fish-care upgrades
 
@@ -276,7 +306,7 @@ Each aquarium can buy its own permanent improvements in the price-sorted shop:
 | Upgrade | Sand dollars | Benefit |
 |---|---:|---|
 | Calm Current | 160 | Resting and sleep restore energy 25% faster |
-| Cozy Shelter | 180 | Natural stress decay is 25% faster, awake and asleep |
+| Cozy Shelter | 180 | Base natural stress decay is 25% faster, awake and asleep |
 | Play Kit | 200 | Exploring restores curiosity 25% faster |
 | Training Ring | 240 | Calm holds earn an extra 25% of the normal trust rate |
 
@@ -285,6 +315,12 @@ rate while hitched, not an unlimited multiplier. Stats still cap at 10.
 No changes to food rewards, hunger, aging, size or breeding requirements.
 Nothing stacks repeatedly; extra tanks and banked fish remain paused.
 These upgrades are saved with their own aquarium, not shared between tanks.
+Cozy Shelter boosts base calming, not separate vegetation comfort effects.
+Calm Current also speeds up the daytime breather: an exhausted fish ducks
+into nearby seagrass (or its resting corner) to recover before resuming its
+advisor goal. Play Kit does not amplify curiosity spending or food rewards.
+Wipe removes these purchases from the active tank. Old backups that predate
+the optional care-upgrade field restore without these upgrades.
 
 ![Fish-care upgrades in the shop](media/cyd-features/shop-fish-care.png)
 ![Training Ring purchase details](media/cyd-features/training-ring.png)
@@ -314,6 +350,8 @@ Text now lands on the framebuffer pixel grid with a complete minimum
 
 Journal cards, fish-bank rows, customization controls and Settings use
 readable captions rather than tiny downscaled subtext.
+Menus use consistent dark buttons with pale teal borders and white labels.
+Page arrows and tank-name letter cycling use `<` / `>`, not plus/minus.
 
 | Keeper navigation | Reorganized Settings |
 |---|---|
@@ -331,7 +369,8 @@ the aquarium.
 
 ![Separate Wipe Tank confirmation with Cancel and Wipe choices](media/cyd-features/wipe-confirmation.png)
 
-Wipe clears the active tank's fish, bank contents, decorations and Journal
+Wipe clears the active tank's fish, bank contents, decorations, care/upkeep
+upgrades and Journal
 progress. With multiple tanks, the global sand-dollar wallet is kept; with
 only the original tank, its wallet resets too. It **does not delete purchased
 slots, other tanks, SD backup files or touch calibration**.
@@ -342,11 +381,13 @@ Restore a compatible SD snapshot to bring back the saved tank and bank.
 ### Tank backups and restores
 
 Settings provides versioned JSON backups on SD, including fish,
-appearance, economy, owned items, placement, palettes, Journal and bank.
+appearance, shared wallet, owned items, care/upkeep upgrades, placement,
+palettes, Journal and bank.
 Backups are written and read back for validation. A restore first creates
 a safety snapshot of the current aquarium.
 
-New backups use **schema 5**. Schemas 1 through 4 remain importable;
+New backups use **schema 5**, with an optional `tank.stat_upgrades` field
+for the four fish-care purchases. Schemas 1 through 4 remain importable;
 older firmware cannot restore schema 5 files. Keep a matching backup
 when deliberately downgrading.
 
@@ -354,7 +395,8 @@ Full-bank backup handling processes stored fish one record at a time to
 reduce RAM use on the no-PSRAM CYD. Restore releases the input buffer
 before writing its safety snapshot, then rereads and checks the original
 file before committing. The compact internal save stays within its
-4,000-byte budget (including aquarium identity and name), so normal play and bank storage do not depend on keeping
+4,000-byte budget (including aquarium identity, name and care-upgrade flags),
+so normal play and bank storage do not depend on keeping
 the card inserted.
 
 ### Offline firmware updates
@@ -402,7 +444,7 @@ python tools\capture_cyd_gallery.py --cc clang
 Use `--cc C:\path\to\zig.exe` for Zig, or `--out C:\path\to\gallery`
 for another destination. The capture tool compiles the emulator, stages
 its own temporary demonstration save, navigates the real UI and exports
-24 PNGs. It never opens a serial port, touches the board, or replaces
+33 PNGs. It never opens a serial port, touches the board, or replaces
 the normal desktop save.
 
 For build instructions and live usage, see the [project README](../README.md)

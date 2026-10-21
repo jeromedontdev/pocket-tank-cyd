@@ -1,5 +1,11 @@
 # Measured numbers — single source of truth for the video
 
+> Historical upstream measurements, retained for attribution and context.
+> The model, training pipeline and non-CYD hardware discussed here are not
+> shipped in this fork. This is not a current CYD specification or benchmark.
+> Use the [CYD feature guide](CYD-FEATURES.md), [README](../README.md) and
+> [hardware guide](../firmware/CYD.md) for the current implementation.
+
 Every figure below was measured in this repo's pipeline; dates are when. Use these
 verbatim. "Teacher" = gemma4:26b (Q4_K_M) via Ollama; "agreement" = the student
 picked the same goal as the teacher on fresh, never-trained-on situations

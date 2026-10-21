@@ -2,6 +2,15 @@
 
 ## Offline SD updates
 
+Prebuilt packages and matching SD artwork are available from
+[CYD Releases](https://github.com/jeromedontdev/pocket-tank-cyd/releases).
+Download the bundle, read `INSTALL.txt`, and verify `SHA256SUMS.txt`.
+Copy `icons-<crc>.bin` to the SD root and `update.ptu` to
+`pocket-tank/update.ptu` while powered off. Follow steps 3 and 4 below.
+The application-only binary and factory image are not SD update packages.
+**Do not factory-flash an existing tank: it overwrites NVS and loses saved
+state, credentials, calibration and collection identity.**
+
 **Settings > Updates** now installs a trusted local package from
 `pocket-tank/update.ptu` on the SD card. Wi-Fi is not used.
 
@@ -9,7 +18,7 @@
    merged flash image):
 
    ```powershell
-   python tools\make_sd_update.py firmware\build_cyd\pocket_tank.bin --release 0.3.8-cyd --out update.ptu
+   python tools\make_sd_update.py firmware\build_cyd\pocket_tank.bin --release 0.3.8-cyd.2 --out update.ptu
    ```
 
 2. Copy `update.ptu` into the SD card's `pocket-tank` directory. Alternatively,
@@ -36,6 +45,9 @@ Before installation, the current tank is saved to NVS and a verified
 stops if either fails. NVS, calibration, SD icons and normal tank backups
 are not erased. Older firmware may not understand newer saves; use a
 compatible backup when deliberately downgrading.
+Individual backups cover the active tank and shared wallet, not purchased
+slot identity or the entire aquarium collection. Also archive the SD tank
+snapshot directory and avoid erasing NVS.
 
 **Trust model:** these are local, unsigned packages. SHA-256 detects corruption,
 not malicious modifications. Only install packages you trust. The existing
@@ -53,8 +65,8 @@ same check/confirm operation as the button.
 
 The default manifest URL is empty. Checking for firmware updates can still
 scan, provision and connect Wi-Fi, but without a configured channel it reports
-**NO UPDATE CHANNEL** rather than contacting upstream releases. USB upgrades
-remain the supported, physically verified update method.
+**NO UPDATE CHANNEL** rather than contacting upstream releases. Publishing GitHub releases does not enable this signed Wi-Fi channel.
+SD installation and active-slot USB upgrades remain the supported methods.
 The legacy Wi-Fi flow remains available through the serial command
 `ota check`, not through Settings.
 
@@ -89,3 +101,19 @@ Existing image verification and rollback protections remain in place.
 End-to-end Wi-Fi connection, signed OTA installation and rollback still need
 hardware validation before publishing a channel. Do not bypass verification
 or replace signing failures with unsigned downloads.
+
+## Publishing CYD releases
+
+Push `main`, then a new immutable tag matching `vMAJOR.MINOR.PATCH-cyd.N`,
+for example `v0.3.8-cyd.2`. The label without `v` must fit 15 characters.
+The [release workflow](../.github/workflows/release.yml) builds with ESP-IDF
+v6.1, runs Python/native/emulator checks, and publishes a GitHub prerelease.
+It includes the bundle, app-only image, new-board factory image, SD package,
+matching icon bank, install instructions, license and SHA-256 checksums.
+Normal branch pushes run checks without creating a release.
+
+The `-cyd.N` suffix is a distribution revision for this fork; the firmware
+retains base version 0.3.8 and its CYD build identity. SD package labels are
+informational, not signed version claims. Do not overwrite old tags or assets.
+See [the hardware guide](../firmware/CYD.md#downloadable-releases) for local
+packaging instructions and the factory-image warning.

@@ -1,5 +1,10 @@
 # Progression II — proposal (2026-08-21, unbuilt)
 
+> Historical, unbuilt upstream proposal. Model tools and files cited below
+> were removed from this CYD-only fork; this is not an implementation plan
+> for the current release. See the [CYD feature guide](CYD-FEATURES.md)
+> for the implemented Journal, bank, aquariums and shop progression.
+
 Answers the open problem in HANDOFF.md. Supersedes nothing in progression.md
 (the contract still holds); this is the plan for what the progression layer
 *is*, now that breeding-as-population is out. Every number here is reproducible

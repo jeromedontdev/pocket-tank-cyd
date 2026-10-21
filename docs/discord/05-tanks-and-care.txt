@@ -1,0 +1,31 @@
+**More aquariums, with names and fish-care upgrades**
+
+Keeper > UPGRADES > TANKS offers up to **8 aquariums**. The original is free;
+each extra costs **500 sand dollars** from your shared wallet. Buying starts
+with two fry and normal naming/customization setup; switching back is free.
+
+**Sand dollars are global.** Fish, decorations, palettes, Journal, a 20-slot
+Fish Bank and all care/upkeep upgrades belong to each tank separately.
+Inactive tanks are completely paused on SD: no aging, hunger, growth or rewards.
+Buying/switching needs SD. Only the active tank lives in RAM/internal storage.
+Finish naming new fry before leaving; switches save and verify before committing.
+
+**NAME TANK** edits the active tank's name (15 characters). Select a letter,
+use < / >, then SAVE. BACK cancels. Names persist across switches/reboots.
+
+**Four permanent fish-care purchases, per tank:**
+- Calm Current 160: energy recovers 25% faster while resting or asleep.
+- Cozy Shelter 180: base stress decay is 25% faster, including sleep.
+- Play Kit 200: exploring gains curiosity 25% faster.
+- Training Ring 240: calm holds add 25% of the normal trust rate.
+
+Training Ring adds to the seahorse bonus (225% total while hitched).
+Stats still cap at 10; no bonus stacking, passive trust, extra food rewards,
+or changes to hunger/aging/size/breeding requirements.
+Exhausted fish also take daytime breathers in seagrass or a resting corner;
+Calm Current boosts that recovery too.
+
+Wipe clears the active tank's purchases, fish, bank and Journal, not other
+tanks or their slots. With multiple tanks, the wallet is kept. JSON restore
+keeps current tank identity/name but replaces the shared wallet.
+Archive SD tank files too; erasing NVS loses collection identity.

@@ -1,27 +1,31 @@
-**More decorations, readable menus and useful SD storage**
+**More scenery, a consistent shop and useful SD storage**
 
-**11 added decorations** (prices in sand dollars):
-• Treasure chest: 120
-• Scallop shell / starfish: 60 each
-• Sunken anchor / tethered buoy: 80 each
-• Shipwreck: 200
-• Treasure urn: 60
-• Crystals: 100
-• Sea fan: 80
-• Sunken ruins: 160
-• Jelly lantern: 120
+**19 added decorations** (sand dollars):
+Treasure chest 120; shell/starfish/urn 60 each; anchor/buoy/sea fan 80;
+shipwreck 200; crystals 100; ruins 160; jelly lantern 120.
+New fixed scenery: pebbles 40, duck 60, pearl clam 70, lily pads 80,
+floating log 90, sponges 100, barrel 110, diving helmet 140.
 
-Place, layer, move and sell decorations. The buoy and jelly lantern bob above their tethers. Sand Palette and Mood Lights are 300 each; cycling their colors afterward is free.
+The duck, lily pads and log bob together in separate surface positions.
+Placeable pieces support MOVE and depth/layering; the eight fixed pieces
+do not. Scenery sells back for 20% after two SELL taps.
 
-**Menus that fit the small screen**
-Pixel-aligned text, brighter secondary labels, wrapped messages and separate sand/water rows. Settings has Updates, clearly labeled Touch Calibration, and Wipe with a second confirmation. Wipe keeps SD backups and calibration, but clears the aquarium, bank and progression.
+**Optional upkeep:** Slow Garden 160 halves grass growth (not sword plant
+or coral); Bio Filter 180 halves new algae. Both work awake/asleep, only
+in their own tank. No free chore rewards or removal of existing growth.
+Sand Palette and Mood Lights are 300 each; color cycling is free afterward.
 
-**SD backup and restore**
-Versioned JSON snapshots include fish, bank, customization, coins, decorations, layout and Journal progress. Backups are read back and validated; restores create a safety snapshot first. Older backup schemas remain importable.
+**Cheapest-first shop:** original and added icons are muted gray before
+purchase and full color afterward, in the list and detail view. Gray means
+unowned, not unaffordable. Dark buttons match across menus; arrows use < >.
 
-**Offline SD updates**
-Settings > Updates checks pocket-tank/update.ptu. It validates the board, image size and checksum, asks for confirmation and makes a pre-update tank backup. Keep power connected.
+**SD backups** include the active tank, bank, Journal, upgrades and shared
+wallet. Restores create a safety snapshot first. Wipe clears only the active
+tank, keeping other tanks and purchased slots; a multi-tank wallet is kept.
+Also archive pocket-tank/tanks; JSON alone is not a whole-collection backup.
 
-Packages are local and unsigned: checksums detect corruption, not an untrusted publisher. Only install trusted files.
-
-These screenshots show the real emulator UI; actual SD I/O, calibration and flashing run on the physical CYD.
+**Downloadable CYD releases:**
+https://github.com/jeromedontdev/pocket-tank-cyd/releases
+Read INSTALL.txt. Existing installs use pocket-tank/update.ptu plus matching
+SD artwork. Factory flashing overwrites saves and settings: new boards only!
+Packages check board/size/SHA-256 but are unsigned; only install trusted files.

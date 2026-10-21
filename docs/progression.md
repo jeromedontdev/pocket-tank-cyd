@@ -1,5 +1,11 @@
 # Progression design — locked decisions (2026-08-20)
 
+> Historical upstream design contract, not a current CYD feature inventory.
+> The CYD fork now has a five-active-fish limit, a 20-slot bank per tank,
+> up to eight named tanks, a global sand-dollar wallet and an Aquarium Journal.
+> The [illustrated CYD guide](CYD-FEATURES.md) and [README](../README.md)
+> document the implemented behavior; historical proposals below may differ.
+
 Decisions made with Strato. This is the contract for the progression layer;
 implementation lands across sim (Track 2 polish) and firmware (Tracks 3/4).
 

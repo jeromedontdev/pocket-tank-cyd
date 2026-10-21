@@ -7,8 +7,10 @@ Other boards, model inference/training, audio, battery/PMIC and IMU drivers
 are not included. See [LICENSE](LICENSE) for the original project license.
 
 **Take the illustrated tour:** [CYD features and screenshots](docs/CYD-FEATURES.md)
-covers the bank, creature customization, Journal, decorations, palettes and
-SD workflows with fresh captures from the actual desktop renderer.
+covers named tanks, the bank, creature customization, Journal, decorations,
+fish-care upgrades, releases and SD workflows with 33 captures from the
+actual desktop renderer. A [five-post Discord kit](docs/discord/START-HERE.txt)
+includes matching image boards and ready-to-paste text.
 
 ## What remains
 
@@ -195,7 +197,7 @@ Keeper level. There are 15 levels (level 15 starts at 4200 XP), with no daily
 streaks or absence penalties.
 
 Three of the 15 objectives are active at once. Tap a ready objective to
-claim its one-time XP and coin reward; the next objective replaces it.
+claim its one-time XP and sand-dollar reward; the next objective replaces it.
 Existing care totals qualify, but old care does not grant bulk retroactive
 XP. The album permanently records seen and adult appearances, including
 customized looks, even after selling a fish; it is not an acquisition-only
@@ -275,7 +277,9 @@ automatic. Preserve existing binary offsets and append new fields; the save
 is now 4000 bytes, within the existing 4000-byte NVS budget, with the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
-tail identifies the purchased aquarium collection, active slot and its name.
+tail identifies the purchased aquarium collection, active slot, its name and
+four care-upgrade flags in a formerly reserved byte. The 36-item shop uses
+the original full 32-bit ownership field plus those four flags.
 JSON exports use schema 5 for an individual aquarium; schema
 1, 2, 3 and 4 backups remain importable. Older firmware cannot restore schema 5 backups; keep a matching
 pre-upgrade backup before downgrading. The historical progression documents under `docs`

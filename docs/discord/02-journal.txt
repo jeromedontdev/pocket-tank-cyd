@@ -3,7 +3,7 @@
 Open Keeper > JOURNAL for Goals, Album and Themes.
 
 **15 Keeper levels and 15 objectives**
-Three objectives are active at a time. Tap a completed goal to claim its one-time XP and coin reward, then another takes its place.
+Three objectives are active at a time. Tap a completed goal to claim its one-time XP and sand-dollar reward, then another takes its place.
 
 Everyday care also earns XP:
 • Eaten meal batches: 8 XP
@@ -11,7 +11,7 @@ Everyday care also earns XP:
 • Every 10 cm of plant trimming: 2 XP
 • Successful calm-hold approaches: 10 XP
 
-Spending coins doesn't lower your level. Level 15 starts at 4,200 XP. No daily streaks or absence penalties in the progression system.
+Spending sand dollars doesn't lower your level. Level 15 starts at 4,200 XP. No daily streaks or absence penalties in the progression system.
 
 **A permanent appearance album**
 Record the creature looks you've seen and raised to adulthood. Customizing counts too, and records remain after selling or storing a fish. It's an appearance collection, not a requirement to buy every variety.
@@ -22,6 +22,6 @@ Record the creature looks you've seen and raised to adulthood. Customizing count
 • Coral Reef: level 6
 • Deep Glow: level 10
 
-Backdrops preserve your chosen sand and water colors. Journal progress, album records and the selected theme are included in saves and SD backups.
+Backdrops preserve your chosen sand and water colors. Each aquarium has its own Journal, album and theme, included in saves and SD backups.
 
 Screenshots use unlocked demonstration progress, not a fresh tank.
