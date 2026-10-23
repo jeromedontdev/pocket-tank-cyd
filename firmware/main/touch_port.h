@@ -14,6 +14,8 @@ bool touch_port_milestones(void);
 bool touch_port_journal(void);
 void touch_port_show_journal(void);
 bool touch_port_bank(void);
+bool touch_port_games(void);
+void touch_port_show_games(void);
 void touch_port_show_bank(void);
 void touch_port_show_milestones(bool on);
 void touch_port_dismiss(void);    /* drop the card and the page: a flow (the birth flow) took the glass */

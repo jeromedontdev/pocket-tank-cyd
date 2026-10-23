@@ -21,11 +21,12 @@ The headline additions:
   and markings.
 - **An Aquarium Journal** with 15 Keeper levels, objectives, an appearance
   album and unlockable backdrops.
+- **Six mini-games** using your fish, with sand-dollar and Journal XP rewards.
 - **Nineteen added decorations**, including three simultaneous surface floats.
 - **Two upkeep and four fish-care upgrades**, purchased separately for each tank.
 - **A price-sorted shop:** gray icons before purchase, full color afterward.
 - **Readable menus**, reorganized Settings, SD backups and offline updates.
-- **Four optional clock themes**, with on-screen Wi-Fi setup and NTP time.
+- **Seven optional clock themes**, with on-screen Wi-Fi setup and NTP time.
 
 > **About the imagery:** every image below is a fresh capture from the
 > desktop emulator's actual CYD C renderer, not a mockup or webcam photo.
@@ -55,6 +56,43 @@ Read the included `INSTALL.txt` and check `SHA256SUMS.txt`.
 
 Packages are verified but unsigned; only install trusted files. See
 [installation and release details](../firmware/CYD.md#downloadable-releases).
+
+## Mini-games: play with your fish, not their care stats
+
+Open **Keeper > GAMES** for **Bubble Pop, Pearl Match, Fish Slalom,
+Treasure Cast, Feed Frenzy and Reef Puzzle**. Tap PLAY AS to choose an active
+fish's appearance. Your actual fish are never put at risk or fed by a game.
+Aquarium care pauses while the games menu, round or result is open.
+
+| Pick a game | Swim through the open gates |
+|---|---|
+| ![Six-game selection with PLAY AS fish chooser](media/cyd-features/games-menu.png) | ![Fish Slalom uses the chosen aquarium fish](media/cyd-features/game-fish-slalom.png) |
+
+| Pop bubbles | Remember pearl pairs |
+|---|---|
+| ![Bubble Pop timed round](media/cyd-features/game-bubble-pop.png) | ![Pearl Match memory cards](media/cyd-features/game-pearl-match.png) |
+
+| Time your cast | Match a fish's snack |
+|---|---|
+| ![Treasure Cast timing game](media/cyd-features/game-treasure-cast.png) | ![Feed Frenzy with an existing aquarium fish](media/cyd-features/game-feed-frenzy.png) |
+
+![Reef Puzzle rotates real pipe connections from inlet to outlet](media/cyd-features/game-reef-puzzle.png)
+
+| Claim both rewards | Saved once, ready to replay |
+|---|---|
+| ![Round result offers sand dollars and Journal XP](media/cyd-features/game-rewards.png) | ![Saved rewards cannot be claimed twice](media/cyd-features/game-rewards-saved.png) |
+
+Rounds award **up to 10 sand dollars plus 3 Journal XP per dollar**, helping
+unlock Keeper levels and backdrops without faking care objectives.
+Tap CLAIM to save both together; failed saves can be retried without losing
+or duplicating rewards. BACK/replay asks for a second tap before discarding
+an unclaimed prize. Sessions and unclaimed prizes are not saved across reboot.
+See the [complete rules and reward table](../README.md#mini-games).
+
+The Journal's Kelp Forest, Coral Reef and Deep Glow backdrops now use stronger
+green/blue/midnight palettes, leafy kelp, branching coral and luminous jellyfish.
+Their existing unlock levels (3/6/10) and IDs are unchanged. Original stays
+unchanged, and purchased decorations and fish remain in front of the scenery.
 
 ## 1. Keep favorites in the Fish Bank
 

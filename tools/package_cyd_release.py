@@ -90,6 +90,9 @@ Alpha release for **ESP32-2432S028 CYD only**.
 - Corrected display scaling/colors, touch calibration and readable menus.
 - SD-backed artwork, verified JSON backups and offline firmware updates.
 - Fish customization, Aquarium Journal and a free 20-slot Fish Bank.
+- Six Keeper mini-games: Bubble Pop, Pearl Match, Fish Slalom, Treasure Cast, Feed Frenzy and Reef Puzzle.
+- Real aquarium fish portraits, paused care and atomic sand-dollar plus Journal XP rewards.
+- More distinctive Kelp Forest, Coral Reef and Deep Glow Journal backdrops.
 - Up to eight purchasable, named aquariums with a global sand-dollar wallet.
 - Expanded decorations, three surface floats, upkeep and fish-care upgrades.
 - Price-sorted shop, consistent buttons and ownership-colored icons.

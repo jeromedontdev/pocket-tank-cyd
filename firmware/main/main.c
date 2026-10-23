@@ -345,14 +345,17 @@ static void tank_task(void *arg) {
                       touch_port_show_shop(false); setup_begin_place(&tank, item);
                       ESP_LOGI(TAG, "shop: placement page up for the %s", SD_ITEMS[item].name); } }
               else ESP_LOGI(TAG, "shop: %s refused (balance %d, price %d)", SD_ITEMS[item].name, (int)tank.sd_balance, SD_ITEMS[item].price); } }
-        brightness_apply(tank.night && !render_clock_active(&tank));
+        brightness_apply(tank.night && !render_clock_active(&tank) && !touch_port_games());
         int64_t pf_tick = esp_timer_get_time(); polls_us += pf_tick - now;
-        tank.hold_light = setup_active() || touch_port_confirm_up() || touch_port_calibrating();   /* no lights-out mid-name */
+        tank.hold_light = setup_active() || touch_port_confirm_up() || touch_port_calibrating() || touch_port_games();   /* no lights-out mid-name or game */
         tank.ui_cover = tank.hold_light || touch_port_milestones() || touch_port_settings() || touch_port_updates() || touch_port_shop();   /* a fry's spawning waits */
-        tank_tick(&tank, dt, advisor_rules);
-        progression_tick(&tank, dt);
-        notice_tick(&tank, dt, tank.ui_cover || setup_birth_due());   /* a fry's welcome first (2026-09-29) */
-        if (!touch_port_confirm_up()) {           /* an arrival owed its welcome: the birth flow (setup.c) */
+        if (touch_port_games()) render_games_tick(dt);
+        else {
+            tank_tick(&tank, dt, advisor_rules);
+            progression_tick(&tank, dt);
+        }
+        if (!touch_port_games()) notice_tick(&tank, dt, tank.ui_cover || setup_birth_due());   /* a fry's welcome first (2026-09-29) */
+        if (!touch_port_confirm_up() && !touch_port_games()) {           /* an arrival owed its welcome: the birth flow (setup.c) */
             int nb = setup_poll_birth(&tank);
             if (nb >= 0) { touch_port_dismiss(); 
                            ESP_LOGI(TAG, "a new fry, %s: birth flow up (announce, name, family; director `setup off` drops it)", tank.fish[nb].name); }
@@ -379,7 +382,8 @@ static void tank_task(void *arg) {
             if (idle_clock) sel = -1;
             int64_t tc = esp_timer_get_time();
             if (touch_port_milestones()) {       /* milestones page: covers the tank until a tap */
-                if (touch_port_bank()) render_bank(&tank, fb[cur], TANK_W);
+                if (touch_port_games()) render_games(&tank, fb[cur], TANK_W);
+                else if (touch_port_bank()) render_bank(&tank, fb[cur], TANK_W);
                 else if (touch_port_journal()) render_journal(&tank, fb[cur], TANK_W);
                 else render_milestones(&tank, fb[cur], TANK_W);
                 sel = -1;

@@ -555,6 +555,17 @@ void progression_sd_grant(tank_t *t, int n) {
     if (n >= 0) sd_award(t, n);
     else { t->sd_balance += n; if (t->sd_balance < 0) t->sd_balance = 0; mark_dirty(); }
 }
+bool progression_game_reward(tank_t *t, int dollars) {
+    if (dollars < 1 || dollars > 10 || t->sd_balance > INT_MAX - dollars || t->sd_earned > INT_MAX - dollars) {
+        fprintf(stderr, "Invalid or overflowing mini-game reward: %d\n", dollars); return false;
+    }
+    uint32_t old_xp = t->journal.xp;
+    journal_add_xp(t, (uint32_t)dollars * 3);
+    t->sd_balance += dollars; t->sd_earned += dollars;
+    if (progression_save(t)) return true;
+    t->sd_balance -= dollars; t->sd_earned -= dollars; t->journal.xp = old_xp;
+    fprintf(stderr, "Mini-game reward save failed; wallet rolled back\n"); return false;
+}
 /* the ledger against the tank: anything earned and not yet paid is paid now.
  * Runs every tick, so it is also the back pay for a save from before the
  * shop (paid bits all zero: the stages and the trust it already has, the

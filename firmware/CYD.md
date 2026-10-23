@@ -453,6 +453,27 @@ The 4000-byte binary save and JSON schema 5 are retained; JSON adds optional
 `tank.stat_upgrades` (integer 0..15), binary saves use a reserved metadata byte.
 Console purchase keys: `current`, `shelter`, `play`, `training`.
 
+### Mini-games and stronger Journal backdrops
+
+**Keeper > GAMES** offers Bubble Pop, Pearl Match, Fish Slalom, Treasure Cast,
+Feed Frenzy and Reef Puzzle. The games menu, rounds and results pause aquarium
+simulation and care progression. Slalom and feeding games reuse active fish
+portraits without changing fish state. Gameplay uses a separate random stream.
+
+Completed rounds offer at most 10 sand dollars and 3 Journal XP per dollar.
+CLAIM persists coins and XP atomically, with rollback and retry on failure.
+These XP contribute to existing Keeper levels and theme unlocks, not care
+objective counters. Leaving/replaying an unclaimed result requires two taps.
+Game sessions and unclaimed rewards do not survive reboot. No new persistent
+save fields or schema changes are needed. Manual sleep still follows the
+usual offline-care rules.
+
+Kelp Forest, Coral Reef and Deep Glow retain their existing IDs and unlock
+levels but now have much stronger water tints and scenery. Original is unchanged.
+See the [game rules and reward table](../README.md#mini-games).
+The serial director's `games` and `games tap <framebuffer x> <y>` commands
+open the same page and use the same hit targets without staging a demo tank.
+
 ### Optional tank clock and on-screen Wi-Fi setup
 
 Open **Settings > CLOCK** to cycle **OFF / MINIMAL / DIGITAL / ANALOG / NEON /

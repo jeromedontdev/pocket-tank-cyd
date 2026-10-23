@@ -209,6 +209,7 @@ static void help(void) {
     ESP_LOGI(TAG, "stash (park the real tank now) | restore (bring it back) | age <fish> <hours>");
     ESP_LOGI(TAG, "milestones [off] (the page, on cue; on the device: tap the open stats card)");
     ESP_LOGI(TAG, "journal | journal tap <x> <y> | journal demo (parks the real tank, unlocks temporary theme previews; restore when finished)");
+    ESP_LOGI(TAG, "games | games tap <x> <y> (framebuffer coordinates; real aquarium care pauses)");
     ESP_LOGI(TAG, "bank | bank tap <x> <y> | bank verify (JSON validation) | bank demo (parks real tank; restore afterwards)");
     ESP_LOGI(TAG, "tanks | tanks tap <x> <y> | tanks demo (parks real tank, grants test coins; restore afterwards)");
     ESP_LOGI(TAG, "fry [open|roll|buy <0-2>] (the shop's fry: open = as if a fish was sold; roll = a fresh three now)");
@@ -417,6 +418,17 @@ static void run(tank_t *t, char *line) {
             if (render_bank_tap(t, x, y)) touch_port_show_milestones(true);
         } else { ESP_LOGW(TAG, "bank | bank tap <framebuffer x> <y>"); return; }
         ESP_LOGI(TAG, "bank %u/%d stored | %d/%d active", t->bank_count, FISH_BANK_CAP, t->n_fish, POP_CAP);
+    } else if (!strcmp(c, "games")) {
+        if (argc == 1) { touch_port_show_games(); tank_handled(t); }
+        else if (argc == 4 && !strcmp(argv[1], "tap")) {
+            float x, y; char extra;
+            if (sscanf(argv[2], "%f%c", &x, &extra) != 1 || sscanf(argv[3], "%f%c", &y, &extra) != 1 ||
+                !isfinite(x) || !isfinite(y) || x < 0 || y < 0 || x >= TANK_W || y >= TANK_H || !touch_port_games()) {
+                ESP_LOGW(TAG, "games tap requires an open games page and framebuffer x y"); return;
+            }
+            if (render_games_tap(t, x, y)) touch_port_show_milestones(true);
+        } else { ESP_LOGW(TAG, "games | games tap <framebuffer x> <y>"); return; }
+        ESP_LOGI(TAG, "games page %s; aquarium care %s", touch_port_games() ? "open" : "closed", touch_port_games() ? "paused" : "resumed");
     } else if (!strcmp(c, "journal")) {
         if (argc == 2 && !strcmp(argv[1], "demo")) {
             if (!stage_guard(t)) return;

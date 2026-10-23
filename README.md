@@ -7,8 +7,8 @@ Other boards, model inference/training, audio, battery/PMIC and IMU drivers
 are not included. See [LICENSE](LICENSE) for the original project license.
 
 **Take the illustrated tour:** [CYD features and screenshots](docs/CYD-FEATURES.md)
-covers named tanks, the bank, creature customization, Journal, decorations,
-fish-care upgrades, themed clocks, Wi-Fi setup, releases and SD workflows with 41 captures from the
+covers named tanks, the bank, creature customization, Journal, mini-games,
+decorations, fish-care upgrades, themed clocks, Wi-Fi setup, releases and SD workflows with 58 captures from the
 actual desktop renderer. A [five-post Discord kit](docs/discord/START-HERE.txt)
 includes matching image boards and ready-to-paste text.
 
@@ -226,7 +226,8 @@ build information is on Updates; Settings keeps a readable version footer.
 
 Open **Keeper > JOURNAL** for Goals, Album and Themes. Earn permanent XP
 from eaten meals (8), cleaned algae colonies (2), each 10 cm trimmed (2),
-and successful calm-hold approaches (10). Spending sand dollars never lowers your
+and successful calm-hold approaches (10). Mini-game claims also grant three XP
+per sand dollar earned. Spending sand dollars never lowers your
 Keeper level. There are 15 levels (level 15 starts at 4200 XP), with no daily
 streaks or absence penalties.
 
@@ -238,10 +239,42 @@ customized looks, even after selling a fish; it is not an acquisition-only
 species checklist. Backdrops unlock at levels 3 (Kelp Forest), 6 (Coral Reef)
 and 10 (Deep Glow). Original remains available, and themes do not replace
 your purchased water/sand palettes or lock existing customization.
+Kelp Forest now has a rich green water tint, leafy stalks and light shafts;
+Coral Reef adds blue water and large pink/peach branching coral; Deep Glow
+has midnight-purple water, luminous jellyfish and bioluminescent specks.
+Original is unchanged.
 
 XP, claims, album records and the selected theme survive saves and SD
 backup/restore. Wipe clears them along with the tank. Claims and theme
 changes report save failures instead of applying unsaved rewards.
+
+## Mini-games
+
+Open **Keeper > GAMES**. Tap **PLAY AS** to cycle through your active fish;
+Slalom uses that fish's real appearance, Feed Frenzy visits the tank's fish,
+and Treasure Cast shows existing fish among the hazards. These are portraits,
+not fish transfers: games cannot injure, feed, train or change the actual fish.
+
+| Game | How to play | Sand dollars |
+|---|---|---|
+| Bubble Pop | Pop rising bubbles for 30 seconds; gold bubbles score 3. | Score / 3, rounded down, up to 10 |
+| Pearl Match | Reveal cards and remember six pearl pairs; untimed. | 8 at 18 moves or fewer, otherwise 5 |
+| Fish Slalom | Use LEFT/RIGHT to pass 12 open gates and collect their snacks. | 1 per successful gate, up to 10 |
+| Treasure Cast | Time five casts over the chest, avoiding fish/debris. | 2 per accurate cast, up to 10 |
+| Feed Frenzy | Choose each visiting fish's requested snack for 30 seconds. Correct +2; wrong -1, never below zero. | Score / 2, rounded down, up to 10 |
+| Reef Puzzle | Rotate pipe tiles to connect the left inlet to the right outlet; untimed, always solvable. | 6 |
+
+Each sand dollar also earns **3 permanent Journal XP**, contributing to Keeper
+levels and backdrop unlocks without falsely completing care objectives.
+**CLAIM** saves both rewards together; a failed save changes neither and
+leaves the claim available to retry. A round can only be claimed once.
+BACK or PLAY AGAIN requires a second tap before discarding an unclaimed reward.
+
+Aquarium care, growth and care progression pause throughout the games menu,
+round and results. Leaving resumes normal care; manually sleeping/rebooting
+still uses the normal offline-care rules. Games, in-progress scores and
+unclaimed rewards are temporary, not saved sessions or high-score records.
+There are no entry fees, wagers or penalties to your actual aquarium.
 
 ## Fish bank
 

@@ -316,16 +316,20 @@ def main():
                 for step in range(before_cycle["tank"]["n_fish"]):
                     tap(176, 28)
                     assert lib.sim_page() == 0 and lib.sim_selected() == (first + step + 1) % before_cycle["tank"]["n_fish"]
-                    assert json.loads(backup(lib)) == before_cycle, "Next-fish arrow must not feed or modify the tank"
+                    current_cycle = json.loads(backup(lib))
+                    current_cycle["tank"]["saved_unix"] = before_cycle["tank"]["saved_unix"]
+                    assert current_cycle == before_cycle, "Next-fish arrow must not feed or modify the tank"
                 lib.sim_touch(176 * 240 / 448, 28 * 180 / 368, 1)
                 lib.sim_touch(206 * 240 / 448, 28 * 180 / 368, 0)
                 assert lib.sim_selected() == first and lib.sim_page() == 0, "Sliding outside the arrow cancels cycling"
                 tap(70, 80)
                 assert lib.sim_page() == 1, "The fish card itself must still open Keeper"
                 print("PASS: fish-card arrow cycles all fish, wraps, cancels off-target releases and does not feed/open Keeper")
+                from test_games import exercise
+                exercise(lib, backup, output)
                 lib.sim_action(5)
                 lib.sim_action(1)
-                tap(220, 356)
+                tap(88, 356)
                 assert lib.sim_page() == 5, "Keeper Journal entry must open the Journal"
                 journal_frames = set()
                 for x in (70, 200, 340):
@@ -370,7 +374,7 @@ def main():
                 assert lib.sim_restore(data, len(data))
                 print("PASS: fourteen new shop purchases through price-sorted UI, including all four stat upgrades")
                 lib.sim_action(1)
-                tap(350, 356)
+                tap(224, 356)
                 assert lib.sim_page() == 6, "Keeper must open the fish bank"
                 lib.sim_frame(0.04)
                 bank_before = json.loads(backup(lib))

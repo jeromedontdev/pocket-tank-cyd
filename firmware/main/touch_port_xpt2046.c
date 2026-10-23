@@ -29,7 +29,7 @@ static float s_lx, s_ly;                          /* LAST touched position (rele
 static float s_fx[N_FISH_MAX], s_fy[N_FISH_MAX];  /* fish positions at press time */
 static int s_sel = -1; static int64_t s_sel_us;   /* tapped fish -> stats card */
 static bool s_ms;                                 /* milestones page up (its CLOSE button ends it) */
-static bool s_journal, s_bank;
+static bool s_journal, s_bank, s_games;
 static bool s_aquariums;
 static bool s_cf; static int64_t s_cf_us; static int s_cf_ans;   /* reset confirm prompt */
 static bool s_set;                                /* settings page up (CLOSE returns to the milestones page) */
@@ -487,6 +487,10 @@ void touch_port_poll(tank_t *t) {
                 goto released;
             }
             if (s_ms) {
+                if (s_games) {
+                    if (render_games_tap(t, s_px, s_py)) s_games = false;
+                    goto released;
+                }
                 if (s_bank) {
                     if (render_bank_tap(t, s_px, s_py)) s_bank = false;
                     goto released;
@@ -498,6 +502,7 @@ void touch_port_poll(tank_t *t) {
                 int r = render_milestones_tap(t, s_px, s_py);
                 if (r == MS_TAP_BANK) { s_bank = true; s_sel = -1; render_bank_open(); goto released; }
                 if (r == MS_TAP_JOURNAL) { s_journal = true; render_journal_open(); goto released; }     /* CLOSE / SETTINGS / the sand dollar, detail modal, nothing */
+                if (r == MS_TAP_GAMES) { s_games = true; s_sel = -1; render_games_open(); tank_handled(t); goto released; }
                 ESP_LOGI(TAG, "page tap at %.0f,%.0f (release %.0f,%.0f) -> %s", s_px, s_py, s_lx, s_ly,
                          r >= MS_TAP_CUSTOM ? "CUSTOMIZE" : r >= MS_TAP_SELL ? "SELL (a fish's card)" : r >= MS_TAP_RENAME ? "RENAME (a fish's card)" :
                          r == MS_TAP_CLOSE ? "CLOSE" : r == MS_TAP_SETTINGS ? "SETTINGS" : r == MS_TAP_SHOP ? "SHOP" : r == MS_TAP_KEPT ? "detail" : "nothing");
@@ -588,7 +593,7 @@ void touch_port_poll(tank_t *t) {
                                                   (no feed, no light-toggle burst) */
             else tank_touch_tap(t, s_px, s_py);
         }
-        else if (s_ms && !s_journal && !s_bank && !s_back && fabsf(dx) >= 40 && fabsf(dx) > 2 * fabsf(dy)) {   /* sideways along the TANK row: its page (2026-09-30) */
+        else if (s_ms && !s_journal && !s_bank && !s_games && !s_back && fabsf(dx) >= 40 && fabsf(dx) > 2 * fabsf(dy)) {   /* sideways along the TANK row: its page (2026-09-30) */
             if (render_milestones_swipe(t, s_px, s_py, dx)) ESP_LOGI(TAG, "page swipe %.0f px on the tank row", dx);
         }
         else if (!card_next && !s_ms && t->tool == TOOL_HAND && s_py - tank_glass_top(s_px) < 60 && dy >= 40) tank_feed(t, s_lx, 3);  /* drag down from the top = feed (not with a tool in hand) */
@@ -604,19 +609,21 @@ int touch_port_selected(void) { return s_sel; }
 bool touch_port_milestones(void) { return s_ms; }
 bool touch_port_journal(void) { return s_ms && s_journal; }
 bool touch_port_bank(void) { return s_ms && s_bank; }
+bool touch_port_games(void) { return s_ms && s_games; }
+void touch_port_show_games(void) { touch_port_dismiss(); s_ms = true; s_games = true; render_games_open(); }
 void touch_port_show_bank(void) { touch_port_dismiss(); s_ms = true; s_bank = true; render_bank_open(); }
 void touch_port_show_journal(void) { touch_port_dismiss(); s_ms = true; s_journal = true; render_journal_open(); }
-void touch_port_show_milestones(bool on) { if (s_ms && !on) render_milestones_leave(); s_ms = on; s_journal = s_bank = false; }
-void touch_port_dismiss(void) { s_aquariums = false; s_journal = s_bank = false; s_sel = -1; if (s_ms) render_milestones_leave(); if (s_shop) render_shop_leave(); s_ms = false; s_set = false; s_shop = false; s_upd = false; }
+void touch_port_show_milestones(bool on) { if (s_ms && !on) render_milestones_leave(); s_ms = on; s_games = s_journal = s_bank = false; }
+void touch_port_dismiss(void) { s_aquariums = false; s_games = s_journal = s_bank = false; s_sel = -1; if (s_ms) render_milestones_leave(); if (s_shop) render_shop_leave(); s_ms = false; s_set = false; s_shop = false; s_upd = false; }
 bool touch_port_updates(void) { return s_upd; }
-void touch_port_show_updates(bool on) { s_journal = s_bank = false; s_upd = on; if (on) { s_ms = false; s_set = false; s_shop = false; s_sel = -1; } }
+void touch_port_show_updates(bool on) { s_games = s_journal = s_bank = false; s_upd = on; if (on) { s_ms = false; s_set = false; s_shop = false; s_sel = -1; } }
 int  touch_port_take_update(void) { int r = s_upd_act; s_upd_act = 0; return r; }
 
 /* ---- reset confirm prompt ---- */
 void touch_port_confirm_open(void) {
     s_journal = s_bank = false;
     s_cf = true; s_cf_us = esp_timer_get_time(); s_cf_ans = 0;
-    s_sel = -1; s_ms = false; s_set = false; s_shop = false; s_upd = false; render_shop_leave();   /* it replaces the card / the pages */
+    s_games = false; s_sel = -1; s_ms = false; s_set = false; s_shop = false; s_upd = false; render_shop_leave();   /* it replaces the card / the pages */
     ESP_LOGI(TAG, "reset prompt up (YES / NO on the glass; NO by itself in %d s)", (int)(CONFIRM_TIMEOUT_US / 1000000));
 }
 bool touch_port_confirm_answer(int ans) {
@@ -633,10 +640,10 @@ float touch_port_confirm_frac(void) {
 int  touch_port_confirm_take(void)  { int a = s_cf_ans; s_cf_ans = 0; return a; }
 bool touch_port_pressed_since(int64_t us) { return s_down && s_press_us > us; }
 bool touch_port_settings(void) { return s_set; }
-void touch_port_show_settings(bool on) { s_journal = s_bank = false; s_set = on; if (on) { s_ms = false; s_sel = -1; } }
+void touch_port_show_settings(bool on) { s_games = s_journal = s_bank = false; s_set = on; if (on) { s_ms = false; s_sel = -1; } }
 int  touch_port_take_setting(int *value) { int w = s_set_what; *value = s_set_val; s_set_what = 0; return w; }
 bool touch_port_shop(void) { return s_shop; }
 bool touch_port_aquariums(void) { return s_shop && s_aquariums; }
 void touch_port_show_aquariums(const tank_t *t) { touch_port_dismiss(); s_shop = s_aquariums = true; render_aquariums_open(t); }
-void touch_port_show_shop(bool on) { s_aquariums = false; s_journal = s_bank = false; if (s_shop && !on) render_shop_leave(); s_shop = on; if (on) { s_ms = false; s_set = false; s_sel = -1; } }
+void touch_port_show_shop(bool on) { s_aquariums = false; s_games = s_journal = s_bank = false; if (s_shop && !on) render_shop_leave(); s_shop = on; if (on) { s_ms = false; s_set = false; s_sel = -1; } }
 int  touch_port_take_shop(void) { int r = s_shop_act; s_shop_act = 0; return r; }

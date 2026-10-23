@@ -3118,24 +3118,34 @@ static inline uint32_t floor_rgb(int x, int y) {
 static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
     int floor = TANK_BOT - 14;
     if (g_journal_theme == 1) {
-        int stem = x % 29, bend = (y / 12 % 4) - 2;
-        int height = 38 + (x / 29 % 4) * 22;
-        if (y > floor - height && (abs(stem - 14 - bend) <= 1 ||
-            (y % 17 < 6 && abs(stem - 14 - bend) < 7)))
-            return mix(water, 0x1c7959, 0.45f);
+        water = mix(water, 0x075b45, 0.6f);
+        int stem = x % 32, bend = (int)(sinf(y * 0.08f) * 3);
+        int height = 75 + (x / 32 % 4) * 21;
+        int leaf_x = stem - 15 - bend - (y / 24 % 2 ? 6 : -6), leaf_y = y % 24 - 12;
+        if (y > floor - height && (abs(stem - 15 - bend) <= 2 ||
+            (leaf_x * leaf_x * 2 + leaf_y * leaf_y < 80)))
+            return mix(water, x / 32 % 2 ? 0x3ebd71 : 0x167c51, 0.8f);
+        if ((x + y / 2) % 51 < 5) return mix(water, 0x9adf83, 0.12f);
     } else if (g_journal_theme == 2) {
-        int dx = x % 60 - 30, rise = floor - y, peak = 28 + (x / 60 % 3) * 13;
-        if (rise > 0 && rise < peak && (abs(dx) < 2 ||
-            (rise > 10 && abs(abs(dx) - (peak - rise) / 2) <= 1 && abs(dx) < 19) ||
-            (rise < 13 && abs(dx) < 23)))
-            return mix(water, x / 60 % 2 ? 0x9a569a : 0x3c9790, 0.5f);
+        water = mix(water, 0x125b79, 0.65f);
+        int dx = x % 54 - 27, rise = floor - y, peak = 50 + (x / 54 % 3) * 17;
+        if (rise > 0 && rise < peak && (abs(dx) < 3 ||
+            (rise > 12 && abs(abs(dx) - (rise - 12) / 2) <= 3 && abs(dx) < 25) ||
+            (rise > 32 && abs(abs(dx) - (rise - 32) / 2) <= 2 && abs(dx) < 17) ||
+            (rise < 12 && dx * dx + rise * rise < 190)))
+            return mix(water, x / 54 % 2 ? 0xef77b8 : 0xff9c74, 0.85f);
     } else if (g_journal_theme == 3) {
-        water = mix(water, 0x100c36, 0.45f);
+        water = mix(water, 0x140c40, 0.85f);
         uint32_t hash = (uint32_t)(x * 73856093u) ^ (uint32_t)(y * 19349663u);
-        if (y > 22 && y < floor && hash % 911u < 2) return mix(water, hash & 1 ? 0x6eefff : 0xe18cff, 0.65f);
+        if (y > 22 && y < floor && hash % 277u < 3) return mix(water, hash & 1 ? 0x6eefff : 0xe18cff, 0.9f);
         int dx = x % 43 - 21, rise = floor - y;
         if (rise > 0 && rise < 22 + x / 43 % 3 * 7 && abs(dx) < (28 - rise) / 4)
-            return mix(water, 0x7960c9, 0.4f);
+            return mix(water, 0xa275ef, 0.8f);
+        int jx = x % 83 - 41, jy = y - (32 + x / 83 % 3 * 18);
+        if (jy >= -11 && jy <= 0 && jx * jx + jy * jy < 144)
+            return mix(water, 0x64e8ef, 0.75f);
+        if (jy > 0 && jy < 28 && abs(jx) < 10 && (jx + jy / 5) % 5 == 0)
+            return mix(water, 0xc388ef, 0.65f);
     }
     return water;
 }
@@ -4409,9 +4419,9 @@ void render_milestones(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
     for (int y = 0; y < TANK_H; y++)
         for (int x = 0; x < TANK_W; x++) fb[y * stride + x] = rgb565(MSP_INK, 1);
-    char journal_label[32]; snprintf(journal_label, sizeof journal_label, "JOURNAL - LEVEL %d", journal_level(t));
-    button(&c, 24, JOURNAL_ENTRY_Y, 258, 18, 0x1c2f36, MSP_TEAL, journal_label, 2);
-    button(&c, 290, JOURNAL_ENTRY_Y, 134, 18, 0x1c2f36, MSP_TEAL, "FISH BANK", 2);
+    button(&c, 24, JOURNAL_ENTRY_Y, 128, 18, 0x1c2f36, MSP_TEAL, "JOURNAL", 2);
+    button(&c, 160, JOURNAL_ENTRY_Y, 128, 18, 0x1c2f36, MSP_TEAL, "FISH BANK", 2);
+    button(&c, 296, JOURNAL_ENTRY_Y, 128, 18, 0x1c2f36, MSP_TEAL, "GAMES", 2);
     for (int i = 0; i < t->n_fish; i++) {
         const fish_t *f = &t->fish[i];
         int top = MSP_ROW_Y0 + i * MSP_ROW_H;
@@ -4605,8 +4615,9 @@ int render_milestones_tap(const tank_t *t, float x, float y) {
         }
         ms_close(); return MS_TAP_KEPT;                  /* any other tap: back to the page */
     }
-    if (y >= JOURNAL_ENTRY_Y && x >= 24 && x < 282) return MS_TAP_JOURNAL;
-    if (y >= JOURNAL_ENTRY_Y && x >= 290 && x < 424) return MS_TAP_BANK;
+    if (y >= JOURNAL_ENTRY_Y && x >= 24 && x < 152) return MS_TAP_JOURNAL;
+    if (y >= JOURNAL_ENTRY_Y && x >= 160 && x < 288) return MS_TAP_BANK;
+    if (y >= JOURNAL_ENTRY_Y && x >= 296 && x < 424) return MS_TAP_GAMES;
     if (x >= MSP_CLOSE_X - 8 && y >= MSP_CLOSE_Y - 4) return MS_TAP_CLOSE;      /* slop out to the glass edge */
     if (x < MSP_SET_X + MSP_SET_W + 8 && y >= MSP_CLOSE_Y - 4) return MS_TAP_SETTINGS;   /* the settings page */
     if (y >= MSP_CLOSE_Y - 4) return MS_TAP_SHOP;                                        /* UPGRADES: the rest of the strip is the shop */
@@ -5741,6 +5752,300 @@ int render_journal_tap(tank_t *t, float x, float y) {
                  journal_set_theme(t, theme) ? "THEME SAVED!" : "SAVE FAILED - THEME UNCHANGED");
     }
     return 0;
+}
+enum { GAME_MENU, GAME_BUBBLES, GAME_MATCH, GAME_RESULT, GAME_SLALOM, GAME_CAST, GAME_FRENZY, GAME_REEF };
+static struct {
+    int page, kind, score, moves, pairs, first, second, spawned, reward;
+    int fish, lane, target, errors, rounds, discard;
+    float left, spawn, reveal;
+    float travel;
+    bool claimed, save_failed;
+    uint8_t cards[12], matched[12], pipes[9];
+    struct { float x, y; bool live, gold; } bubbles[6];
+} g_game;
+static uint32_t g_game_rng = 0x7a5b193du;
+static uint32_t game_random(void) {
+    g_game_rng ^= g_game_rng << 13; g_game_rng ^= g_game_rng >> 17; g_game_rng ^= g_game_rng << 5;
+    return g_game_rng;
+}
+void render_games_open(void) {
+    memset(&g_game, 0, sizeof g_game); g_game.first = g_game.second = -1;
+}
+static void game_start(int kind) {
+    int fish = g_game.fish;
+    render_games_open(); g_game.fish = fish; g_game.page = g_game.kind = kind; g_game.left = 30;
+    g_game.target = (int)(game_random() % 3); g_game.lane = 1;
+    for (int i = 0; i < 12; i++) g_game.cards[i] = (uint8_t)(i / 2);
+    for (int i = 11; i > 0; i--) {
+        int j = (int)(game_random() % (unsigned)(i + 1));
+        uint8_t tmp = g_game.cards[i]; g_game.cards[i] = g_game.cards[j]; g_game.cards[j] = tmp;
+    }
+    static const uint8_t routes[2][9] = {
+        {6, 10, 12, 9, 3, 3, 3, 3, 3},
+        {3, 3, 3, 12, 3, 6, 3, 10, 9}
+    };
+    unsigned route = game_random() % 2;
+    for (int i = 0; i < 9; i++) {
+        unsigned mask = routes[route][i];
+        for (unsigned r = game_random() % 4; r; r--) mask = ((mask << 1) | (mask >> 3)) & 15;
+        g_game.pipes[i] = (uint8_t)mask;
+    }
+    g_game.pipes[3] = 3; /* Closed inlet: a generated puzzle cannot start solved. */
+}
+static void game_finish(void) {
+    g_game.page = GAME_RESULT;
+    g_game.reward = g_game.kind == GAME_MATCH ? (g_game.moves <= 18 ? 8 : 5) :
+                   g_game.kind == GAME_REEF ? 6 : g_game.kind == GAME_CAST ? g_game.score :
+                   g_game.score / (g_game.kind == GAME_BUBBLES ? 3 : 2);
+    if (g_game.reward > 10) g_game.reward = 10;
+}
+void render_games_tick(float dt) {
+    if (!isfinite(dt) || dt <= 0) return;
+    if (dt > 0.25f) dt = 0.25f;
+    if (g_game.page == GAME_BUBBLES) {
+        g_game.left -= dt;
+        if (g_game.left <= 0) { g_game.left = 0; game_finish(); return; }
+        g_game.spawn -= dt;
+        for (int i = 0; i < 6; i++) {
+            if (g_game.bubbles[i].live) {
+                g_game.bubbles[i].y -= dt * (g_game.bubbles[i].gold ? 58 : 42);
+                if (g_game.bubbles[i].y < 100) g_game.bubbles[i].live = false;
+            }
+            if (!g_game.bubbles[i].live && g_game.spawn <= 0) {
+                g_game.bubbles[i].x = 52 + game_random() % 344;
+                g_game.bubbles[i].y = 304; g_game.bubbles[i].live = true;
+                g_game.bubbles[i].gold = ++g_game.spawned % 7 == 0;
+                g_game.spawn = 0.65f;
+            }
+        }
+    } else if (g_game.page == GAME_SLALOM) {
+        g_game.travel += dt * 95;
+        if (g_game.travel >= 210) {
+            if (g_game.lane == g_game.target) g_game.score += 2; else g_game.errors++;
+            g_game.travel = 0; g_game.rounds++; g_game.target = (int)(game_random() % 3);
+            if (g_game.rounds == 12) game_finish();
+        }
+    } else if (g_game.page == GAME_CAST) {
+        g_game.travel += dt * 0.9f;
+        if (g_game.travel >= 2) g_game.travel -= 2;
+    } else if (g_game.page == GAME_FRENZY) {
+        g_game.left -= dt;
+        if (g_game.reveal > 0) g_game.reveal -= dt;
+        if (g_game.left <= 0) { g_game.left = 0; game_finish(); }
+    } else if (g_game.page == GAME_MATCH && g_game.reveal > 0) {
+        g_game.reveal -= dt;
+        if (g_game.reveal <= 0) g_game.first = g_game.second = -1;
+    }
+}
+static bool game_reef_connected(void) {
+    bool wet[9] = {false};
+    if (!(g_game.pipes[3] & 8)) return false;
+    wet[3] = true;
+    static const int dx[] = {0, 1, 0, -1}, dy[] = {-1, 0, 1, 0};
+    for (int pass = 0; pass < 9; pass++) for (int i = 0; i < 9; i++) if (wet[i]) {
+        for (int d = 0; d < 4; d++) {
+            int x = i % 3 + dx[d], y = i / 3 + dy[d];
+            if (x >= 0 && x < 3 && y >= 0 && y < 3 && (g_game.pipes[i] & (1 << d)) &&
+                (g_game.pipes[y * 3 + x] & (1 << ((d + 2) % 4)))) wet[y * 3 + x] = true;
+        }
+    }
+    return wet[5] && (g_game.pipes[5] & 2);
+}
+bool render_games_tap(tank_t *t, float x, float y) {
+    x = render_page_x(x); y = render_page_y(y);
+    if (x >= 326 && x < 438 && y >= 8 && y < 44) {
+        if (g_game.page == GAME_MENU) return true;
+        if (g_game.page == GAME_RESULT && g_game.reward && !g_game.claimed && g_game.discard != 1) {
+            g_game.discard = 1; return false;
+        }
+        render_games_open(); return false;
+    }
+    if (g_game.page == GAME_MENU) {
+        if (x >= 32 && x < 428 && y >= 60 && y < 102 && t->n_fish)
+            g_game.fish = (g_game.fish + 1) % t->n_fish;
+        if (x >= 24 && x < 424 && y >= 116 && y < 308) {
+            int col = x >= 228, row = (int)(y - 116) / 64;
+            static const int kinds[] = {GAME_BUBBLES, GAME_MATCH, GAME_SLALOM, GAME_CAST, GAME_FRENZY, GAME_REEF};
+            if (x < (col ? 424 : 220) && y < 116 + row * 64 + 56) game_start(kinds[row * 2 + col]);
+        }
+    } else if (g_game.page == GAME_BUBBLES) {
+        for (int i = 5; i >= 0; i--) {
+            float dx = x - g_game.bubbles[i].x, dy = y - g_game.bubbles[i].y;
+            if (g_game.bubbles[i].live && dx * dx + dy * dy <= 28 * 28) {
+                g_game.score += g_game.bubbles[i].gold ? 3 : 1;
+                g_game.bubbles[i].live = false; break;
+            }
+        }
+    } else if (g_game.page == GAME_SLALOM) {
+        if (y >= 276 && y < 328) {
+            if (x >= 32 && x < 214 && g_game.lane > 0) g_game.lane--;
+            else if (x >= 234 && x < 416 && g_game.lane < 2) g_game.lane++;
+        }
+    } else if (g_game.page == GAME_CAST) {
+        if (x >= 32 && x < 416 && y >= 276 && y < 328) {
+            float pos = g_game.travel <= 1 ? g_game.travel : 2 - g_game.travel;
+            float target = (g_game.target + 0.5f) / 3;
+            if (fabsf(pos - target) < 0.12f) g_game.score += 2; else g_game.errors++;
+            g_game.rounds++; g_game.travel = 0; g_game.target = (int)(game_random() % 3);
+            if (g_game.rounds == 5) game_finish();
+        }
+    } else if (g_game.page == GAME_FRENZY) {
+        if (x >= 24 && x < 424 && y >= 268 && y < 326 && g_game.reveal <= 0) {
+            int choice = (int)(x - 24) / 136;
+            if (choice < 3 && x < 24 + choice * 136 + 128) {
+                if (choice == g_game.target) g_game.score += 2; else { g_game.errors++; if (g_game.score) g_game.score--; }
+                g_game.target = (int)(game_random() % 3);
+                g_game.reveal = 0.2f;
+                if (t->n_fish) g_game.fish = (g_game.fish + 1) % t->n_fish;
+            }
+        }
+    } else if (g_game.page == GAME_REEF) {
+        if (x >= 112 && x < 328 && y >= 98 && y < 314) {
+            int col = (int)(x - 112) / 72, row = (int)(y - 98) / 72, i = row * 3 + col;
+            if (x < 112 + col * 72 + 66 && y < 98 + row * 72 + 66) {
+                unsigned mask = g_game.pipes[i];
+                g_game.pipes[i] = (uint8_t)(((mask << 1) | (mask >> 3)) & 15);
+                if (g_game.moves < 9999) g_game.moves++;
+                if (game_reef_connected()) game_finish();
+            }
+        }
+    } else if (g_game.page == GAME_MATCH && g_game.reveal <= 0) {
+        if (x >= 32 && x < 416 && y >= 94 && y < 310) {
+            int col = (int)(x - 32) / 96, row = (int)(y - 94) / 72, i = row * 4 + col;
+            if (x >= 32 + col * 96 + 88 || y >= 94 + row * 72 + 64 || g_game.matched[i] || i == g_game.first) return false;
+            if (g_game.first < 0) g_game.first = i;
+            else {
+                g_game.second = i; if (g_game.moves < 9999) g_game.moves++;
+                if (g_game.cards[i] == g_game.cards[g_game.first]) {
+                    g_game.matched[i] = g_game.matched[g_game.first] = 1; g_game.pairs++;
+                    g_game.first = g_game.second = -1;
+                    if (g_game.pairs == 6) game_finish();
+                } else g_game.reveal = 0.85f;
+            }
+        }
+    } else if (g_game.page == GAME_RESULT && x >= 32 && x < 428) {
+        if (y >= 196 && y < 240 && g_game.reward && !g_game.claimed) {
+            if (progression_game_reward(t, g_game.reward)) { g_game.claimed = true; g_game.save_failed = false; g_game.discard = 0; }
+            else g_game.save_failed = true;
+        } else if (y >= 278 && y < 322) {
+            if (g_game.reward && !g_game.claimed && g_game.discard != 2) g_game.discard = 2;
+            else game_start(g_game.kind);
+        }
+    }
+    return false;
+}
+void render_games(const tank_t *t, uint16_t *fb, int stride) {
+    ctx_t c = ctx_page(fb, stride);
+    rect_fill(&c, 0, 0, PAGE_W, PAGE_H, MSP_INK);
+    static const char *const names[] = {"MINI GAMES", "BUBBLE POP", "PEARL MATCH", "", "FISH SLALOM", "TREASURE CAST", "FEED FRENZY", "REEF PUZZLE"};
+    const char *title = names[g_game.page == GAME_MENU ? GAME_MENU : g_game.kind];
+    draw_text(&c, 24, 14, 2, 0xffffff, title);
+    button(&c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, g_game.page == GAME_MENU ? "CLOSE" : "BACK", 2);
+    char text[64];
+    if (g_game.page == GAME_MENU) {
+        snprintf(text, sizeof text, "PLAY AS: %s >", t->n_fish ? t->fish[g_game.fish % t->n_fish].name : "GUEST");
+        button(&c, 32, 60, 396, 42, 0x1c2f36, MSP_TEAL, text, 2);
+        static const int kinds[] = {GAME_BUBBLES, GAME_MATCH, GAME_SLALOM, GAME_CAST, GAME_FRENZY, GAME_REEF};
+        for (int i = 0; i < 6; i++)
+            button(&c, 24 + i % 2 * 204, 116 + i / 2 * 64, 196, 56, 0x1c2f36, MSP_TEAL, names[kinds[i]], 2);
+        draw_text(&c, 32, 316, 2, 0xffffff, "WIN SAND DOLLARS + JOURNAL XP");
+    } else if (g_game.page == GAME_BUBBLES) {
+        snprintf(text, sizeof text, "TIME %02d   SCORE %d", (int)ceilf(g_game.left), g_game.score);
+        draw_text(&c, 32, 62, 2, MSP_TEAL, text);
+        for (int i = 0; i < 6; i++) if (g_game.bubbles[i].live) {
+            int x = (int)g_game.bubbles[i].x, y = (int)g_game.bubbles[i].y;
+            uint32_t color = g_game.bubbles[i].gold ? 0xffdc73 : 0x73e5ff;
+            ring(&c, x, y, 24, color); ring(&c, x, y, 23, color);
+            rect_fill(&c, x - 10, y - 13, 8, 4, 0xffffff);
+            if (g_game.bubbles[i].gold) draw_text(&c, x - 5, y - 7, 2, color, "3");
+        }
+    } else if (g_game.page == GAME_SLALOM || g_game.page == GAME_CAST || g_game.page == GAME_FRENZY) {
+        snprintf(text, sizeof text, "SCORE %d   %s %d", g_game.score, g_game.page == GAME_FRENZY ? "TIME" : "ROUND",
+                 g_game.page == GAME_FRENZY ? (int)ceilf(g_game.left) : g_game.rounds + 1);
+        draw_text(&c, 24, 58, 2, MSP_TEAL, text);
+        if (g_game.page == GAME_SLALOM) {
+            draw_text(&c, 24, 82, 2, MSP_TEAL, "SWIM THROUGH THE OPEN GATE");
+            for (int lane = 0; lane < 3; lane++) {
+                int x = 74 + lane * 140;
+                rect_fill(&c, x - 46, 112, 92, 148, 0x102831);
+                if (lane == g_game.target) {
+                    rect_edge(&c, x - 36, 112 + (int)(g_game.travel * 0.55f), 72, 12, 0xffdc73);
+                    rect_fill(&c, x - 3, 115 + (int)(g_game.travel * 0.55f), 6, 6, 0xffdc73);
+                }
+                else rect_fill(&c, x - 44, 112 + (int)(g_game.travel * 0.55f), 88, 12, 0x8b6570);
+            }
+            if (t->n_fish) render_fish_portrait(fb, stride, 74 + g_game.lane * 140, 235, 1.3f, &t->fish[g_game.fish % t->n_fish], g_game.travel * 0.03f);
+            button(&c, 32, 276, 182, 52, 0x1c2f36, MSP_TEAL, "< LEFT", 2);
+            button(&c, 234, 276, 182, 52, 0x1c2f36, MSP_TEAL, "RIGHT >", 2);
+        } else if (g_game.page == GAME_CAST) {
+            draw_text(&c, 24, 86, 2, MSP_TEAL, "STOP THE HOOK OVER THE TREASURE");
+            int tx = 32 + (int)((g_game.target + 0.5f) * 384 / 3);
+            rect_fill(&c, tx - 42, 218, 84, 38, 0xa97532); rect_edge(&c, tx - 42, 218, 84, 38, 0xffdc73);
+            draw_text(&c, tx - 12, 226, 2, 0xffdc73, "$");
+            float pos = g_game.travel <= 1 ? g_game.travel : 2 - g_game.travel;
+            int hx = 32 + (int)(pos * 384);
+            rect_fill(&c, hx, 116, 2, 84, MSP_TEAL); ring(&c, hx - 5, 201, 6, 0xffffff);
+            for (int lane = 0; lane < 3; lane++) if (lane != g_game.target) {
+                if (t->n_fish && lane == (g_game.target + 1) % 3)
+                    render_fish_portrait(fb, stride, 96 + lane * 128, 234, 0.7f,
+                                         &t->fish[g_game.fish % t->n_fish], g_game.travel);
+                else rect_fill(&c, 64 + lane * 128, 224, 62, 26, 0x785b6a);
+            }
+            button(&c, 32, 276, 384, 52, 0x1c2f36, MSP_TEAL, "CAST!", 3);
+        } else {
+            static const char *const snacks[] = {"FLAKES", "WORMS", "GREENS"};
+            snprintf(text, sizeof text, "WANTS: %s", snacks[g_game.target]);
+            draw_text(&c, 80, 98, 3, 0xffdc73, text);
+            rect_fill(&c, 84 + g_game.target * 136, 252, 8, 8, 0xffdc73);
+            if (t->n_fish) {
+                const fish_t *f = &t->fish[g_game.fish % t->n_fish];
+                render_fish_portrait(fb, stride, 224, 182, 2, f, g_game.left);
+                draw_text(&c, 32, 232, 2, MSP_TEAL, f->name);
+            }
+            for (int i = 0; i < 3; i++) button(&c, 24 + i * 136, 268, 128, 58, 0x1c2f36, MSP_TEAL, snacks[i], 2);
+        }
+    } else if (g_game.page == GAME_REEF) {
+        draw_text(&c, 24, 58, 2, MSP_TEAL, "TAP PIPES TO CONNECT IN TO OUT");
+        draw_text(&c, 32, 191, 2, 0x73e5ff, "IN >"); draw_text(&c, 344, 191, 2, 0xffdc73, "> OUT");
+        for (int i = 0; i < 9; i++) {
+            int x = 112 + i % 3 * 72, y = 98 + i / 3 * 72, mask = g_game.pipes[i];
+            rect_fill(&c, x, y, 66, 66, 0x1c2f36); rect_edge(&c, x, y, 66, 66, MSP_TEAL);
+            if (mask & 1) rect_fill(&c, x + 27, y + 1, 12, 38, 0x73e5ff);
+            if (mask & 2) rect_fill(&c, x + 27, y + 27, 38, 12, 0x73e5ff);
+            if (mask & 4) rect_fill(&c, x + 27, y + 27, 12, 38, 0x73e5ff);
+            if (mask & 8) rect_fill(&c, x + 1, y + 27, 38, 12, 0x73e5ff);
+        }
+    } else if (g_game.page == GAME_MATCH) {
+        snprintf(text, sizeof text, "PAIRS %d/6   MOVES %d", g_game.pairs, g_game.moves);
+        draw_text(&c, 32, 62, 2, MSP_TEAL, text);
+        static const uint32_t colors[] = {0xffdc73, 0x73e5ff, 0xffa3cf, 0x89ffb1, 0xc5adff, 0xff8173};
+        for (int i = 0; i < 12; i++) {
+            int x = 32 + i % 4 * 96, y = 94 + i / 4 * 72;
+            bool shown = g_game.matched[i] || i == g_game.first || i == g_game.second;
+            button(&c, x, y, 88, 64, g_game.matched[i] ? 0x124236 : 0x1c2f36, MSP_TEAL, shown ? "" : "?", 3);
+            if (shown) {
+                uint32_t color = colors[g_game.cards[i]];
+                ring(&c, x + 22, y + 32, 12, color);
+                snprintf(text, sizeof text, "%d", g_game.cards[i] + 1);
+                draw_text(&c, x + 46, y + 21, 3, color, text);
+            }
+        }
+    } else {
+        draw_text(&c, 32, 80, 3, 0xffffff, "ROUND COMPLETE");
+        snprintf(text, sizeof text, g_game.kind == GAME_MATCH || g_game.kind == GAME_REEF ? "SOLVED IN %d MOVES" : "SCORE: %d",
+                 g_game.kind == GAME_MATCH || g_game.kind == GAME_REEF ? g_game.moves : g_game.score);
+        draw_text(&c, 32, 126, 2, MSP_TEAL, text);
+        snprintf(text, sizeof text, "WALLET: %ld SAND DOLLARS", (long)t->sd_balance);
+        draw_text(&c, 32, 164, 2, MSP_TEAL, text);
+        snprintf(text, sizeof text, g_game.claimed ? "SAVED +%d SAND DOLLARS" : g_game.reward ? "CLAIM %d SAND DOLLARS" : "SCORE TOO LOW - TRY AGAIN", g_game.reward);
+        button(&c, 32, 196, 396, 44, 0x1c2f36, MSP_TEAL, text, 2);
+        button(&c, 32, 278, 396, 44, 0x1c2f36, MSP_TEAL, "PLAY AGAIN", 2);
+        snprintf(text, sizeof text, "ALSO %d JOURNAL XP", g_game.reward * 3);
+        draw_text(&c, 32, 248, 2, MSP_TEAL, text);
+    }
+    draw_text(&c, 24, 340, 2, g_game.save_failed ? 0xff8173 : MSP_TEAL,
+              g_game.save_failed ? "SAVE FAILED - TAP CLAIM TO RETRY" :
+              g_game.discard ? "TAP AGAIN TO DISCARD REWARD" : "AQUARIUM CARE PAUSED");
 }
 static int set_segment(float x, int n) {
     if (x < SET_SEG_X - 10) return -1;

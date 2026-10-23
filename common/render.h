@@ -198,7 +198,11 @@ void render_milestones(const tank_t *t, uint16_t *fb, int stride);
  * brightness row). */
 enum { MS_TAP_NONE = 0, MS_TAP_KEPT = 1, MS_TAP_CLOSE = 2, MS_TAP_SETTINGS = 3,   /* SETTINGS: the button bottom left (2026-09-15) opens the settings page */
        MS_TAP_SHOP = 4,                                                            /* the sand dollar left of the TANK row opens the shop */
-       MS_TAP_JOURNAL = 5, MS_TAP_BANK = 6, MS_TAP_RENAME = 16, MS_TAP_SELL = 32, MS_TAP_CUSTOM = 64 };
+       MS_TAP_JOURNAL = 5, MS_TAP_BANK = 6, MS_TAP_GAMES = 7, MS_TAP_RENAME = 16, MS_TAP_SELL = 32, MS_TAP_CUSTOM = 64 };
+void render_games_open(void);
+void render_games_tick(float dt);
+bool render_games_tap(tank_t *t, float x, float y);
+void render_games(const tank_t *t, uint16_t *fb, int stride);
 void render_bank_open(void);
 void render_bank(const tank_t *t, uint16_t *fb, int stride);
 int render_bank_tap(tank_t *t, float x, float y);

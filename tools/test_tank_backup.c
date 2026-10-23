@@ -936,6 +936,11 @@ static void test_journal(void) {
             render_tank(&t, frames + 1 + theme * pixels, TANK_W);
             for (int previous = 0; previous < theme; previous++)
                 assert(memcmp(frames + 1 + theme * pixels, frames + 1 + previous * pixels, pixels * 2));
+            if (theme) {
+                size_t different = 0;
+                for (size_t p = 0; p < pixels; p++) different += frames[1 + theme * pixels + p] != frames[1 + p];
+                assert(different > pixels / 6);
+            }
         }
     }
     render_journal_open(); render_journal(&t, frames + 1, TANK_W);
@@ -956,6 +961,43 @@ static void test_journal(void) {
     assert(!journal_claim(&t, 0) && !t.journal.claimed && writes == previous_writes);
     assert(progression_reset(&t, 9) && !t.journal.claimed && !t.journal.xp && !t.journal.theme && !t.journal.seen);
     puts("PASS: Journal XP thresholds/deltas, 15 rewards, failure rollback, album, schema 3/2000 migration, themes and UI");
+}
+static void test_game_rewards(void) {
+    tank_t t, loaded; saved_size = 0; tank_init(&t, 42); progression_boot(&t);
+    int previous_writes = writes;
+    assert(!progression_game_reward(&t, 0) && !progression_game_reward(&t, 11) && writes == previous_writes);
+    reject_write = true;
+    assert(!progression_game_reward(&t, 8) && !t.sd_balance && !t.sd_earned && !t.journal.xp);
+    reject_write = false;
+    for (int reward = 1; reward <= 10; reward++) {
+        int balance = t.sd_balance; uint32_t xp = t.journal.xp;
+        uint32_t goals = t.journal.claimed;
+        assert(progression_game_reward(&t, reward));
+        assert(t.sd_balance == balance + reward && t.sd_earned == t.sd_balance);
+        assert(t.journal.xp == xp + (unsigned)reward * 3 && t.journal.claimed == goals);
+        tank_init(&loaded, 43); progression_boot(&loaded);
+        assert(loaded.sd_balance == t.sd_balance && loaded.journal.xp == t.journal.xp);
+    }
+    t.journal.xp = JOURNAL_XP_MAX - 1;
+    assert(progression_game_reward(&t, 10) && t.journal.xp == JOURNAL_XP_MAX);
+    previous_writes = writes; t.sd_balance = INT_MAX;
+    assert(!progression_game_reward(&t, 1) && writes == previous_writes);
+    t.sd_balance = 0; t.sd_earned = INT_MAX;
+    assert(!progression_game_reward(&t, 1) && writes == previous_writes);
+    uint16_t *frame = calloc(TANK_W * TANK_H + 2, sizeof *frame); assert(frame);
+    frame[0] = frame[TANK_W * TANK_H + 1] = 0xbeef;
+    for (int empty = 0; empty < 2; empty++) {
+        if (empty) t.n_fish = 0;
+        for (int game = 0; game < 6; game++) {
+            render_games_open();
+            assert(!render_games_tap(&t, render_frame_x(110 + game % 2 * 204), render_frame_y(140 + game / 2 * 64)));
+            render_games_tick(NAN); render_games_tick(-1); render_games_tick(0); render_games_tick(1000);
+            render_games(&t, frame + 1, TANK_W);
+            assert(frame[0] == 0xbeef && frame[TANK_W * TANK_H + 1] == 0xbeef);
+        }
+    }
+    free(frame);
+    puts("PASS: bounded game rewards, atomic coin/Journal XP persistence, save rollback, overflow and XP cap");
 }
 int main(int argc, char **argv) {
     tank_t tank; memset(&tank, 0xa5, sizeof tank); tank_init(&tank, 1234); progression_boot(&tank);
@@ -1510,6 +1552,7 @@ int main(int argc, char **argv) {
     reject_write = true; assert(!progression_reset(&restored, 9876)); reject_write = false;
     assert(progression_save(&restored));
     test_journal();
+    test_game_rewards();
     test_readable_text();
     test_bank();
     test_aquariums();

@@ -145,6 +145,8 @@ API void sim_touch(float x, float y, int down) {
                     if (progression_setup_pending()) setup_begin(&tank);
                 }
             }
+        } else if (page == 8) {
+            if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_games_tap(&tank, px, py)) page = 1;
         } else if (page == 6) {
             if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_bank_tap(&tank, px, py)) page = 1;
         } else if (page == 5) {
@@ -157,6 +159,7 @@ API void sim_touch(float x, float y, int down) {
             else if (result == MS_TAP_SHOP) page = 3;
             else if (result == MS_TAP_JOURNAL) { render_journal_open(); page = 5; }
             else if (result == MS_TAP_BANK) { render_bank_open(); page = 6; }
+            else if (result == MS_TAP_GAMES) { render_games_open(); page = 8; tank_handled(&tank); }
             else if (result >= MS_TAP_CUSTOM) { setup_begin_customize(&tank, result - MS_TAP_CUSTOM); page = 0; }
             else if (result >= MS_TAP_SELL) progression_sell_fish(&tank, result - MS_TAP_SELL);
             else if (result >= MS_TAP_RENAME) { setup_begin_rename(&tank, result - MS_TAP_RENAME); page = 0; }
@@ -221,11 +224,12 @@ API const uint16_t *sim_frame(float dt) {
             if (held > 0.3f) tank_touch_hold(&tank, last_x, last_y);
         }
     }
-    tank.hold_light = setup_active();
+    tank.hold_light = setup_active() || page == 8;
     tank.ui_cover = page != 0 || setup_active() || wipe_left > 0;
-    tank_tick(&tank, dt, advisor_rules); progression_tick(&tank, dt);
-    notice_tick(&tank, dt, tank.ui_cover || setup_birth_due());
-    if (!setup_active()) setup_poll_birth(&tank);
+    if (page == 8) render_games_tick(dt);
+    else { tank_tick(&tank, dt, advisor_rules); progression_tick(&tank, dt); }
+    if (page != 8) notice_tick(&tank, dt, tank.ui_cover || setup_birth_due());
+    if (!setup_active() && page != 8) setup_poll_birth(&tank);
     if (setup_take_renamed() >= 0) page = 1;
     if (page == 1) render_milestones(&tank, frame, TANK_W);
     else if (page == 2) render_settings(&tank, frame, TANK_W, bright);
@@ -234,6 +238,7 @@ API const uint16_t *sim_frame(float dt) {
     else if (page == 5) render_journal(&tank, frame, TANK_W);
     else if (page == 6) render_bank(&tank, frame, TANK_W);
     else if (page == 7) render_aquariums(&tank, frame, TANK_W);
+    else if (page == 8) render_games(&tank, frame, TANK_W);
     else {
         render_tank(&tank, frame, TANK_W);
         if (!render_clock_active(&tank)) {

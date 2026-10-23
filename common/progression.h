@@ -327,6 +327,7 @@ bool progression_sell_fish(tank_t *t, int fish);
 int  progression_sd_take_award(void);
 /* director / tests: dollars from nowhere (negative takes them away) */
 void progression_sd_grant(tank_t *t, int n);
+bool progression_game_reward(tank_t *t, int dollars);
 /* the earn table for the shop page: one line per source, "+N WORDS" */
 #define SD_EARN_LINES 7
 const char *const *progression_sd_earn_lines(void);
