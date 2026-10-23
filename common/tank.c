@@ -607,7 +607,7 @@ void tank_init(tank_t *t, uint32_t seed) {
  * hunger, so its training distribution is untouched. */
 #define HUNGER_PER_S       0.010f   /* fed -> starving in ~17 min (shy fish) */
 /* the breather (2026-10-21, Strato's 1.8 after a reset: "sluggish", no "first
- * rest in the seagrass"; a Discord keeper's tank the same for days): the v4
+ * rest in the seagrass"; a keeper's tank the same for days): the v4
  * brain rests at NIGHT - its teacher rested a lit fish only at energy <= 1,
  * one roll in twenty - while the energy economy below (09-04) was tuned for a
  * brain that rested by day. So a lit tank ran its fish down to 0 in ten

@@ -11,8 +11,7 @@ are not included. See [LICENSE](LICENSE) for the original project license.
 covers named tanks, the bank, creature customization, Journal, mini-games,
 decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
-actual desktop renderer. A [five-post Discord kit](docs/discord/START-HERE.txt)
-includes matching image boards and ready-to-paste text.
+actual desktop renderer.
 
 ## What remains
 
@@ -102,9 +101,9 @@ instructions are available under
 | [Install instructions](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/INSTALL.txt) | SD placement, USB flashing and warnings |
 | [Checksums](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/SHA256SUMS.txt) | Verify downloaded files |
 
-Current source builds embed menu artwork in flash. Older releases may require
-the matching `icons-<crc>.bin` from that release at the SD card root; follow
-the included install instructions. No source build is needed for these downloads.
+**All artwork is embedded in the firmware. No icons need to be copied to SD.**
+No source build is needed for these downloads. SD is used for extra aquariums,
+backups and offline updates, not artwork.
 Use the SD update for an existing installation. **Factory images overwrite
 saved tanks and settings** and are only for new boards or deliberate resets.
 See [release instructions](firmware/CYD.md#downloadable-releases).

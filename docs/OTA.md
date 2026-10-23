@@ -2,11 +2,12 @@
 
 ## Offline SD updates
 
-Prebuilt packages and matching SD artwork are available from
+Prebuilt packages are available from
 [CYD Releases](https://github.com/jeromedontdev/pocket-tank-cyd/releases).
 Download the bundle, read `INSTALL.txt`, and verify `SHA256SUMS.txt`.
-Copy `icons-<crc>.bin` to the SD root and `update.ptu` to
+Copy `update.ptu` to
 `pocket-tank/update.ptu` while powered off. Follow steps 3 and 4 below.
+Artwork is embedded in firmware; no SD icons are needed.
 The application-only binary and factory image are not SD update packages.
 **Do not factory-flash an existing tank: it overwrites NVS and loses saved
 state, credentials, calibration and collection identity.**
@@ -42,7 +43,7 @@ at boot. Reinstallation/downgrades require the same explicit confirmation.
 
 Before installation, the current tank is saved to NVS and a verified
 `before-update-NNNN.json` safety snapshot is created on SD. Installation
-stops if either fails. NVS, calibration, SD icons and normal tank backups
+stops if either fails. NVS, calibration, SD files and normal tank backups
 are not erased. Older firmware may not understand newer saves; use a
 compatible backup when deliberately downgrading.
 Individual backups cover the active tank and shared wallet, not purchased

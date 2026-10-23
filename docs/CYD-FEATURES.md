@@ -3,11 +3,6 @@
 **An illustrated tour of Pocket Tank CYD 1.0.0**
 Updated October 23, 2026
 
-**Sharing on Discord?** Use the [Discord posting kit](discord/START-HERE.txt):
-five short copy/paste posts with matching PNG image boards. Paste each text
-and drag its matching PNG into the same Discord message. Local Markdown
-image links will not upload pictures when copied as text.
-
 This fork keeps Pocket Tank's feeding, growth, personality, trust and
 aquarium care, while adding more ways to decorate, collect, progress and
 keep favorite fish. It is built specifically for the **ESP32-2432S028
@@ -36,7 +31,7 @@ The headline additions:
 > **About the imagery:** every image below is a fresh capture from the
 > desktop emulator's actual CYD C renderer, not a mockup or webcam photo.
 > Captures use a separate staged demonstration tank with unlocked content;
-> the real aquarium was not read or changed. Each 240 x 180 framebuffer is
+> the real aquarium was not read or changed. Each 320 x 240 Normal framebuffer is
 > enlarged exactly 3x using nearest-neighbor pixels, without smoothing,
 > retouching or added interface elements. The emulator is built with the
 > hardware's five-active-fish limit for these captures. SD operations,
@@ -51,9 +46,9 @@ These are independently versioned CYD-only releases, not upstream multi-board re
 Read the included `INSTALL.txt` and check `SHA256SUMS.txt`.
 
 - **Already using this CYD fork:** back up your active aquarium, power off
-  before moving SD, copy the matching `icons-<crc>.bin` to the card root and
-  `update.ptu` to `pocket-tank/update.ptu`, then install through Settings > Device > SD Updates.
-- **New board:** use the factory image at `0x0` and install the matching SD art.
+  before moving SD, copy `update.ptu` to `pocket-tank/update.ptu`, then install
+  through Settings > Device > SD Updates. No SD artwork is required.
+- **New board:** use the factory image at `0x0`; all artwork is embedded in firmware.
   **Factory flashing overwrites saved tanks, Wi-Fi credentials, calibration
   and collection identity. Never use it for a normal upgrade.**
 - **Advanced USB upgrades:** the application-only image belongs in the detected

@@ -221,7 +221,7 @@ const char *const *progression_fry_tip(int kind);
 /* a meal pays SD_MEAL once per SD_MEAL_GAP_S of awake time (0.3.7): every
  * feed gesture the fish eat from is still a MEAL (the fry's feeding gates
  * count them as before), but tapping the surface while the school ate paid
- * SD_MEAL a tap (a keeper on Discord, 2026-10-18). A night's sleep runs the
+ * SD_MEAL a tap (keeper feedback, 2026-10-18). A night's sleep runs the
  * wait down like awake time. */
 #define SD_MEAL_GAP_S  300.0f
 #define SD_STAGE_JUV   5
