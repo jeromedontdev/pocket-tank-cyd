@@ -87,6 +87,7 @@ API void sim_action(int action) {
     else if (action == 6) tank_toggle_light(&tank);
 }
 API int sim_page(void) { return page; }
+API int sim_selected(void) { return selected; }
 
 static void shop_action(int result) {
     if (result == SHOP_TAP_TANKS) { render_aquariums_open(&tank); page = 7; }
@@ -166,7 +167,9 @@ API void sim_touch(float x, float y, int down) {
             else if (result == UPD_TAP_CHECK) updates_sd_status("SD INSTALLATION IS ON THE CYD", false);
         } else if (page == 0 && held < 0.35f && hypotf(x - px, y - py) < 12) {
             if (!notice_dismiss()) {
-                if (selected >= 0 && RENDER_CARD_HIT(px, py)) page = 1;
+                if (render_stats_next_hit(&tank, selected, px, py)) {
+                    if (render_stats_next_hit(&tank, selected, x, y)) selected = (selected + 1) % tank.n_fish;
+                } else if (selected >= 0 && RENDER_CARD_HIT(px, py)) page = 1;
                 else {
                     int best = -1; float distance = 38;
                     for (int i = 0; i < tank.n_fish; i++) {
@@ -213,7 +216,7 @@ API const uint16_t *sim_frame(float dt) {
     }
     if (pressed) {
         held += dt;
-        if (!page && !setup_active()) {
+        if (!page && !setup_active() && !render_stats_next_hit(&tank, selected, px, py)) {
             tank_touch_drag(&tank, last_x, last_y);
             if (held > 0.3f) tank_touch_hold(&tank, last_x, last_y);
         }

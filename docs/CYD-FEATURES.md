@@ -379,8 +379,12 @@ behind the translucent panel. Set your standard-time UTC offset, then use
 manual toggle changes the time and date together and saves per tank. It does
 not select regional rules or switch automatically.
 
-**STYLE** offers each theme's original colors plus **white, amber, mint, cyan,
-rose, lavender and red**. Independently hide **seconds**, the **background panel
+**STYLE** offers separate **PRIMARY** and **SECONDARY** selectors, each with
+theme defaults plus **white, amber, mint, cyan, rose, lavender and red**.
+Primary colors the numerals/hour indicators; secondary colors the captions,
+date, border and minute/second indicators. Theme defaults keep the original
+multi-color accents. Orbit leaves a clear gap between its circle and AM/PM.
+Independently hide **seconds**, the **background panel
 and border**, or the **date**. Seconds visibility also controls the analog
 second hand, Binary seconds columns and Orbit seconds ring. A missing time sync
 still shows **SYNC NEEDED**. Preferences save per tank, and **SHOW CLOCK** previews
@@ -419,6 +423,18 @@ This flow never checks or downloads firmware.
 | ![Case-sensitive Wi-Fi password keyboard](media/cyd-features/wifi-password.png) | ![Connected network confirmation](media/cyd-features/wifi-connected.png) |
 
 ![Clock color and visibility controls](media/cyd-features/clock-style.png)
+
+![Orbit with amber primary and cyan secondary colors](media/cyd-features/clock-two-color.png)
+
+### Cycle fish without closing the card
+
+Select a fish, then tap **>** just outside the card's upper-right corner to
+select the next fish. It wraps back to the first fish and keeps you in the
+tank without feeding. Tap the card itself to open Keeper as before.
+The arrow appears only when the active tank has multiple fish, not on the
+special-creature cards.
+
+![Selected fish card with next-fish arrow](media/cyd-features/fish-card.png)
 
 The CYD has no battery-backed clock. Once NTP succeeds, time keeps ticking
 offline while powered or in deep sleep; power loss requires another sync.

@@ -467,8 +467,14 @@ uses decimal-digit bit columns (8/4/2/1 from top to bottom, grouped H/M/S),
 and Orbit uses concentric hour/minute/second progress rings. The hour ring
 completes every 12 hours, the minute ring every hour and the second ring every
 minute. Themes show the local date and seconds by default.
-Open **STYLE** for theme-default colors or **white / amber / mint / cyan /
-rose / lavender / red**, and independent **SECONDS**, **PANEL + BORDER** and
+Open **STYLE** for separate **PRIMARY** and **SECONDARY** colors, each offering
+theme defaults or **white / amber / mint / cyan / rose / lavender / red**.
+Primary controls numerals, the analog hour hand and the Binary/Orbit hour
+indicators; secondary controls captions/date/borders, the minute/second
+indicators and analog second hand. Theme defaults retain the original
+multi-color accents. The Orbit caption sits at least 10 native pixels below
+the circle at every size.
+There are also independent **SECONDS**, **PANEL + BORDER** and
 **DATE** visibility. Hiding seconds also hides the analog second hand, Binary
 seconds columns and Orbit seconds ring. Hiding the panel removes both its
 background and border, not Flip's individual numeral tiles. The 12/24-hour
@@ -494,13 +500,31 @@ Options save immediately for the active tank, roll back on save failure,
 follow SD tank switches and portable JSON restores, and clear on active-tank
 wipe. Old saves/backups default to OFF, large/centered and a 1-minute delay.
 Five reserved metadata bytes hold theme, format/style flags, signed UTC quarter-hours,
-size/position and delay, keeping the binary
+size/position and packed delay/secondary color, keeping the binary
 save at 4000 bytes. Schema 5 adds optional `tank.clock_theme` (0..7),
 `tank.clock_flags` (0..255: bit 0 is 12-hour format, bit 1 is manual DST +1 hour,
-bits 2/3/4 hide seconds/panel/date; bits 5..7 select the color, 0 = theme colors),
+bits 2/3/4 hide seconds/panel/date; bits 5..7 select the primary color, 0 = theme colors),
 `tank.clock_utc_quarters` (-48..56),
 `tank.clock_layout` (size in bits 0..1, position in bits 2..4; size 3 is invalid)
-and `tank.clock_delay` (0..6, in the ACTIVATE order above).
+`tank.clock_delay` (0..6, in the ACTIVATE order above), and
+`tank.clock_secondary` (0..7, same color order as PRIMARY). Missing secondary
+color defaults to theme accents. Binary saves pack secondary color into the
+high three bits of the delay byte, leaving its low five bits for the delay.
+Changing either setting preserves the other. Both colors save per tank,
+follow SD switches and JSON restores, roll back on write failure and reset
+on active-tank wipe. Do not downgrade to older firmware with a non-default
+secondary color; older builds do not understand the packed delay.
+
+### Cycling selected fish
+
+With more than one fish in the active tank, selecting a fish shows a **>**
+button just outside the card's top-right edge. Tap it to select the next fish,
+wrapping from the last back to the first. The arrow does not feed, open Keeper,
+or trigger hold/drag actions; dragging off the button cancels the tap.
+The selected card and selection ring update together, and the normal
+10-second card dismissal timer restarts after a successful cycle.
+Tapping the card itself still opens Keeper. Single-fish tanks and special
+snail/shrimp/urchin/seahorse cards do not show this arrow.
 
 Tap **WI-FI / SYNC** on that page (or enter `wifi setup` on the console). The tank first saves to NVS,
 then restarts into a memory-isolated setup so the Wi-Fi driver does not

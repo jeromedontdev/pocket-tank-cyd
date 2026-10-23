@@ -176,16 +176,19 @@ def main():
                 assert json.loads(backup(lib))["tank"]["clock_utc_quarters"] == 7
                 tap(220, 282)
                 tap(220, 20)  # Appearance subpage.
-                tap(220, 80); tap(220, 133); tap(220, 185); tap(220, 237)
+                tap(220, 80); tap(220, 119); tap(220, 163); tap(220, 207); tap(220, 251)
                 assert json.loads(backup(lib))["tank"]["clock_flags"] == 61
+                assert json.loads(backup(lib))["tank"]["clock_secondary"] == 1
                 tap(224, 300)
                 assert lib.sim_clock_active(), "Appearance preview must enter clock mode"
                 tap(160, 90)
                 lib.sim_action(2); tap(220, 20); tap(220, 20)
                 for _ in range(7):
                     tap(220, 80)
-                tap(220, 133); tap(220, 185); tap(220, 237)
+                    tap(220, 119)
+                tap(220, 163); tap(220, 207); tap(220, 251)
                 assert json.loads(backup(lib))["tank"]["clock_flags"] == 1, "Color wrapping/detail toggles must preserve format and DST"
+                assert json.loads(backup(lib))["tank"]["clock_secondary"] == 0
                 tap(380, 20)
                 options = json.loads(backup(lib))["tank"]
                 tap(120, 318)
@@ -296,6 +299,30 @@ def main():
                 tap(380, 20)  # Back to normal Settings.
                 print("PASS: themed clock settings and Wi-Fi-only scan/connect, saved network, confirmed forget, wrong password, save failure and aquarium preservation")
                 print("PASS: single-page QWERTY, all printable characters, case, space, delete, length limit and retained password")
+                card_tank = json.loads(backup(lib))
+                card_tank["tank"].update(clock_theme=0, setup_pending=0, tools_locked=1)
+                encoded = json.dumps(card_tank).encode()
+                assert lib.sim_restore(encoded, len(encoded))
+                for y in range(60, 310, 40):
+                    for x in range(40, 430, 40):
+                        tap(x, y)
+                        if lib.sim_selected() >= 0:
+                            break
+                    if lib.sim_selected() >= 0:
+                        break
+                assert lib.sim_selected() >= 0, "A fish tap must select a fish"
+                first = lib.sim_selected()
+                before_cycle = json.loads(backup(lib))
+                for step in range(before_cycle["tank"]["n_fish"]):
+                    tap(176, 28)
+                    assert lib.sim_page() == 0 and lib.sim_selected() == (first + step + 1) % before_cycle["tank"]["n_fish"]
+                    assert json.loads(backup(lib)) == before_cycle, "Next-fish arrow must not feed or modify the tank"
+                lib.sim_touch(176 * 240 / 448, 28 * 180 / 368, 1)
+                lib.sim_touch(206 * 240 / 448, 28 * 180 / 368, 0)
+                assert lib.sim_selected() == first and lib.sim_page() == 0, "Sliding outside the arrow cancels cycling"
+                tap(70, 80)
+                assert lib.sim_page() == 1, "The fish card itself must still open Keeper"
+                print("PASS: fish-card arrow cycles all fish, wraps, cancels off-target releases and does not feed/open Keeper")
                 lib.sim_action(5)
                 lib.sim_action(1)
                 tap(220, 356)

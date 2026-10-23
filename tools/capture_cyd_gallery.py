@@ -127,6 +127,13 @@ def main():
                     lib.sim_frame(0.04)
                 lib.sim_action(2); tap(220, 20); tap(120, 318)
                 capture("clock-custom")
+                two_color = copy.deepcopy(demo)
+                two_color["tank"].update(clock_theme=7, clock_flags=(2 << 5) | 1, clock_secondary=4)
+                restore(two_color)
+                for _ in range(300):
+                    lib.sim_frame(0.04)
+                lib.sim_action(2); tap(220, 20); tap(120, 318)
+                capture("clock-two-color")
                 restore(clock_tank)
                 lib.sim_action(2)
                 tap(220, 20)
@@ -147,6 +154,23 @@ def main():
                 capture("wifi-connected")
                 tap(224, 315)
                 tap(380, 20)
+                restore(demo)
+                for frame in range(300):
+                    if frame % 15 == 0:
+                        tap(4, 4)
+                    lib.sim_frame(0.04)
+                for y in range(60, 310, 40):
+                    for x in range(40, 430, 40):
+                        tap(x, y)
+                        if lib.sim_selected() >= 0:
+                            break
+                    if lib.sim_selected() >= 0:
+                        break
+                if lib.sim_selected() < 0:
+                    raise RuntimeError("Could not select a fish for the card preview")
+                capture("fish-card")
+                tap(176, 28)
+                capture("fish-card-next")
                 scenery = copy.deepcopy(demo)
                 scenery["tank"].update(sd_unlocks=sum(1 << i for i in range(22, 30)),
                                        journal_theme=0, sand_style=0, water_style=0)

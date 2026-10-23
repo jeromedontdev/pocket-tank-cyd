@@ -423,23 +423,25 @@ void touch_port_poll(tank_t *t) {
     { int rf = setup_take_renamed();                         /* a rename closed (2026-10-01): back to the milestones page, the fish's card up */
       if (rf >= 0) { s_ms = true; s_set = false; s_shop = false; s_sel = -1; render_milestones_show_fish(t, rf); } }
     bool modal = s_ms || s_set || s_shop || s_cf || su || s_upd;   /* a page or a prompt owns the glass */
+    static bool card_next;
+    if (touched && !s_down) card_next = !modal && render_stats_next_hit(t, s_sel, s_px, s_py);
     if (touched) {                                           /* stroke = wipe/slash, reaching the glass (stroke_point above) */
         float dx, dy; stroke_point(!s_down, tx, ty, &dx, &dy);
         if (!s_down) { s_dx0 = s_dx1 = dx; s_frames = 0; s_raw_px = x[0]; s_raw_py = y[0]; }
         if (dx < s_dx0) s_dx0 = dx;
         if (dx > s_dx1) s_dx1 = dx;
         s_dlx = dx; s_dly = dy; s_frames++;
-        s_lx = tx; s_ly = ty; if (!modal) tank_touch_drag(t, dx, dy);
+        s_lx = tx; s_ly = ty; if (!modal && !card_next) tank_touch_drag(t, dx, dy);
     }
     /* tap-and-hold on a decoration (2026-09-24, Strato: "right now it's like 5
        taps to get back to the edit"): a still finger 700 ms on an owned
        piece opens its placement page (MOVE / DEPTH / SELL) right there */
-    if (touched && !modal && !s_held_page && t->tool == TOOL_HAND && now - s_press_us > 700000 && fabsf(tx - s_px) < 24 && fabsf(ty - s_py) < 24) {
+    if (touched && !modal && !card_next && !s_held_page && t->tool == TOOL_HAND && now - s_press_us > 700000 && fabsf(tx - s_px) < 24 && fabsf(ty - s_py) < 24) {
         int it = tank_decor_hit(t, s_px, s_py);
         if (it >= 0) { setup_begin_place(t, it); s_held_page = true; s_sel = -1;
                        ESP_LOGI(TAG, "held on the %s: placement page up", SD_ITEMS[it].name); }
     }
-    if (touched && !modal && !s_held_page && now - s_press_us > 300000 && fabsf(ty - s_py) < 30) tank_touch_hold(t, tx, ty);
+    if (touched && !modal && !card_next && !s_held_page && now - s_press_us > 300000 && fabsf(ty - s_py) < 30) tank_touch_hold(t, tx, ty);
     if (!touched && s_down) {
         /* release: classify with the LAST touched position (the old code fell
            back to the PRESS position here, so dx/dy were always 0 - every
@@ -525,6 +527,12 @@ void touch_port_poll(tank_t *t) {
                 else ESP_LOGI(TAG, "tap at %.0f,%.0f ignored: a tool is in hand (DONE first)", s_px, s_py);
                 goto released;
             }
+            if (card_next) {
+                if (render_stats_next_hit(t, s_sel, s_lx, s_ly)) {
+                    s_sel = (s_sel + 1) % t->n_fish; s_sel_us = now;
+                }
+                goto released;
+            }
             if (s_sel >= 0 && s_sel < t->n_fish && render_tools_hit(s_px, s_py) >= 0) {   /* the toolbox under the card (2026-10-01):
                                                                                      pick a tool up, or put the one in hand back */
                 int tl = render_tools_hit(s_px, s_py);
@@ -583,7 +591,7 @@ void touch_port_poll(tank_t *t) {
         else if (s_ms && !s_journal && !s_bank && !s_back && fabsf(dx) >= 40 && fabsf(dx) > 2 * fabsf(dy)) {   /* sideways along the TANK row: its page (2026-09-30) */
             if (render_milestones_swipe(t, s_px, s_py, dx)) ESP_LOGI(TAG, "page swipe %.0f px on the tank row", dx);
         }
-        else if (!s_ms && t->tool == TOOL_HAND && s_py - tank_glass_top(s_px) < 60 && dy >= 40) tank_feed(t, s_lx, 3);  /* drag down from the top = feed (not with a tool in hand) */
+        else if (!card_next && !s_ms && t->tool == TOOL_HAND && s_py - tank_glass_top(s_px) < 60 && dy >= 40) tank_feed(t, s_lx, 3);  /* drag down from the top = feed (not with a tool in hand) */
     }
 released:
     if (!touched) s_held_page = false;

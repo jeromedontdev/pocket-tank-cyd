@@ -156,9 +156,10 @@ static void show_state(const tank_t *t) {
              t->aquariums.stat_upgrades, progression_item_owned(t, 32) ? "ON" : "off",
              progression_item_owned(t, 33) ? "ON" : "off", progression_item_owned(t, 34) ? "ON" : "off",
              progression_item_owned(t, 35) ? "ON" : "off");
-    ESP_LOGI(TAG, "clock theme %u | layout %u | delay %u | flags %u | UTC quarters %d",
-             t->aquariums.clock_theme, t->aquariums.clock_layout, t->aquariums.clock_delay,
-             t->aquariums.clock_flags, t->aquariums.clock_utc_quarters);
+    ESP_LOGI(TAG, "clock theme %u | layout %u | delay %u | flags %u | UTC quarters %d | secondary %u",
+             t->aquariums.clock_theme, t->aquariums.clock_layout, t->aquariums.clock_delay & CLOCK_DELAY_MASK,
+             t->aquariums.clock_flags, t->aquariums.clock_utc_quarters,
+             t->aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT);
     if (t->sd_unlocks & SD_ITEM_URCHIN)                 /* where it is, what it is after */
         ESP_LOGI(TAG, "urchin at x %.0f | %s | appetite %.3f | %.0f cm grazed so far (keeps the grass over %.2f)", t->urchin_x,
                  tank_urchin_chewing(t) ? "chewing" : t->urchin_frond >= 0 ? "off to the tall grass" : t->urchin_rest > 0 ? "resting" : "ambling",

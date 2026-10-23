@@ -57,8 +57,11 @@ includes matching image boards and ready-to-paste text.
   layout is large and centered. Clocks are **OFF by default** and saved per tank.
   Choose **15 sec, 30 sec, 1, 2, 5 or 10 min** of inactivity, or **Manual Only**;
   **SHOW CLOCK** opens it immediately. The first touch only dismisses the clock.
-  **STYLE** offers theme-default colors or white, amber, mint, cyan, rose,
-  lavender and red, plus independent seconds, panel/border and date toggles.
+  **STYLE** offers separate primary and secondary colors: theme defaults or
+  white, amber, mint, cyan, rose, lavender and red, plus independent seconds,
+  panel/border and date toggles.
+- A selected fish's card has a **>** button just outside its top-right edge
+  to cycle through fish, wrapping to the first. Tapping the card still opens Keeper.
 - **Settings > CLOCK > WI-FI / SYNC** scans 2.4 GHz networks and
   provides a full single-page QWERTY password keyboard with separate
   numbers/symbols, connection errors, change-network and confirmed

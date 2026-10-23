@@ -1219,7 +1219,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     t->aquariums = sv.aquariums;
     if (t->aquariums.clock_theme >= CLOCK_THEME_COUNT ||
         t->aquariums.clock_utc_quarters < -48 || t->aquariums.clock_utc_quarters > 56 ||
-        t->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (t->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT || t->aquariums.clock_delay >= CLOCK_DELAY_COUNT) {
+        t->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (t->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT || (t->aquariums.clock_delay & CLOCK_DELAY_MASK) >= CLOCK_DELAY_COUNT) {
         fprintf(stderr, "Invalid saved clock options; clock disabled\n");
         t->aquariums.clock_theme = CLOCK_OFF; t->aquariums.clock_flags = 0; t->aquariums.clock_utc_quarters = 0; t->aquariums.clock_layout = 0;
         t->aquariums.clock_delay = 0;
@@ -1729,7 +1729,8 @@ char *progression_backup_json(const tank_t *t) {
         !cJSON_AddNumberToObject(tank, "clock_flags", sv.aquariums.clock_flags) ||
         !cJSON_AddNumberToObject(tank, "clock_utc_quarters", sv.aquariums.clock_utc_quarters) ||
         !cJSON_AddNumberToObject(tank, "clock_layout", sv.aquariums.clock_layout) ||
-        !cJSON_AddNumberToObject(tank, "clock_delay", sv.aquariums.clock_delay)) goto done;
+        !cJSON_AddNumberToObject(tank, "clock_delay", sv.aquariums.clock_delay & CLOCK_DELAY_MASK) ||
+        !cJSON_AddNumberToObject(tank, "clock_secondary", sv.aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT)) goto done;
     cJSON *fish = cJSON_AddArrayToObject(root, "fish");
     if (!fish) goto done;
     for (int i = 0; i < N_FISH_MAX; i++) {
@@ -1911,10 +1912,10 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     }
     uint8_t restored_stats = stat ? (uint8_t)stat->valuedouble : 0;
     if (stat) cJSON_Delete(cJSON_DetachItemViaPointer(tank_fields, stat));
-    int clock_values[5] = {0};
-    static const char *const clock_keys[] = {"clock_theme", "clock_flags", "clock_utc_quarters", "clock_layout", "clock_delay"};
-    static const int clock_min[] = {0, 0, -48, 0, 0}, clock_max[] = {CLOCK_THEME_COUNT - 1, CLOCK_FLAGS_MASK, 56, CLOCK_LAYOUT_MAX, CLOCK_DELAY_COUNT - 1};
-    for (int i = 0; i < 5; i++) {
+    int clock_values[6] = {0};
+    static const char *const clock_keys[] = {"clock_theme", "clock_flags", "clock_utc_quarters", "clock_layout", "clock_delay", "clock_secondary"};
+    static const int clock_min[] = {0, 0, -48, 0, 0, 0}, clock_max[] = {CLOCK_THEME_COUNT - 1, CLOCK_FLAGS_MASK, 56, CLOCK_LAYOUT_MAX, CLOCK_DELAY_COUNT - 1, 7};
+    for (int i = 0; i < 6; i++) {
         cJSON *option = cJSON_GetObjectItemCaseSensitive(tank_fields, clock_keys[i]);
         if (!option) continue;
         if (!cJSON_IsNumber(option) || !isfinite(option->valuedouble) || floor(option->valuedouble) != option->valuedouble ||
@@ -1965,7 +1966,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         sv.aquariums.clock_flags = (uint8_t)clock_values[1];
         sv.aquariums.clock_utc_quarters = (int8_t)clock_values[2];
         sv.aquariums.clock_layout = (uint8_t)clock_values[3];
-        sv.aquariums.clock_delay = (uint8_t)clock_values[4];
+        sv.aquariums.clock_delay = (uint8_t)(clock_values[4] | (clock_values[5] << CLOCK_SECONDARY_SHIFT));
         if (!sv.aquariums.count) sv.aquariums.count = 1;
     }
     ok = !commit || persist_port_save(&sv, sizeof sv);
@@ -2018,7 +2019,7 @@ const char *progression_aquarium_move(tank_t *t, int target) {
             v->aquariums.clock_theme >= CLOCK_THEME_COUNT ||
             v->aquariums.clock_utc_quarters < -48 || v->aquariums.clock_utc_quarters > 56 ||
             v->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (v->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT ||
-            v->aquariums.clock_delay >= CLOCK_DELAY_COUNT ||
+            (v->aquariums.clock_delay & CLOCK_DELAY_MASK) >= CLOCK_DELAY_COUNT ||
             memcmp(v->aquariums.id, owned.id, sizeof owned.id) || v->aquariums.active != target) {
             error = "INVALID TANK SAVE"; goto done;
         }

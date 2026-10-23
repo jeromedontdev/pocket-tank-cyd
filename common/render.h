@@ -103,6 +103,11 @@ void render_fb_primed(const uint16_t *fb, unsigned epoch);
  * hitches, the trust it passed on and what it is doing. */
 #define RENDER_CARD_SEAHORSE 96
 void render_stats_card(const tank_t *t, int fish_idx, uint16_t *fb, int stride);
+#define RENDER_CARD_NEXT_X 154
+#define RENDER_CARD_NEXT_Y 8
+#define RENDER_CARD_NEXT_W 44
+#define RENDER_CARD_NEXT_H 40
+bool render_stats_next_hit(const tank_t *t, int fish_idx, float x, float y);
 /* Optional card cache (RENDER_CARD_W x RENDER_CARD_H uint16): with the scene
  * cache live, the card is redrawn at most 4x/s and blitted otherwise (~7 ms
  * -> ~1 ms per frame on the device). NULL = draw every frame. */

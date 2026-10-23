@@ -94,7 +94,8 @@ Alpha release for **ESP32-2432S028 CYD only**.
 - Expanded decorations, three surface floats, upkeep and fish-care upgrades.
 - Price-sorted shop, consistent buttons and ownership-colored icons.
 - Seven idle clocks: Minimal, seven-segment Digital, Analog, Neon, Flip, Binary and Orbit.
-- Theme colors plus seven color overrides; independently hide seconds, panel/border and date.
+- Independent primary/secondary clock colors; hide seconds, panel/border and date.
+- Clear Orbit caption spacing and an outside-card arrow to cycle selected fish.
 - Per-tank OFF/manual/15-second-to-10-minute activation, three sizes and five positions.
 - Selectable 1-hour/30-minute/15-minute UTC adjustment and manual DST +1-hour toggle.
 - On-screen Wi-Fi setup, saved-network management and boot/on-demand NTP time.
