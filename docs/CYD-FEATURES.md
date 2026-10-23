@@ -34,7 +34,8 @@ The headline additions:
 > the real aquarium was not read or changed. Each 320 x 240 Normal framebuffer is
 > enlarged exactly 3x using nearest-neighbor pixels, without smoothing,
 > retouching or added interface elements. The emulator is built with the
-> hardware's five-active-fish limit for these captures. SD operations,
+> hardware's five-active-fish limit and `CYD_FLAT_EDGES=1` (no vignette)
+> for these captures. SD operations,
 > flashing and touch calibration still run on the physical CYD, not in
 > the emulator.
 

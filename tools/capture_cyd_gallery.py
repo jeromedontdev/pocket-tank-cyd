@@ -60,7 +60,7 @@ def main():
                 path = output / name
                 path.write_text(json.dumps(fixture), encoding="utf-8")
                 os.environ["POCKET_TANK_WEATHER_" + suffix + "_FIXTURE"] = str(path)
-            library = sim.build(args.cc, output, defines=("POP_CAP=5",))
+            library = sim.build(args.cc, output, defines=("POP_CAP=5", "CYD_FLAT_EDGES=1"))
             lib = sim.load(library, (output / "icons.bin").read_bytes())
             try:
                 def tap(x, y):
