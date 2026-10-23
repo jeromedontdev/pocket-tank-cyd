@@ -156,6 +156,9 @@ static void show_state(const tank_t *t) {
              t->aquariums.stat_upgrades, progression_item_owned(t, 32) ? "ON" : "off",
              progression_item_owned(t, 33) ? "ON" : "off", progression_item_owned(t, 34) ? "ON" : "off",
              progression_item_owned(t, 35) ? "ON" : "off");
+    ESP_LOGI(TAG, "clock theme %u | layout %u | delay %u | flags %u | UTC quarters %d",
+             t->aquariums.clock_theme, t->aquariums.clock_layout, t->aquariums.clock_delay,
+             t->aquariums.clock_flags, t->aquariums.clock_utc_quarters);
     if (t->sd_unlocks & SD_ITEM_URCHIN)                 /* where it is, what it is after */
         ESP_LOGI(TAG, "urchin at x %.0f | %s | appetite %.3f | %.0f cm grazed so far (keeps the grass over %.2f)", t->urchin_x,
                  tank_urchin_chewing(t) ? "chewing" : t->urchin_frond >= 0 ? "off to the tall grass" : t->urchin_rest > 0 ? "resting" : "ambling",
@@ -221,7 +224,7 @@ static void help(void) {
     ESP_LOGI(TAG, "clock | sd status | sd backup | sd backups | sd export | sd verify | sd restore|undo [number] [confirm] (JSON tank snapshots on SD)");
     ESP_LOGI(TAG, "overgrown (grass to the ceiling + fouled glass; fish stress climbs) | court (stage the fry: in ~10-20 s the pair courts in the grass, then it is born) | arrive (the fry, now)");
     ESP_LOGI(TAG, "sd update (check, then confirm within 60s) | sd update-upload <bytes> (USB package copy)");
-    ESP_LOGI(TAG, "wifi | wifi set ssid=<name> pass=<secret> | wifi forget | ota | ota check (legacy Wi-Fi flow) | ota url <manifest url>|default");
+    ESP_LOGI(TAG, "wifi | wifi setup (on-screen picker) | wifi set ssid=<name> pass=<secret> | wifi forget | ota | ota check (legacy Wi-Fi flow) | ota url <manifest url>|default");
 }
 
 /* `wifi set ssid=<name> pass=<secret>`: the raw line, since a name or a
@@ -268,6 +271,10 @@ static void run(tank_t *t, char *line) {
     else if (!strcmp(c, "state")) show_state(t);
     else if (!strcmp(c, "wifi")) {                            /* the saved network (docs/OTA.md) */
         char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];
+        if (argc > 1 && !strcmp(argv[1], "setup")) {
+            if (t) device_wifi_setup(); else ESP_LOGW(TAG, "Wi-Fi setup is already open");
+            return;
+        }
         if (argc > 1 && !strcmp(argv[1], "forget")) { net_port_creds_forget(); return; }
         if (net_port_creds_get(ssid, pass)) ESP_LOGI(TAG, "network: %s (%s)", ssid, pass[0] ? "with a password" : "open");
         else ESP_LOGI(TAG, "no network saved (wifi set ssid=<name> pass=<secret>, or the wizard on the glass)");

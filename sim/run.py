@@ -46,6 +46,7 @@ def load(path, icons):
     lib.sim_backup.restype = ctypes.c_void_p
     lib.sim_free.argtypes = [ctypes.c_void_p]
     lib.sim_error.restype = ctypes.c_char_p
+    lib.sim_network_message.restype = ctypes.c_char_p
     lib.sim_restore.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
     if not lib.sim_init(icons, len(icons)):
         raise RuntimeError("Simulator could not initialize")
@@ -157,6 +158,81 @@ def main():
                     lib.sim_touch(x * 240 / 448, y * 180 / 368, 1)
                     lib.sim_touch(x * 240 / 448, y * 180 / 368, 0)
 
+                def advance():
+                    for _ in range(12):
+                        lib.sim_frame(0.25)
+
+                lib.sim_action(2)
+                tap(220, 20)  # Clock subpage.
+                tap(220, 69); tap(220, 109); tap(220, 149); tap(220, 189); tap(220, 229); tap(380, 270)
+                options = json.loads(backup(lib))["tank"]
+                assert (options["clock_theme"], options["clock_flags"], options["clock_utc_quarters"], options["clock_layout"], options["clock_delay"]) == (1, 1, 1, 5, 1)
+                tap(120, 318)
+                assert lib.sim_page() == 0 and lib.sim_clock_active(), "SHOW CLOCK must enter clock mode"
+                tap(160, 90)
+                assert not lib.sim_clock_active() and json.loads(backup(lib))["tank"] == options, "Wake tap must not feed, select, or change settings"
+                for _ in range(59):
+                    lib.sim_frame(0.25)
+                assert not lib.sim_clock_active(), "15-second clock must not activate early"
+                lib.sim_frame(0.25)
+                assert lib.sim_clock_active(), "15-second clock must activate at the configured delay"
+                tap(160, 90)
+                lib.sim_action(2); tap(220, 20)
+                for _ in range(5):
+                    tap(220, 229)
+                assert json.loads(backup(lib))["tank"]["clock_delay"] == 6
+                tap(120, 318)
+                assert lib.sim_clock_active(), "Manual-only clock must support SHOW CLOCK"
+                tap(160, 90)
+                advance()
+                assert not lib.sim_clock_active()
+                lib.sim_action(2); tap(220, 20)
+                for _ in range(4):
+                    tap(220, 69)
+                assert json.loads(backup(lib))["tank"]["clock_theme"] == 0
+                tap(120, 318)
+                assert lib.sim_page() == 2 and not lib.sim_clock_active(), "OFF must disable manual entry too"
+                tap(220, 69)
+                options = json.loads(backup(lib))["tank"]
+                tap(330, 318)  # Enter Wi-Fi through the actual Settings route.
+                advance()
+                assert lib.sim_network_page() == 3, "Wi-Fi setup must scan, not fetch firmware"
+                tap(160, 150)  # Open CoffeeShop Guest network.
+                advance()
+                assert lib.sim_network_message() == b"WI-FI CONNECTED"
+                assert (output / "fake-wifi.txt").read_text().startswith("CoffeeShop Guest\n")
+                advance()
+                assert lib.sim_network_message() == b"WI-FI CONNECTED", "Wi-Fi-only flow must never check OTA"
+                assert json.loads(backup(lib))["tank"] == options, "Wi-Fi mode must not alter aquarium or clock settings"
+                tap(224, 315)  # Back to the clock page.
+                assert lib.sim_network_page() == 0 and lib.sim_page() == 2
+                tap(330, 318)
+                assert lib.sim_network_message() == b"WI-FI SETTINGS"
+                tap(100, 315)  # Forget asks for confirmation.
+                assert lib.sim_network_message() == b"FORGET WI-FI?"
+                tap(320, 265)  # Keep.
+                assert lib.sim_network_message() == b"WI-FI SETTINGS"
+                tap(100, 315)
+                os.environ["POCKET_TANK_WIFI"] = str(output)  # Cannot erase a nonempty directory as a credential file.
+                tap(110, 265)
+                assert lib.sim_network_message() == b"FORGET FAILED"
+                os.environ["POCKET_TANK_WIFI"] = str(output / "fake-wifi.txt")
+                tap(224, 265); tap(110, 265)  # Retry, then confirm forget.
+                assert lib.sim_network_message() == b"WI-FI FORGOTTEN" and not (output / "fake-wifi.txt").exists()
+                tap(224, 315)
+                (output / "fake-wifi.txt").write_text("Fishbowl\nwrongpass\n")
+                tap(330, 318); tap(110, 265); advance()
+                assert lib.sim_network_message() == b"NOT ACCEPTED"
+                tap(320, 315)  # Error page has three actions, BACK at right.
+                assert lib.sim_network_page() == 0
+                (output / "fake-wifi.txt").unlink()
+                os.environ["POCKET_TANK_WIFI"] = str(output)  # Unwritable credential-file target.
+                tap(330, 318); advance(); tap(160, 150); advance()
+                assert lib.sim_network_message() == b"WI-FI SAVE FAILED"
+                tap(224, 315)
+                os.environ["POCKET_TANK_WIFI"] = str(output / "fake-wifi.txt")
+                tap(380, 20)  # Back to normal Settings.
+                print("PASS: themed clock settings and Wi-Fi-only scan/connect, saved network, confirmed forget, wrong password, save failure and aquarium preservation")
                 lib.sim_action(5)
                 lib.sim_action(1)
                 tap(220, 356)

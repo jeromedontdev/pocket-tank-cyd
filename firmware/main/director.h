@@ -22,3 +22,4 @@ void device_sleep(int wake_after_s);   /* main.c: the keeper's sleep (0: grace t
 void device_clock_log(void);           /* main.c: the clock - RTC chip or the internet's time (the clockless night), and what tonight will be */
 void device_poweroff(void);            /* main.c: save + PMIC cut now */
 void device_update_check(void);        /* main.c: as CHECK FOR UPDATES - save, restart into update mode (docs/OTA.md) */
+void device_wifi_setup(void);

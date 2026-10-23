@@ -68,16 +68,24 @@ bool net_port_creds_get(char *ssid, char *pass) {
     return true;
 }
 bool net_port_creds_set(const char *ssid, const char *pass) {
-    nvs_handle_t h; if (nvs_open(WIFI_NVS_NS, NVS_READWRITE, &h) != ESP_OK) return false;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(WIFI_NVS_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) { ESP_LOGE(TAG, "network save: NVS open failed: %s", esp_err_to_name(err)); return false; }
     bool ok = nvs_set_str(h, "ssid", ssid) == ESP_OK && nvs_set_str(h, "pass", pass ? pass : "") == ESP_OK && nvs_commit(h) == ESP_OK;
     nvs_close(h);
-    ESP_LOGI(TAG, "network saved: %s (%s)", ssid, pass && pass[0] ? "with a password" : "open");
+    if (ok) ESP_LOGI(TAG, "network saved: %s (%s)", ssid, pass && pass[0] ? "with a password" : "open");
+    else ESP_LOGE(TAG, "network save failed");
     return ok;
 }
-void net_port_creds_forget(void) {
-    nvs_handle_t h; if (nvs_open(WIFI_NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
-    nvs_erase_key(h, "ssid"); nvs_erase_key(h, "pass"); nvs_commit(h); nvs_close(h);
-    ESP_LOGI(TAG, "network forgotten");
+bool net_port_creds_forget(void) {
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(WIFI_NVS_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) { ESP_LOGE(TAG, "network forget: NVS open failed: %s", esp_err_to_name(err)); return false; }
+    esp_err_t ssid = nvs_erase_key(h, "ssid"), pass = nvs_erase_key(h, "pass");
+    bool ok = (ssid == ESP_OK || ssid == ESP_ERR_NVS_NOT_FOUND) && (pass == ESP_OK || pass == ESP_ERR_NVS_NOT_FOUND) && nvs_commit(h) == ESP_OK;
+    nvs_close(h);
+    if (ok) ESP_LOGI(TAG, "network forgotten"); else ESP_LOGE(TAG, "network forget failed");
+    return ok;
 }
 const char *net_port_manifest_url(void) {                   /* the director's override, else the release channel */
     static char url[NET_URL_MAX + 1];

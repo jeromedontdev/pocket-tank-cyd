@@ -368,12 +368,16 @@ bool touch_port_read_raw(float *x, float *y) {
 
 /* call every frame from the tank task */
 void touch_port_poll(tank_t *t) {
+    static bool clock_wake;
     int64_t now = esp_timer_get_time();
     if (s_cf && now - s_cf_us > CONFIRM_TIMEOUT_US) touch_port_confirm_answer(-1);   /* nobody answered: keep the tank */
     if (!s_xpt_ready) return;
     uint16_t x[1] = {0}, y[1] = {0};
     bool touched = panel_read(x, y);
     if (touch_port_calibrating()) { cyd_cal_poll(touched, x[0], y[0]); return; }
+    if (clock_wake || (touched && !s_down && render_clock_active(t))) {
+        clock_wake = touched; tank_handled(t); s_down = touched; return;
+    }
     /* portrait panel (px,py) -> landscape tank (tx,ty): tx = TANK_W-1-py, ty = px;
      * flipped screen: mirror both, so downstream gestures live in displayed space */
     float tx = s_lx, ty = s_ly;
@@ -389,11 +393,15 @@ void touch_port_poll(tank_t *t) {
         int v = 0, r = render_settings_touch(t, tx, ty, touched, &v);
         if (r) ESP_LOGI(TAG, "settings action %d value %d", r, v);
         if (r == SET_TAP_CLOSE) { s_set = false; s_ms = true; s_back = true; }   /* back to the milestones page (2026-09-16); the release is spent */
+        else if (r == SET_TAP_CLOCK_SHOW) {
+            s_set = s_ms = s_shop = s_upd = false; s_sel = -1; s_back = true;
+            t->ui_cover = false; t->clock_requested = true;
+        }
         else if (r == SET_TAP_TOUCH) { touch_port_calibrate(); return; }
         else if (r == SET_TAP_WIPE) touch_port_confirm_open();
         else if (r == SET_TAP_UPDATES) { s_set = false; s_upd = true; s_back = true; sd_port_update_reset(); ESP_LOGI(TAG, "SD updates page up"); }
         else if (r == SET_TAP_BRIGHT || r == SET_TAP_LIGHT || r == SET_TAP_IDLE || r == SET_TAP_FEED
-                 || r == SET_TAP_BACKUP || r == SET_TAP_RESTORE || r == SET_TAP_SAND || r == SET_TAP_WATER) { s_set_what = r; s_set_val = v; }
+                 || r == SET_TAP_BACKUP || r == SET_TAP_RESTORE || r == SET_TAP_SAND || r == SET_TAP_WATER || r == SET_TAP_WIFI) { s_set_what = r; s_set_val = v; }
     }
     if (s_upd && !s_cf && !su) {                             /* the UPDATES page: CHECK (main restarts), FORGET, CLOSE */
         int r = updates_page_touch(tx, ty, touched);

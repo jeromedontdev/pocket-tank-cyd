@@ -16,7 +16,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 void update_mode_request(void);            /* save the tank FIRST; this restarts the board */
+void update_mode_wifi_request(void);       /* save FIRST; Wi-Fi wizard only, no firmware check */
 bool update_mode_pending(void);            /* at boot: asked for? (reads and clears the word) */
+bool update_mode_wifi_only(void);
 void update_mode_run(uint16_t *fb);        /* the loop; returns on BACK, restarts on an install */
 /* Provisioning at install (2026-10-03). A boot the installer page caused
  * (a reset over USB) on a tank with no network saved does not start the

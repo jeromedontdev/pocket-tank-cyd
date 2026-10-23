@@ -18,7 +18,10 @@
 
 static const char *TAG = "update";
 #define REQ_MAGIC 0x4f54417au              /* "OTAz" */
+#define WIFI_MAGIC 0x57494649u
 RTC_NOINIT_ATTR static uint32_t s_req, s_req_check;
+static bool s_wifi_only;
+bool update_mode_wifi_only(void) { return s_wifi_only; }
 
 void update_mode_request(void) {
     s_req = REQ_MAGIC; s_req_check = ~REQ_MAGIC;
@@ -27,9 +30,16 @@ void update_mode_request(void) {
     esp_restart();
 }
 bool update_mode_pending(void) {
-    bool yes = s_req == REQ_MAGIC && s_req_check == ~REQ_MAGIC;
+    s_wifi_only = s_req == WIFI_MAGIC && s_req_check == ~WIFI_MAGIC;
+    bool yes = s_wifi_only || (s_req == REQ_MAGIC && s_req_check == ~REQ_MAGIC);
     s_req = 0; s_req_check = 0;            /* one boot only, whatever happens next */
     return yes;
+}
+void update_mode_wifi_request(void) {
+    s_req = WIFI_MAGIC; s_req_check = ~WIFI_MAGIC;
+    ESP_LOGI(TAG, "restarting into Wi-Fi setup (no firmware check)");
+    vTaskDelay(pdMS_TO_TICKS(150));
+    esp_restart();
 }
 
 void update_mode_run(uint16_t *fb) {
@@ -37,7 +47,7 @@ void update_mode_run(uint16_t *fb) {
     ESP_LOGI(TAG, "update mode: running from %s | internal heap %u KB, psram %u KB free (the measurement docs/OTA.md waits for)",
              run ? run->label : "?", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
     director_init();                       /* the console, for the hands-free test channel (main.c's later call is a no-op) */
-    update_begin();
+    if (s_wifi_only) update_wifi_begin(); else update_begin();
     int64_t last = esp_timer_get_time(), t0 = last, last_log = last;
     int last_page = -1;
     while (!update_outcome()) {

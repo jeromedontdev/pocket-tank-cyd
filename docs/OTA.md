@@ -61,7 +61,18 @@ NUL-padded printable ASCII). The release label is informational, not an
 authenticated version claim. The serial `sd update` command performs the
 same check/confirm operation as the button.
 
-## Legacy Wi-Fi channel (serial only)
+## On-screen Wi-Fi for the clock
+
+**Settings > CLOCK > WI-FI / SYNC** saves the aquarium and briefly
+restarts into a Wi-Fi-only version of the existing network picker and password
+keyboard. It can connect, change, or confirm forgetting a device-wide saved
+network. Connection and credential-save errors are visible; cancel leaves
+the tank untouched. It never checks an update manifest or downloads firmware.
+On returning to the tank, boot-time NTP synchronizes the optional clock and
+switches the radio off. After power loss a fresh sync is needed; without it,
+the overlay says **SYNC NEEDED**. See [clock setup and time limitations](../firmware/CYD.md#optional-tank-clock-and-on-screen-wi-fi-setup).
+
+## Legacy Wi-Fi firmware channel (serial only)
 
 The default manifest URL is empty. Checking for firmware updates can still
 scan, provision and connect Wi-Fi, but without a configured channel it reports

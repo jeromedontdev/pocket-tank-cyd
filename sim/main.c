@@ -43,6 +43,7 @@ const icon_t *icons_resolve(const icon_t *icon) {
 }
 
 API int sim_init(const void *icons, size_t size) {
+    render_clock_synchronized(true);
     bank = malloc(size);
     void *scratch = calloc(1, render_decor_scratch_size());
     if (!bank || !scratch) {
@@ -62,6 +63,9 @@ API int sim_save(void) { return progression_save(&tank); }
 API char *sim_backup(void) { return progression_backup_json(&tank); }
 API void sim_free(void *memory) { free(memory); }
 API const char *sim_error(void) { return error; }
+API int sim_network_page(void) { return update_active() ? update_page() : 0; }
+API const char *sim_network_message(void) { return update_message_title(); }
+API int sim_clock_active(void) { return render_clock_active(&tank); }
 API int sim_restore(const char *json, size_t size) {
     if (!progression_restore_json(json, size, true, error, sizeof error)) return 0;
     setup_cancel(&tank);
@@ -72,6 +76,7 @@ API int sim_restore(const char *json, size_t size) {
 
 API void sim_action(int action) {
     if (wipe_left > 0) return;
+    if (action >= 0 && action <= 3) { tank_handled(&tank); tank.ui_cover = action != 0; }
     if (action >= 0 && action <= 3) setup_cancel(&tank);
     if (action == 0) { page = 0; render_shop_leave(); render_milestones_leave(); }
     else if (action == 1) page = 1;
@@ -99,8 +104,16 @@ static void shop_action(int result) {
 }
 
 API void sim_touch(float x, float y, int down) {
+    static bool clock_wake;
     last_x = x; last_y = y;
     if (down && !pressed) { px = x; py = y; held = 0; }
+    if (update_active()) {
+        update_touch(x, y, down != 0);
+        pressed = down != 0; return;
+    }
+    if (clock_wake || (down && !pressed && render_clock_active(&tank))) {
+        clock_wake = down != 0; tank_handled(&tank); pressed = false; return;
+    }
     if (wipe_left > 0) {
         if (!down && pressed) {
             int hit = render_confirm_hit(px, py);
@@ -173,10 +186,15 @@ API void sim_touch(float x, float y, int down) {
     if (page == 2) {
         int value, result = render_settings_touch(&tank, x, y, down != 0, &value);
         if (result == SET_TAP_CLOSE) page = 1;
+        else if (result == SET_TAP_CLOCK_SHOW) { page = 0; selected = -1; tank.ui_cover = false; tank.clock_requested = true; }
         else if (result == SET_TAP_WIPE) wipe_left = 20;
         else if (result == SET_TAP_BRIGHT) bright = value;
         else if (result == SET_TAP_TOUCH) render_backup_status("TOUCH CALIBRATION IS ON THE CYD", false);
         else if (result == SET_TAP_UPDATES) page = 4;
+        else if (result == SET_TAP_WIFI) {
+            if (progression_save(&tank)) update_wifi_begin();
+            else render_backup_status("SAVE FAILED - WIFI NOT OPENED", false);
+        }
         else if (result == SET_TAP_SAND || result == SET_TAP_WATER) progression_save(&tank);
         else if (result == SET_TAP_BACKUP || result == SET_TAP_RESTORE)
             render_backup_status("USE THE WINDOW EXPORT / RESTORE BUTTONS", false);
@@ -190,6 +208,7 @@ API const uint16_t *sim_frame(float dt) {
     if (update_active()) {
         net_sim_advance(dt); update_tick(dt);
         render_update(frame, TANK_W, tank.clock);
+        if (!update_active()) net_port_off();
         return frame;
     }
     if (pressed) {
@@ -214,11 +233,13 @@ API const uint16_t *sim_frame(float dt) {
     else if (page == 7) render_aquariums(&tank, frame, TANK_W);
     else {
         render_tank(&tank, frame, TANK_W);
-        if (selected >= 0) render_stats_card(&tank, selected, frame, TANK_W);
-        render_tool_chip(&tank, selected, frame, TANK_W);
-        render_sd_toast(&tank, frame, TANK_W);
-        const notice_t *notice = notice_current();
-        if (notice) render_notice(&tank, frame, TANK_W, notice->kind, notice->fish, notice->bit, 1 - notice->age / NOTICE_UP_S);
+        if (!render_clock_active(&tank)) {
+            if (selected >= 0) render_stats_card(&tank, selected, frame, TANK_W);
+            render_tool_chip(&tank, selected, frame, TANK_W);
+            render_sd_toast(&tank, frame, TANK_W);
+            const notice_t *notice = notice_current();
+            if (notice) render_notice(&tank, frame, TANK_W, notice->kind, notice->fish, notice->bit, 1 - notice->age / NOTICE_UP_S);
+        }
     }
     if (setup_active()) render_setup(&tank, frame, TANK_W, tank.clock);
     if (wipe_left > 0) render_confirm_reset(frame, TANK_W, wipe_left / 20);

@@ -106,6 +106,13 @@ static char s_boot_sync[96] = "no sync at this boot";   /* what this boot's sync
  * times, found halted 2026-10-06: syncscr and tank both in spi_device_acquire_bus). */
 static volatile bool s_sync_finished;
 static bool s_sync_ok;
+static bool s_wall_clock_synced;
+#define CLOCK_TRUST_MAGIC 0x4e545043u
+static RTC_NOINIT_ATTR uint32_t s_wall_clock_magic, s_wall_clock_check;
+static void wall_clock_synced(void) {
+    s_wall_clock_magic = CLOCK_TRUST_MAGIC; s_wall_clock_check = ~CLOCK_TRUST_MAGIC;
+    s_wall_clock_synced = true; render_clock_synchronized(true);
+}
 static int64_t s_sync_u, s_sync_at;
 static TaskHandle_t s_sync_waiter;
 static void sync_worker(void *arg) {
@@ -116,9 +123,14 @@ static void sync_worker(void *arg) {
     vTaskDelete(NULL);
 }
 static void net_clock_boot(uint16_t *fb) {  /* before the tank exists: the radio has the internal heap to itself */
+    esp_reset_reason_t reason = esp_reset_reason();
+    s_wall_clock_synced = reason != ESP_RST_POWERON && reason != ESP_RST_BROWNOUT && reason != ESP_RST_UNKNOWN &&
+        s_wall_clock_magic == CLOCK_TRUST_MAGIC && s_wall_clock_check == ~CLOCK_TRUST_MAGIC && clock_port_now_unix() != 0;
+    if (!s_wall_clock_synced) s_wall_clock_magic = s_wall_clock_check = 0;
+    render_clock_synchronized(s_wall_clock_synced);
     if (!net_saved()) return;
     bool real = nvs_u8("netclk", 0), set = clock_port_now_unix() != 0, ok_before = nvs_u8("netok", 0);
-    if (real && set && ok_before) return;    /* a deep-sleep wake on a good clock: it ran all night */
+    if (real && set && ok_before && s_wall_clock_synced && !update_mode_wifi_only()) return;    /* retained NTP time; Wi-Fi setup explicitly resyncs */
     int64_t u = 0, at = 0;
     bool ok;
     s_sync_finished = false; s_sync_waiter = xTaskGetCurrentTaskHandle();
@@ -142,7 +154,11 @@ static void net_clock_boot(uint16_t *fb) {  /* before the tank exists: the radio
     int64_t now = u + (esp_timer_get_time() - at) / 1000000;
     if (real) {
         int64_t was = clock_port_now_unix();
-        struct timeval tv = { .tv_sec = (time_t)now }; settimeofday(&tv, NULL);
+        struct timeval tv = { .tv_sec = (time_t)now };
+        if (settimeofday(&tv, NULL) != 0) {
+            ESP_LOGE(TAG, "NTP received, but setting the system clock failed"); return;
+        }
+        wall_clock_synced();
         ESP_LOGI(TAG, "clock: set from the internet (%s) - the time away is lived through at this boot",
                  was ? "it had run on" : "it had stopped with the power");
         if (was) ESP_LOGI(TAG, "clock: it was %lld s %s", (long long)(now > was ? now - was : was - now), now >= was ? "behind (owed time, lived now)" : "ahead");
@@ -156,7 +172,10 @@ static void net_clock_boot(uint16_t *fb) {  /* before the tank exists: the radio
 static void net_clock_rebase(void) {        /* after progression_boot / _wake: a first sync takes over the clock */
     if (!s_rebase_us) return;
     struct timeval tv = { .tv_sec = (time_t)(s_rebase_unix + (esp_timer_get_time() - s_rebase_us) / 1000000) };
-    settimeofday(&tv, NULL);
+    if (settimeofday(&tv, NULL) != 0) {
+        ESP_LOGE(TAG, "First NTP sync could not set the system clock"); return;
+    }
+    wall_clock_synced();
     nvs_u8_put("netclk", 1);
     s_rebase_us = 0;
     ESP_LOGI(TAG, "clock: on real time from now on - nights can be a power-off");
@@ -165,7 +184,7 @@ static void net_clock_rebase(void) {        /* after progression_boot / _wake: a
 void device_clock_log(void) {
     ESP_LOGI(TAG, "clock: %s | lived %.2f h | now %lld | network %s | real time %s",
              s_boot_sync, s_boot_lived_h, (long long)clock_port_now_unix(),
-             net_saved() ? "saved" : "none", nvs_u8("netclk", 0) ? "yes" : "not yet");
+             net_saved() ? "saved" : "none", s_wall_clock_synced ? "yes" : "not yet");
 }
 static void deep_sleep_now(int wake_after_s) {
     ESP_LOGI(TAG, "deep sleep: BOOT wakes%s", wake_after_s > 0 ? ", or the timer" : "");
@@ -285,6 +304,9 @@ static void tank_task(void *arg) {
         else if (ans < 0) ESP_LOGI(TAG, "reset prompt: tank kept");
         { int v = 0, w = touch_port_take_setting(&v);                 /* the settings page */
           if (w == SET_TAP_BRIGHT) brightness_set_level(v);
+          else if (w == SET_TAP_WIFI) {
+              device_wifi_setup();
+          }
           else if (w == SET_TAP_BACKUP || w == SET_TAP_RESTORE) sd_port_backup_action(&tank, w == SET_TAP_RESTORE, v != 0);
 
           else if (w == SET_TAP_LIGHT) ESP_LOGI(TAG, "settings: lights out %s", v ? "AUTO (the idle rule)" : "MANUAL (double-tap the glass)");
@@ -323,7 +345,7 @@ static void tank_task(void *arg) {
                       touch_port_show_shop(false); setup_begin_place(&tank, item);
                       ESP_LOGI(TAG, "shop: placement page up for the %s", SD_ITEMS[item].name); } }
               else ESP_LOGI(TAG, "shop: %s refused (balance %d, price %d)", SD_ITEMS[item].name, (int)tank.sd_balance, SD_ITEMS[item].price); } }
-        brightness_apply(tank.night);
+        brightness_apply(tank.night && !render_clock_active(&tank));
         int64_t pf_tick = esp_timer_get_time(); polls_us += pf_tick - now;
         tank.hold_light = setup_active() || touch_port_confirm_up() || touch_port_calibrating();   /* no lights-out mid-name */
         tank.ui_cover = tank.hold_light || touch_port_milestones() || touch_port_settings() || touch_port_updates() || touch_port_shop();   /* a fry's spawning waits */
@@ -353,6 +375,8 @@ static void tank_task(void *arg) {
                                                 keep quick finger taps from slipping
                                                 between 40 ms frame boundaries */
             int sel = touch_port_selected();
+            bool idle_clock = render_clock_active(&tank);
+            if (idle_clock) sel = -1;
             int64_t tc = esp_timer_get_time();
             if (touch_port_milestones()) {       /* milestones page: covers the tank until a tap */
                 if (touch_port_bank()) render_bank(&tank, fb[cur], TANK_W);
@@ -369,10 +393,10 @@ static void tank_task(void *arg) {
                 if (touch_port_aquariums()) render_aquariums(&tank, fb[cur], TANK_W);
                 else render_shop(&tank, fb[cur], TANK_W);
                 sel = -1;
-            } else render_sd_toast(&tank, fb[cur], TANK_W);   /* the live tank: "+N" as dollars are earned */
+            } else if (!idle_clock) render_sd_toast(&tank, fb[cur], TANK_W);   /* the live tank: "+N" as dollars are earned */
             if (sel >= 0) render_stats_card(&tank, sel, fb[cur], TANK_W);   /* tapped fish: stats card (+ the pill) */
-            render_tool_chip(&tank, sel, fb[cur], TANK_W);
-            if (!touch_port_milestones() && !touch_port_settings() && !touch_port_updates() && !touch_port_shop()) {   /* an announcement over the live tank */
+            if (!idle_clock) render_tool_chip(&tank, sel, fb[cur], TANK_W);
+            if (!idle_clock && !touch_port_milestones() && !touch_port_settings() && !touch_port_updates() && !touch_port_shop()) {   /* an announcement over the live tank */
                 const notice_t *nt = notice_current();
                 if (nt) render_notice(&tank, fb[cur], TANK_W, nt->kind, nt->fish, nt->bit, 1.0f - nt->age / NOTICE_UP_S);
             }
@@ -488,6 +512,10 @@ static void request_update(void) {
     update_mode_request();                   /* restarts */
 }
 void device_update_check(void) { request_update(); }
+void device_wifi_setup(void) {
+    if (progression_save(&tank)) update_mode_wifi_request();
+    else { ESP_LOGE(TAG, "Wi-Fi setup canceled: could not save aquarium"); render_backup_status("SAVE FAILED - WIFI NOT OPENED", false); }
+}
 /* the installer page asked a RUNNING tank for the networks (its Connect to /
  * Change Wi-Fi): saved the same way, then the restart into provisioning mode */
 void device_provision_request(void) {

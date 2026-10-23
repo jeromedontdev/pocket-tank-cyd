@@ -1089,6 +1089,11 @@ bool progression_reset(tank_t *t, uint32_t seed) {
     tank_init(t, seed);
     t->aquariums = owned;
     t->aquariums.stat_upgrades = 0;
+    t->aquariums.clock_theme = CLOCK_OFF;
+    t->aquariums.clock_flags = 0;
+    t->aquariums.clock_utc_quarters = 0;
+    t->aquariums.clock_layout = 0;
+    t->aquariums.clock_delay = 0;
     if (owned.count > 1) { t->sd_balance = balance; t->sd_earned = earned; }
     progression_fresh(t);
     return progression_save(t);
@@ -1212,6 +1217,13 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
         t->fish[i].pattern = sv.fish_pattern[i] < FISH_PATTERN_COUNT ? sv.fish_pattern[i] : 0;
     }
     t->aquariums = sv.aquariums;
+    if (t->aquariums.clock_theme >= CLOCK_THEME_COUNT || t->aquariums.clock_flags > CLOCK_FLAGS_MASK ||
+        t->aquariums.clock_utc_quarters < -48 || t->aquariums.clock_utc_quarters > 56 ||
+        t->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (t->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT || t->aquariums.clock_delay >= CLOCK_DELAY_COUNT) {
+        fprintf(stderr, "Invalid saved clock options; clock disabled\n");
+        t->aquariums.clock_theme = CLOCK_OFF; t->aquariums.clock_flags = 0; t->aquariums.clock_utc_quarters = 0; t->aquariums.clock_layout = 0;
+        t->aquariums.clock_delay = 0;
+    }
     if (!memchr(t->aquariums.name, 0, sizeof t->aquariums.name) || !t->aquariums.name[0])
         snprintf(t->aquariums.name, sizeof t->aquariums.name, "TANK %u", t->aquariums.active + 1);
     t->journal = sv.journal;
@@ -1713,6 +1725,11 @@ char *progression_backup_json(const tank_t *t) {
     cJSON *tank = json_fields(&sv, SAVE_FIELDS, FIELD_COUNT(SAVE_FIELDS));
     if (!tank || !cJSON_AddItemToObject(root, "tank", tank)) { cJSON_Delete(tank); goto done; }
     if (!cJSON_AddNumberToObject(tank, "stat_upgrades", sv.aquariums.stat_upgrades)) goto done;
+    if (!cJSON_AddNumberToObject(tank, "clock_theme", sv.aquariums.clock_theme) ||
+        !cJSON_AddNumberToObject(tank, "clock_flags", sv.aquariums.clock_flags) ||
+        !cJSON_AddNumberToObject(tank, "clock_utc_quarters", sv.aquariums.clock_utc_quarters) ||
+        !cJSON_AddNumberToObject(tank, "clock_layout", sv.aquariums.clock_layout) ||
+        !cJSON_AddNumberToObject(tank, "clock_delay", sv.aquariums.clock_delay)) goto done;
     cJSON *fish = cJSON_AddArrayToObject(root, "fish");
     if (!fish) goto done;
     for (int i = 0; i < N_FISH_MAX; i++) {
@@ -1894,6 +1911,20 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     }
     uint8_t restored_stats = stat ? (uint8_t)stat->valuedouble : 0;
     if (stat) cJSON_Delete(cJSON_DetachItemViaPointer(tank_fields, stat));
+    int clock_values[5] = {0};
+    static const char *const clock_keys[] = {"clock_theme", "clock_flags", "clock_utc_quarters", "clock_layout", "clock_delay"};
+    static const int clock_min[] = {0, 0, -48, 0, 0}, clock_max[] = {CLOCK_THEME_COUNT - 1, CLOCK_FLAGS_MASK, 56, CLOCK_LAYOUT_MAX, CLOCK_DELAY_COUNT - 1};
+    for (int i = 0; i < 5; i++) {
+        cJSON *option = cJSON_GetObjectItemCaseSensitive(tank_fields, clock_keys[i]);
+        if (!option) continue;
+        if (!cJSON_IsNumber(option) || !isfinite(option->valuedouble) || floor(option->valuedouble) != option->valuedouble ||
+            option->valuedouble < clock_min[i] || option->valuedouble > clock_max[i]) {
+            snprintf(error, error_size, "Invalid clock option: %s", clock_keys[i]); goto done;
+        }
+        clock_values[i] = (int)option->valuedouble;
+        cJSON_Delete(cJSON_DetachItemViaPointer(tank_fields, option));
+    }
+    if ((clock_values[3] & 3) >= CLOCK_SIZE_COUNT) { snprintf(error, error_size, "Invalid clock size"); goto done; }
     if (!json_read_fields(&sv, tank_fields, SAVE_FIELDS, fields, error, error_size)) goto done;
     if (schema->valuedouble == 1 && sv.sd_unlocks >= (1u << 10)) {
         snprintf(error, error_size, "Unknown items in schema 1 backup"); goto done;
@@ -1930,6 +1961,11 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
             sv.aquariums = current->aquariums;
         free(current);
         sv.aquariums.stat_upgrades = restored_stats;
+        sv.aquariums.clock_theme = (uint8_t)clock_values[0];
+        sv.aquariums.clock_flags = (uint8_t)clock_values[1];
+        sv.aquariums.clock_utc_quarters = (int8_t)clock_values[2];
+        sv.aquariums.clock_layout = (uint8_t)clock_values[3];
+        sv.aquariums.clock_delay = (uint8_t)clock_values[4];
         if (!sv.aquariums.count) sv.aquariums.count = 1;
     }
     ok = !commit || persist_port_save(&sv, sizeof sv);
@@ -1979,6 +2015,10 @@ const char *progression_aquarium_move(tank_t *t, int target) {
         save_t *v = &s->incoming;
         if (v->magic != SAVE_MAGIC || v->n_fish < 2 || v->n_fish > POP_CAP || v->bank_count > FISH_BANK_CAP ||
             (v->aquariums.stat_upgrades & ~STAT_MASK) ||
+            v->aquariums.clock_theme >= CLOCK_THEME_COUNT || v->aquariums.clock_flags > CLOCK_FLAGS_MASK ||
+            v->aquariums.clock_utc_quarters < -48 || v->aquariums.clock_utc_quarters > 56 ||
+            v->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (v->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT ||
+            v->aquariums.clock_delay >= CLOCK_DELAY_COUNT ||
             memcmp(v->aquariums.id, owned.id, sizeof owned.id) || v->aquariums.active != target) {
             error = "INVALID TANK SAVE"; goto done;
         }
@@ -1995,6 +2035,10 @@ const char *progression_aquarium_move(tank_t *t, int target) {
     }
     char incoming_name[16];
     uint8_t incoming_stats = s->incoming.aquariums.stat_upgrades;
+    uint8_t incoming_clock = s->incoming.aquariums.clock_theme, incoming_flags = s->incoming.aquariums.clock_flags;
+    int8_t incoming_offset = s->incoming.aquariums.clock_utc_quarters;
+    uint8_t incoming_layout = s->incoming.aquariums.clock_layout;
+    uint8_t incoming_delay = s->incoming.aquariums.clock_delay;
     memcpy(incoming_name, s->incoming.aquariums.name, sizeof incoming_name);
     s->outgoing.aquariums = owned;
     /* The live NVS wallet is authoritative; inactive snapshots never restore old balances. */
@@ -2002,6 +2046,11 @@ const char *progression_aquarium_move(tank_t *t, int target) {
     s->incoming.sd_earned = s->outgoing.sd_earned;
     s->incoming.aquariums = owned; s->incoming.aquariums.active = (uint8_t)target;
     s->incoming.aquariums.stat_upgrades = incoming_stats;
+    s->incoming.aquariums.clock_theme = incoming_clock;
+    s->incoming.aquariums.clock_flags = incoming_flags;
+    s->incoming.aquariums.clock_utc_quarters = incoming_offset;
+    s->incoming.aquariums.clock_layout = incoming_layout;
+    s->incoming.aquariums.clock_delay = incoming_delay;
     if (buy || !incoming_name[0] || !memchr(incoming_name, 0, sizeof incoming_name))
         snprintf(incoming_name, sizeof incoming_name, "TANK %d", target + 1);
     memcpy(s->incoming.aquariums.name, incoming_name, sizeof incoming_name);

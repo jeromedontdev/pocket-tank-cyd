@@ -222,6 +222,10 @@ static void test_aquariums(void) {
     assert(progression_aquarium_rename(&t, "LOST") && !memcmp(&t, &before, sizeof t)); reject_write = false;
     assert(progression_aquarium_move(&t, 1) && t.sd_balance == 499);
     t.sd_balance = 750; t.sd_earned = 1000; t.journal.xp = 580;
+    t.aquariums.clock_theme = CLOCK_ANALOG; t.aquariums.clock_flags = CLOCK_12H;
+    t.aquariums.clock_utc_quarters = -14;
+    t.aquariums.clock_layout = (CLOCK_BOTTOM_RIGHT << 2) | CLOCK_MEDIUM;
+    t.aquariums.clock_delay = CLOCK_DELAY_MANUAL;
     tank_set_name(&t, 0, "keeper"); progression_set_age(&t, 0, 25 * 3600);
     int fish = add_bank_candidate(&t, 9); assert(!progression_bank_move(&t, -1, fish));
     original = t; before = t;
@@ -236,9 +240,12 @@ static void test_aquariums(void) {
     assert(t.aquariums.count == 2 && t.aquariums.active == 1 && t.n_fish == 2);
     assert(progression_setup_pending() && t.sd_balance == 250 && t.sd_earned == 1000 && !t.sd_unlocks && !t.bank_count && !t.journal.xp);
     assert(!strcmp(t.aquariums.name, "TANK 2"));
+    assert(t.aquariums.clock_theme == CLOCK_OFF && !t.aquariums.clock_flags && !t.aquariums.clock_utc_quarters);
+    assert(!t.aquariums.clock_layout && !t.aquariums.clock_delay);
     assert(progression_age_s(&t, 0) == 0);
     assert(progression_aquarium_move(&t, 0));
     progression_setup_done(&t); tank_set_name(&t, 0, "second");
+    t.aquariums.clock_theme = CLOCK_NEON; t.aquariums.clock_utc_quarters = 23;
     assert(!progression_aquarium_rename(&t, "SHARK BAY"));
     char tank_label[16];
     assert(progression_aquarium_label(&t, 0, tank_label) && !strcmp(tank_label, "CORAL GARDEN"));
@@ -253,9 +260,12 @@ static void test_aquariums(void) {
     assert(!progression_aquarium_move(&t, 0));
     assert(t.aquariums.count == 2 && t.aquariums.active == 0 && t.sd_balance == before.sd_balance && t.sd_earned == before.sd_earned);
     assert(!strcmp(t.aquariums.name, "CORAL GARDEN"));
+    assert(t.aquariums.clock_theme == CLOCK_ANALOG && t.aquariums.clock_flags == CLOCK_12H && t.aquariums.clock_utc_quarters == -14);
+    assert(t.aquariums.clock_layout == ((CLOCK_BOTTOM_RIGHT << 2) | CLOCK_MEDIUM) && t.aquariums.clock_delay == CLOCK_DELAY_MANUAL);
     assert(!strcmp(t.fish[0].name, "keeper") && progression_age_s(&t, 0) == age);
     assert(t.journal.xp == original.journal.xp && t.bank_count == 1 && !memcmp(t.bank, original.bank, sizeof t.bank));
     assert(!progression_aquarium_move(&t, 1) && !strcmp(t.fish[0].name, "second"));
+    assert(t.aquariums.clock_theme == CLOCK_NEON && t.aquariums.clock_utc_quarters == 23);
     assert(!strcmp(t.aquariums.name, "SHARK BAY") && t.sd_balance == before.sd_balance);
     tank_init(&t, 41); progression_boot(&t);
     assert(!strcmp(t.aquariums.name, "SHARK BAY") && t.sd_balance == before.sd_balance);
@@ -274,6 +284,8 @@ static void test_aquariums(void) {
     tank_init(&t, 41); progression_boot(&t);
     assert(!memcmp(&t.aquariums, &owned, sizeof owned)); /* JSON restores do not clone collection identity. */
     t.sd_balance = 123; t.sd_earned = 456;
+    owned.clock_theme = CLOCK_OFF; owned.clock_flags = 0; owned.clock_utc_quarters = 0;
+    owned.clock_layout = owned.clock_delay = 0;
     assert(progression_reset(&t, 3) && !memcmp(&t.aquariums, &owned, sizeof owned) && !t.bank_count);
     assert(t.sd_balance == 123 && t.sd_earned == 456);
     progression_setup_done(&t);
@@ -535,6 +547,142 @@ static void test_shop_expansion(void) {
     loaded.aquariums.stat_upgrades = STAT_MASK; assert(progression_reset(&loaded, 123));
     assert(!loaded.aquariums.stat_upgrades);
     puts("PASS: 36 sorted shop IDs, atomic purchases, per-tank stat upgrades, binary/JSON/legacy persistence, exact 25% recovery/trust, seahorse attribution, scenery and upkeep");
+}
+static int clock_tap(tank_t *t, int x, int y) {
+    int value;
+    render_settings_touch(t, render_frame_x(x), render_frame_y(y), true, &value);
+    return render_settings_touch(t, render_frame_x(x), render_frame_y(y), false, &value);
+}
+static void test_clock(void) {
+    tank_t t, loaded; saved_size = 0;
+    tank_init(&t, 42); progression_boot(&t); progression_setup_done(&t);
+    assert(t.aquariums.clock_theme == CLOCK_OFF && sizeof(t.aquariums) == 32);
+    char text[9]; int hour, minute;
+    const int64_t midnight = INT64_C(1735689600); /* 2025-01-01 00:00 UTC */
+    assert(render_clock_format(&t, midnight, text, &hour, &minute) && !strcmp(text, "00:00") && hour == 0 && minute == 0);
+    t.aquariums.clock_flags = CLOCK_12H;
+    assert(render_clock_format(&t, midnight, text, &hour, &minute) && !strcmp(text, "12:00") && hour == 0);
+    assert(render_clock_format(&t, midnight + 43200, text, &hour, &minute) && !strcmp(text, "12:00") && hour == 12);
+    t.aquariums.clock_utc_quarters = -1;
+    assert(render_clock_format(&t, midnight, text, &hour, &minute) && !strcmp(text, "11:45") && hour == 23 && minute == 45);
+    t.aquariums.clock_flags = 0; t.aquariums.clock_utc_quarters = 23;
+    assert(render_clock_format(&t, midnight, text, &hour, &minute) && !strcmp(text, "05:45"));
+    t.aquariums.clock_utc_quarters = 56;
+    assert(render_clock_format(&t, midnight + 23 * 3600, text, &hour, &minute) && !strcmp(text, "13:00"));
+    assert(!render_clock_format(&t, 0, text, &hour, &minute) && !strcmp(text, "--:--"));
+    const size_t count = (TANK_W + 3) * TANK_H;
+    uint16_t *fb = malloc((count + 2) * sizeof *fb), *old = calloc(count, sizeof *old);
+    assert(fb && old); fb[0] = fb[count + 1] = 0xbeef;
+    for (int theme = CLOCK_OFF; theme < CLOCK_THEME_COUNT; theme++)
+        for (int size = 0; size < CLOCK_SIZE_COUNT; size++) for (int pos = 0; pos < CLOCK_POSITION_COUNT; pos++)
+            for (int synced = 0; synced < 2; synced++) {
+                memset(fb + 1, 0, count * sizeof *fb);
+                t.aquariums.clock_theme = (uint8_t)theme; t.aquariums.clock_flags = CLOCK_12H;
+                t.aquariums.clock_layout = (uint8_t)((pos << 2) | size);
+                int bx, by, w, h; render_clock_bounds(&t, &bx, &by, &w, &h);
+                assert(bx >= 0 && by >= 0 && bx + w <= TANK_W && by + h <= TANK_H);
+                if (pos == CLOCK_CENTER) assert(abs(2 * bx + w - TANK_W) <= 1 && abs(2 * by + h - TANK_H) <= 1);
+                if (size == CLOCK_LARGE && theme != CLOCK_ANALOG) assert(w >= 220 && h >= 100);
+                render_clock_overlay(&t, fb + 1, TANK_W + 3, synced ? midnight : 0);
+                for (int y = 0; y < TANK_H; y++) for (int x = 0; x < TANK_W; x++)
+                    if (theme == CLOCK_OFF || x < bx || x >= bx + w || y < by || y >= by + h)
+                        assert(fb[1 + y * (TANK_W + 3) + x] == 0);
+                for (int y = 0; y < TANK_H; y++) for (int x = TANK_W; x < TANK_W + 3; x++)
+                    assert(fb[1 + y * (TANK_W + 3) + x] == 0);
+                assert(fb[0] == 0xbeef && fb[count + 1] == 0xbeef);
+            }
+    t.aquariums.clock_theme = CLOCK_DIGITAL; t.aquariums.clock_layout = 0;
+    {
+        static const uint8_t expected[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f};
+        static const int sample_x[] = {14, 26, 26, 14, 2, 2, 14}, sample_y[] = {2, 14, 38, 50, 38, 14, 26};
+        for (int digit = 0; digit < 10; digit++) {
+            memset(fb + 1, 0, count * sizeof *fb);
+            render_clock_overlay(&t, fb + 1, TANK_W + 3, midnight + digit * 60);
+            int bx, by, w, h; render_clock_bounds(&t, &bx, &by, &w, &h);
+            int dx = bx + (w - 22 * 8) / 2 + 18 * 8, dy = by + 10;
+            for (int segment = 0; segment < 7; segment++) {
+                uint16_t pixel = fb[1 + (dy + sample_y[segment]) * (TANK_W + 3) + dx + sample_x[segment]];
+                assert((pixel == 0xffff) == ((expected[digit] & (1 << segment)) != 0));
+            }
+            assert(fb[1 + (dy + 3) * (TANK_W + 3) + dx + 25] != 0xffff); /* isolated beveled corners */
+            assert(fb[1 + dy * (TANK_W + 3) + dx + 4] != 0xffff);
+        }
+    }
+    static const int delays[] = {60, 15, 30, 120, 300, 600};
+    for (int i = 0; i < 6; i++) {
+        t.aquariums.clock_delay = (uint8_t)i; t.clock_idle_s = delays[i] - 0.01f;
+        assert(!render_clock_active(&t)); t.clock_idle_s = (float)delays[i]; assert(render_clock_active(&t));
+    }
+    t.aquariums.clock_delay = CLOCK_DELAY_MANUAL; t.clock_idle_s = 1e6f;
+    assert(!render_clock_active(&t)); t.clock_requested = true; assert(render_clock_active(&t));
+    t.ui_cover = true; assert(!render_clock_active(&t)); t.ui_cover = false;
+    t.aquariums.clock_theme = CLOCK_OFF; assert(!render_clock_active(&t));
+    t.aquariums.clock_theme = CLOCK_DIGITAL; tank_handled(&t);
+    assert(!render_clock_active(&t) && !t.clock_requested && !t.clock_idle_s);
+    t.clock_requested = true;
+    {
+        size_t bytes = TANK_W * TANK_H * sizeof(uint16_t);
+        uint16_t *cache = malloc(bytes); uint32_t *dirty = calloc(RENDER_DIRTY_WORDS, sizeof *dirty);
+        assert(cache && dirty); render_set_scene_cache(cache); render_set_dirty_mask(dirty);
+        t.aquariums.clock_theme = CLOCK_OFF; t.ui_cover = false;
+        render_tank(&t, fb + 1, TANK_W); memcpy(old, fb + 1, bytes);
+        render_clock_synchronized(true);
+        t.aquariums.clock_theme = CLOCK_NEON; render_tank(&t, fb + 1, TANK_W);
+        assert(memcmp(old, fb + 1, bytes));
+        t.aquariums.clock_theme = CLOCK_OFF;
+        unsigned epoch; const uint16_t *scene = render_scene_buf(&epoch); assert(scene);
+        memcpy(fb + 1, scene, bytes); render_fb_primed(fb + 1, epoch);
+        render_tank(&t, fb + 1, TANK_W); assert(!memcmp(old, fb + 1, bytes));
+        t.aquariums.clock_theme = CLOCK_DIGITAL; render_clock_synchronized(false);
+        render_tank(&t, fb + 1, TANK_W); memcpy(old, fb + 1, bytes);
+        render_clock_synchronized(true); render_tank(&t, fb + 1, TANK_W);
+        assert(memcmp(old, fb + 1, bytes));
+        render_clock_synchronized(false); render_set_scene_cache(NULL); render_set_dirty_mask(NULL);
+        free(cache); free(dirty);
+    }
+    t.aquariums.clock_theme = CLOCK_OFF; t.aquariums.clock_flags = 0; t.aquariums.clock_utc_quarters = 0;
+    t.aquariums.clock_layout = t.aquariums.clock_delay = 0;
+    clock_tap(&t, 220, 20); clock_tap(&t, 220, 78);
+    assert(t.aquariums.clock_theme == CLOCK_COMPACT);
+    reject_write = true; clock_tap(&t, 220, 78); reject_write = false;
+    assert(t.aquariums.clock_theme == CLOCK_COMPACT);
+    clock_tap(&t, 220, 109); clock_tap(&t, 220, 149); clock_tap(&t, 220, 189);
+    clock_tap(&t, 220, 229); clock_tap(&t, 380, 270);
+    assert(t.aquariums.clock_flags == CLOCK_FLAGS_MASK && t.aquariums.clock_utc_quarters == 1);
+    assert(t.aquariums.clock_layout == 5 && t.aquariums.clock_delay == CLOCK_DELAY_15_SEC);
+    assert(clock_tap(&t, 330, 318) == SET_TAP_WIFI);
+    clock_tap(&t, 380, 20);
+    tank_init(&loaded, 3); progression_boot(&loaded);
+    assert(loaded.aquariums.clock_theme == CLOCK_COMPACT && loaded.aquariums.clock_flags == CLOCK_FLAGS_MASK && loaded.aquariums.clock_utc_quarters == 1);
+    assert(loaded.aquariums.clock_layout == 5 && loaded.aquariums.clock_delay == CLOCK_DELAY_15_SEC);
+    char error[120], *json = progression_backup_json(&loaded); assert(json);
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+    cJSON *root = cJSON_Parse(json); free(json); assert(root);
+    cJSON *fields = cJSON_GetObjectItemCaseSensitive(root, "tank");
+    static const char *const keys[] = {"clock_theme", "clock_flags", "clock_utc_quarters", "clock_layout", "clock_delay"};
+    static const int invalid_values[] = {CLOCK_THEME_COUNT, 2, 57, 3, CLOCK_DELAY_COUNT};
+    for (int i = 0; i < 5; i++) {
+        cJSON *option = cJSON_GetObjectItemCaseSensitive(fields, keys[i]); double before = option->valuedouble;
+        cJSON_SetNumberValue(option, invalid_values[i]);
+        json = cJSON_PrintUnformatted(root); assert(json);
+        assert(!progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);
+        cJSON_SetNumberValue(option, before);
+    }
+    cJSON *layout = cJSON_GetObjectItemCaseSensitive(fields, "clock_layout");
+    double valid_layout = layout->valuedouble;
+    cJSON_SetNumberValue(layout, 3); cJSON_DeleteItemFromObjectCaseSensitive(fields, "clock_delay");
+    json = cJSON_PrintUnformatted(root); assert(json);
+    assert(!progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);
+    cJSON_SetNumberValue(layout, valid_layout);
+    for (int i = 0; i < 5; i++) cJSON_DeleteItemFromObjectCaseSensitive(fields, keys[i]);
+    json = cJSON_PrintUnformatted(root); cJSON_Delete(root); assert(json);
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);
+    tank_init(&loaded, 3); progression_boot(&loaded); assert(!loaded.aquariums.clock_theme);
+    loaded.aquariums.clock_theme = CLOCK_NEON; assert(progression_reset(&loaded, 4));
+    assert(!loaded.aquariums.clock_theme && !loaded.aquariums.clock_flags && !loaded.aquariums.clock_utc_quarters);
+    assert(!loaded.aquariums.clock_layout && !loaded.aquariums.clock_delay);
+    free(fb); free(old);
+    puts("PASS: clock sizes/positions/bounds, exact idle delays/OFF/manual, ten seven-segment masks/beveled gaps, cache restoration, UTC/noon/midnight, sync status, settings rollback and binary/JSON/legacy saves");
 }
 static void test_readable_text(void) {
     const size_t pixels = (TANK_W + 3) * TANK_H;
@@ -1234,6 +1382,7 @@ int main(int argc, char **argv) {
     test_bank();
     test_aquariums();
     test_shop_expansion();
+    test_clock();
     puts("PASS: shop, 10 creature looks/24 colors, pairwise silhouettes, animation, edge guards, wipe, breeding and JSON/legacy saves");
     return 0;
 }

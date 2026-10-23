@@ -326,9 +326,18 @@ typedef struct {
 } journal_state_t;
 typedef struct {
     uint32_t id[2];
-    uint8_t count, active, stat_upgrades, reserved[5];
+    uint8_t count, active, stat_upgrades, clock_theme, clock_flags;
+    int8_t clock_utc_quarters;
+    uint8_t clock_layout, clock_delay;
     char name[16];
 } aquarium_state_t;
+enum { CLOCK_OFF, CLOCK_COMPACT, CLOCK_DIGITAL, CLOCK_ANALOG, CLOCK_NEON, CLOCK_THEME_COUNT };
+enum { CLOCK_12H = 1, CLOCK_FLAGS_MASK = 1 };
+enum { CLOCK_LARGE, CLOCK_MEDIUM, CLOCK_SMALL, CLOCK_SIZE_COUNT };
+enum { CLOCK_CENTER, CLOCK_TOP_LEFT, CLOCK_TOP_RIGHT, CLOCK_BOTTOM_LEFT, CLOCK_BOTTOM_RIGHT, CLOCK_POSITION_COUNT };
+enum { CLOCK_DELAY_1_MIN, CLOCK_DELAY_15_SEC, CLOCK_DELAY_30_SEC, CLOCK_DELAY_2_MIN,
+       CLOCK_DELAY_5_MIN, CLOCK_DELAY_10_MIN, CLOCK_DELAY_MANUAL, CLOCK_DELAY_COUNT };
+#define CLOCK_LAYOUT_MAX 18
 typedef struct tank {
     aquarium_state_t aquariums;
     journal_state_t journal;
@@ -608,6 +617,8 @@ typedef struct tank {
                                     * light stays on however still the device is
                                     * (2026-09-13, Strato: the tank went dark mid-name).
                                     * Not saved; a light override still wins. */
+    float    clock_idle_s;
+    bool     clock_requested;
     bool     ui_cover;             /* platform: a page covers the tank (setup, a prompt,
                                     * milestones, settings, the shop) - a fry's spawning
                                     * waits, so the keeper never misses it (2026-09-24).

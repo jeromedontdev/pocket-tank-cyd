@@ -37,6 +37,11 @@ static inline float render_frame_y(float y) {
     return y * TANK_H / PAGE_H;
 }
 void render_tank(const tank_t *t, uint16_t *fb, int stride);
+void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t unix_time);
+bool render_clock_format(const tank_t *t, int64_t unix_time, char text[9], int *hour, int *minute);
+void render_clock_synchronized(bool synchronized);
+bool render_clock_active(const tank_t *t);
+void render_clock_bounds(const tank_t *t, int *x, int *y, int *w, int *h);
 
 /* Optional frame profiling: set a microsecond clock and render_tank fills
  * render_prof_us per stage (0 scene-copy, 1 shafts, 2 veg (back), 3 food+
@@ -296,7 +301,7 @@ int  render_confirm_hit(float x, float y);
  * Brightness and SD operations are handed back to the platform. */
 enum { SET_TAP_NONE = 0, SET_TAP_CLOSE = 1, SET_TAP_BRIGHT = 2, SET_TAP_LIGHT = 4, SET_TAP_IDLE = 5,
        SET_TAP_UPDATES = 6, SET_TAP_FEED = 8,
-       SET_TAP_BACKUP = 10, SET_TAP_RESTORE = 11, SET_TAP_SAND = 12, SET_TAP_WATER = 13, SET_TAP_TOUCH = 14, SET_TAP_WIPE = 15 };
+       SET_TAP_BACKUP = 10, SET_TAP_RESTORE = 11, SET_TAP_SAND = 12, SET_TAP_WATER = 13, SET_TAP_TOUCH = 14, SET_TAP_WIPE = 15, SET_TAP_WIFI = 16, SET_TAP_CLOCK_SHOW = 17 };
 void render_backup_status(const char *message, bool arm_restore);
 void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct);
 int  render_settings_tap(float x, float y, int *value);

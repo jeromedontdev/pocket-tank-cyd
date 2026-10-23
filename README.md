@@ -8,7 +8,7 @@ are not included. See [LICENSE](LICENSE) for the original project license.
 
 **Take the illustrated tour:** [CYD features and screenshots](docs/CYD-FEATURES.md)
 covers named tanks, the bank, creature customization, Journal, decorations,
-fish-care upgrades, releases and SD workflows with 33 captures from the
+fish-care upgrades, themed clocks, Wi-Fi setup, releases and SD workflows with 41 captures from the
 actual desktop renderer. A [five-post Discord kit](docs/discord/START-HERE.txt)
 includes matching image boards and ready-to-paste text.
 
@@ -49,7 +49,22 @@ includes matching image boards and ready-to-paste text.
 - **Settings > WIPE** opens a separate **WIPE TANK?** confirmation.
   Confirming starts over with two fry and first-time setup; CANCEL or waiting
   20 seconds keeps the tank. SD backups and touch calibration are preserved.
-- Wi-Fi provisioning/scanning and network time. Firmware downloads are
+- Optional **Minimal, Digital, Analog and Neon idle clocks** over the aquarium.
+  Open **Settings > CLOCK** for large/medium/small sizes, center or four-corner
+  placement, 12/24-hour time and UTC offsets in 15-minute steps. The default
+  layout is large and centered. Clocks are **OFF by default** and saved per tank.
+  Choose **15 sec, 30 sec, 1, 2, 5 or 10 min** of inactivity, or **Manual Only**;
+  **SHOW CLOCK** opens it immediately. The first touch only dismisses the clock.
+- **Settings > CLOCK > WI-FI / SYNC** scans 2.4 GHz networks and
+  provides a password keyboard, connection errors, change-network and confirmed
+  forget options. The tank is saved before a brief restart into setup; Wi-Fi
+  credentials are device-wide and never included in aquarium backups.
+  NTP sets the time when returning to the tank and on subsequent boots.
+  After a failed sync, the overlay says **SYNC NEEDED**, not an invented time.
+  No battery-backed RTC is fitted: Wi-Fi is needed again after power loss.
+  A synchronized clock keeps running offline while powered or in deep sleep.
+  UTC offsets are fixed; adjust manually for daylight saving.
+- Legacy Wi-Fi firmware downloads are
   **disabled by default** until a CYD fork update channel is configured.
 - A desktop preview of the actual CYD gameplay/renderer and native regressions.
 

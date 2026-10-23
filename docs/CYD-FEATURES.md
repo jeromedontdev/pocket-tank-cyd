@@ -1,7 +1,7 @@
 # Pocket Tank CYD: a more personal little ocean
 
 **An illustrated tour of the CYD fork, based on Pocket Tank v0.3.8**  
-Updated October 21, 2026
+Updated October 22, 2026
 
 **Sharing on Discord?** Use the [Discord posting kit](discord/START-HERE.txt):
 five short copy/paste posts with matching PNG image boards. Paste each text
@@ -25,6 +25,7 @@ The headline additions:
 - **Two upkeep and four fish-care upgrades**, purchased separately for each tank.
 - **A price-sorted shop:** gray icons before purchase, full color afterward.
 - **Readable menus**, reorganized Settings, SD backups and offline updates.
+- **Four optional clock themes**, with on-screen Wi-Fi setup and NTP time.
 
 > **About the imagery:** every image below is a fresh capture from the
 > desktop emulator's actual CYD C renderer, not a mockup or webcam photo.
@@ -361,6 +362,42 @@ Settings puts **CLOSE** at the top right, **TOUCH CALIBRATION** at the
 bottom right, and **UPDATES** at the bottom left. Sand and water have their
 own lines. The old Lights Out setting button is no longer on this page.
 
+### A clock over your aquarium
+
+Open **Settings > CLOCK** to choose **Minimal, Digital, Analog or Neon**.
+This is an idle display mode, **large and centered by default**, with
+large/medium/small sizes, center or four-corner placement, 12/24-hour time and
+a UTC offset in 15-minute steps. The clock starts **OFF**, saves separately
+for each tank, and follows its SD snapshots and JSON restores.
+**ACTIVATE** offers **15 sec, 30 sec, 1, 2, 5 or 10 min**, or **Manual Only**.
+**SHOW CLOCK** enters immediately; the first touch only dismisses it, without
+affecting fish or tools. Menus do not count as inactivity. Fish keep swimming
+behind the translucent panel. Adjust the UTC offset manually for daylight saving.
+
+| Minimal | Digital |
+|---|---|
+| ![Large minimal aquarium clock](media/cyd-features/clock-compact.png) | ![Large seven-segment aquarium clock](media/cyd-features/clock-digital.png) |
+| Analog | Neon |
+| ![Analog face with digital caption](media/cyd-features/clock-analog.png) | ![Neon pink and cyan aquarium clock](media/cyd-features/clock-neon.png) |
+
+**WI-FI / SYNC** saves the aquarium and briefly restarts into an
+on-screen network picker and case-sensitive password keyboard. Choose a visible
+2.4 GHz network, connect, then **BACK TO TANK** to synchronize with NTP.
+Saved networks can be reconnected, changed or forgotten with confirmation.
+This flow never checks or downloads firmware.
+
+| Clock settings | Choose a network |
+|---|---|
+| ![Clock controls and Wi-Fi setup entry](media/cyd-features/clock-settings.png) | ![Simulated Wi-Fi network picker](media/cyd-features/wifi-networks.png) |
+| Password keyboard | Connected |
+| ![Case-sensitive Wi-Fi password keyboard](media/cyd-features/wifi-password.png) | ![Connected network confirmation](media/cyd-features/wifi-connected.png) |
+
+The CYD has no battery-backed clock. Once NTP succeeds, time keeps ticking
+offline while powered or in deep sleep; power loss requires another sync.
+Until then the overlay says **SYNC NEEDED**, rather than showing an approximate
+save/build time as real time. Credentials are device-wide, not part of tank
+backups. The screenshots use fake emulator networks, not real credentials.
+
 ### A deliberate fresh start
 
 **Settings > WIPE** opens a separate confirmation before starting over
@@ -370,7 +407,7 @@ the aquarium.
 ![Separate Wipe Tank confirmation with Cancel and Wipe choices](media/cyd-features/wipe-confirmation.png)
 
 Wipe clears the active tank's fish, bank contents, decorations, care/upkeep
-upgrades and Journal
+upgrades, clock preferences and Journal
 progress. With multiple tanks, the global sand-dollar wallet is kept; with
 only the original tank, its wallet resets too. It **does not delete purchased
 slots, other tanks, SD backup files or touch calibration**.
@@ -444,7 +481,7 @@ python tools\capture_cyd_gallery.py --cc clang
 Use `--cc C:\path\to\zig.exe` for Zig, or `--out C:\path\to\gallery`
 for another destination. The capture tool compiles the emulator, stages
 its own temporary demonstration save, navigates the real UI and exports
-33 PNGs. It never opens a serial port, touches the board, or replaces
+41 PNGs. It never opens a serial port, touches the board, or replaces
 the normal desktop save.
 
 For build instructions and live usage, see the [project README](../README.md)

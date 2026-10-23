@@ -109,6 +109,32 @@ def main():
                 rainbow["tank"].update(journal_theme=0, sand_style=4, water_style=5)
                 restore(rainbow)
                 scene("tank-rainbow")
+                for clock_theme, name in ((1, "clock-compact"), (2, "clock-digital"), (3, "clock-analog"), (4, "clock-neon")):
+                    clock_tank = copy.deepcopy(demo)
+                    clock_tank["tank"].update(clock_theme=clock_theme, clock_flags=1, clock_utc_quarters=0)
+                    restore(clock_tank)
+                    for _ in range(300):
+                        lib.sim_frame(0.04)
+                    lib.sim_action(2)
+                    tap(220, 20)
+                    tap(120, 318)
+                    capture(name)
+                lib.sim_action(2)
+                tap(220, 20)
+                capture("clock-settings")
+                tap(330, 318)
+                for _ in range(12):
+                    lib.sim_frame(0.25)
+                capture("wifi-networks")
+                tap(160, 74)
+                capture("wifi-password")
+                tap(332, 288)  # Keyboard BACK.
+                tap(160, 150)  # Demonstration open network, simulator only.
+                for _ in range(12):
+                    lib.sim_frame(0.25)
+                capture("wifi-connected")
+                tap(224, 315)
+                tap(380, 20)
                 scenery = copy.deepcopy(demo)
                 scenery["tank"].update(sd_unlocks=sum(1 << i for i in range(22, 30)),
                                        journal_theme=0, sand_style=0, water_style=0)

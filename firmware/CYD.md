@@ -453,6 +453,57 @@ The 4000-byte binary save and JSON schema 5 are retained; JSON adds optional
 `tank.stat_upgrades` (integer 0..15), binary saves use a reserved metadata byte.
 Console purchase keys: `current`, `shelter`, `play`, `training`.
 
+### Optional tank clock and on-screen Wi-Fi setup
+
+Open **Settings > CLOCK** to cycle **OFF / MINIMAL / DIGITAL / ANALOG / NEON**.
+This is an idle display mode rather than a permanent corner widget. The
+default layout is **large and centered**; choose large/medium/small and
+center/top-left/top-right/bottom-left/bottom-right placement. Digital uses
+large seven-segment numerals with separate beveled bars, visible gaps and
+dim unlit segments; Analog has 60 ticks, numbered hours and three
+hands; Neon adds cyan/pink accents. Themes show the local date and seconds.
+Choose 12/24-hour time. **ACTIVATE** cycles 1 minute (default), 15 seconds,
+30 seconds, 2/5/10 minutes, then **MANUAL ONLY**. **OFF** disables both automatic
+and manual activation; **SHOW CLOCK** opens an enabled theme immediately.
+The first touch is consumed until release, returning to normal play without
+feeding, selecting, wiping or dragging. Menus suspend/reset the clock idle timer.
+Clock mode hides normal tool chips/cards/toasts and keeps the display readable;
+fish continue simulating and swimming behind the translucent panel.
+The `<` and `>` buttons adjust the UTC offset in 15-minute steps, from UTC-12
+to UTC+14. UTC is the default; adjust for daylight saving manually.
+Options save immediately for the active tank, roll back on save failure,
+follow SD tank switches and portable JSON restores, and clear on active-tank
+wipe. Old saves/backups default to OFF, large/centered and a 1-minute delay.
+Five reserved metadata bytes hold theme, format flags, signed UTC quarter-hours,
+size/position and delay, keeping the binary
+save at 4000 bytes. Schema 5 adds optional `tank.clock_theme` (0..4),
+`tank.clock_flags` (0..1), `tank.clock_utc_quarters` (-48..56),
+`tank.clock_layout` (size in bits 0..1, position in bits 2..4; size 3 is invalid)
+and `tank.clock_delay` (0..6, in the ACTIVATE order above).
+
+Tap **WI-FI / SYNC** on that page (or enter `wifi setup` on the console). The tank first saves to NVS,
+then restarts into a memory-isolated setup so the Wi-Fi driver does not
+compete with aquarium rendering for SRAM. Choose a visible **2.4 GHz** network,
+enter its password using the case-sensitive keyboard, and join. Open networks
+skip the keyboard. Errors offer retry, retype or another network. An existing
+saved network offers **CONNECT / SYNC**, **CHANGE NETWORK** and a confirmed
+**FORGET NETWORK**. Failed new connections do not replace the saved credentials;
+credential-write failures are shown explicitly. Hidden SSIDs and enterprise
+authentication are not supported by this picker.
+
+After **WI-FI CONNECTED**, tap **BACK TO TANK**. At boot/return the existing NTP
+client tries `pool.ntp.org`, `time.google.com`, then `time.cloudflare.com`;
+it switches the radio off afterward. This setup never checks or installs
+firmware. Network credentials are global device settings, separate from
+tank JSON and SD snapshots. No password is printed in the console.
+
+The CYD has no battery-backed RTC. A successful NTP sync keeps ticking
+offline while powered, including deep sleep, but a power loss requires a
+new sync. Before a reliable sync the overlay shows `--:-- / SYNC NEEDED`.
+The approximate build/save-time seed used for gameplay is never presented
+as synchronized wall time. The Clock page reports whether NTP time is
+available. Synchronization is boot-time/on-demand, not a continuous NTP service.
+
 ### Focused tests
 
 With an existing host C compiler and firmware dependencies configured:

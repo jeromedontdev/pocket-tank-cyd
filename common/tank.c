@@ -342,6 +342,7 @@ void tank_init(tank_t *t, uint32_t seed) {
     t->courting = false; t->court_a = t->court_b = -1;
     t->court_cool = 30; t->court_active = 0;
     t->spawning = false; t->spawn_danced = 0; t->ui_cover = false;
+    t->clock_idle_s = 0; t->clock_requested = false;
     t->ravenous = false; t->trickle_off = false;
     t->stage_fish = -1; t->hold_light = false;
     t->drag_active = false; t->drag_has_prev = false; t->drag_dist = 0;
@@ -2051,7 +2052,7 @@ static void touch_tick(tank_t *t, float dt) {
     t->drag_active = false;
 }
 
-void tank_handled(tank_t *t) { t->idle_s = 0; }
+void tank_handled(tank_t *t) { t->idle_s = t->clock_idle_s = 0; t->clock_requested = false; }
 
 void tank_toggle_light(tank_t *t) {
     /* the first toggle takes over from the idle rule AND flips the light
@@ -2622,6 +2623,7 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
      * dark and the fish sleep. A setup page or a prompt holds it on; the
      * director's / sim's manual override wins over both. */
     t->idle_s += dt;
+    if (t->ui_cover) t->clock_idle_s = 0; else t->clock_idle_s += dt;
     bool was_night = t->night;
     t->night = t->light_override ? !t->light_on
              : t->hold_light ? false

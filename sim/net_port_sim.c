@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 static const char *creds_path(void) {
     static char p[512];
@@ -41,7 +42,10 @@ bool net_port_creds_set(const char *ssid, const char *pass) {
     FILE *f = fopen(creds_path(), "w"); if (!f) return false;
     fprintf(f, "%s\n%s\n", ssid, pass); fclose(f); return true;
 }
-void net_port_creds_forget(void) { remove(creds_path()); }
+bool net_port_creds_forget(void) {
+    if (remove(creds_path()) == 0 || errno == ENOENT) return true;
+    perror("Simulator Wi-Fi forget"); return false;
+}
 
 /* ---- the radio ---- */
 enum { OP_NONE, OP_SCAN, OP_CONNECT, OP_CHECK, OP_INSTALL };

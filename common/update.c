@@ -238,7 +238,8 @@ int updates_page_touch(float x, float y, bool down) {
 enum { STEP_NONE = 0, STEP_SCANNING, STEP_LIST, STEP_PASSWORD, STEP_CONNECTING, STEP_CHECKING,
        STEP_OFFER, STEP_UP_TO_DATE, STEP_INSTALLING, STEP_MESSAGE, STEP_RESTART };
 /* what the message page's buttons do */
-enum { ACT_NONE = 0, ACT_RETRY_CONNECT, ACT_RETYPE, ACT_SCAN, ACT_RETRY_CHECK, ACT_RETRY_INSTALL };
+enum { ACT_NONE = 0, ACT_RETRY_CONNECT, ACT_RETYPE, ACT_SCAN, ACT_RETRY_CHECK, ACT_RETRY_INSTALL,
+       ACT_WIFI_HOME, ACT_FORGET_ASK, ACT_FORGET_CONFIRM };
 /* hit ids */
 enum { HIT_NONE = 0, HIT_BACK, HIT_CANCEL, HIT_RESCAN, HIT_YES, HIT_NO, HIT_PRIMARY, HIT_SECONDARY, HIT_TERTIARY,
        HIT_PG_UP, HIT_PG_DOWN, HIT_ROW0 = 200, HIT_KEY0 = 100 };
@@ -247,6 +248,7 @@ static struct {
     int  step, outcome, page;
     char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];
     bool saved;                              /* the network came from the store */
+    bool wifi_only;
     bool secured;
     net_ap_t aps[NET_SCAN_MAX]; int n_aps, list_page;
     update_manifest_t m; bool have_m;
@@ -402,6 +404,14 @@ void update_begin(void) {
     if (net_port_creds_get(s.ssid, s.pass)) { s.saved = true; s.secured = s.pass[0] != 0; start_connect(); }
     else start_scan();
 }
+void update_wifi_begin(void) {
+    memset(&s, 0, sizeof s); s.wifi_only = true;
+    if (net_port_creds_get(s.ssid, s.pass)) {
+        s.saved = true; s.secured = s.pass[0] != 0;
+        message3("WI-FI SETTINGS", s.ssid, true, "CONNECT, CHANGE OR FORGET",
+                 "CONNECT / SYNC", ACT_RETRY_CONNECT, "CHANGE NETWORK", ACT_SCAN, "FORGET NETWORK", ACT_FORGET_ASK);
+    } else start_scan();
+}
 bool update_active(void) { return s.step != STEP_NONE; }
 int  update_outcome(void) { return s.outcome; }
 int  update_page(void) { return s.page; }
@@ -432,6 +442,23 @@ static void act(int a) {
     case ACT_SCAN:          start_scan(); break;
     case ACT_RETRY_CHECK:   start_check(); break;
     case ACT_RETRY_INSTALL: start_install(); break;
+    case ACT_WIFI_HOME: update_wifi_begin(); break;
+    case ACT_FORGET_ASK:
+        message("FORGET WI-FI?", s.ssid, true, "TIME WILL NEED WI-FI AFTER POWER OFF",
+                "FORGET", ACT_FORGET_CONFIRM, "KEEP NETWORK", ACT_WIFI_HOME); break;
+    case ACT_FORGET_CONFIRM:
+        {
+            if (!net_port_creds_forget()) {
+                fprintf(stderr, "Wi-Fi credential erase failed\n");
+                message("FORGET FAILED", "NETWORK IS STILL SAVED", false, "PLEASE TRY AGAIN",
+                        "TRY AGAIN", ACT_FORGET_ASK, NULL, 0);
+            } else {
+                memset(s.pass, 0, sizeof s.pass); s.ssid[0] = 0; s.saved = false;
+                message("WI-FI FORGOTTEN", "SAVED NETWORK REMOVED", false, "CLOCK KEEPS TICKING UNTIL POWER OFF",
+                        "OTHER NETWORK", ACT_SCAN, NULL, 0);
+            }
+        }
+        break;
     default:                leave(UPD_BACK); break;
     }
 }
@@ -453,8 +480,17 @@ void update_tick(float dt) {
     case STEP_CONNECTING:
         st = net_port_connect_state();
         if (st == NET_DONE) {
-            if (!s.saved) { net_port_creds_set(s.ssid, s.pass); s.saved = true; }
-            start_check();
+            if (!s.saved) {
+                if (!net_port_creds_set(s.ssid, s.pass)) {
+                    fprintf(stderr, "Wi-Fi credential save failed\n");
+                    message("WI-FI SAVE FAILED", "CONNECTED BUT NOT SAVED", false, "PLEASE TRY AGAIN",
+                            "TRY AGAIN", ACT_RETRY_CONNECT, "OTHER NETWORK", ACT_SCAN); break;
+                }
+                s.saved = true;
+            }
+            if (s.wifi_only)
+                message("WI-FI CONNECTED", s.ssid, true, "RETURN TO TANK TO SYNC NTP TIME", NULL, 0, NULL, 0);
+            else start_check();
         } else if (st == NET_FAILED) fail(net_port_fail_reason());   /* the store is kept: routers refuse first tries, TYPE IT AGAIN replaces it */
         break;
     case STEP_CHECKING: {

@@ -11,9 +11,10 @@
  *    button): the installed version, SD package status, CHECK SD CARD /
  *    INSTALL AND RESTART, CLOSE. No radio. UPD_TAP_CHECK hands validation
  *    and installation to the platform. The legacy Wi-Fi flow below is
- *    accessible through the serial console only.
+ *    accessible through the serial console only. The Wi-Fi-only variant is
+ *    also opened by Settings > CLOCK, without any firmware check.
  *
- * 2. UPDATE MODE, at boot, before the tank exists (main.c): the display,
+ * 2. UPDATE / WI-FI SETUP MODE, at boot, before the tank exists (main.c): the display,
  *    the glass and the radio only, so the Wi-Fi driver has the whole
  *    internal heap. update_begin chooses a saved network or the wizard,
  *    update_tick polls the port and
@@ -61,7 +62,7 @@ enum { NET_ERR_NONE = 0, NET_ERR_NO_SIGNAL, NET_ERR_PASSWORD, NET_ERR_NO_NET, NE
 
 bool net_port_creds_get(char *ssid, char *pass);            /* the saved network (buffers NET_*_MAX + 1); false = none */
 bool net_port_creds_set(const char *ssid, const char *pass);
-void net_port_creds_forget(void);
+bool net_port_creds_forget(void);
 /* the radio. Every call returns at once; the flow polls the *_state calls
  * each frame (NET_BUSY / NET_DONE / NET_FAILED, the reason in
  * net_port_fail_reason). One operation at a time. */
@@ -130,6 +131,7 @@ int  updates_page_touch(float x, float y, bool down);       /* every frame: UPD_
 enum { UPD_RUNNING = 0, UPD_BACK, UPD_RESTART };
 enum { UPD_PG_NONE = 0, UPD_PG_BUSY = 2, UPD_PG_SCAN, UPD_PG_PASSWORD, UPD_PG_OFFER, UPD_PG_MESSAGE, UPD_PG_CALIB };
 void update_begin(void);
+void update_wifi_begin(void);                              /* Wi-Fi only: never checks or installs firmware */
 void update_tick(float dt);
 void update_touch(float x, float y, bool down);
 void render_update(uint16_t *fb, int stride, float clock);
