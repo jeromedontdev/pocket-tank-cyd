@@ -455,13 +455,25 @@ Console purchase keys: `current`, `shelter`, `play`, `training`.
 
 ### Optional tank clock and on-screen Wi-Fi setup
 
-Open **Settings > CLOCK** to cycle **OFF / MINIMAL / DIGITAL / ANALOG / NEON**.
+Open **Settings > CLOCK** to cycle **OFF / MINIMAL / DIGITAL / ANALOG / NEON /
+FLIP / BINARY / ORBIT**.
 This is an idle display mode rather than a permanent corner widget. The
 default layout is **large and centered**; choose large/medium/small and
 center/top-left/top-right/bottom-left/bottom-right placement. Digital uses
 large seven-segment numerals with separate beveled bars, visible gaps and
 dim unlit segments; Analog has 60 ticks, numbered hours and three
-hands; Neon adds cyan/pink accents. Themes show the local date and seconds.
+hands; Neon adds cyan/pink accents. Flip uses shaded split-flap tiles, Binary
+uses decimal-digit bit columns (8/4/2/1 from top to bottom, grouped H/M/S),
+and Orbit uses concentric hour/minute/second progress rings. The hour ring
+completes every 12 hours, the minute ring every hour and the second ring every
+minute. Themes show the local date and seconds by default.
+Open **STYLE** for theme-default colors or **white / amber / mint / cyan /
+rose / lavender / red**, and independent **SECONDS**, **PANEL + BORDER** and
+**DATE** visibility. Hiding seconds also hides the analog second hand, Binary
+seconds columns and Orbit seconds ring. Hiding the panel removes both its
+background and border, not Flip's individual numeral tiles. The 12/24-hour
+indicator remains, and an unsynchronized clock always shows **SYNC NEEDED**
+even when the date is hidden. **SHOW CLOCK** previews directly from STYLE.
 Choose 12/24-hour time. **ACTIVATE** cycles 1 minute (default), 15 seconds,
 30 seconds, 2/5/10 minutes, then **MANUAL ONLY**. **OFF** disables both automatic
 and manual activation; **SHOW CLOCK** opens an enabled theme immediately.
@@ -469,22 +481,40 @@ The first touch is consumed until release, returning to normal play without
 feeding, selecting, wiping or dragging. Menus suspend/reset the clock idle timer.
 Clock mode hides normal tool chips/cards/toasts and keeps the display readable;
 fish continue simulating and swimming behind the translucent panel.
-The `<` and `>` buttons adjust the UTC offset in 15-minute steps, from UTC-12
-to UTC+14. UTC is the default; adjust for daylight saving manually.
+The UTC adjustment buttons start at **-1H / +1H**, from UTC-12 to UTC+14.
+Tap **STEP** to cycle **1H / 30M / 15M**; the smaller steps support fractional
+zones such as Nepal (UTC+5:45). STEP only controls editing granularity and
+does not change the time or write a save. Set the UTC offset to your region's
+**standard-time** offset, then toggle **DST: OFF / DST: +1 HOUR** for daylight
+saving without changing that base offset. Both the time and calendar use the
+extra hour. DST defaults to OFF and is manual, not an automatic regional
+schedule. Regions with a different seasonal shift can use the UTC adjustment
+instead. UTC is the default base offset.
 Options save immediately for the active tank, roll back on save failure,
 follow SD tank switches and portable JSON restores, and clear on active-tank
 wipe. Old saves/backups default to OFF, large/centered and a 1-minute delay.
-Five reserved metadata bytes hold theme, format flags, signed UTC quarter-hours,
+Five reserved metadata bytes hold theme, format/style flags, signed UTC quarter-hours,
 size/position and delay, keeping the binary
-save at 4000 bytes. Schema 5 adds optional `tank.clock_theme` (0..4),
-`tank.clock_flags` (0..1), `tank.clock_utc_quarters` (-48..56),
+save at 4000 bytes. Schema 5 adds optional `tank.clock_theme` (0..7),
+`tank.clock_flags` (0..255: bit 0 is 12-hour format, bit 1 is manual DST +1 hour,
+bits 2/3/4 hide seconds/panel/date; bits 5..7 select the color, 0 = theme colors),
+`tank.clock_utc_quarters` (-48..56),
 `tank.clock_layout` (size in bits 0..1, position in bits 2..4; size 3 is invalid)
 and `tank.clock_delay` (0..6, in the ACTIVATE order above).
 
 Tap **WI-FI / SYNC** on that page (or enter `wifi setup` on the console). The tank first saves to NVS,
 then restarts into a memory-isolated setup so the Wi-Fi driver does not
 compete with aquarium rendering for SRAM. Choose a visible **2.4 GHz** network,
-enter its password using the case-sensitive keyboard, and join. Open networks
+enter its password using the case-sensitive keyboard, and join. All 26 letters
+are on one staggered **QWERTY** page, with large, high-contrast uppercase
+keycaps. Input starts lowercase; **CAPS** toggles uppercase input, and the
+footer shows the current case. The password field always shows the actual
+characters entered. **123** opens numbers and symbols; **#+=** switches to
+the remaining symbols, and **ABC** returns to letters without losing the
+selected case. **DEL**, **SPACE**, **BACK** and **JOIN** have dedicated keys.
+Backing out to the network list and selecting the same network keeps the
+password; joining a secured network requires at least eight characters.
+Open networks
 skip the keyboard. Errors offer retry, retype or another network. An existing
 saved network offers **CONNECT / SYNC**, **CHANGE NETWORK** and a confirmed
 **FORGET NETWORK**. Failed new connections do not replace the saved credentials;

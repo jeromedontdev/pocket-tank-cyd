@@ -1217,7 +1217,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
         t->fish[i].pattern = sv.fish_pattern[i] < FISH_PATTERN_COUNT ? sv.fish_pattern[i] : 0;
     }
     t->aquariums = sv.aquariums;
-    if (t->aquariums.clock_theme >= CLOCK_THEME_COUNT || t->aquariums.clock_flags > CLOCK_FLAGS_MASK ||
+    if (t->aquariums.clock_theme >= CLOCK_THEME_COUNT ||
         t->aquariums.clock_utc_quarters < -48 || t->aquariums.clock_utc_quarters > 56 ||
         t->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (t->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT || t->aquariums.clock_delay >= CLOCK_DELAY_COUNT) {
         fprintf(stderr, "Invalid saved clock options; clock disabled\n");
@@ -2015,7 +2015,7 @@ const char *progression_aquarium_move(tank_t *t, int target) {
         save_t *v = &s->incoming;
         if (v->magic != SAVE_MAGIC || v->n_fish < 2 || v->n_fish > POP_CAP || v->bank_count > FISH_BANK_CAP ||
             (v->aquariums.stat_upgrades & ~STAT_MASK) ||
-            v->aquariums.clock_theme >= CLOCK_THEME_COUNT || v->aquariums.clock_flags > CLOCK_FLAGS_MASK ||
+            v->aquariums.clock_theme >= CLOCK_THEME_COUNT ||
             v->aquariums.clock_utc_quarters < -48 || v->aquariums.clock_utc_quarters > 56 ||
             v->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (v->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT ||
             v->aquariums.clock_delay >= CLOCK_DELAY_COUNT ||

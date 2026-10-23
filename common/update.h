@@ -25,8 +25,8 @@
  *    itself: net_port_off is the platform's, called on the way out.
  *
  * The wizard: LOOKING FOR NETWORKS -> the list (name, signal bars, OPEN) ->
- * the password keyboard (7 x 3 big keys, letters on two pages with a case
- * toggle, digits and every printable symbol on three more: a WPA passphrase
+ * the password keyboard (all QWERTY letters on one page, a case toggle,
+ * and separate number/symbol layers: a WPA passphrase
  * is up to 63 of any printable character) -> CONNECTING -> CHECKING -> the
  * offer (VERSION X IS READY, the note, YES / NOT NOW) -> DOWNLOADING with a
  * bar and CANCEL -> RESTARTING. Every failure is a short message with TRY
@@ -103,15 +103,15 @@ int  updates_page_touch(float x, float y, bool down);       /* every frame: UPD_
 #define UPD_CLOSE_Y   312
 #define UPD_CLOSE_W   92
 #define UPD_CLOSE_H   30
-/* update mode: the keyboard's 7 x 3 keys, the foot's buttons, the network list */
-#define UPD_KB_COLS 7
+/* update mode: staggered QWERTY rows, then a wide action row */
+#define UPD_KB_COLS 10
 #define UPD_KB_ROWS 3
-#define UPD_KB_PX   54
-#define UPD_KB_PY   78
-#define UPD_KB_W    50
-#define UPD_KB_H    72
-#define UPD_KB_X    37
-#define UPD_KB_Y    96
+#define UPD_KB_PX   42
+#define UPD_KB_PY   60
+#define UPD_KB_W    38
+#define UPD_KB_H    54
+#define UPD_KB_X    14
+#define UPD_KB_Y    100
 #define UPD_BTN_H     38
 #define UPD_BTN_Y     296
 #define UPD_BTN_L_X   32

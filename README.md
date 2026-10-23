@@ -49,21 +49,27 @@ includes matching image boards and ready-to-paste text.
 - **Settings > WIPE** opens a separate **WIPE TANK?** confirmation.
   Confirming starts over with two fry and first-time setup; CANCEL or waiting
   20 seconds keeps the tank. SD backups and touch calibration are preserved.
-- Optional **Minimal, Digital, Analog and Neon idle clocks** over the aquarium.
+- Optional **Minimal, Digital, Analog, Neon, Flip, Binary and Orbit idle clocks**
+  over the aquarium.
   Open **Settings > CLOCK** for large/medium/small sizes, center or four-corner
-  placement, 12/24-hour time and UTC offsets in 15-minute steps. The default
+  placement, 12/24-hour time, a DST toggle and UTC offsets in selectable
+  1-hour, 30-minute or 15-minute steps. The default
   layout is large and centered. Clocks are **OFF by default** and saved per tank.
   Choose **15 sec, 30 sec, 1, 2, 5 or 10 min** of inactivity, or **Manual Only**;
   **SHOW CLOCK** opens it immediately. The first touch only dismisses the clock.
+  **STYLE** offers theme-default colors or white, amber, mint, cyan, rose,
+  lavender and red, plus independent seconds, panel/border and date toggles.
 - **Settings > CLOCK > WI-FI / SYNC** scans 2.4 GHz networks and
-  provides a password keyboard, connection errors, change-network and confirmed
+  provides a full single-page QWERTY password keyboard with separate
+  numbers/symbols, connection errors, change-network and confirmed
   forget options. The tank is saved before a brief restart into setup; Wi-Fi
   credentials are device-wide and never included in aquarium backups.
   NTP sets the time when returning to the tank and on subsequent boots.
   After a failed sync, the overlay says **SYNC NEEDED**, not an invented time.
   No battery-backed RTC is fitted: Wi-Fi is needed again after power loss.
   A synchronized clock keeps running offline while powered or in deep sleep.
-  UTC offsets are fixed; adjust manually for daylight saving.
+  Set your standard-time UTC offset and enable **DST: +1 HOUR** during daylight
+  saving. DST is manual, not an automatic regional schedule.
 - Legacy Wi-Fi firmware downloads are
   **disabled by default** until a CYD fork update channel is configured.
 - A desktop preview of the actual CYD gameplay/renderer and native regressions.

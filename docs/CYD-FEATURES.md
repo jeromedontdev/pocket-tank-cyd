@@ -364,25 +364,51 @@ own lines. The old Lights Out setting button is no longer on this page.
 
 ### A clock over your aquarium
 
-Open **Settings > CLOCK** to choose **Minimal, Digital, Analog or Neon**.
+Open **Settings > CLOCK** to choose **Minimal, Digital, Analog, Neon, Flip,
+Binary or Orbit**.
 This is an idle display mode, **large and centered by default**, with
 large/medium/small sizes, center or four-corner placement, 12/24-hour time and
-a UTC offset in 15-minute steps. The clock starts **OFF**, saves separately
+a UTC offset with selectable **1-hour / 30-minute / 15-minute** adjustment
+steps (tap **STEP**, default 1 hour). The clock starts **OFF**, saves separately
 for each tank, and follows its SD snapshots and JSON restores.
 **ACTIVATE** offers **15 sec, 30 sec, 1, 2, 5 or 10 min**, or **Manual Only**.
 **SHOW CLOCK** enters immediately; the first touch only dismisses it, without
 affecting fish or tools. Menus do not count as inactivity. Fish keep swimming
-behind the translucent panel. Adjust the UTC offset manually for daylight saving.
+behind the translucent panel. Set your standard-time UTC offset, then use
+**DST: +1 HOUR** during daylight saving; turn it OFF for standard time. This
+manual toggle changes the time and date together and saves per tank. It does
+not select regional rules or switch automatically.
+
+**STYLE** offers each theme's original colors plus **white, amber, mint, cyan,
+rose, lavender and red**. Independently hide **seconds**, the **background panel
+and border**, or the **date**. Seconds visibility also controls the analog
+second hand, Binary seconds columns and Orbit seconds ring. A missing time sync
+still shows **SYNC NEEDED**. Preferences save per tank, and **SHOW CLOCK** previews
+the result from either settings page.
 
 | Minimal | Digital |
 |---|---|
 | ![Large minimal aquarium clock](media/cyd-features/clock-compact.png) | ![Large seven-segment aquarium clock](media/cyd-features/clock-digital.png) |
 | Analog | Neon |
 | ![Analog face with digital caption](media/cyd-features/clock-analog.png) | ![Neon pink and cyan aquarium clock](media/cyd-features/clock-neon.png) |
+| Flip | Binary |
+| ![Split-flap numeral tiles](media/cyd-features/clock-flip.png) | ![Binary-coded decimal columns with 8/4/2/1 weights](media/cyd-features/clock-binary.png) |
+| Orbit | Custom colors and details |
+| ![Concentric hour, minute and second rings](media/cyd-features/clock-orbit.png) | ![Cyan digital numerals without seconds, panel or date](media/cyd-features/clock-custom.png) |
+
+Binary's pairs of columns represent each decimal digit: add the lit weights
+(8/4/2/1, top to bottom) in each column. Orbit's gold outer ring tracks the
+12-hour cycle, cyan middle ring tracks minutes and pink inner ring tracks
+seconds; the center shows the ordinary time.
 
 **WI-FI / SYNC** saves the aquarium and briefly restarts into an
 on-screen network picker and case-sensitive password keyboard. Choose a visible
 2.4 GHz network, connect, then **BACK TO TANK** to synchronize with NTP.
+All letters fit on one QWERTY page with large uppercase keycaps. Typing starts
+lowercase; **CAPS** and the case indicator control uppercase entry, while the
+password field shows exactly what you typed. **123** opens a separate
+number/symbol layout, **#+=** shows more symbols and **ABC** returns to letters.
+Dedicated **SPACE** and **DEL** keys let you edit without leaving the keyboard.
 Saved networks can be reconnected, changed or forgotten with confirmation.
 This flow never checks or downloads firmware.
 
@@ -391,6 +417,8 @@ This flow never checks or downloads firmware.
 | ![Clock controls and Wi-Fi setup entry](media/cyd-features/clock-settings.png) | ![Simulated Wi-Fi network picker](media/cyd-features/wifi-networks.png) |
 | Password keyboard | Connected |
 | ![Case-sensitive Wi-Fi password keyboard](media/cyd-features/wifi-password.png) | ![Connected network confirmation](media/cyd-features/wifi-connected.png) |
+
+![Clock color and visibility controls](media/cyd-features/clock-style.png)
 
 The CYD has no battery-backed clock. Once NTP succeeds, time keeps ticking
 offline while powered or in deep sleep; power loss requires another sync.

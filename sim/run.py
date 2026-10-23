@@ -164,9 +164,30 @@ def main():
 
                 lib.sim_action(2)
                 tap(220, 20)  # Clock subpage.
-                tap(220, 69); tap(220, 109); tap(220, 149); tap(220, 189); tap(220, 229); tap(380, 270)
+                tap(220, 69); tap(220, 109); tap(220, 149); tap(120, 189); tap(220, 229); tap(380, 270)
                 options = json.loads(backup(lib))["tank"]
-                assert (options["clock_theme"], options["clock_flags"], options["clock_utc_quarters"], options["clock_layout"], options["clock_delay"]) == (1, 1, 1, 5, 1)
+                assert (options["clock_theme"], options["clock_flags"], options["clock_utc_quarters"], options["clock_layout"], options["clock_delay"]) == (1, 1, 4, 5, 1)
+                tap(330, 189)
+                assert json.loads(backup(lib))["tank"]["clock_flags"] == 3, "DST must preserve 12-hour format"
+                tap(330, 189)
+                tap(220, 282); tap(380, 270)
+                assert json.loads(backup(lib))["tank"]["clock_utc_quarters"] == 6
+                tap(220, 282); tap(380, 270)
+                assert json.loads(backup(lib))["tank"]["clock_utc_quarters"] == 7
+                tap(220, 282)
+                tap(220, 20)  # Appearance subpage.
+                tap(220, 80); tap(220, 133); tap(220, 185); tap(220, 237)
+                assert json.loads(backup(lib))["tank"]["clock_flags"] == 61
+                tap(224, 300)
+                assert lib.sim_clock_active(), "Appearance preview must enter clock mode"
+                tap(160, 90)
+                lib.sim_action(2); tap(220, 20); tap(220, 20)
+                for _ in range(7):
+                    tap(220, 80)
+                tap(220, 133); tap(220, 185); tap(220, 237)
+                assert json.loads(backup(lib))["tank"]["clock_flags"] == 1, "Color wrapping/detail toggles must preserve format and DST"
+                tap(380, 20)
+                options = json.loads(backup(lib))["tank"]
                 tap(120, 318)
                 assert lib.sim_page() == 0 and lib.sim_clock_active(), "SHOW CLOCK must enter clock mode"
                 tap(160, 90)
@@ -187,7 +208,7 @@ def main():
                 advance()
                 assert not lib.sim_clock_active()
                 lib.sim_action(2); tap(220, 20)
-                for _ in range(4):
+                for _ in range(7):
                     tap(220, 69)
                 assert json.loads(backup(lib))["tank"]["clock_theme"] == 0
                 tap(120, 318)
@@ -231,8 +252,50 @@ def main():
                 assert lib.sim_network_message() == b"WI-FI SAVE FAILED"
                 tap(224, 315)
                 os.environ["POCKET_TANK_WIFI"] = str(output / "fake-wifi.txt")
+                tap(330, 318); advance(); tap(160, 74)
+                assert lib.sim_network_page() == 4
+                tap(380, 315)
+                assert lib.sim_network_page() == 4, "An empty secured password must not connect"
+
+                def keyboard_chars():
+                    for start, count, y in ((33, 10, 127), (54, 9, 187), (96, 7, 247)):
+                        for column in range(count):
+                            tap(start + column * 42, y)
+
+                letters = "qwertyuiopasdfghjklzxcvbnm"
+                symbols = "1234567890" "@#$%&*-+=" "!?.,:/;"
+                more_symbols = "`~^_\\|<>{}" "[]()\"'!?#" "$%&*+-="
+                keyboard_chars()
+                tap(43, 247)  # CAPS.
+                keyboard_chars()
+                tap(250, 315)  # SPACE.
+                tap(132, 315)  # Separate numbers and symbols.
+                keyboard_chars()
+                tap(380, 315); advance()
+                expected = (letters + letters.upper() + " " + symbols)[:63]
+                assert (output / "fake-wifi.txt").read_text() == "Fishbowl\n" + expected + "\n", "QWERTY must enter every letter without paging and enforce the 63-character limit"
+                tap(224, 315)
+                tap(330, 318); tap(320, 265); advance(); tap(160, 74)
+                for _ in range(63):
+                    tap(400, 247)
+                tap(132, 315)
+                keyboard_chars()
+                tap(43, 247)  # Second symbol layer.
+                keyboard_chars()
+                tap(132, 315)  # ABC.
+                tap(54, 187)  # a.
+                tap(43, 247); tap(54, 187)  # CAPS, A.
+                tap(33, 127); tap(400, 247)  # Q, DEL.
+                tap(52, 315)  # BACK must retain the password for the same network.
+                assert lib.sim_network_page() == 3
+                tap(160, 74)
+                tap(380, 315); advance()
+                assert (output / "fake-wifi.txt").read_text() == "Fishbowl\n" + symbols + more_symbols + "aA\n", "Symbols, case, DEL and same-network BACK must preserve exact input"
+                assert set(symbols + more_symbols) == set("0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"), "Both symbol layers must cover every printable non-letter"
+                tap(224, 315)
                 tap(380, 20)  # Back to normal Settings.
                 print("PASS: themed clock settings and Wi-Fi-only scan/connect, saved network, confirmed forget, wrong password, save failure and aquarium preservation")
+                print("PASS: single-page QWERTY, all printable characters, case, space, delete, length limit and retained password")
                 lib.sim_action(5)
                 lib.sim_action(1)
                 tap(220, 356)

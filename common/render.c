@@ -5074,11 +5074,14 @@ static const char *const SET_FEED[2]   = { "ON", "OFF" };          /* the defaul
 static const char *const SAND_NAMES[SAND_STYLE_COUNT] = { "ORIGINAL", "GOLD", "PEARL", "VOLCANIC", "RAINBOW", "HOT PINK", "ELECTRIC CYAN", "NEON LIME" };
 static const char *const WATER_NAMES[WATER_STYLE_COUNT] = { "ORIGINAL", "BLUE", "TEAL", "VIOLET", "AMBER", "RAINBOW", "HOT PINK", "NEON LIME" };
 
+static int clock_offset_seconds(const tank_t *t) {
+    return t->aquariums.clock_utc_quarters * 900 + (t->aquariums.clock_flags & CLOCK_DST ? 3600 : 0);
+}
 bool render_clock_format(const tank_t *t, int64_t unix_time, char text[9], int *hour, int *minute) {
     if (unix_time < INT64_C(1609459200) || unix_time > INT64_C(4102444800)) {
         snprintf(text, 9, "--:--"); *hour = *minute = 0; return false;
     }
-    int64_t local = unix_time + (int64_t)t->aquariums.clock_utc_quarters * 900;
+    int64_t local = unix_time + clock_offset_seconds(t);
     int day = (int)(local % 86400);
     *hour = day / 3600; *minute = day / 60 % 60;
     int display = *hour;
@@ -5101,7 +5104,7 @@ void render_clock_bounds(const tank_t *t, int *x, int *y, int *w, int *h) {
     if (size >= CLOCK_SIZE_COUNT) size = CLOCK_LARGE;
     static const int widths[] = {220, 172, 116}, heights[] = {112, 90, 68};
     static const int analog_w[] = {154, 126, 100}, analog_h[] = {166, 138, 112};
-    bool analog = t->aquariums.clock_theme == CLOCK_ANALOG;
+    bool analog = t->aquariums.clock_theme == CLOCK_ANALOG || t->aquariums.clock_theme == CLOCK_ORBIT;
     *w = analog ? analog_w[size] : widths[size]; *h = analog ? analog_h[size] : heights[size];
     *x = (TANK_W - *w) / 2; *y = (TANK_H - *h) / 2;
     if (position == CLOCK_TOP_LEFT || position == CLOCK_BOTTOM_LEFT) *x = 6;
@@ -5146,6 +5149,78 @@ static void clock_segments(ctx_t *c, int x, int y, int scale, uint32_t ink, cons
         x += 5 * s;
     }
 }
+typedef struct { uint32_t ink, edge, hour, minute, second; } clock_colors_t;
+static const char *const CLOCK_COLOR_NAMES[] = {"THEME", "WHITE", "AMBER", "MINT", "CYAN", "ROSE", "LAVENDER", "RED"};
+static clock_colors_t clock_colors(const tank_t *t) {
+    int theme = t->aquariums.clock_theme, color = t->aquariums.clock_flags >> CLOCK_COLOR_SHIFT;
+    clock_colors_t p = {theme == CLOCK_NEON ? 0x73f5e5 : theme == CLOCK_FLIP ? 0xffe9b0 : 0xffffff,
+                       theme == CLOCK_NEON ? 0xf698eb : 0x9fd8e2, 0xffdc73, 0x73f5e5, 0xff7289};
+    static const uint32_t inks[] = {0, 0xffffff, 0xffdc73, 0x89ffb1, 0x73e5ff, 0xffa3cf, 0xc5adff, 0xff8173};
+    if (color) p.ink = p.edge = p.hour = p.minute = p.second = inks[color];
+    return p;
+}
+static void clock_flip(ctx_t *c, int x, int y, int w, int size, uint32_t ink, const char *text) {
+    int scale = size == CLOCK_LARGE ? 6 : size == CLOCK_MEDIUM ? 4 : 3;
+    int margin = size == CLOCK_SMALL ? 6 : 12, gap = 3, colon = size == CLOCK_SMALL ? 6 : 12;
+    int padding = size == CLOCK_SMALL ? 4 : 6;
+    int tile_w = (w - 2 * margin - 3 * gap - colon) / 4, tile_h = 7 * scale + 2 * padding;
+    int top = y + 8;
+    for (int digit = 0; digit < 4; digit++) {
+        int left = x + margin + digit * (tile_w + gap) + (digit >= 2 ? colon : 0);
+        rect_fill(c, left, top, tile_w, tile_h / 2, 0x304450);
+        rect_fill(c, left, top + tile_h / 2, tile_w, tile_h - tile_h / 2, 0x1a2a35);
+        rect_edge(c, left, top, tile_w, tile_h, 0x6c8390);
+        char label[2] = {text[digit + (digit >= 2 ? 1 : 0)], 0};
+        clock_text_center(c, left, top + padding, tile_w, scale, ink, label);
+        rect_fill(c, left + 1, top + tile_h / 2, tile_w - 2, 1, 0x061118);
+        rect_fill(c, left, top + tile_h / 2 - 1, 2, 3, 0x8f9ca0);
+        rect_fill(c, left + tile_w - 2, top + tile_h / 2 - 1, 2, 3, 0x8f9ca0);
+    }
+    int cx = x + margin + 2 * (tile_w + gap) + colon / 2 - 2;
+    rect_fill(c, cx, top + tile_h / 3, 2, 2, ink);
+    rect_fill(c, cx, top + tile_h * 2 / 3, 2, 2, ink);
+}
+static void clock_binary(ctx_t *c, int x, int y, int w, int size, const clock_colors_t *p, int hour, int minute, int second, bool valid, bool seconds) {
+    int digits[] = {hour / 10, hour % 10, minute / 10, minute % 10, second / 10, second % 10};
+    int cols = seconds ? 6 : 4, pitch = (w - 32) / cols, dot = size == CLOCK_LARGE ? 7 : size == CLOCK_MEDIUM ? 5 : 3;
+    int top = y + (size == CLOCK_LARGE ? 24 : size == CLOCK_MEDIUM ? 20 : 15), row_pitch = dot + (size == CLOCK_SMALL ? 3 : 5);
+    const uint32_t colors[] = {p->hour, p->minute, p->second};
+    for (int col = 0; col < cols; col++) {
+        int cx = x + 24 + col * pitch;
+        if (!(col % 2)) {
+            char label[2] = {"HMS"[col / 2], 0};
+            clock_text_center(c, cx - pitch / 2, y + 4, 2 * pitch, 1, colors[col / 2], label);
+        }
+        for (int row = 0; row < 4; row++) {
+            int bit = 1 << (3 - row);
+            if (!col) {
+                char weight[2] = {(char)('0' + bit), 0};
+                draw_text(c, x + 5, top + row * row_pitch, 1, p->edge, weight);
+            }
+            rect_fill(c, cx - dot / 2, top + row * row_pitch, dot, dot,
+                      valid && (digits[col] & bit) ? colors[col / 2] : 0x233a43);
+        }
+    }
+}
+static void clock_orbit(ctx_t *c, int x, int y, int w, int size, const clock_colors_t *p, const char *text, int hour, int minute, int second, bool valid, bool seconds) {
+    int radius = w / 2 - 12, cx = x + w / 2, cy = y + radius + 7;
+    int gap = size == CLOCK_LARGE ? 9 : size == CLOCK_MEDIUM ? 8 : 7;
+    int progress[] = {((hour % 12) * 3600 + minute * 60 + second) / 720, minute, second};
+    const uint32_t colors[] = {p->hour, p->minute, p->second};
+    int tracks = seconds ? 3 : 2;
+    for (int track = 0; track < tracks; track++) {
+        for (int mark = 0; mark < 60; mark++) {
+            float angle = mark * TAU / 60 - TAU / 4;
+            int r = radius - track * gap;
+            rect_fill(c, cx + (int)(cosf(angle) * r), cy + (int)(sinf(angle) * r), 2, 2,
+                      valid && mark < progress[track] ? colors[track] : 0x233a43);
+        }
+        char label[2] = {"HMS"[track], 0};
+        draw_text(c, cx - (tracks * 12 - 7) / 2 + track * 12, cy + 15, 1, colors[track], label);
+    }
+    int scale = size == CLOCK_LARGE ? 3 : size == CLOCK_MEDIUM ? 2 : 1;
+    clock_text_center(c, x, cy - 7 * scale / 2, w, scale, p->ink, text);
+}
 void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t unix_time) {
     int theme = t->aquariums.clock_theme;
     if (theme <= CLOCK_OFF || theme >= CLOCK_THEME_COUNT) return;
@@ -5155,12 +5230,22 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
     int size = t->aquariums.clock_layout & 3;
     if (size >= CLOCK_SIZE_COUNT) size = CLOCK_LARGE;
     ctx_t c = ctx_full(fb, stride, 1);
-    uint32_t edge = theme == CLOCK_NEON ? 0xf698eb : 0x9fd8e2;
-    uint32_t ink = theme == CLOCK_NEON ? 0x73f5e5 : 0xffffff;
-    for (int py = y; py < y + h; py++) for (int px = x; px < x + w; px++)
-        px_blend(&c, px, py, 0x04141a, theme == CLOCK_COMPACT ? 155 : 210);
-    rect_edge(&c, x, y, w, h, edge);
-    if (theme == CLOCK_ANALOG && valid) {
+    clock_colors_t palette = clock_colors(t);
+    uint32_t edge = palette.edge, ink = palette.ink;
+    bool seconds = !(t->aquariums.clock_flags & CLOCK_HIDE_SECONDS);
+    if (!(t->aquariums.clock_flags & CLOCK_HIDE_PANEL)) {
+        for (int py = y; py < y + h; py++) for (int px = x; px < x + w; px++)
+            px_blend(&c, px, py, 0x04141a, theme == CLOCK_COMPACT ? 155 : 210);
+        rect_edge(&c, x, y, w, h, edge);
+    }
+    if (theme == CLOCK_FLIP) {
+        clock_flip(&c, x, y, w, size, ink, text);
+    } else if (theme == CLOCK_BINARY) {
+        int display_hour = t->aquariums.clock_flags & CLOCK_12H ? (hour % 12 ? hour % 12 : 12) : hour;
+        clock_binary(&c, x, y, w, size, &palette, display_hour, minute, valid ? (int)(unix_time % 60) : 0, valid, seconds);
+    } else if (theme == CLOCK_ORBIT) {
+        clock_orbit(&c, x, y, w, size, &palette, text, hour, minute, valid ? (int)(unix_time % 60) : 0, valid, seconds);
+    } else if (theme == CLOCK_ANALOG && valid) {
         int cx = x + w / 2, radius = h / 2 - 22, cy = y + radius + 8;
         for (int mark = 0; mark < 60; mark++) {
             float a = mark * TAU / 60 - TAU / 4;
@@ -5177,8 +5262,8 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
         float ma = minute * TAU / 60 - TAU / 4;
         float ha = (hour % 12 + minute / 60.0f) * TAU / 12 - TAU / 4;
         clock_hand(&c, cx, cy, ma, radius - 8, 2, ink);
-        clock_hand(&c, cx, cy, ha, radius * 3 / 5, 3, 0xffdc73);
-        clock_hand(&c, cx, cy, (unix_time % 60) * TAU / 60 - TAU / 4, radius - 4, 1, 0xff7289);
+        clock_hand(&c, cx, cy, ha, radius * 3 / 5, 3, palette.hour);
+        if (seconds) clock_hand(&c, cx, cy, (unix_time % 60) * TAU / 60 - TAU / 4, radius - 4, 1, palette.second);
         rect_fill(&c, cx - 2, cy - 2, 5, 5, edge);
         char label[9];
         snprintf(label, sizeof label, "%.5s%s", text, t->aquariums.clock_flags & CLOCK_12H ? (hour < 12 ? " AM" : " PM") : "");
@@ -5191,7 +5276,7 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
             clock_segments(&c, x + (w - 22 * segment_scale) / 2, y + 10, segment_scale, ink, text);
         } else {
             if (theme == CLOCK_NEON) {
-                clock_text_center(&c, x + 1, y + 12, w, scale, 0x854375, text);
+                clock_text_center(&c, x + 1, y + 12, w, scale, t->aquariums.clock_flags & CLOCK_COLOR_MASK ? (ink >> 1) & 0x7f7f7f : 0x854375, text);
                 rect_fill(&c, x + 8, y + h - 4, w - 16, 1, edge);
             }
             clock_text_center(&c, x, y + 10, w, scale, ink, text);
@@ -5199,8 +5284,8 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
     }
     if (!valid) {
         clock_text_center(&c, x, y + h - 16, w, 1, edge, "SYNC NEEDED");
-    } else {
-        time_t local = (time_t)(unix_time + (int64_t)t->aquariums.clock_utc_quarters * 900);
+    } else if (!(t->aquariums.clock_flags & CLOCK_HIDE_DATE)) {
+        time_t local = (time_t)(unix_time + clock_offset_seconds(t));
         struct tm *date = gmtime(&local);
         char calendar[20];
         if (date) strftime(calendar, sizeof calendar, "%a %d %b", date);
@@ -5209,18 +5294,37 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
     }
     if (theme != CLOCK_ANALOG && valid) {
         const char *caption = t->aquariums.clock_flags & CLOCK_12H ? (hour < 12 ? "AM" : "PM") : "24H";
-        char detail[16]; snprintf(detail, sizeof detail, "%s  :%02d", caption, (int)(unix_time % 60));
+        char detail[16];
+        if (seconds) snprintf(detail, sizeof detail, "%s  :%02d", caption, (int)(unix_time % 60));
+        else snprintf(detail, sizeof detail, "%s", caption);
         clock_text_center(&c, x, y + h - 28, w, 1, edge, detail);
     }
 }
-static bool g_clock_settings;
-enum { CLOCK_HIT_PAGE = 100, CLOCK_HIT_THEME, CLOCK_HIT_FORMAT, CLOCK_HIT_POSITION, CLOCK_HIT_PREVIOUS, CLOCK_HIT_NEXT, CLOCK_HIT_SIZE, CLOCK_HIT_DELAY };
-static const char *const CLOCK_NAMES[CLOCK_THEME_COUNT] = {"OFF", "MINIMAL", "DIGITAL", "ANALOG", "NEON"};
+static bool g_clock_settings, g_clock_style;
+static int g_clock_step;
+static const int CLOCK_STEPS[] = {4, 2, 1};
+static const char *const CLOCK_STEP_NAMES[] = {"1H", "30M", "15M"};
+enum { CLOCK_HIT_PAGE = 100, CLOCK_HIT_THEME, CLOCK_HIT_FORMAT, CLOCK_HIT_POSITION, CLOCK_HIT_PREVIOUS, CLOCK_HIT_NEXT, CLOCK_HIT_SIZE, CLOCK_HIT_DELAY, CLOCK_HIT_DST, CLOCK_HIT_STEP, CLOCK_HIT_STYLE, CLOCK_HIT_COLOR, CLOCK_HIT_SECONDS, CLOCK_HIT_PANEL, CLOCK_HIT_DATE };
+static const char *const CLOCK_NAMES[CLOCK_THEME_COUNT] = {"OFF", "MINIMAL", "DIGITAL", "ANALOG", "NEON", "FLIP", "BINARY", "ORBIT"};
 static const char *const CLOCK_SIZES[] = {"LARGE", "MEDIUM", "SMALL"};
 static const char *const CLOCK_POSITIONS[] = {"CENTER", "TOP LEFT", "TOP RIGHT", "BOTTOM LEFT", "BOTTOM RIGHT"};
 static const char *const CLOCK_DELAY_NAMES[] = {"1 MIN", "15 SEC", "30 SEC", "2 MIN", "5 MIN", "10 MIN", "MANUAL ONLY"};
 static void clock_settings_draw(ctx_t *c, const tank_t *t) {
-    draw_text(c, 32, 14, 3, 0xffffff, "CLOCK + WIFI");
+    if (g_clock_style) {
+        draw_text(c, 32, 14, 3, 0xffffff, "CLOCK STYLE");
+        button(c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
+        char label[40];
+        snprintf(label, sizeof label, "COLOR: %s", CLOCK_COLOR_NAMES[t->aquariums.clock_flags >> CLOCK_COLOR_SHIFT]);
+        button(c, 32, 60, 396, 42, 0x1c2f36, MSP_TEAL, label, 2);
+        button(c, 32, 112, 396, 42, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_SECONDS ? "SECONDS: HIDDEN" : "SECONDS: SHOWN", 2);
+        button(c, 32, 164, 396, 42, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_PANEL ? "PANEL + BORDER: HIDDEN" : "PANEL + BORDER: SHOWN", 2);
+        button(c, 32, 216, 396, 42, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_DATE ? "DATE: HIDDEN" : "DATE: SHOWN", 2);
+        button(c, 32, 282, 396, 42, 0x1c2f36, MSP_TEAL, "SHOW CLOCK", 2);
+        draw_text_wrap(c, 32, 344, 396, MSP_TEAL, s_backup_message);
+        return;
+    }
+    draw_text(c, 32, 14, 3, 0xffffff, "CLOCK");
+    button(c, 140, 8, 174, 36, 0x1c2f36, MSP_TEAL, "STYLE >", 2);
     button(c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
     char label[40];
     snprintf(label, sizeof label, "THEME: %s", CLOCK_NAMES[t->aquariums.clock_theme < CLOCK_THEME_COUNT ? t->aquariums.clock_theme : 0]);
@@ -5230,14 +5334,19 @@ static void clock_settings_draw(ctx_t *c, const tank_t *t) {
     button(c, 32, 92, 396, 34, 0x1c2f36, MSP_TEAL, label, 2);
     snprintf(label, sizeof label, "POSITION: %s", CLOCK_POSITIONS[position < CLOCK_POSITION_COUNT ? position : 0]);
     button(c, 32, 132, 396, 34, 0x1c2f36, MSP_TEAL, label, 2);
-    button(c, 32, 172, 396, 34, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_12H ? "FORMAT: 12 HOUR" : "FORMAT: 24 HOUR", 2);
+    button(c, 32, 172, 190, 34, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_12H ? "12 HOUR" : "24 HOUR", 2);
+    button(c, 238, 172, 190, 34, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_DST ? "DST: +1 HOUR" : "DST: OFF", 2);
     snprintf(label, sizeof label, "ACTIVATE: %s", CLOCK_DELAY_NAMES[t->aquariums.clock_delay < CLOCK_DELAY_COUNT ? t->aquariums.clock_delay : 0]);
     button(c, 32, 212, 396, 34, 0x1c2f36, MSP_TEAL, label, 2);
     int offset = t->aquariums.clock_utc_quarters, absolute = abs(offset);
     snprintf(label, sizeof label, "UTC %c%02d:%02d", offset < 0 ? '-' : '+', absolute / 4, absolute % 4 * 15);
-    draw_text(c, (PAGE_W - text_w(label, 2)) / 2, 266, 2, 0xffffff, label);
-    button(c, 32, 252, 76, 36, 0x1c2f36, MSP_TEAL, "<", 2);
-    button(c, 352, 252, 76, 36, 0x1c2f36, MSP_TEAL, ">", 2);
+    draw_text(c, (PAGE_W - text_w(label, 2)) / 2, 252, 2, 0xffffff, label);
+    snprintf(label, sizeof label, "STEP: %s", CLOCK_STEP_NAMES[g_clock_step]);
+    button(c, 116, 270, 228, 24, 0x1c2f36, MSP_TEAL, label, 2);
+    snprintf(label, sizeof label, "-%s", CLOCK_STEP_NAMES[g_clock_step]);
+    button(c, 32, 252, 76, 36, 0x1c2f36, MSP_TEAL, label, 2);
+    snprintf(label, sizeof label, "+%s", CLOCK_STEP_NAMES[g_clock_step]);
+    button(c, 352, 252, 76, 36, 0x1c2f36, MSP_TEAL, label, 2);
     button(c, 32, 300, 190, 36, 0x1c2f36, MSP_TEAL, "SHOW CLOCK", 2);
     button(c, 238, 300, 190, 36, 0x1c2f36, MSP_TEAL, "WI-FI / SYNC", 2);
     draw_text_wrap(c, 32, 344, 396, MSP_TEAL, s_backup_message);
@@ -5627,6 +5736,18 @@ static int set_segment(float x, int n) {
 int render_settings_tap(float x, float y, int *value) {
     x = render_page_x(x); y = render_page_y(y);
     if (g_clock_settings) {
+        if (g_clock_style) {
+            if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_STYLE;
+            if (x >= 32 && x < 428) {
+                if (y >= 60 && y < 102) return CLOCK_HIT_COLOR;
+                if (y >= 112 && y < 154) return CLOCK_HIT_SECONDS;
+                if (y >= 164 && y < 206) return CLOCK_HIT_PANEL;
+                if (y >= 216 && y < 258) return CLOCK_HIT_DATE;
+                if (y >= 282 && y < 324) return SET_TAP_CLOCK_SHOW;
+            }
+            return SET_TAP_NONE;
+        }
+        if (x >= 140 && x < 314 && y >= 8 && y < 44) return CLOCK_HIT_STYLE;
         if (x >= 32 && x < 222 && y >= 300 && y < 336) return SET_TAP_CLOCK_SHOW;
         if (x >= 238 && x < 428 && y >= 300 && y < 336) return SET_TAP_WIFI;
         if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_PAGE;
@@ -5634,10 +5755,12 @@ int render_settings_tap(float x, float y, int *value) {
             if (y >= 52 && y < 86) return CLOCK_HIT_THEME;
             if (y >= 92 && y < 126) return CLOCK_HIT_SIZE;
             if (y >= 132 && y < 166) return CLOCK_HIT_POSITION;
-            if (y >= 172 && y < 206) return CLOCK_HIT_FORMAT;
+            if (y >= 172 && y < 206 && x < 222) return CLOCK_HIT_FORMAT;
+            if (y >= 172 && y < 206 && x >= 238) return CLOCK_HIT_DST;
             if (y >= 212 && y < 246) return CLOCK_HIT_DELAY;
             if (y >= 252 && y < 288 && x < 108) return CLOCK_HIT_PREVIOUS;
             if (y >= 252 && y < 288 && x >= 352) return CLOCK_HIT_NEXT;
+            if (y >= 270 && y < 294 && x >= 116 && x < 344) return CLOCK_HIT_STEP;
         }
         return SET_TAP_NONE;
     }
@@ -5679,16 +5802,31 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
         if (h == s_hit && dx * dx + dy * dy < 24 * 24) {
             if (h == CLOCK_HIT_PAGE) {
                 g_clock_settings = !g_clock_settings;
+                g_clock_style = false;
                 render_backup_status(g_clock_settings ? (g_clock_synchronized ? "NTP READY - CHANGES SAVE AUTO" : "SYNC NEEDED - SET UP WI-FI") : "JSON BACKUP / RESTORE FROM SD", false);
-            } else if (h >= CLOCK_HIT_THEME && h <= CLOCK_HIT_DELAY) {
+            } else if (h == CLOCK_HIT_STEP) {
+                g_clock_step = (g_clock_step + 1) % 3;
+            } else if (h == CLOCK_HIT_STYLE) {
+                g_clock_style = !g_clock_style;
+            } else if (h >= CLOCK_HIT_THEME && h <= CLOCK_HIT_DATE) {
                 aquarium_state_t before = t->aquariums;
                 if (h == CLOCK_HIT_THEME) t->aquariums.clock_theme = (uint8_t)((t->aquariums.clock_theme + 1) % CLOCK_THEME_COUNT);
                 if (h == CLOCK_HIT_FORMAT) t->aquariums.clock_flags ^= CLOCK_12H;
+                if (h == CLOCK_HIT_DST) t->aquariums.clock_flags ^= CLOCK_DST;
+                if (h == CLOCK_HIT_COLOR) t->aquariums.clock_flags = (uint8_t)((t->aquariums.clock_flags & ~CLOCK_COLOR_MASK) | (((t->aquariums.clock_flags >> CLOCK_COLOR_SHIFT) + 1) % 8 << CLOCK_COLOR_SHIFT));
+                if (h == CLOCK_HIT_SECONDS) t->aquariums.clock_flags ^= CLOCK_HIDE_SECONDS;
+                if (h == CLOCK_HIT_PANEL) t->aquariums.clock_flags ^= CLOCK_HIDE_PANEL;
+                if (h == CLOCK_HIT_DATE) t->aquariums.clock_flags ^= CLOCK_HIDE_DATE;
                 if (h == CLOCK_HIT_POSITION) t->aquariums.clock_layout = (uint8_t)((((t->aquariums.clock_layout >> 2) + 1) % CLOCK_POSITION_COUNT) * 4 + (t->aquariums.clock_layout & 3));
                 if (h == CLOCK_HIT_SIZE) t->aquariums.clock_layout = (uint8_t)((t->aquariums.clock_layout & ~3) + ((t->aquariums.clock_layout & 3) + 1) % CLOCK_SIZE_COUNT);
                 if (h == CLOCK_HIT_DELAY) t->aquariums.clock_delay = (uint8_t)((t->aquariums.clock_delay + 1) % CLOCK_DELAY_COUNT);
-                if (h == CLOCK_HIT_PREVIOUS) t->aquariums.clock_utc_quarters = t->aquariums.clock_utc_quarters <= -48 ? 56 : t->aquariums.clock_utc_quarters - 1;
-                if (h == CLOCK_HIT_NEXT) t->aquariums.clock_utc_quarters = t->aquariums.clock_utc_quarters >= 56 ? -48 : t->aquariums.clock_utc_quarters + 1;
+                if (h == CLOCK_HIT_PREVIOUS || h == CLOCK_HIT_NEXT) {
+                    int offset = t->aquariums.clock_utc_quarters;
+                    offset += (h == CLOCK_HIT_NEXT ? 1 : -1) * CLOCK_STEPS[g_clock_step];
+                    if (offset < -48) offset = t->aquariums.clock_utc_quarters == -48 ? 56 : -48;
+                    if (offset > 56) offset = t->aquariums.clock_utc_quarters == 56 ? -48 : 56;
+                    t->aquariums.clock_utc_quarters = (int8_t)offset;
+                }
                 if (!progression_save(t)) {
                     t->aquariums = before;
                     fprintf(stderr, "Clock setting save failed; change rolled back\n");
@@ -5696,7 +5834,7 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
                 } else render_backup_status("CLOCK SAVED FOR THIS TANK", false);
             } else if (h == SET_TAP_CLOCK_SHOW) {
                 if (t->aquariums.clock_theme == CLOCK_OFF) render_backup_status("CHOOSE A CLOCK THEME FIRST", false);
-                else { g_clock_settings = false; r = h; }
+                else { g_clock_settings = g_clock_style = false; r = h; }
             } else if (h == SET_TAP_FEED) {                    /* ON (1, the default) / OFF */
                 if ((v == 0) != t->autofeed_off) { t->autofeed_off = v == 0; progression_settings_changed(); }
                 r = SET_TAP_FEED; *value = v;

@@ -264,70 +264,80 @@ static struct {
     bool down; float px, py, lx, ly; int hit;
 } s;
 
-/* ---- the keyboard ----
- * 7 x 3 big keys over the whole glass (no fish here). Rows 0-1: fourteen
- * characters of the current page; row 2: the function keys. Letters on two
- * pages with a case toggle; digits and all 32 printable symbols on three. */
-#define KB_CHARS 14
+/* ---- the keyboard ---- */
+#define KB_CHARS 26
 #define FIELD_Y 50
 #define FIELD_H 34
 #define FIELD_VISIBLE 30                    /* characters that fit the field at scale 2 */
-/* the function row, left to right: the keys a long passphrase needs most
- * (MORE, DEL, SPACE) at the left, away from the two that leave the page
- * (BACK, JOIN) at the right - Strato, 2026-09-30: MORE beside BACK was
- * "difficult to tap without hitting back", and BACK wiped the text */
-enum { FK_MORE = 0, FK_DEL, FK_SPACE, FK_SHIFT, FK_MODE, FK_BACK, FK_JOIN };
-static const char *const KB_ABC[2] = { "abcdefghijklm@", "nopqrstuvwxyz_" };
-static const char *const KB_123[3] = { "0123456789.-_@", "!?#$%&*+=/:;,'", "\"()[]{}<>\\|^`~" };
-static int  kb_pages(void) { return s.kb_mode ? 3 : 2; }
+enum { FK_SHIFT = 0, FK_DEL, FK_BACK, FK_MODE, FK_SPACE, FK_JOIN, FK_COUNT };
+static const char KB_ABC[] = "qwertyuiopasdfghjklzxcvbnm";
+static const char *const KB_123[2] = {
+    "1234567890" "@#$%&*-+=" "!?.,:/;",
+    "`~^_\\|<>{}" "[]()\"'!?#" "$%&*+-="
+};
 static char kb_char(int cell) {
-    const char *pg = s.kb_mode ? KB_123[s.kb_page] : KB_ABC[s.kb_page];
+    const char *pg = s.kb_mode ? KB_123[s.kb_page] : KB_ABC;
     char ch = pg[cell];
     if (!s.kb_mode && s.kb_caps && ch >= 'a' && ch <= 'z') ch -= 'a' - 'A';
     return ch;
 }
-static int kb_hit(float x, float y) {                    /* HIT_KEY0 + cell, the nearest key inside the block */
-    if (x < UPD_KB_X - 14 || x >= UPD_KB_X + (UPD_KB_COLS - 1) * UPD_KB_PX + UPD_KB_W + 14 || y < UPD_KB_Y - 14 || y >= UPD_KB_Y + (UPD_KB_ROWS - 1) * UPD_KB_PY + UPD_KB_H + 14) return HIT_NONE;
-    int col = (int)((x - UPD_KB_X + (UPD_KB_PX - UPD_KB_W) / 2) / UPD_KB_PX), row = (int)((y - UPD_KB_Y + (UPD_KB_PY - UPD_KB_H) / 2) / UPD_KB_PY);
-    if (col < 0) col = 0;
-    if (col >= UPD_KB_COLS) col = UPD_KB_COLS - 1;
-    if (row < 0) row = 0;
-    if (row >= UPD_KB_ROWS) row = UPD_KB_ROWS - 1;
-    return HIT_KEY0 + row * UPD_KB_COLS + col;
+static void kb_bounds(int cell, int *x, int *y, int *w, int *h) {
+    *w = UPD_KB_W; *h = UPD_KB_H;
+    if (cell < KB_CHARS) {
+        int row = cell < 10 ? 0 : cell < 19 ? 1 : 2;
+        int col = cell - (row == 0 ? 0 : row == 1 ? 10 : 19);
+        *x = UPD_KB_X + col * UPD_KB_PX + (row == 0 ? 0 : row == 1 ? 21 : 63);
+        *y = UPD_KB_Y + row * UPD_KB_PY;
+    } else if (cell == KB_CHARS + FK_SHIFT || cell == KB_CHARS + FK_DEL) {
+        *x = cell == KB_CHARS + FK_SHIFT ? UPD_KB_X : UPD_KB_X + 357;
+        *y = UPD_KB_Y + 2 * UPD_KB_PY; *w = 59;
+    } else {
+        static const int X[] = { 14, 94, 174, 330 }, W[] = { 76, 76, 152, 100 };
+        int col = cell - KB_CHARS - FK_BACK;
+        *x = X[col]; *y = 286; *w = W[col]; *h = 58;
+    }
+}
+static int kb_hit(float x, float y) {
+    for (int cell = 0; cell < KB_CHARS + FK_COUNT; cell++) {
+        int bx, by, bw, bh; kb_bounds(cell, &bx, &by, &bw, &bh);
+        if (in_box(x, y, bx, by, bw, bh, 2)) return HIT_KEY0 + cell;
+    }
+    return HIT_NONE;
 }
 static void kb_key(int cell) {
     size_t n = strlen(s.pass);
     if (cell < KB_CHARS) { if (n < NET_PASS_MAX) { s.pass[n] = kb_char(cell); s.pass[n + 1] = 0; } return; }
     switch (cell - KB_CHARS) {
     case FK_MODE:  s.kb_mode ^= 1; s.kb_page = 0; break;
-    case FK_SHIFT: if (!s.kb_mode) s.kb_caps = !s.kb_caps; break;
+    case FK_SHIFT: if (s.kb_mode) s.kb_page ^= 1; else s.kb_caps = !s.kb_caps; break;
     case FK_SPACE: if (n < NET_PASS_MAX) { s.pass[n] = ' '; s.pass[n + 1] = 0; } break;
     case FK_DEL:   if (n) s.pass[n - 1] = 0; break;
-    case FK_MORE:  s.kb_page = (s.kb_page + 1) % kb_pages(); break;
     default: break;                                   /* BACK / JOIN: the flow's */
     }
 }
 static void draw_keyboard(uint16_t *fb, int stride) {
-    static const char *const FK_LABEL[7] = { "MORE", "DEL", "", "CAPS", "123", "BACK", "JOIN" };
-    for (int cell = 0; cell < UPD_KB_COLS * UPD_KB_ROWS; cell++) {
-        int x = UPD_KB_X + (cell % UPD_KB_COLS) * UPD_KB_PX, y = UPD_KB_Y + (cell / UPD_KB_COLS) * UPD_KB_PY;
+    static const char *const FK_LABEL[FK_COUNT] = { "CAPS", "DEL", "BACK", "123", "SPACE", "JOIN" };
+    for (int cell = 0; cell < KB_CHARS + FK_COUNT; cell++) {
+        int x, y, w, h; kb_bounds(cell, &x, &y, &w, &h);
+        bool pressed = s.down && s.hit == HIT_KEY0 + cell;
         if (cell < KB_CHARS) {
-            char lbl[2] = { kb_char(cell), 0 };
-            render_rect(fb, stride, x, y, UPD_KB_W, UPD_KB_H, C_KEY); render_rect_edge(fb, stride, x, y, UPD_KB_W, UPD_KB_H, C_DIM);
-            update_text(fb, stride, x + (UPD_KB_W - update_text_w(lbl, 3)) / 2, y + (UPD_KB_H - 21) / 2, 3, C_TEXT, lbl);
+            /* Uppercase keycaps stay legible; CAPS and the footer show the input case. */
+            char ch = kb_char(cell);
+            if (!s.kb_mode && ch >= 'a' && ch <= 'z') ch -= 'a' - 'A';
+            char lbl[2] = { ch, 0 };
+            render_rect(fb, stride, x, y, w, h, pressed ? C_INNER : C_KEY);
+            render_rect_edge(fb, stride, x, y, w, h, C_EDGE);
+            update_text(fb, stride, x + (w - update_text_w(lbl, 4)) / 2, y + (h - 28) / 2, 4, C_TEXT, lbl);
         } else {
             int fk = cell - KB_CHARS;
             const char *lbl = fk == FK_MODE ? (s.kb_mode ? "ABC" : "123") : FK_LABEL[fk];
-            bool lit = (fk == FK_SHIFT && s.kb_caps && !s.kb_mode) || fk == FK_JOIN;
-            bool dim = (fk == FK_SHIFT && s.kb_mode) || fk == FK_BACK;   /* BACK: rare, and it leaves the page - quieter */
-            render_button(fb, stride, x, y, UPD_KB_W, UPD_KB_H, lit ? C_GO : dim ? C_KEY : C_INNER, dim ? C_DIM : lit ? C_TEXT : C_EDGE, lbl, 2);
-            if (fk == FK_SPACE) render_rect(fb, stride, x + 10, y + UPD_KB_H / 2 + 4, UPD_KB_W - 20, 3, C_TEXT);   /* the space bar's bar */
-            if (fk == FK_MORE) {                      /* the page pips under MORE */
-                int n = kb_pages(), px0 = x + UPD_KB_W / 2 - (n * 8 - 4) / 2;
-                for (int i = 0; i < n; i++) render_rect(fb, stride, px0 + i * 8, y + UPD_KB_H - 9, 4, 4, i == s.kb_page ? C_EDGE : C_DIM);
-            }
+            if (fk == FK_SHIFT && s.kb_mode) lbl = s.kb_page ? "123" : "#+=";
+            bool lit = (fk == FK_SHIFT && s.kb_caps && !s.kb_mode) || pressed;
+            bool dim = fk == FK_JOIN && s.secured && strlen(s.pass) < 8;
+            render_button(fb, stride, x, y, w, h, lit ? 0x28515c : C_INNER, dim ? C_DIM : C_EDGE, lbl, 2);
         }
     }
+    text_c(fb, stride, 350, 2, C_CAPT, s.kb_mode ? "NUMBERS / SYMBOLS" : s.kb_caps ? "UPPERCASE" : "LOWERCASE");
 }
 static void draw_field(uint16_t *fb, int stride, float clock) {    /* the typed passphrase, its tail if long, a cursor */
     render_rect(fb, stride, UX, FIELD_Y, UW, FIELD_H, C_PANEL); render_rect_edge(fb, stride, UX, FIELD_Y, UW, FIELD_H, C_INNER);

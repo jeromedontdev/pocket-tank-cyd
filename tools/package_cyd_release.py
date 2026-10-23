@@ -93,9 +93,12 @@ Alpha release for **ESP32-2432S028 CYD only**.
 - Up to eight purchasable, named aquariums with a global sand-dollar wallet.
 - Expanded decorations, three surface floats, upkeep and fish-care upgrades.
 - Price-sorted shop, consistent buttons and ownership-colored icons.
-- Large idle clocks: Minimal, true seven-segment Digital, detailed Analog and Neon.
+- Seven idle clocks: Minimal, seven-segment Digital, Analog, Neon, Flip, Binary and Orbit.
+- Theme colors plus seven color overrides; independently hide seconds, panel/border and date.
 - Per-tank OFF/manual/15-second-to-10-minute activation, three sizes and five positions.
+- Selectable 1-hour/30-minute/15-minute UTC adjustment and manual DST +1-hour toggle.
 - On-screen Wi-Fi setup, saved-network management and boot/on-demand NTP time.
+- Full single-page QWERTY password keyboard with clear keycaps and separate numbers/symbols.
   Clocks start OFF; open Settings > CLOCK. Unsynchronized time says SYNC NEEDED.
 - Upstream daytime fish-rest recovery fix.
 
