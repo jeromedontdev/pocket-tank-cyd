@@ -123,7 +123,8 @@ v6.1, runs Python/native/emulator checks, and publishes a normal GitHub release
 marked Latest, making the built downloads available at
 [Latest release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest).
 It includes the bundle, app-only image, new-board factory image, SD package,
-optional legacy icon bank, install instructions, license and SHA-256 checksums.
+install instructions, license and SHA-256 checksums. No separate icon bank is
+distributed: artwork is embedded in the firmware.
 Normal branch pushes run checks without creating a release.
 
 Pocket Tank CYD uses its own semantic version starting at 1.0.0; the firmware,

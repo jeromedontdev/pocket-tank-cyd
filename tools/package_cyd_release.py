@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import zipfile
-import zlib
 
 from make_sd_update import package
 
@@ -25,12 +24,6 @@ def create_bundle(build, output, version):
     build, output = Path(build), Path(output)
     image = (build / "pocket_tank.bin").read_bytes()
     update = package(image, version)
-    icons = (build / "cyd_assets" / "icons.bin").read_bytes()
-    metadata = (build / "cyd_assets" / "icons_sd_bank.h").read_text()
-    icon_name = f"icons-{zlib.crc32(icons):08x}.bin"
-    if (f'"{icon_name}"' not in metadata or
-            f"#define CYD_ICON_BYTES {len(icons)}u" not in metadata):
-        raise ValueError("SD icon bank does not match its generated metadata")
     args = json.loads((build / "flasher_args.json").read_text())
     expected = {0x1000, 0x8000, 0xf000, 0x20000}
     if ({int(offset, 0) for offset in args["flash_files"]} != expected or
@@ -48,7 +41,6 @@ def create_bundle(build, output, version):
     # These assets are shared by the standalone downloads and the all-in-one ZIP.
     (output / "pocket-tank-cyd-app.bin").write_bytes(image)
     (output / "update.ptu").write_bytes(update)
-    (output / icon_name).write_bytes(icons)
     source = Path(__file__).resolve().parent.parent
     shutil.copyfile(source / "LICENSE", output / "LICENSE")
     instructions = f"""Pocket Tank CYD {version}
@@ -57,7 +49,7 @@ ESP32-2432S028 only. Not for other ESP32 displays.
 EXISTING CYD INSTALLATION (preserve your tanks)
 1. Use Settings > SD BACKUPS > BACKUP TO SD before updating.
 2. Power off before moving the SD card.
-3. Menu artwork is embedded; the optional legacy {icon_name} is not required.
+3. Menu artwork is embedded in firmware; no SD icons are required.
 4. Copy update.ptu to pocket-tank/update.ptu on the SD card.
 5. Reinsert the card, power on, and use Settings > Device > SD Updates to install.
 The SD updater verifies board, size and SHA-256. Packages are not signed:
@@ -122,7 +114,6 @@ Version 1.0 release for **ESP32-2432S028 CYD only**.
 ### Downloads
 - **pocket-tank-cyd-{version}.zip**: complete bundle with installation instructions.
 - **update.ptu**: existing installations; copy to `pocket-tank/update.ptu` on SD.
-- **{icon_name}**: optional legacy artwork bank; current firmware embeds menu artwork.
 - **pocket-tank-cyd-app.bin**: advanced, active-slot USB upgrades only.
 - **pocket-tank-cyd-factory.bin**: new boards only, flashed at `0x0`.
 - **SHA256SUMS.txt**: download checksums.

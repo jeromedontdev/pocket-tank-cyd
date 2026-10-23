@@ -26,14 +26,15 @@ for existing configured build directories.
 provides independently versioned CYD builds, starting with 1.0.0. Download the complete ZIP and read its
 `INSTALL.txt`. For an existing CYD installation, back up first and use
 `update.ptu` at `pocket-tank/update.ptu` on SD. Menu artwork is embedded;
-the included `icons-<crc>.bin` is only for legacy compatibility. These packages are verified but unsigned;
+no SD icon download is required. These packages are verified but unsigned;
 install only trusted releases.
 
 **The factory image is for new boards or deliberate resets only.** Flashing
 it at `0x0` overwrites NVS, tank saves, Wi-Fi credentials, calibration and OTA
 slot selection. It is not a save-preserving upgrade. The app-only image must
 be written to the detected active OTA slot, not blindly to a fixed offset.
-Every release includes SHA-256 checksums and an optional legacy artwork bank.
+Every release includes SHA-256 checksums. Artwork is included in the firmware,
+not distributed as a separate SD icon bank.
 
 ### Install a downloaded build (no ESP-IDF required)
 
@@ -75,11 +76,10 @@ such as `v1.0.0`, independent of the original upstream version.
 
 Maintainers publish by pushing a tag such as `v1.0.0`. The CYD release
 workflow builds with ESP-IDF v6.1, runs tool/native/emulator tests, packages
-the application, factory image, SD updater and icon bank, and creates a
+the application, factory image and SD updater, and creates a
 normal GitHub release marked Latest. The version label without `v` must fit
-15 characters. Alpha quality is indicated in the release notes, not by the
-GitHub prerelease flag (which would hide it from `/releases/latest`).
-Enlarged pushes run checks but do not publish releases. Locally, after building:
+15 characters. Stable releases are available through `/releases/latest`.
+Branch pushes run checks but do not publish releases. Locally, after building:
 
 ```powershell
 python ..\tools\package_cyd_release.py --build build_cyd --out ..\dist --version v1.0.0
@@ -256,7 +256,8 @@ streamed from SD, so offloading icons did not save their rendering RAM.
 SD remains in use for inactive aquarium snapshots, JSON backups and firmware
 updates. Keep the card inserted when using multiple aquariums.
 
-The build still generates the legacy bank for packaging/desktop compatibility.
+The build still generates the legacy bank for desktop tools and legacy diagnostics,
+but release packages do not include it.
 It is not needed for on-device artwork. To support older firmware, copy
 `build_cyd\cyd_assets\icons.bin` to the card root using the
 filename specified in `build_cyd\cyd_assets\icons_sd_bank.h`. Alternatively,
