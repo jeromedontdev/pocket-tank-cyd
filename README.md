@@ -8,7 +8,7 @@ are not included. See [LICENSE](LICENSE) for the original project license.
 
 **Take the illustrated tour:** [CYD features and screenshots](docs/CYD-FEATURES.md)
 covers named tanks, the bank, creature customization, Journal, mini-games,
-decorations, fish-care upgrades, themed clocks, Wi-Fi setup, releases and SD workflows with 58 captures from the
+decorations, fish-care upgrades, themed clocks, Wi-Fi setup, releases and SD workflows with 64 captures from the
 actual desktop renderer. A [five-post Discord kit](docs/discord/START-HERE.txt)
 includes matching image boards and ready-to-paste text.
 
@@ -35,8 +35,9 @@ includes matching image boards and ready-to-paste text.
 - Ten creature looks: Classic, Angel, Guppy, Tetra, Puffer, Shark, Jellyfish,
   Stingray, Clownfish and Betta; four marking
   patterns: Stripes, Spots, Band and Plain. Open **Keeper > fish portrait >
-  CUSTOMIZE** to change an existing fish's variety, pattern, body and marking
-  colors for free. DONE saves; CANCEL discards the preview. Fry offers show
+  CUSTOMIZE** to change an existing fish's unlocked variety, pattern, body and marking
+  colors for free. Varieties unlock through [Keeper levels](#fish-variety-unlocks);
+  existing owned/seen looks stay available. DONE saves; CANCEL discards the preview. Fry offers show
   their variety, and bred fry inherit their parents' appearance traits.
   Sharks have a pointed snout, dorsal fin and gills; jellyfish pulse and wave
   their tentacles; rays flap their wings; bettas have flowing fins. These are
@@ -243,6 +244,47 @@ Kelp Forest now has a rich green water tint, leafy stalks and light shafts;
 Coral Reef adds blue water and large pink/peach branching coral; Deep Glow
 has midnight-purple water, luminous jellyfish and bioluminescent specks.
 Original is unchanged.
+Four more backdrops are available on the Themes tab's second page:
+
+| Backdrop | Keeper level | Look |
+|---|---|---|
+| Sunken Ruins | 5 | Weathered stone columns and broken arches in teal water |
+| Sunset Lagoon | 8 | Peach/purple water, a golden sun and reflections |
+| Ice Cavern | 12 | Blue water, hanging ice and faceted crystals |
+| Moonlit Reef | 15 | Midnight-blue water, crescent moon and silver reflections |
+
+Use the `<` / `>` buttons above the theme rows to browse both pages.
+The existing theme IDs and unlock levels are unchanged. New IDs 4..7 fit the
+existing save byte; there is no save-size increase. Older firmware will not
+recognize the new backdrops, so avoid downgrading.
+
+### Fish-variety unlocks
+
+New aquariums start with **Classic** fish only. Keeper XP from care, objectives
+and mini-games gradually unlocks more appearances for **CUSTOMIZE** and
+future shop fry offers:
+
+| Keeper level | Variety |
+|---|---|
+| 1 | Classic |
+| 2 | Guppy |
+| 3 | Tetra |
+| 4 | Clownfish |
+| 6 | Angel |
+| 8 | Betta |
+| 10 | Puffer |
+| 12 | Shark |
+| 14 | Stingray |
+| 15 | Jellyfish |
+
+The Journal's Album shows required levels for locked varieties. Customization
+cycles only available varieties; all patterns and colors remain available.
+Unlocks are **per aquarium**, like its Journal XP. Existing active/banked fish
+and appearances already recorded in the Album are grandfathered in: they
+remain usable even below their new level requirement. Seen varieties stay
+available after fish are sold, stored or customized. Breeding still inherits
+existing parents' looks; it cannot randomly bypass variety unlocks.
+These are visual appearances, not different fish-care rules or predator behavior.
 
 XP, claims, album records and the selected theme survive saves and SD
 backup/restore. Wipe clears them along with the tank. Claims and theme

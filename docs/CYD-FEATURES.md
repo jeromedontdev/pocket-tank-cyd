@@ -94,6 +94,34 @@ green/blue/midnight palettes, leafy kelp, branching coral and luminous jellyfish
 Their existing unlock levels (3/6/10) and IDs are unchanged. Original stays
 unchanged, and purchased decorations and fish remain in front of the scenery.
 
+### Four more backdrops to earn
+
+The Journal's **THEMES** tab has two pages; use its `<` / `>` arrows.
+Sunken Ruins unlocks at Keeper 5, Sunset Lagoon at 8, Ice Cavern at 12,
+and Moonlit Reef at 15. This brings the selection to eight including Original.
+
+| Sunken Ruins | Sunset Lagoon |
+|---|---|
+| ![Teal water with weathered stone columns and broken arches](media/cyd-features/tank-ruins.png) | ![Warm peach and purple water with a golden sunset and reflections](media/cyd-features/tank-sunset.png) |
+
+| Ice Cavern | Moonlit Reef |
+|---|---|
+| ![Blue water with hanging ice and faceted crystals](media/cyd-features/tank-ice.png) | ![Midnight-blue water with a crescent moon and silver reflections](media/cyd-features/tank-moonlit.png) |
+
+![Second theme page shows four new backdrops and their required levels](media/cyd-features/journal-themes-more.png)
+
+### Fish appearances are progression rewards too
+
+New tanks start with Classic fish. Keeper levels unlock Guppy (2), Tetra (3),
+Clownfish (4), Angel (6), Betta (8), Puffer (10), Shark (12), Stingray (14) and
+Jellyfish (15). The Album lists required levels; customization cycles only
+available varieties, and shop fry offers use the same unlock rules.
+All colors/patterns remain available. Existing active/banked fish and looks
+already recorded in the Journal stay unlocked, so upgrading never takes away
+a favorite. These unlocks are per aquarium, like Journal XP.
+
+![A starter aquarium's Album shows required Keeper levels for unavailable varieties](media/cyd-features/journal-variety-unlocks.png)
+
 ## 1. Keep favorites in the Fish Bank
 
 The active aquarium still holds **five fish**. The new bank adds **20

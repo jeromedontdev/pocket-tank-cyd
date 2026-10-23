@@ -3146,6 +3146,59 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
             return mix(water, 0x64e8ef, 0.75f);
         if (jy > 0 && jy < 28 && abs(jx) < 10 && (jx + jy / 5) % 5 == 0)
             return mix(water, 0xc388ef, 0.65f);
+    } else if (g_journal_theme == 4) {
+        water = mix(water, 0x174e58, 0.7f);
+        int local = x % 76, rise = floor - y;
+        int height = 62 + (x / 76 % 3) * 18;
+        bool column = local >= 12 && local <= 27 && rise > 0 && rise < height;
+        bool capital = local >= 7 && local <= 32 && rise >= height - 9 && rise < height;
+        bool arch = local >= 27 && local <= 75 && rise >= height - 18 && rise < height - 8 &&
+                    (local < 34 || local > 68 || rise >= height - 12);
+        if (column || capital || arch) {
+            uint32_t stone = local % 6 < 2 ? 0x5b8686 : 0x91aaa0;
+            if (y % 19 < 2 || (local + y / 19 * 7) % 29 == 0) stone = 0x3b6464;
+            if (rise < 18 && (x + y * 3) % 11 < 4) stone = 0x39775b;
+            return mix(water, stone, 0.8f);
+        }
+        if (rise > 0 && rise < 12 && (x % 37 - 18) * (x % 37 - 18) + rise * rise < 160)
+            return mix(water, 0x718d83, 0.75f);
+    } else if (g_journal_theme == 5) {
+        float depth = (float)y / TANK_H;
+        water = mix(water, mix(0xb96765, 0x243d69, depth), 0.75f);
+        int dx = x - TANK_W * 3 / 4, dy = y - 30;
+        if (dx * dx + dy * dy < 19 * 19) return mix(water, 0xffd18b, 0.9f);
+        if (y > 50 && y < floor && abs(dx) < 8 + y / 9 && y % 9 < 2)
+            water = mix(water, 0xffbf91, 0.3f);
+        int rise = floor - y, root = x % 57 - 28;
+        if (rise > 0 && rise < 42 && (abs(root) <= 2 ||
+            (rise < 24 && abs(abs(root) - (24 - rise) / 2) <= 2)))
+            return mix(water, 0x23334f, 0.9f);
+        if (rise > 0 && rise < 9 + x / 33 % 3 * 3) return mix(water, 0x595078, 0.8f);
+    } else if (g_journal_theme == 6) {
+        water = mix(water, 0x123a72, 0.8f);
+        int local = x % 39 - 19, length = 22 + x / 39 % 4 * 13;
+        int top = y - 6, rise = floor - y;
+        bool ceiling = top >= 0 && top < length && abs(local) < (length - top) / 4;
+        int crystal_x = x % 47 - 23, height = 28 + x / 47 % 3 * 12;
+        bool crystal = rise > 0 && rise < height && abs(crystal_x) < (height - rise) / 3;
+        if (ceiling || crystal) {
+            int facet = ceiling ? local : crystal_x;
+            return mix(water, facet < 0 ? 0x75b5ed : 0xd0f6ff, 0.85f);
+        }
+        uint32_t hash = (uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u;
+        if (hash % 811 == 0 && y > 40 && y < floor) return 0xb5e9ff;
+    } else if (g_journal_theme == 7) {
+        water = mix(water, 0x141e4b, 0.85f);
+        int dx = x - 47, dy = y - 29;
+        if (dx * dx + dy * dy < 17 * 17 && (dx - 8) * (dx - 8) + (dy + 4) * (dy + 4) >= 16 * 16)
+            return mix(water, 0xd5e9ff, 0.95f);
+        if (y > 50 && y < floor && abs(dx) < 6 + y / 12 && y % 11 < 2)
+            water = mix(water, 0x8ab9ed, 0.23f);
+        int rise = floor - y, local = x % 49 - 24;
+        int peak = 30 + x / 49 % 3 * 13;
+        if (rise > 0 && rise < peak && (abs(local) < 2 ||
+            (rise > 9 && abs(abs(local) - (rise - 9) / 2) < 2 && abs(local) < 21)))
+            return mix(water, rise > peak - 9 ? 0x85dfd2 : 0x48659d, 0.85f);
     }
     return water;
 }
@@ -4849,14 +4902,14 @@ static void fry_draw(uint16_t *fb, int stride, float x, float y, float size, con
     f.variety = o->variety; f.pattern = o->pattern;
     render_fish_portrait(fb, stride, x, y, size, &f, clock);
 }
-static int fry_first_left(void) {
-    for (int k = 0; k < FRY_OFFER_N; k++) { fry_offer_t o; progression_fry_offer(k, &o); if (!o.sold) return k; }
+static int fry_first_left(const tank_t *t) {
+    for (int k = 0; k < FRY_OFFER_N; k++) { fry_offer_t o; progression_fry_offer(t, k, &o); if (!o.sold) return k; }
     return -1;
 }
 static void shop_fry_row(ctx_t *c, const tank_t *t, uint16_t *fb, int stride, int top) {
-    int k = fry_first_left();
+    int k = fry_first_left(t);
     bool room = progression_fry_room(t), can = t->sd_balance >= SD_PRICE_FRY;
-    if (k >= 0) { fry_offer_t o; progression_fry_offer(k, &o); fry_draw(fb, stride, 48, top + 16, 0.9f, &o, t->clock); }
+    if (k >= 0) { fry_offer_t o; progression_fry_offer(t, k, &o); fry_draw(fb, stride, 48, top + 16, 0.9f, &o, t->clock); }
     draw_text(c, 76, top + 2, 2, 0xffffff, "FRY");
     if (k < 0) { char l[24]; fry_hours(l, sizeof l); draw_text(c, 76, top + 20, 2, MSP_DIM, l); }
     else price_tag(c, 76, top + 20, SD_PRICE_FRY, can && room ? MSP_TEAL : MSP_DIM);
@@ -4870,7 +4923,7 @@ static void shop_fry_modal(ctx_t *c, const tank_t *t, uint16_t *fb, int stride) 
     rect_edge(c, X, Y, W, H, MSP_TEAL); rect_edge(c, X + 1, Y + 1, W - 2, H - 2, 0x1c2f36);
     draw_text(c, X + (W - text_w("FRY FOR SALE", 3)) / 2, Y + 14, 3, 0xffffff, "FRY FOR SALE");
     for (int k = 0; k < FRY_OFFER_N; k++) {
-        fry_offer_t o; progression_fry_offer(k, &o);
+        fry_offer_t o; progression_fry_offer(t, k, &o);
         int bx = SHP_FRY_BOX_X(k), by = SHP_FRY_BOX_Y;
         bool lit = !o.sold && k == g_shp_fry_pick;
         rect_fill(c, bx, by, SHP_FRY_BOX_W, SHP_FRY_BOX_H, lit ? 0x14303a : 0x0b1d23);
@@ -4886,7 +4939,7 @@ static void shop_fry_modal(ctx_t *c, const tank_t *t, uint16_t *fb, int stride) 
         rect_fill(c, sx + 22, sy, 16, 14, o.accent); rect_edge(c, sx + 22, sy, 16, 14, 0x1c2f36);
     }
     bool room = progression_fry_room(t), can = t->sd_balance >= SD_PRICE_FRY;
-    fry_offer_t pk; progression_fry_offer(g_shp_fry_pick, &pk);
+    fry_offer_t pk; progression_fry_offer(t, g_shp_fry_pick, &pk);
     bool go = room && can && !pk.sold && progression_fry_left() > 0;
     char line[32]; snprintf(line, sizeof line, "%d", SD_PRICE_FRY);
     price_tag(c, X + (W - 20 - text_w(line, 2)) / 2, Y + 144, SD_PRICE_FRY, go ? 0xffffff : MSP_DIM);
@@ -5004,13 +5057,13 @@ int render_shop_tap(const tank_t *t, float x, float y) {
         if (y >= SHP_FRY_BOX_Y - 8 && y < SHP_FRY_BOX_Y + SHP_FRY_BOX_H + 6)
             for (int k = 0; k < FRY_OFFER_N; k++)
                 if (x >= SHP_FRY_BOX_X(k) - SHP_FRY_BOX_GAP / 2 && x < SHP_FRY_BOX_X(k) + SHP_FRY_BOX_W + SHP_FRY_BOX_GAP / 2) {
-                    fry_offer_t o; progression_fry_offer(k, &o);
+                    fry_offer_t o; progression_fry_offer(t, k, &o);
                     if (!o.sold) g_shp_fry_pick = k;
                     return SHOP_TAP_KEPT;
                 }
         const int bx = SHP_MODAL_X + (SHP_MODAL_W - MSP_HOW_W) / 2, by = SHP_MODAL_Y + SHP_MODAL_H - 12 - MSP_HOW_H;
         bool on_btn = y >= by - MSP_HOW_SLOP_UP && y < by + MSP_HOW_H + MSP_HOW_SLOP_DN && x >= bx - MSP_HOW_SLOP_X && x < bx + MSP_HOW_W + MSP_HOW_SLOP_X;
-        fry_offer_t pk; progression_fry_offer(g_shp_fry_pick, &pk);
+        fry_offer_t pk; progression_fry_offer(t, g_shp_fry_pick, &pk);
         g_shp_modal = -1;
         if (on_btn && !pk.sold && progression_fry_room(t) && t->sd_balance >= SD_PRICE_FRY) return SHOP_TAP_FRY + g_shp_fry_pick;
         return SHOP_TAP_KEPT;
@@ -5050,7 +5103,7 @@ int render_shop_tap(const tank_t *t, float x, float y) {
     for (int r = g_shp_page * SHP_PER_PAGE; r < shp_rows(t) && r < (g_shp_page + 1) * SHP_PER_PAGE; r++) {
         int top = SHP_ROW_Y0 + (r - g_shp_page * SHP_PER_PAGE) * SHP_ROW_DY, i = shp_item(t, r);
         if (x >= 20 && y >= top - 8 && y < top + SHP_ROW_DY - 8) {
-            if (i < 0) { int k = fry_first_left(); g_shp_fry_pick = k < 0 ? 0 : k; g_shp_modal = SHP_MODAL_FRY; }   /* the fry's modal, the first one left picked */
+            if (i < 0) { int k = fry_first_left(t); g_shp_fry_pick = k < 0 ? 0 : k; g_shp_modal = SHP_MODAL_FRY; }   /* the fry's modal, the first one left picked */
             else g_shp_modal = i;
             return SHOP_TAP_KEPT;
         }
@@ -5661,9 +5714,9 @@ int render_bank_tap(tank_t *t, float x, float y) {
     }
     return 0;
 }
-static int g_journal_tab;
+static int g_journal_tab, g_journal_theme_page;
 static char g_journal_message[48];
-void render_journal_open(void) { g_journal_tab = 0; g_journal_message[0] = 0; }
+void render_journal_open(void) { g_journal_tab = g_journal_theme_page = 0; g_journal_message[0] = 0; }
 void render_journal(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
     rect_fill(&c, 0, 0, PAGE_W, PAGE_H, MSP_INK);
@@ -5701,7 +5754,7 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
             draw_text(&c, 50, 202, 2, MSP_TEAL, "NO DAILY STREAKS");
         }
     } else if (g_journal_tab == 1) {
-        draw_text(&c, 24, 76, 2, MSP_TEAL, "LOOKS - CUSTOMIZATION COUNTS");
+        draw_text(&c, 24, 76, 2, MSP_TEAL, "LOOKS - EARN XP TO UNLOCK");
         for (int i = 0; i < FISH_VARIETY_COUNT; i++) {
             int x = 24 + i % 2 * 204, y = 96 + i / 2 * 39;
             bool seen = (t->journal.seen & (1u << i)) != 0, grown = (t->journal.grown & (1u << i)) != 0;
@@ -5711,19 +5764,25 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
             portrait.accent = seen ? 0xffbd59 : 0x203c42;
             render_fish_portrait(fb, stride, x + 26, y + 18, 0.6f, &portrait, t->clock);
             draw_text(&c, x + 56, y + 3, 2, seen ? 0xffffff : MSP_DIM, FISH_VARIETY_NAMES[i]);
-            draw_text(&c, x + 56, y + 21, 2, MSP_TEAL, grown ? "ADULT" : seen ? "SEEN" : "NOT SEEN");
+            snprintf(line, sizeof line, "LEVEL %d", JOURNAL_VARIETY_LEVELS[i]);
+            draw_text(&c, x + 56, y + 21, 2, MSP_TEAL,
+                      grown ? "ADULT" : seen ? "SEEN" : journal_variety_unlocked(t, i) ? "UNLOCKED" : line);
         }
     } else {
-        static const int levels[4] = {1, 3, 6, 10};
-        for (int theme = 0; theme < 4; theme++) {
-            int y = 92 + theme * 46;
+        snprintf(line, sizeof line, "BACKDROPS %d/%d", g_journal_theme_page + 1, (JOURNAL_THEME_COUNT + 3) / 4);
+        draw_text(&c, 24, 80, 2, MSP_TEAL, line);
+        button(&c, 328, 74, 44, 26, 0x1c2f36, MSP_TEAL, "<", 2);
+        button(&c, 380, 74, 44, 26, 0x1c2f36, MSP_TEAL, ">", 2);
+        for (int row = 0; row < 4; row++) {
+            int theme = g_journal_theme_page * 4 + row, y = 106 + row * 42;
+            if (theme >= JOURNAL_THEME_COUNT) break;
             bool active = t->journal.theme == theme;
             button(&c, 24, y, 400, 38, active ? 0x1c2f36 : 0x10282e,
                    active ? 0xffffff : journal_theme_unlocked(t, theme) ? MSP_TEAL : MSP_DIM, "", 2);
             draw_text(&c, 40, y + 12, 2, 0xffffff, JOURNAL_THEME_NAMES[theme]);
             if (active) draw_text(&c, 340, y + 12, 2, 0xffffff, "ACTIVE");
             if (!journal_theme_unlocked(t, theme)) {
-                snprintf(line, sizeof line, "LEVEL %d", levels[theme]);
+                snprintf(line, sizeof line, "LEVEL %d", JOURNAL_THEME_LEVELS[theme]);
                 draw_text(&c, 320, y + 12, 2, MSP_TEAL, line);
             }
         }
@@ -5746,8 +5805,13 @@ int render_journal_tap(tank_t *t, float x, float y) {
         if (goal >= 0 && journal_progress(t, goal) == JOURNAL_GOALS[goal].target)
             snprintf(g_journal_message, sizeof g_journal_message, "%s", journal_claim(t, goal) ? "REWARD SAVED!" : "REWARD FAILED - CHECK SAVE STORAGE");
         else snprintf(g_journal_message, sizeof g_journal_message, "KEEP CARING - PROGRESS NEVER EXPIRES");
-    } else if (g_journal_tab == 2 && x >= 24 && x < 424 && y >= 92 && y < 276) {
-        int theme = (int)((y - 92) / 46);
+    } else if (g_journal_tab == 2 && y >= 74 && y < 100) {
+        if (x >= 328 && x < 372 && g_journal_theme_page > 0) g_journal_theme_page--;
+        else if (x >= 380 && x < 424 && (g_journal_theme_page + 1) * 4 < JOURNAL_THEME_COUNT) g_journal_theme_page++;
+        g_journal_message[0] = 0;
+    } else if (g_journal_tab == 2 && x >= 24 && x < 424 && y >= 106 && y < 270) {
+        int row = (int)((y - 106) / 42), theme = g_journal_theme_page * 4 + row;
+        if (y >= 106 + row * 42 + 38 || theme >= JOURNAL_THEME_COUNT) return 0;
         snprintf(g_journal_message, sizeof g_journal_message, "%s", !journal_theme_unlocked(t, theme) ? "EARN MORE XP TO UNLOCK THIS THEME" :
                  journal_set_theme(t, theme) ? "THEME SAVED!" : "SAVE FAILED - THEME UNCHANGED");
     }

@@ -114,13 +114,16 @@ static void rename_end(tank_t *t, bool keep) {
         if (keep) {
             fish_t *f = &t->fish[s_fish];
             uint32_t body = f->color, fin = f->fin, accent = f->accent;
+            uint32_t seen = t->journal.seen;
             uint8_t variety = f->variety, pattern = f->pattern;
             if (s_page == SETUP_PG_CUSTOM) {
                 f->color = s_custom_draft.color; f->fin = s_custom_draft.fin; f->accent = s_custom_draft.accent;
                 f->variety = s_custom_draft.variety; f->pattern = s_custom_draft.pattern;
+                t->journal.seen |= (1u << variety) | (1u << f->variety);
             } else tidy_name(t, s_fish);
             if (!progression_save(t)) {
                 f->color = body; f->fin = fin; f->accent = accent; f->variety = variety; f->pattern = pattern;
+                t->journal.seen = seen;
                 s_save_error = true; return;
             }
         } else {
@@ -361,7 +364,12 @@ void setup_activate(tank_t *t, int id) {
     if (s_page == SETUP_PG_CUSTOM && id >= SETUP_HIT_CUSTOM0 && id < SETUP_HIT_CUSTOM0 + 4) {
         f = &s_custom_draft;
         int which = id - SETUP_HIT_CUSTOM0;
-        if (which == 0) f->variety = (uint8_t)((f->variety + 1) % FISH_VARIETY_COUNT);
+        if (which == 0) {
+            for (int step = 1; step <= FISH_VARIETY_COUNT; step++) {
+                int variety = (f->variety + step) % FISH_VARIETY_COUNT;
+                if (journal_variety_unlocked(t, variety)) { f->variety = (uint8_t)variety; break; }
+            }
+        }
         else if (which == 1) f->pattern = (uint8_t)((f->pattern + 1) % FISH_PATTERN_COUNT);
         else {
             const uint32_t *colors = which == 2 ? FISH_BODY_COLORS : FISH_MARKING_COLORS;
@@ -668,7 +676,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
             else snprintf(line, sizeof line, "%s COLOR: %06lX", i == 2 ? "BODY" : "MARKING", (unsigned long)(i == 2 ? f->color : f->accent));
             render_button(fb, stride, SETUP_CUSTOM_X, SETUP_CUSTOM_Y + i * SETUP_CUSTOM_DY, SETUP_CUSTOM_W, SETUP_CUSTOM_H, C_INNER, C_EDGE, line, 2);
         }
-        text_c(fb, stride, CX, 350, 2, C_CAPT, "TAP TO CYCLE - ADULT PREVIEW");
+        text_c(fb, stride, CX, 350, 2, C_CAPT, "VARIETIES UNLOCK WITH KEEPER XP");
     } else if (s_page == SETUP_PG_WELCOME) {
         panel(fb, stride);
         text_c(fb, stride, CX, SETUP_Y + 36, 3, C_TEXT, "WELCOME");

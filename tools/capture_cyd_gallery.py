@@ -99,9 +99,11 @@ def main():
                 tank["extra_z1"] = [1, 2, 2, 1, 1, 2]
                 restore(demo)
                 scene("tank-kelp")
-                for theme, name in ((2, "tank-coral"), (3, "tank-deep-glow")):
+                for theme, name in ((2, "tank-coral"), (3, "tank-deep-glow"),
+                                    (4, "tank-ruins"), (5, "tank-sunset"),
+                                    (6, "tank-ice"), (7, "tank-moonlit")):
                     themed = copy.deepcopy(demo)
-                    themed["tank"]["journal_theme"] = theme
+                    themed["tank"].update(journal_theme=theme, journal_xp=4200)
                     restore(themed)
                     # Same staged layout makes backdrop differences easy to compare.
                     scene(name)
@@ -198,6 +200,18 @@ def main():
                 capture("journal-album")
                 tap(345, 328)
                 capture("journal-themes")
+                tap(400, 86)
+                capture("journal-themes-more")
+                starter = copy.deepcopy(demo)
+                starter["tank"].update(journal_xp=0, journal_initialized=0, journal_claimed=0, journal_seen=1,
+                                       journal_grown=1, journal_theme=0,
+                                       fish_variety=[0] * len(demo["tank"]["fish_variety"]))
+                restore(starter)
+                lib.sim_action(1)
+                tap(88, 356)
+                tap(205, 328)
+                capture("journal-variety-unlocks")
+                restore(demo)
                 lib.sim_action(1)
                 tap(360, 356)
                 capture("games-menu")

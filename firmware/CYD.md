@@ -470,6 +470,21 @@ usual offline-care rules.
 
 Kelp Forest, Coral Reef and Deep Glow retain their existing IDs and unlock
 levels but now have much stronger water tints and scenery. Original is unchanged.
+The Journal now has eight backdrops across two pages. Added IDs 4..7 are
+Sunken Ruins (level 5), Sunset Lagoon (8), Ice Cavern (12) and Moonlit Reef (15).
+Names and unlock levels share one table across rendering, selection, save
+validation and JSON restore. The existing `journal.theme` byte and 4000-byte
+save are unchanged; schema 5 accepts `journal_theme` 0..7. Older firmware does
+not recognize the new IDs; do not downgrade with one selected.
+
+Fish appearances also use Keeper progression: Classic at level 1; Guppy 2,
+Tetra 3, Clownfish 4, Angel 6, Betta 8, Puffer 10, Shark 12, Stingray 14 and
+Jellyfish 15. Customization and shop previews/purchases use the same unlock
+predicate. Existing active fish, banked fish and Journal-seen varieties stay
+available below their required level, without changing fish or granting XP.
+Journal-seen bits preserve acquired appearances after customization or sale.
+Levels/unlocks are tank-local; new tanks still begin with Classic fry.
+Patterns/colors and inherited breeding appearances are unchanged.
 See the [game rules and reward table](../README.md#mini-games).
 The serial director's `games` and `games tap <framebuffer x> <y>` commands
 open the same page and use the same hit targets without staging a demo tank.

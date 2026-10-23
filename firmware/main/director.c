@@ -467,7 +467,7 @@ static void run(tank_t *t, char *line) {
         }
         ESP_LOGI(TAG, "fry: %s | %d left, a fresh three in %.1f h | room %s | balance %d", progression_fry_for_sale(t) ? "FOR SALE" : "not yet (sell a fish, or `fry open`)",
                  progression_fry_left(), progression_fry_new_in_s() / 3600, progression_fry_room(t) ? "yes" : "no", (int)t->sd_balance);
-        for (int k = 0; k < FRY_OFFER_N; k++) { fry_offer_t o; progression_fry_offer(k, &o);
+        for (int k = 0; k < FRY_OFFER_N; k++) { fry_offer_t o; progression_fry_offer(t, k, &o);
             ESP_LOGI(TAG, "  fry %d: %s / %s, body %06x markings %06x%s", k,
                      FISH_VARIETY_NAMES[o.variety], FISH_PATTERN_NAMES[o.pattern], (unsigned)o.body, (unsigned)o.accent, o.sold ? " - SOLD" : ""); }
     } else if (!strcmp(c, "dollars")) {              /* dollars [n]: grant n (negative takes), or just the balance */

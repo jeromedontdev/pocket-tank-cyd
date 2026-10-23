@@ -925,13 +925,13 @@ static void test_journal(void) {
     journal_tick(&reloaded); assert(!reloaded.journal.xp && (reloaded.journal.seen & (1u << FISH_SHARK)));
     free(json); free(old_json);
     size_t pixels = TANK_W * TANK_H;
-    uint16_t *frames = calloc(4 * pixels + 2, sizeof *frames), *cache = calloc(pixels, sizeof *cache);
+    uint16_t *frames = calloc(JOURNAL_THEME_COUNT * pixels + 2, sizeof *frames), *cache = calloc(pixels, sizeof *cache);
     uint32_t *dirty = calloc(RENDER_DIRTY_WORDS, sizeof *dirty); assert(frames && cache && dirty);
-    frames[0] = frames[4 * pixels + 1] = 0xbeef;
+    frames[0] = frames[JOURNAL_THEME_COUNT * pixels + 1] = 0xbeef;
     t.n_fish = 0; t.journal.xp = journal_level_xp(15); t.sd_unlocks = 0;
     for (int cached = 0; cached < 2; cached++) {
         render_set_scene_cache(cached ? cache : NULL); render_set_dirty_mask(cached ? dirty : NULL);
-        for (int theme = 0; theme < 4; theme++) {
+        for (int theme = 0; theme < JOURNAL_THEME_COUNT; theme++) {
             t.journal.theme = (uint8_t)theme;
             render_tank(&t, frames + 1 + theme * pixels, TANK_W);
             for (int previous = 0; previous < theme; previous++)
@@ -950,10 +950,34 @@ static void test_journal(void) {
     }
     assert(memcmp(frames + 1, frames + 1 + pixels, pixels * 2));
     assert(memcmp(frames + 1 + pixels, frames + 1 + 2 * pixels, pixels * 2));
-    assert(frames[0] == 0xbeef && frames[4 * pixels + 1] == 0xbeef);
+    assert(frames[0] == 0xbeef && frames[JOURNAL_THEME_COUNT * pixels + 1] == 0xbeef);
     assert(render_journal_tap(&t, render_frame_x(SET_CLOSE_X + 4), render_frame_y(SET_CLOSE_Y + 4)) == 1);
     render_set_scene_cache(NULL); render_set_dirty_mask(NULL);
     free(frames); free(cache); free(dirty);
+    t.n_fish = N_FISH_START;
+    assert(!journal_theme_unlocked(&t, -1) && !journal_theme_unlocked(&t, JOURNAL_THEME_COUNT));
+    for (int theme = 0; theme < JOURNAL_THEME_COUNT; theme++) {
+        t.journal.xp = journal_level_xp(JOURNAL_THEME_LEVELS[theme]);
+        assert(journal_theme_unlocked(&t, theme));
+        if (theme) {
+            t.journal.xp--;
+            assert(!journal_set_theme(&t, theme));
+            t.journal.xp++;
+        }
+        reject_write = true;
+        uint8_t old_theme = t.journal.theme;
+        assert(!journal_set_theme(&t, theme) && t.journal.theme == old_theme);
+        reject_write = false;
+        assert(journal_set_theme(&t, theme));
+        tank_init(&reloaded, 8); progression_boot(&reloaded);
+        assert(reloaded.journal.theme == theme && reloaded.journal.xp == t.journal.xp);
+        char *theme_json = progression_backup_json(&t); assert(theme_json);
+        assert(progression_restore_json(theme_json, strlen(theme_json), true, error, sizeof error));
+        cJSON *theme_root = cJSON_Parse(theme_json); assert(theme_root);
+        cJSON *theme_tank = cJSON_GetObjectItemCaseSensitive(theme_root, "tank");
+        replace_number(theme_tank, "journal_theme", JOURNAL_THEME_COUNT); invalid_object(theme_root);
+        free(theme_json);
+    }
     t.journal.xp = JOURNAL_XP_MAX - 1; t.player_feedings++;
     journal_tick(&t); assert(t.journal.xp == JOURNAL_XP_MAX);
     t.journal.claimed = 0; t.sd_balance = INT_MAX;
@@ -961,6 +985,49 @@ static void test_journal(void) {
     assert(!journal_claim(&t, 0) && !t.journal.claimed && writes == previous_writes);
     assert(progression_reset(&t, 9) && !t.journal.claimed && !t.journal.xp && !t.journal.theme && !t.journal.seen);
     puts("PASS: Journal XP thresholds/deltas, 15 rewards, failure rollback, album, schema 3/2000 migration, themes and UI");
+}
+static void test_variety_unlocks(void) {
+    tank_t t, loaded; saved_size = 0; tank_init(&t, 42); progression_boot(&t);
+    assert(!journal_variety_unlocked(&t, -1) && !journal_variety_unlocked(&t, FISH_VARIETY_COUNT));
+    for (int level = 1; level <= JOURNAL_LEVEL_MAX; level++) {
+        t.journal.xp = journal_level_xp(level);
+        for (int v = 0; v < FISH_VARIETY_COUNT; v++)
+            assert(journal_variety_unlocked(&t, v) == (level >= JOURNAL_VARIETY_LEVELS[v]));
+        for (int roll = 0; roll < 30; roll++) {
+            progression_fry_roll(&t);
+            for (int k = 0; k < FRY_OFFER_N; k++) {
+                fry_offer_t offer; progression_fry_offer(&t, k, &offer);
+                assert(journal_variety_unlocked(&t, offer.variety));
+            }
+        }
+        setup_begin_customize(&t, 0);
+        for (int step = 0; step < FISH_VARIETY_COUNT; step++) setup_activate(&t, SETUP_HIT_CUSTOM0);
+        setup_activate(&t, SETUP_HIT_NEXT); setup_take_renamed();
+        assert(JOURNAL_VARIETY_LEVELS[t.fish[0].variety] <= level);
+        /* Test level gating independently of discoveries from customization. */
+        t.fish[0].variety = FISH_CLASSIC; t.journal.seen = 0;
+    }
+    t.journal.xp = 0;
+    t.fish[0].variety = FISH_SHARK;
+    t.bank_count = 1; t.bank[0].fish.pad = FISH_JELLYFISH;
+    assert(journal_variety_unlocked(&t, FISH_SHARK) && journal_variety_unlocked(&t, FISH_JELLYFISH));
+    journal_tick(&t);
+    t.fish[0].variety = FISH_CLASSIC; t.bank_count = 0;
+    assert(journal_variety_unlocked(&t, FISH_SHARK) && journal_variety_unlocked(&t, FISH_JELLYFISH));
+    assert(!journal_variety_unlocked(&t, FISH_STINGRAY));
+    assert(progression_save(&t));
+    tank_init(&loaded, 43); progression_boot(&loaded);
+    assert(journal_variety_unlocked(&loaded, FISH_JELLYFISH) && !journal_variety_unlocked(&loaded, FISH_STINGRAY));
+    t.journal.seen = 0; t.fish[0].variety = FISH_SHARK;
+    setup_begin_customize(&t, 0); setup_activate(&t, SETUP_HIT_CUSTOM0);
+    reject_write = true; setup_activate(&t, SETUP_HIT_NEXT);
+    assert(setup_active() && !t.journal.seen && t.fish[0].variety == FISH_SHARK);
+    reject_write = false; setup_activate(&t, SETUP_HIT_NEXT); setup_take_renamed();
+    assert(t.fish[0].variety == FISH_CLASSIC && journal_variety_unlocked(&t, FISH_SHARK));
+    assert(progression_save(&t));
+    tank_init(&loaded, 43); progression_boot(&loaded);
+    assert(journal_variety_unlocked(&loaded, FISH_SHARK));
+    puts("PASS: ten level-gated varieties, fresh Classic-only tanks, unlocked shop offers, customization, owned/seen/Bank grandfathering and save persistence");
 }
 static void test_game_rewards(void) {
     tank_t t, loaded; saved_size = 0; tank_init(&t, 42); progression_boot(&t);
@@ -1339,6 +1406,7 @@ int main(int argc, char **argv) {
     render_milestones_show_fish(&edits, 0);
     assert(render_milestones_tap(&edits, rename_x, button_y) == MS_TAP_RENAME);
     render_milestones_leave();
+    edits.journal.xp = journal_level_xp(JOURNAL_LEVEL_MAX);
     uint32_t old_body = edits.fish[0].color, old_accent = edits.fish[0].accent;
     setup_begin_customize(&edits, 0);
     assert(setup_active() && setup_fish() == 0 && setup_page() == SETUP_PG_CUSTOM);
@@ -1453,7 +1521,7 @@ int main(int argc, char **argv) {
     assert(edits.fish[baby].variety == FISH_ANGEL && edits.fish[baby].pattern == PATTERN_SPOTS);
     progression_newborn_done(&edits);
     progression_fry_open(&edits); edits.sd_balance = SD_PRICE_FRY;
-    fry_offer_t offer; progression_fry_offer(0, &offer);
+    fry_offer_t offer; progression_fry_offer(&edits, 0, &offer);
     assert(offer.variety < FISH_VARIETY_COUNT && offer.pattern < FISH_PATTERN_COUNT);
     assert(progression_buy_fry(&edits, 0));
     assert(edits.fish[edits.n_fish - 1].variety == offer.variety && edits.fish[edits.n_fish - 1].pattern == offer.pattern);
@@ -1553,6 +1621,7 @@ int main(int argc, char **argv) {
     assert(progression_save(&restored));
     test_journal();
     test_game_rewards();
+    test_variety_unlocks();
     test_readable_text();
     test_bank();
     test_aquariums();

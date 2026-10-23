@@ -378,7 +378,19 @@ const journal_goal_t JOURNAL_GOALS[JOURNAL_GOAL_N] = {
     {"OCEAN ALBUM", "RECORD SEVEN DIFFERENT LOOKS", JM_SEEN, 7, 260, 80},
     {"MASTER KEEPER", "RECORD FIVE UNIQUE ADULT LOOKS", JM_GROWN, 5, 400, 120}
 };
-const char *const JOURNAL_THEME_NAMES[4] = {"ORIGINAL", "KELP FOREST", "CORAL REEF", "DEEP GLOW"};
+const char *const JOURNAL_THEME_NAMES[JOURNAL_THEME_COUNT] = {
+    "ORIGINAL", "KELP FOREST", "CORAL REEF", "DEEP GLOW",
+    "SUNKEN RUINS", "SUNSET LAGOON", "ICE CAVERN", "MOONLIT REEF"
+};
+const uint8_t JOURNAL_THEME_LEVELS[JOURNAL_THEME_COUNT] = {1, 3, 6, 10, 5, 8, 12, 15};
+const uint8_t JOURNAL_VARIETY_LEVELS[FISH_VARIETY_COUNT] = {1, 6, 2, 3, 10, 12, 15, 14, 4, 8};
+bool journal_variety_unlocked(const tank_t *t, int variety) {
+    if (variety < 0 || variety >= FISH_VARIETY_COUNT) return false;
+    if (journal_level(t) >= JOURNAL_VARIETY_LEVELS[variety] || (t->journal.seen & (1u << variety))) return true;
+    for (int i = 0; i < t->n_fish; i++) if (t->fish[i].variety == variety) return true;
+    for (int i = 0; i < t->bank_count; i++) if (bank_variety(&t->bank[i]) == variety) return true;
+    return false;
+}
 static unsigned journal_bits(uint32_t bits) { unsigned n = 0; while (bits) { n += bits & 1u; bits >>= 1; } return n; }
 uint32_t journal_level_xp(int level) {
     if (level > JOURNAL_LEVEL_MAX) level = JOURNAL_LEVEL_MAX;
@@ -417,8 +429,7 @@ static void journal_add_xp(tank_t *t, uint32_t xp) {
     t->journal.xp += xp > JOURNAL_XP_MAX - t->journal.xp ? JOURNAL_XP_MAX - t->journal.xp : xp;
 }
 bool journal_theme_unlocked(const tank_t *t, int theme) {
-    static const int levels[4] = {1, 3, 6, 10};
-    return theme >= 0 && theme < 4 && journal_level(t) >= levels[theme];
+    return theme >= 0 && theme < JOURNAL_THEME_COUNT && journal_level(t) >= JOURNAL_THEME_LEVELS[theme];
 }
 bool journal_set_theme(tank_t *t, int theme) {
     if (!journal_theme_unlocked(t, theme)) return false;
@@ -463,6 +474,10 @@ void journal_tick(tank_t *t) {
             t->journal.seen |= 1u << f->variety;
             if (f->stage >= STAGE_ADULT) t->journal.grown |= 1u << f->variety;
         }
+    }
+    for (int i = 0; i < t->bank_count; i++) {
+        int variety = bank_variety(&t->bank[i]);
+        if (variety < FISH_VARIETY_COUNT) t->journal.seen |= 1u << variety;
     }
     if (memcmp(&before, &t->journal, sizeof before)) mark_dirty();
 }
@@ -844,7 +859,7 @@ bool progression_fry_for_sale(const tank_t *t) { return (t->tank_ms_bits & TMS_F
 bool progression_fry_room(const tank_t *t) { return t->n_fish < POP_CAP && t->n_fish < N_FISH_MAX && s_newborn < 0; }
 int  progression_fry_left(void) { int n = 0; for (int k = 0; k < FRY_OFFER_N; k++) n += !(s_fry_sold >> k & 1); return n; }
 float progression_fry_new_in_s(void) { double s = FRY_OFFER_S - s_fry_age; return s > 0 ? (float)s : 0; }
-void progression_fry_offer(int k, fry_offer_t *o) {
+void progression_fry_offer(const tank_t *t, int k, fry_offer_t *o) {
     /* three different bodies: the seed shuffles the eight and the first three are the offer */
     uint32_t h = fry_hash(s_fry_seed * 2654435761u + 0x5eed);
     int order[FRY_BODY_N];
@@ -855,7 +870,10 @@ void progression_fry_offer(int k, fry_offer_t *o) {
     int a = (int)(fry_hash(h ^ (0xacce5u * (uint32_t)(k + 1))) % 9u);
     if (FRY_COLORS[a] == body) a = (a + 1) % 9;              /* markings the body's own colour would vanish */
     o->body = body; o->accent = FRY_COLORS[a]; o->sold = (s_fry_sold >> k & 1) != 0;
-    o->variety = (uint8_t)((s_fry_seed + k) % FISH_VARIETY_COUNT);
+    uint8_t varieties[FISH_VARIETY_COUNT]; int count = 0;
+    for (int i = 0; i < FISH_VARIETY_COUNT; i++)
+        if (journal_variety_unlocked(t, i)) varieties[count++] = (uint8_t)i;
+    o->variety = varieties[(s_fry_seed + k) % count];
     o->pattern = (uint8_t)((s_fry_seed / FISH_VARIETY_COUNT + k) % FISH_PATTERN_COUNT);
 }
 void progression_fry_roll(tank_t *t) {
@@ -874,7 +892,7 @@ void progression_fry_open(tank_t *t) { set_tms(t, TMS_FIRST_SALE); fry_age(t, 0)
 bool progression_buy_fry(tank_t *t, int k) {
     if (!progression_fry_for_sale(t) || !s_fry_seed || k < 0 || k >= FRY_OFFER_N || (s_fry_sold >> k & 1) ||
         !progression_fry_room(t) || t->sd_balance < SD_PRICE_FRY) return false;
-    fry_offer_t o; progression_fry_offer(k, &o);
+    fry_offer_t o; progression_fry_offer(t, k, &o);
     int slot = tank_add_bought_fry(t, o.body, o.accent);
     if (slot < 0) return false;
     t->fish[slot].variety = o.variety; t->fish[slot].pattern = o.pattern;
@@ -1633,7 +1651,7 @@ static const json_field_t SAVE_FIELDS[] = {
     {"journal_initialized", offsetof(save_t, journal.initialized), 1, J_U8, 0, 1},
     {"journal_trust", offsetof(save_t, journal.trust), 1, J_U8, 0, 10},
     {"journal_population", offsetof(save_t, journal.population), 1, J_U8, 0, N_FISH_MAX},
-    {"journal_theme", offsetof(save_t, journal.theme), 1, J_U8, 0, 3},
+    {"journal_theme", offsetof(save_t, journal.theme), 1, J_U8, 0, JOURNAL_THEME_COUNT - 1},
 };
 #undef J
 #define F(f, k, lo, hi) { #f, offsetof(fish_save_t, f), 1, k, lo, hi }
@@ -1947,8 +1965,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     if ((sv.sand_style && !(sv.sd_unlocks & SD_ITEM_SAND)) || (sv.water_style && !(sv.sd_unlocks & SD_ITEM_LIGHTS))) {
         snprintf(error, error_size, "Palette selected without its upgrade"); goto done;
     }
-    static const int theme_levels[4] = {1, 3, 6, 10};
-    if ((sv.journal.grown & ~sv.journal.seen) || sv.journal.xp < journal_level_xp(theme_levels[sv.journal.theme])) {
+    if ((sv.journal.grown & ~sv.journal.seen) || sv.journal.xp < journal_level_xp(JOURNAL_THEME_LEVELS[sv.journal.theme])) {
         snprintf(error, error_size, "Invalid journal album/theme"); goto done;
     }
     for (int i = 0; i < N_FISH_MAX; i++) {

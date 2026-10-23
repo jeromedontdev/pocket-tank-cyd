@@ -93,6 +93,8 @@ Alpha release for **ESP32-2432S028 CYD only**.
 - Six Keeper mini-games: Bubble Pop, Pearl Match, Fish Slalom, Treasure Cast, Feed Frenzy and Reef Puzzle.
 - Real aquarium fish portraits, paused care and atomic sand-dollar plus Journal XP rewards.
 - More distinctive Kelp Forest, Coral Reef and Deep Glow Journal backdrops.
+- Eight paginated Journal backdrops, adding Sunken Ruins, Sunset Lagoon, Ice Cavern and Moonlit Reef.
+- Keeper-level fish-variety unlocks for customization and shop fry; existing owned/seen looks stay available.
 - Up to eight purchasable, named aquariums with a global sand-dollar wallet.
 - Expanded decorations, three surface floats, upkeep and fish-care upgrades.
 - Price-sorted shop, consistent buttons and ownership-colored icons.

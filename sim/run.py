@@ -336,6 +336,29 @@ def main():
                     tap(x, 328)
                     journal_frames.add(ctypes.string_at(lib.sim_frame(0.04), 240 * 180 * 2))
                 assert len(journal_frames) == 3, "Goals, album and themes must differ"
+                locked = json.loads(backup(lib))
+                locked["tank"].update(journal_xp=0, journal_theme=0)
+                encoded = json.dumps(locked).encode()
+                assert lib.sim_restore(encoded, len(encoded))
+                lib.sim_action(1); tap(88, 356); tap(340, 328)
+                first_themes = ctypes.string_at(lib.sim_frame(0), 240 * 180 * 2)
+                tap(400, 86)
+                more_themes = ctypes.string_at(lib.sim_frame(0), 240 * 180 * 2)
+                assert first_themes != more_themes, "Theme arrows must expose new backdrops"
+                tap(100, 124)
+                assert json.loads(backup(lib))["tank"]["journal_theme"] == 0, "Locked new themes must not apply"
+                unlocked = json.loads(backup(lib))
+                unlocked["tank"]["journal_xp"] = 4200
+                encoded = json.dumps(unlocked).encode()
+                assert lib.sim_restore(encoded, len(encoded))
+                lib.sim_action(1); tap(88, 356); tap(340, 328); tap(400, 86)
+                for row, theme in enumerate(range(4, 8)):
+                    tap(100, 124 + row * 42)
+                    assert json.loads(backup(lib))["tank"]["journal_theme"] == theme, "All new backdrops must be selectable on page two"
+                tap(350, 86)
+                tap(100, 124)
+                assert json.loads(backup(lib))["tank"]["journal_theme"] == 0, "Original must remain selectable"
+                print("PASS: paginated Journal themes, locked new themes and all four new theme selections")
                 tap(380, 20)
                 assert lib.sim_page() == 1
                 # Exercise real shop routing, especially IDs above the old MOVE boundary.

@@ -40,7 +40,11 @@
 #define JOURNAL_XP_MAX 1000000u
 typedef struct { const char *name, *detail; uint8_t metric; uint16_t target, xp, coins; } journal_goal_t;
 extern const journal_goal_t JOURNAL_GOALS[JOURNAL_GOAL_N];
-extern const char *const JOURNAL_THEME_NAMES[4];
+#define JOURNAL_THEME_COUNT 8
+extern const char *const JOURNAL_THEME_NAMES[JOURNAL_THEME_COUNT];
+extern const uint8_t JOURNAL_THEME_LEVELS[JOURNAL_THEME_COUNT];
+extern const uint8_t JOURNAL_VARIETY_LEVELS[FISH_VARIETY_COUNT];
+bool journal_variety_unlocked(const tank_t *t, int variety);
 int journal_level(const tank_t *t);
 uint32_t journal_level_xp(int level);
 int journal_active(const tank_t *t, int slot);
@@ -314,7 +318,7 @@ bool progression_sell(tank_t *t, int item);
 typedef struct { uint32_t body, accent; bool sold; uint8_t variety, pattern; } fry_offer_t;
 bool  progression_fry_for_sale(const tank_t *t);   /* the first sale's badge is earned */
 bool  progression_fry_room(const tank_t *t);       /* a slot free and no welcome owed */
-void  progression_fry_offer(int k, fry_offer_t *o);
+void  progression_fry_offer(const tank_t *t, int k, fry_offer_t *o);
 int   progression_fry_left(void);                  /* fry not yet bought in this offer */
 float progression_fry_new_in_s(void);              /* tank seconds until a fresh three */
 bool  progression_buy_fry(tank_t *t, int k);
