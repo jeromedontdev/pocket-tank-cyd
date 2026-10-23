@@ -9,6 +9,7 @@ idf_component_register(
              fatfs sdmmc esp_driver_sdspi esp_lcd_ili9341
 )
 target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_BINARY_DIR}/cyd_assets")
+add_dependencies(${COMPONENT_LIB} cyd_icon_assets)
 set_source_files_properties(sd_port_cyd.c PROPERTIES
     OBJECT_DEPENDS "${CMAKE_BINARY_DIR}/cyd_assets/icons_sd_bank.h")
 # The shared core references the weather backend in this archive.

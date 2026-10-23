@@ -14,6 +14,9 @@ add_custom_command(
     COMMAND ${PYTHON} "${COMMON}/../tools/pack_cyd_icons.py" "${COMMON}/icons.c" "${CYD_ASSETS}"
     DEPENDS "${COMMON}/icons.c" "${COMMON}/../tools/pack_cyd_icons.py"
     VERBATIM)
+add_custom_target(cyd_icon_assets DEPENDS
+    "${CYD_ASSETS}/icons_sd.c" "${CYD_ASSETS}/icons_sd_bank.h" "${CYD_ASSETS}/icons.bin")
+add_dependencies(${COMPONENT_LIB} cyd_icon_assets)
 target_compile_options(${COMPONENT_LIB} PRIVATE -O2 -ffast-math)
 target_compile_definitions(${COMPONENT_LIB} PUBLIC POP_CAP=5 CYD_FLAT_EDGES=1)
 set_source_files_properties("${COMMON}/progression.c" "${COMMON}/weather.c" "${COMMON}/companion.c"
