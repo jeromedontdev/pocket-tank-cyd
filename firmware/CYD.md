@@ -22,6 +22,15 @@ for existing configured build directories.
 
 ## Downloadable releases
 
+For a new board or deliberate reset, the
+[USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/) works in
+desktop Chrome/Edge without ESP-IDF. It writes the factory image at `0x0`
+and overwrites saved tanks/settings; use SD updates for save-preserving upgrades.
+Close serial monitors before connecting. The `CYD web installer` workflow checks
+the latest stable release's factory checksum and board marker before deploying
+the static site through GitHub Pages (Actions source). New releases dispatch
+this workflow automatically; maintainers can also run it manually.
+
 [Latest built release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest)
 provides independently versioned CYD builds, starting with 1.0.0. Download the complete ZIP and read its
 `INSTALL.txt`. For an existing CYD installation, back up first and use

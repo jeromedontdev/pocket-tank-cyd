@@ -9,4 +9,5 @@ firmware/managed_components/
 firmware/keys/
 ota/
 dist/
+_site/
 sim/tank.sav

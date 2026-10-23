@@ -46,6 +46,12 @@ Download a complete bundle from
 These are independently versioned CYD-only releases, not upstream multi-board releases.
 Read the included `INSTALL.txt` and check `SHA256SUMS.txt`.
 
+**New-board browser flashing:** the
+[USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/) works in
+desktop Chrome or Edge with a USB data cable. It is a **factory installer**:
+it overwrites saved tanks, Wi-Fi, calibration and collection identity.
+Use SD updates instead when keeping an existing aquarium.
+
 - **Already using this CYD fork:** back up your active aquarium, power off
   before moving SD, copy `update.ptu` to `pocket-tank/update.ptu`, then install
   through Settings > Device > SD Updates. No SD artwork is required.

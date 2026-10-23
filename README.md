@@ -90,6 +90,21 @@ replace the working RAM needed by the original model.
 
 ## Build and upgrade
 
+### Install from your browser
+
+**[Open the USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/)**
+in desktop Chrome or Edge. Connect an ESP32-2432S028 CYD with a USB data cable;
+no ESP-IDF installation is needed.
+
+**Factory installation only: this overwrites saved tanks, Wi-Fi, calibration
+and collection identity.** Back up first. Existing users should use the SD
+update instead to preserve their aquarium. The page requires an explicit
+acknowledgment before connecting. All artwork is embedded; no SD icons are needed.
+
+The site uses ESP Web Tools and the latest stable release's factory image,
+verified against its published SHA-256 checksums before deployment. The chip
+family is checked, but users must confirm the correct CYD board model.
+
 Prebuilt CYD firmware, SD update packages, matching artwork and installation
 instructions are available under
 [Latest built release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest).
