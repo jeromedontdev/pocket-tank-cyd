@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS main.c director.c brightness.c update_mode.c net_port_esp.c
+    SRCS main.c director.c brightness.c update_mode.c net_port_esp.c weather_port_esp.c
          display_port_cyd.c touch_port_xpt2046.c sd_port_cyd.c
     INCLUDE_DIRS "."
     REQUIRES tankcore esp_partition spi_flash esp_timer esp_driver_spi
@@ -11,4 +11,5 @@ idf_component_register(
 target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_BINARY_DIR}/cyd_assets")
 set_source_files_properties(sd_port_cyd.c PROPERTIES
     OBJECT_DEPENDS "${CMAKE_BINARY_DIR}/cyd_assets/icons_sd_bank.h")
-target_link_libraries(${COMPONENT_LIB} INTERFACE "-u pt_board_marker")
+# The shared core references the weather backend in this archive.
+target_link_libraries(${COMPONENT_LIB} INTERFACE "-u pt_board_marker" "-u weather_port_init")

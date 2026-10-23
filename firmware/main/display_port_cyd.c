@@ -2,6 +2,7 @@
 #include "display_port.h"
 #include "board_pins.h"
 #include "tank.h"
+#include "render.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "driver/spi_master.h"
@@ -10,6 +11,9 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_crc.h"
+#include "esp_timer.h"
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -20,6 +24,11 @@ static uint16_t *s_stripe;
 static uint8_t s_brightness = 0xFF;
 static bool s_inverted;
 static bool s_backlight_ready;
+static uint32_t s_block_crc[3][CYD_PANEL_W / (CYD_STRIPE_ROWS / 2)];
+static bool s_block_valid[3][CYD_PANEL_W / (CYD_STRIPE_ROWS / 2)];
+static int s_layout_width, s_layout_height, s_layout_tile;
+static int64_t s_wait_us, s_send_us;
+static unsigned s_blocks_sent, s_blocks_skipped;
 /* This CYD revision needs ST7789-style timing/gamma, not the ILI9341 defaults. */
 static const ili9341_lcd_init_cmd_t cyd_init_commands[] = {
     {0xB2, (uint8_t[]){0x0C, 0x0C, 0x00, 0x33, 0x33}, 5, 0},
@@ -72,7 +81,7 @@ bool display_port_init(void) {
     esp_lcd_panel_io_spi_config_t io_cfg = {
         .dc_gpio_num = CYD_PIN_LCD_DC,
         .cs_gpio_num = CYD_PIN_LCD_CS,
-        .pclk_hz = 20000000,
+        .pclk_hz = 40000000,
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
         .spi_mode = 0,
@@ -125,11 +134,51 @@ bool display_port_init(void) {
 
 void display_port_flush(const uint16_t *fb) {
     if (!s_panel) return;
+    int tile_start = render_tile_top(), tile_end = render_tile_bottom();
+    if (s_layout_width != TANK_W || s_layout_height != TANK_H || s_layout_tile != tile_end - tile_start) {
+        memset(s_block_valid, 0, sizeof s_block_valid);
+        s_layout_width = TANK_W; s_layout_height = TANK_H; s_layout_tile = tile_end - tile_start;
+    }
+    int panel_start = tile_start * CYD_PANEL_H / TANK_H;
+    int panel_end = tile_end * CYD_PANEL_H / TANK_H;
+#if CYD_LCD_MIRROR_Y
+    int temp = panel_start; panel_start = CYD_PANEL_H - panel_end; panel_end = CYD_PANEL_H - temp;
+#endif
+    if (s_inverted) { int temp = panel_start; panel_start = CYD_PANEL_H - panel_end; panel_end = CYD_PANEL_H - temp; }
+    /* Arbitrary CPU-damage slices do not share the canonical tile CRC geometry. */
+    int region_left = render_region_left(), region_right = render_region_right();
+    bool canonical = region_left == 0 && region_right == TANK_W &&
+        tile_start % 80 == 0 && (tile_end - tile_start == 80 || tile_end - tile_start == TANK_H);
+    if (!canonical) memset(s_block_valid, 0, sizeof s_block_valid);
 #if CYD_DIAGNOSTIC_PATTERN
     (void)fb;
+#else
+    /* Rotation/scaling is constant along each native column, not per pixel. */
+    int offsets[CYD_PANEL_H];
+    for (int x = panel_start; x < panel_end; x++) {
+        int y = x * TANK_H / CYD_PANEL_H;
+#if CYD_LCD_MIRROR_Y
+        y = TANK_H - 1 - y;
 #endif
-    for (int native_y = 0; native_y < CYD_PANEL_W; native_y += CYD_STRIPE_ROWS) {
-        for (int row = 0; row < CYD_STRIPE_ROWS; row++) {
+        if (s_inverted) y = TANK_H - 1 - y;
+        offsets[x] = (y - tile_start) * TANK_W;
+    }
+#endif
+    int region_width = panel_end - panel_start;
+    int rows = CYD_STRIPE_BYTES / 2 / sizeof(uint16_t) / region_width;
+    if (rows > CYD_STRIPE_ROWS) rows = CYD_STRIPE_ROWS;
+    int native_start = region_left * CYD_PANEL_W / TANK_W;
+    int native_end = region_right * CYD_PANEL_W / TANK_W;
+#if CYD_LCD_MIRROR_X
+    int temp_x = native_start; native_start = CYD_PANEL_W - native_end; native_end = CYD_PANEL_W - temp_x;
+#endif
+    if (s_inverted) { int temp_x = native_start; native_start = CYD_PANEL_W - native_end; native_end = CYD_PANEL_W - temp_x; }
+    bool pending = false;
+    unsigned stripe = 0;
+    for (int native_y = native_start; native_y < native_end; native_y += rows) {
+        int count = native_end - native_y < rows ? native_end - native_y : rows;
+        uint16_t *buffer = s_stripe + stripe * (CYD_STRIPE_BYTES / 2 / sizeof(uint16_t));
+        for (int row = 0; row < count; row++) {
 #if !CYD_DIAGNOSTIC_PATTERN
             int logical_x = (native_y + row) * TANK_W / CYD_PANEL_W;
 #if CYD_LCD_MIRROR_X
@@ -137,8 +186,8 @@ void display_port_flush(const uint16_t *fb) {
 #endif
             if (s_inverted) logical_x = TANK_W - 1 - logical_x;
 #endif
-            uint16_t *target = s_stripe + row * CYD_PANEL_H;
-            for (int native_x = 0; native_x < CYD_PANEL_H; native_x++) {
+            uint16_t *target = buffer + row * region_width;
+            for (int native_x = panel_start; native_x < panel_end; native_x++) {
 #if CYD_DIAGNOSTIC_PATTERN
                 uint16_t pixel = cyd_test_colors[native_x * 8 / CYD_PANEL_H];
                 int level = (native_y + row) * 31 / (CYD_PANEL_W - 1);
@@ -146,24 +195,39 @@ void display_port_flush(const uint16_t *fb) {
                                    (((((pixel >> 5) & 63) * level / 31) << 5)) |
                                    ((pixel & 31) * level / 31));
 #else
-                int logical_y = native_x * TANK_H / CYD_PANEL_H;
-#if CYD_LCD_MIRROR_Y
-                logical_y = TANK_H - 1 - logical_y;
+                uint16_t pixel = fb[offsets[native_x] + logical_x];
 #endif
-                if (s_inverted) logical_y = TANK_H - 1 - logical_y;
-                uint16_t pixel = fb[logical_y * TANK_W + logical_x];
-#endif
-                target[native_x] = (uint16_t)((pixel >> 8) | (pixel << 8));
+                target[native_x - panel_start] = (uint16_t)((pixel >> 8) | (pixel << 8));
             }
         }
-        ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(s_panel, 0, native_y, CYD_PANEL_H, native_y + CYD_STRIPE_ROWS, s_stripe));
-        xSemaphoreTake(s_flush_done, portMAX_DELAY);
+        int tile_index = panel_start / 80, block = native_y / (CYD_STRIPE_ROWS / 2);
+        uint32_t crc = esp_crc32_le(0, (const uint8_t *)buffer, (size_t)count * region_width * sizeof *buffer);
+        if (canonical && s_block_valid[tile_index][block] && s_block_crc[tile_index][block] == crc) {
+            s_blocks_skipped++;
+            continue;
+        }
+        int64_t now = esp_timer_get_time();
+        if (pending) xSemaphoreTake(s_flush_done, portMAX_DELAY);
+        s_wait_us += esp_timer_get_time() - now;
+        now = esp_timer_get_time();
+        ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(s_panel, panel_start, native_y, panel_end, native_y + count, buffer));
+        s_send_us += esp_timer_get_time() - now;
+        s_block_crc[tile_index][block] = crc; s_block_valid[tile_index][block] = true;
+        s_blocks_sent++;
+        pending = true;
+        stripe ^= 1;
     }
+    int64_t now = esp_timer_get_time();
+    if (pending) xSemaphoreTake(s_flush_done, portMAX_DELAY);
+    s_wait_us += esp_timer_get_time() - now;
+    if (!canonical) memset(s_block_valid, 0, sizeof s_block_valid);
 }
 
 void display_port_flush_prof(int64_t *wait_us, int64_t *send_us) {
-    *wait_us = 0;
-    *send_us = 0;
+    *wait_us = s_wait_us; *send_us = s_send_us;
+    s_wait_us = s_send_us = 0;
+    ESP_LOGI(TAG, "LCD blocks: %u updated, %u unchanged", s_blocks_sent, s_blocks_skipped);
+    s_blocks_sent = s_blocks_skipped = 0;
 }
 
 void display_port_sleep(void) {
@@ -172,6 +236,7 @@ void display_port_sleep(void) {
 }
 
 void display_port_wake(void) {
+    memset(s_block_valid, 0, sizeof s_block_valid);
     if (s_panel) {
         esp_lcd_panel_disp_on_off(s_panel, true);
     }
@@ -179,6 +244,7 @@ void display_port_wake(void) {
 }
 
 void display_port_set_inverted(bool inverted) {
+    if (s_inverted != inverted) memset(s_block_valid, 0, sizeof s_block_valid);
     s_inverted = inverted;
 }
 

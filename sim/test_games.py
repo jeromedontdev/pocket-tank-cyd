@@ -6,40 +6,45 @@ import os
 
 def exercise(lib, backup, output):
     def tap(x, y):
-        lib.sim_touch(x * 240 / 448, y * 180 / 368, 1)
-        lib.sim_touch(x * 240 / 448, y * 180 / 368, 0)
+        lib.sim_touch(x * lib.sim_width() / 448, y * lib.sim_height() / 368, 1)
+        lib.sim_touch(x * lib.sim_width() / 448, y * lib.sim_height() / 368, 0)
 
     def frame(dt=0):
-        return list(lib.sim_frame(dt)[:240 * 180])
+        return list(lib.sim_frame(dt)[:lib.sim_width() * lib.sim_height()])
 
     def rgb(color):
         return ((color >> 19) << 11) | (((color >> 10) & 63) << 5) | ((color >> 3) & 31)
 
     def cue(pixels, x, y, color, radius=3):
-        nx, ny = round(x * 240 / 448), round(y * 180 / 368)
-        return any(pixels[j * 240 + i] == rgb(color)
-                   for j in range(max(0, ny - radius), min(180, ny + radius + 1))
-                   for i in range(max(0, nx - radius), min(240, nx + radius + 1)))
+        nx, ny = round(x * lib.sim_width() / 448), round(y * lib.sim_height() / 368)
+        return any(pixels[j * lib.sim_width() + i] == rgb(color)
+                   for j in range(max(0, ny - radius), min(lib.sim_height(), ny + radius + 1))
+                   for i in range(max(0, nx - radius), min(lib.sim_width(), nx + radius + 1)))
 
     def snapshot():
         data = json.loads(backup(lib))
         data["tank"].pop("saved_unix", None)
+        data["companion"].pop("powered_s", None)
         return data
 
     original = json.loads(backup(lib))
     screens = set()
+    pause_footer = None
     for game in range(6):
         lib.sim_action(1)
-        tap(360, 356)
+        tap(275, 356)
         assert lib.sim_page() == 8
         menu = snapshot()
-        menu_footer = frame()[166 * 240:]
+        frame()
         for _ in range(4):
             frame(0.25)
         assert snapshot() == menu, "The games menu must pause aquarium care"
         tap(110 + game % 2 * 204, 140 + game // 2 * 64)
-        screens.add(ctypes.string_at(lib.sim_frame(0), 240 * 180 * 2))
-        assert frame()[166 * 240:] == menu_footer, ("Game must retain the complete pause footer", game)
+        screens.add(ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2))
+        footer = frame()[round(166 * lib.sim_height() / 180) * lib.sim_width():]
+        if pause_footer is None:
+            pause_footer = footer
+        assert footer == pause_footer, ("Every game must retain the complete pause footer", game)
         before = snapshot()
         if game == 0:  # Bubble Pop: hit the actual visible ring centers.
             for _ in range(120):
@@ -150,7 +155,9 @@ def exercise(lib, backup, output):
         expected = json.loads(json.dumps(before))
         for key in ("sd_balance", "sd_earned", "journal_xp"):
             expected["tank"][key] = claimed["tank"][key]
-        assert claimed == expected, "Only coins and Journal XP may change"
+        expected["companion"] = claimed["companion"]
+        assert claimed == expected, "Only coins, Journal XP and companion game achievements may change"
+        assert claimed["companion"]["game_rounds"][game] >= 1
         tap(224, 226)
         assert snapshot() == claimed, "Claims must be single-use"
         tap(224, 290)  # Replay.
@@ -160,7 +167,7 @@ def exercise(lib, backup, output):
         assert lib.sim_page() == 1
     assert len(screens) == 6, "Every game needs its own actual-renderer screen"
     lib.sim_action(1)
-    tap(360, 356)
+    tap(275, 356)
     tap(110, 140)
     no_score = snapshot()
     for _ in range(120):
@@ -173,6 +180,26 @@ def exercise(lib, backup, output):
     lib.sim_action(0)
     frame(0.25)
     assert snapshot()["tank"]["clock"] > no_score["tank"]["clock"], "Aquarium simulation must resume on exit"
+    lib.sim_action(1)
+    tap(275, 356)
+    tap(80, 330)  # Relaxed: timed games now finish explicitly.
+    tap(110, 140)
+    relaxed_before = snapshot()
+    for _ in range(124):
+        frame(0.25)
+    assert snapshot() == relaxed_before, "Relaxed play must pause care beyond the challenge timer"
+    tap(350, 70)  # Finish an untimed round.
+    tap(380, 20)
+    tap(380, 20)
+    assert lib.sim_page() == 1
+    lib.sim_action(1)
+    tap(275, 356)
+    tap(80, 330)  # Return to challenge mode for subsequent sessions.
+    tap(300, 330)
+    records = frame()
+    assert any(records), "Persistent game records page must render"
+    tap(380, 20)
+    tap(380, 20)
     encoded = json.dumps(original).encode()
     assert lib.sim_restore(encoded, len(encoded))
     print("PASS: all six games played through touch/render cues, pause, real-fish safety, transactional coins/XP, save retry, single claims, replay and exit")

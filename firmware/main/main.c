@@ -24,6 +24,8 @@
 #include "esp_ota_ops.h"
 #include "brightness.h"
 #include "progression.h"
+#include "companion.h"
+#include "weather.h"
 #include "sd_port_cyd.h"
 #include "notice.h"
 #include "tank_events.h"
@@ -286,6 +288,7 @@ static void tank_task(void *arg) {
     int64_t last = esp_timer_get_time(); int cur = 0;
     int64_t last_log = last;
     int64_t render_us = 0, flush_us = 0, card_us = 0; uint32_t frames = 0, card_frames = 0;
+    uint32_t drawn_rows = 0;
     /* the rest of the frame (2026-10-03: render + flush were ~36 ms of a ~50 ms frame, the other ~14 untimed):
        the polls (keys, IMU, touch, the console), the tank's tick, the wait for the scene prefetch, what
        follows the flush (the next prefetch, this log), and the frame's sleep */
@@ -293,7 +296,9 @@ static void tank_task(void *arg) {
     ESP_LOGI(TAG, "tank task up | heap int %u KB", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
     for (;;) {
         int64_t now = esp_timer_get_time();
-        float dt = (now - last) / 1e6f; last = now; if (dt > 0.25f) dt = 0.25f;
+        float dt = (now - last) / 1e6f; last = now;
+        float max_dt = tank.companion.display_compact ? 1.0f : 0.25f;
+        if (dt > max_dt) dt = max_dt;
         if (slept_from) sleep_us += now - slept_from;
         sleep_button_poll(now);
         tank_orient(&tank, false);
@@ -303,8 +308,12 @@ static void tank_task(void *arg) {
         if (ans > 0) reset_tank();
         else if (ans < 0) ESP_LOGI(TAG, "reset prompt: tank kept");
         { int v = 0, w = touch_port_take_setting(&v);                 /* the settings page */
-          if (w == SET_TAP_BRIGHT) brightness_set_level(v);
+          if (w == SET_TAP_BRIGHT_PREVIEW) brightness_preview_level(v);
+          else if (w == SET_TAP_BRIGHT) {
+              if (!brightness_set_level(v)) render_backup_status("BRIGHTNESS SAVE FAILED - RETRY", false);
+          }
           else if (w == SET_TAP_WIFI) {
+              render_work_caches(false);
               device_wifi_setup();
           }
           else if (w == SET_TAP_BACKUP || w == SET_TAP_RESTORE) sd_port_backup_action(&tank, w == SET_TAP_RESTORE, v != 0);
@@ -319,8 +328,13 @@ static void tank_task(void *arg) {
           }
         if (touch_port_take_update() == UPD_TAP_CHECK) {
             updates_sd_status("CHECKING / INSTALLING - KEEP POWER ON", false);
-            render_updates_page(fb[cur], TANK_W);
-            display_port_flush(fb[cur]);
+            int height = tank.companion.display_compact ? 80 : TANK_H;
+            for (int y = 0; y < TANK_H; y += height) {
+                render_tile(y, tank.companion.display_compact ? height : 0);
+                render_updates_page(fb[cur], TANK_W);
+                display_port_flush(fb[cur]);
+            }
+            render_tile(0, 0);
             sd_port_update_action(&tank);
         }
         { int r = touch_port_take_shop();                               /* the shop's UNLOCK / MOVE / SELL */
@@ -346,15 +360,25 @@ static void tank_task(void *arg) {
                       ESP_LOGI(TAG, "shop: placement page up for the %s", SD_ITEMS[item].name); } }
               else ESP_LOGI(TAG, "shop: %s refused (balance %d, price %d)", SD_ITEMS[item].name, (int)tank.sd_balance, SD_ITEMS[item].price); } }
         brightness_apply(tank.night && !render_clock_active(&tank) && !touch_port_games());
+        render_work_caches(!weather_network_needed_after(dt));
+        weather_tick(dt);
         int64_t pf_tick = esp_timer_get_time(); polls_us += pf_tick - now;
         tank.hold_light = setup_active() || touch_port_confirm_up() || touch_port_calibrating() || touch_port_games();   /* no lights-out mid-name or game */
         tank.ui_cover = tank.hold_light || touch_port_milestones() || touch_port_settings() || touch_port_updates() || touch_port_shop();   /* a fry's spawning waits */
-        if (touch_port_games()) render_games_tick(dt);
-        else {
-            tank_tick(&tank, dt, advisor_rules);
-            progression_tick(&tank, dt);
+        /* Compact frames can exceed one physics step without slowing care and idle timers. */
+        bool held = tank.hold_active, dragged = tank.drag_active;
+        for (float left = dt; left > 0;) {
+            float step = left < 0.25f ? left : 0.25f;
+            tank.hold_active = held; tank.drag_active = dragged;
+            if (touch_port_games()) render_games_tick(step);
+            else {
+                tank_tick(&tank, step, advisor_rules);
+                progression_tick(&tank, step);
+            }
+            companion_tick(&tank, step);
+            if (!touch_port_games()) notice_tick(&tank, step, tank.ui_cover || setup_birth_due());
+            left -= step;
         }
-        if (!touch_port_games()) notice_tick(&tank, dt, tank.ui_cover || setup_birth_due());   /* a fry's welcome first (2026-09-29) */
         if (!touch_port_confirm_up() && !touch_port_games()) {           /* an arrival owed its welcome: the birth flow (setup.c) */
             int nb = setup_poll_birth(&tank);
             if (nb >= 0) { touch_port_dismiss(); 
@@ -365,24 +389,35 @@ static void tank_task(void *arg) {
         if (fb[cur]) {
             int64_t t0 = esp_timer_get_time();
             wait_us += t0 - pf_wait;
+            touch_port_poll(&tank);
+            int tile_height = tank.companion.display_compact ? 80 : TANK_H;
+            size_t tile_bytes = (size_t)TANK_W * tile_height * sizeof(uint16_t);
+            render_set_backdrop_cache(tank.companion.display_compact ? (uint8_t *)fb[cur] + tile_bytes : NULL,
+                                      tank.companion.display_compact ? PLAN_FB_BYTES - tile_bytes : 0);
+            bool page = touch_port_milestones() || touch_port_settings() || touch_port_updates() || touch_port_shop();
+            render_damage_begin(&tank, !tank.companion.display_compact || page ||
+                (touch_port_selected() >= 0 && !render_clock_active(&tank)) || setup_active() || touch_port_confirm_up() ||
+                touch_port_calibrating() || (!render_clock_active(&tank) && notice_current() != NULL));
+            int damage_cursor = 0, left = 0, first = 0, width = TANK_W, height = tile_height;
+            while (tank.companion.display_compact ?
+                   render_damage_next(&damage_cursor, &left, &first, &width, &height) : damage_cursor++ == 0) {
+            drawn_rows += height * width / TANK_W;
+            render_region(left, tank.companion.display_compact ? width : 0);
+            render_tile(first, tank.companion.display_compact ? height : 0);
             /* a page that covers the glass (KEEPER, SETTINGS, UPDATES, UPGRADES: each fills the whole frame before
                it draws): the tank under it is not rendered - it was every frame, hidden (2026-10-13, on a watch:
                19 fps with SETTINGS up, 25 without the hidden tank). The tank itself ticks on. No buffer holds
                the scene while a page is up, so none is "primed": the first tank frame after the page copies the
                scene itself. */
-            bool page = touch_port_milestones() || touch_port_settings() || touch_port_updates() || touch_port_shop();
             if (page) render_fb_primed(NULL, 0);
             else render_tank(&tank, fb[cur], TANK_W);
-            touch_port_poll(&tank);          /* the CST816 is polled, not interrupt-
-                                                driven: extra samples inside the frame
-                                                keep quick finger taps from slipping
-                                                between 40 ms frame boundaries */
             int sel = touch_port_selected();
             bool idle_clock = render_clock_active(&tank);
             if (idle_clock) sel = -1;
             int64_t tc = esp_timer_get_time();
             if (touch_port_milestones()) {       /* milestones page: covers the tank until a tap */
-                if (touch_port_games()) render_games(&tank, fb[cur], TANK_W);
+                if (touch_port_life()) render_life(&tank, fb[cur], TANK_W);
+                else if (touch_port_games()) render_games(&tank, fb[cur], TANK_W);
                 else if (touch_port_bank()) render_bank(&tank, fb[cur], TANK_W);
                 else if (touch_port_journal()) render_journal(&tank, fb[cur], TANK_W);
                 else render_milestones(&tank, fb[cur], TANK_W);
@@ -416,25 +451,30 @@ static void tank_task(void *arg) {
                only reads this frame's buffer; the copy rides alongside it. */
             touch_port_render_calibration(fb[cur], TANK_W);
             display_port_flush(fb[cur]);
-            touch_port_poll(&tank);
             pf_tail = esp_timer_get_time();
-            render_us += t1 - t0; flush_us += pf_tail - t1; frames++;
+            render_us += t1 - t0; flush_us += pf_tail - t1;
+            t0 = pf_tail;
+            }
+            render_tile(0, 0); render_region(0, 0);
+            touch_port_poll(&tank);
+            frames++;
         }
         if (now - last_log > 10 * 1000000) {
             if (frames) {
                 unsigned ep; const uint16_t *sc = render_scene_buf(&ep);
                 ESP_LOGI("display", "fb mid 0x%04x corner 0x%04x | scene mid 0x%04x ep %u | night %d prefetch %d",
-                         fb[cur] ? fb[cur][(TANK_H / 2) * TANK_W + TANK_W / 2] : 0,
+                         fb[cur] ? fb[cur][5 * TANK_W + TANK_W / 2] : 0,
                          fb[cur] ? fb[cur][5 * TANK_W + 5] : 0,
                          sc ? sc[(TANK_H / 2) * TANK_W + TANK_W / 2] : 0, ep,
                          (int)tank.night, 0);
-                ESP_LOGI("display", "%.1f fps | render %.1f ms flush %.1f ms | scene %.1f shafts %.1f veg %.1f fd/bub %.1f fish %.1f vig %.1f algae %.1f | card %.1f ms x%lu | veg %.2f %.2f %.2f",
+                ESP_LOGI("display", "%.1f fps | render %.1f ms flush %.1f ms | scene %.1f shafts %.1f veg %.1f fd/bub %.1f fish %.1f vig %.1f algae %.1f clock %.1f | card %.1f ms x%lu | veg %.2f %.2f %.2f",
                          frames * 1e6f / (float)(now - last_log),
                          render_us / 1e3f / frames, flush_us / 1e3f / frames,
                          render_prof_us[0] / 1e3f / frames, render_prof_us[1] / 1e3f / frames,
                          render_prof_us[2] / 1e3f / frames, render_prof_us[3] / 1e3f / frames,
                          render_prof_us[4] / 1e3f / frames, render_prof_us[5] / 1e3f / frames,
                          render_prof_us[6] / 1e3f / frames,
+                         render_prof_us[7] / 1e3f / frames,
                          card_frames ? card_us / 1e3f / card_frames : 0.0f, (unsigned long)card_frames,
                          tank.veg_growth[0], tank.veg_growth[1], tank.veg_growth[2]);
                 int64_t fw, fs; display_port_flush_prof(&fw, &fs);
@@ -442,10 +482,12 @@ static void tank_task(void *arg) {
                          (float)(now - last_log) / 1e3f / frames, polls_us / 1e3f / frames, tick_us / 1e3f / frames, wait_us / 1e3f / frames,
                          render_us / 1e3f / frames, flush_us / 1e3f / frames, tail_us / 1e3f / frames, sleep_us / 1e3f / frames,
                          (flush_us - fw - fs) / 1e3f / frames, fw / 1e3f / frames, fs / 1e3f / frames);
+                ESP_LOGI("display", "CPU rows %.1f/%d per frame | artwork/clock cache %u bytes",
+                         (float)drawn_rows / frames, TANK_H, (unsigned)render_work_cache_bytes());
                 card_us = 0; card_frames = 0;
                 memset(render_prof_us, 0, sizeof render_prof_us);
             }
-            render_us = flush_us = 0; frames = 0;
+            render_us = flush_us = 0; frames = 0; drawn_rows = 0;
             polls_us = tick_us = wait_us = tail_us = sleep_us = 0;
             char goals[N_FISH_MAX * 16] = ""; size_t gl = 0;
             for (int i = 0; i < tank.n_fish && gl + 16 < sizeof goals; i++)
@@ -551,26 +593,26 @@ void app_main(void) {
         return;
     }
     render_set_decor_scratch(cyd_decor);
+    uint32_t *masks = heap_caps_malloc(render_mask_scratch_size(), MALLOC_CAP_INTERNAL | MALLOC_CAP_32BIT);
+    if (!masks) {
+        ESP_LOGE(TAG, "cannot reserve CYD word masks (%u B)", (unsigned)render_mask_scratch_size());
+        return;
+    }
+    render_set_mask_scratch(masks);
     /* Network modes must run before SD/cache allocations consume Wi-Fi headroom. */
     render_clock_us = esp_timer_get_time;    /* per-stage frame profiling in the display log */
     display_port_init();
     touch_port_init();
+    weather_init();
     if (update_mode_pending()) { brightness_apply(false); update_mode_run(fb[0]); }
     else if (provision_mode_wanted()) provision_mode_run(fb[0]);   /* just installed, no network yet: the page's Wi-Fi step, the glass dark */
     net_clock_boot(fb[0]);            /* no RTC chip and a saved network: the time from the internet, before the advisor takes the heap */
     sd_port_init();
     ESP_LOGI(TAG, "CYD build: rules advisor (no model partition or PSRAM)");
     ESP_LOGI(TAG, "after the advisor: internal heap %u KB free", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
-    uint32_t *dirty = heap_caps_malloc(RENDER_DIRTY_WORDS * 4, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    if (dirty) render_set_dirty_mask(dirty);
-    else ESP_LOGW(TAG, "no dirty mask RAM: full redraw per frame");
-    /* The optional card cache must leave room for the tank stack and NVS writes. */
-    #define INTERNAL_MARGIN (12288 + 40 * 1024)
-    uint16_t *card = NULL;
-    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) >= RENDER_CARD_W * RENDER_CARD_H * 2 + INTERNAL_MARGIN)
-        card = heap_caps_malloc(RENDER_CARD_W * RENDER_CARD_H * 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    if (card) render_set_card_cache(card);
-    ESP_LOGI(TAG, "card cache %s", card ? "internal SRAM" : "none");
+    /* CYD has no scene cache; its dirty/card caches are unused. Keep RAM for Wi-Fi/TLS. */
+    render_set_dirty_mask(NULL);
+    render_set_card_cache(NULL);
     director_init();                  /* serial scenario console (filming / bench) */
     tank_init(&tank, (uint32_t)esp_timer_get_time() ^ 0xC0FFEEu);
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();

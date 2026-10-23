@@ -8,26 +8,27 @@ import os
 from pathlib import Path
 import struct
 import tempfile
+import time
 import zlib
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def png(path, pixels, scale):
+def png(path, pixels, scale, width=240, height=180):
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
 
     rows = bytearray()
-    for y in range(180):
+    for y in range(height):
         row = bytearray()
-        for x in range(240):
-            p = pixels[y * 240 + x]
+        for x in range(width):
+            p = pixels[y * width + x]
             rgb = bytes((((p >> 11) & 31) * 255 // 31, ((p >> 5) & 63) * 255 // 63,
                          (p & 31) * 255 // 31))
             row.extend(rgb * scale)
         rows.extend((b"\0" + row) * scale)
     path.write_bytes(b"\x89PNG\r\n\x1a\n" +
-                     chunk(b"IHDR", struct.pack(">IIBBBBB", 240 * scale, 180 * scale, 8, 2, 0, 0, 0)) +
+                     chunk(b"IHDR", struct.pack(">IIBBBBB", width * scale, height * scale, 8, 2, 0, 0, 0)) +
                      chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
 
 
@@ -41,25 +42,47 @@ def main():
     sim = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(sim)
     names = []
-    old_env = {key: os.environ.get(key) for key in ("POCKET_TANK_SAVE", "POCKET_TANK_WIFI")}
+    old_env = {key: os.environ.get(key) for key in
+               ("POCKET_TANK_SAVE", "POCKET_TANK_WIFI", "POCKET_TANK_WEATHER", "POCKET_TANK_BRIGHTNESS",
+                "POCKET_TANK_WEATHER_SEARCH_FIXTURE", "POCKET_TANK_WEATHER_CURRENT_FIXTURE")}
     try:
         with tempfile.TemporaryDirectory(prefix="cyd-gallery-") as temporary:
             output = Path(temporary)
             os.environ["POCKET_TANK_SAVE"] = str(output / "demo.sav")
             os.environ["POCKET_TANK_WIFI"] = str(output / "demo-wifi.txt")
+            os.environ["POCKET_TANK_WEATHER"] = str(output / "demo-weather.bin")
+            os.environ["POCKET_TANK_BRIGHTNESS"] = str(output / "demo-brightness.bin")
+            for suffix, name, fixture in (
+                    ("SEARCH", "cities.json", {"results": [{"name": "Paris", "admin1": "Ile-de-France",
+                        "country": "France", "latitude": 48.85, "longitude": 2.35}]}),
+                    ("CURRENT", "current.json", {"current": {"temperature_2m": 25,
+                        "weather_code": 0, "time": 1792760400}, "current_units": {"temperature_2m": "\u00b0C"}})):
+                path = output / name
+                path.write_text(json.dumps(fixture), encoding="utf-8")
+                os.environ["POCKET_TANK_WEATHER_" + suffix + "_FIXTURE"] = str(path)
             library = sim.build(args.cc, output, defines=("POP_CAP=5",))
             lib = sim.load(library, (output / "icons.bin").read_bytes())
             try:
                 def tap(x, y):
-                    lib.sim_touch(x * 240 / 448, y * 180 / 368, 1)
-                    lib.sim_touch(x * 240 / 448, y * 180 / 368, 0)
+                    width, height = lib.sim_width(), lib.sim_height()
+                    lib.sim_touch(x * width / 448, y * height / 368, 1)
+                    lib.sim_touch(x * width / 448, y * height / 368, 0)
+
+                def home():
+                    lib.sim_action(1); tap(375, 356)
 
                 def capture(name):
-                    pixels = list(lib.sim_frame(0.04)[:240 * 180])
+                    width, height = lib.sim_width(), lib.sim_height()
+                    pixels = list(lib.sim_frame(0.04)[:width * height])
                     if not any(pixels):
                         raise RuntimeError("Empty emulator frame: " + name)
-                    png(args.out / (name + ".png"), pixels, 3)
+                    png(args.out / (name + ".png"), pixels, 3, width, height)
                     names.append(name)
+
+                def weather_wait():
+                    for _ in range(200):
+                        lib.sim_frame(0.04)
+                        time.sleep(0.002)
 
                 def restore(snapshot):
                     data = json.dumps(snapshot, separators=(",", ":")).encode()
@@ -119,7 +142,7 @@ def main():
                     for _ in range(300):
                         lib.sim_frame(0.04)
                     lib.sim_action(2)
-                    tap(220, 20)
+                    tap(330, 100)
                     tap(120, 318)
                     capture(name)
                 custom = copy.deepcopy(demo)
@@ -127,18 +150,18 @@ def main():
                 restore(custom)
                 for _ in range(300):
                     lib.sim_frame(0.04)
-                lib.sim_action(2); tap(220, 20); tap(120, 318)
+                lib.sim_action(2); tap(330, 100); tap(120, 318)
                 capture("clock-custom")
                 two_color = copy.deepcopy(demo)
                 two_color["tank"].update(clock_theme=7, clock_flags=(2 << 5) | 1, clock_secondary=4)
                 restore(two_color)
                 for _ in range(300):
                     lib.sim_frame(0.04)
-                lib.sim_action(2); tap(220, 20); tap(120, 318)
+                lib.sim_action(2); tap(330, 100); tap(120, 318)
                 capture("clock-two-color")
                 restore(clock_tank)
                 lib.sim_action(2)
-                tap(220, 20)
+                tap(330, 100)
                 capture("clock-settings")
                 tap(220, 20)
                 capture("clock-style")
@@ -213,7 +236,7 @@ def main():
                 capture("journal-variety-unlocks")
                 restore(demo)
                 lib.sim_action(1)
-                tap(360, 356)
+                tap(275, 356)
                 capture("games-menu")
                 for i, name in enumerate(("bubble-pop", "pearl-match", "fish-slalom", "treasure-cast", "feed-frenzy", "reef-puzzle")):
                     tap(110 + i % 2 * 204, 140 + i // 2 * 64)
@@ -231,12 +254,116 @@ def main():
                 capture("game-rewards")
                 tap(224, 226)
                 capture("game-rewards-saved")
+                tap(380, 20)
+                tap(300, 330)
+                capture("game-records")
+                tap(380, 20)
+                tap(80, 330)
+                capture("games-relaxed")
+                tap(80, 330)
+                lib.sim_action(1)
+                tap(375, 356)
+                capture("desk-companion")
+                tap(100, 100)
+                capture("home-fish")
+                tap(100, 100)
+                capture("companion-home")
+                tap(365, 234)
+                capture("fish-wardrobe")
+                tap(60, 180)
+                for _ in range(3):
+                    tap(220, 234)
+                tap(220, 268)
+                capture("wearable-colors")
+                home(); tap(330, 100)
+                capture("home-tank")
+                tap(330, 180)
+                for creature in ("shrimp", "snail", "urchin", "seahorse"):
+                    for _ in range(11):
+                        tap(220, 234)
+                    for _ in range(5):
+                        tap(220, 268)
+                    capture("creature-colors-" + creature)
+                    tap(365, 100)
+                home(); tap(100, 100); tap(100, 100)
+                tap(330, 138)
+                capture("companion-help")
+                tap(370, 338)
+                home(); tap(330, 180)
+                capture("home-collections")
+                tap(330, 100)
+                capture("companion-album")
+                tap(365, 286)
+                capture("companion-frame-locked")
+                home(); tap(100, 180)
+                capture("adventure-menu")
+                tap(230, 258)
+                tap(230, 258)
+                capture("adventure-going")
+                arriving = json.loads(sim.backup(lib))
+                arriving["companion"]["adventure_clock"] -= 7201
+                restore(arriving)
+                lib.sim_frame(0.25)
+                lib.sim_action(1)
+                tap(375, 356)
+                tap(100, 180)
+                capture("adventure-ready")
+                tap(230, 258)
+                capture("adventure-postcard")
+                home(); tap(100, 100); tap(100, 100)
+                tap(210, 234)
+                for _ in range(124):
+                    lib.sim_frame(0.25)
+                tap(210, 234)
+                tap(60, 298)
+                home(); tap(330, 180); tap(330, 100)
+                tap(150, 286)
+                capture("companion-collection")
+                tap(380, 24)
+                lib.sim_action(2)
+                tap(330, 100)
+                tap(274, 20)
+                capture("weather-settings")
+                tap(100, 68)
+                weather_wait()
+                tap(140, 200)
+                for x, y in ((418, 150), (52, 196), (160, 150), (332, 150), (95, 196), (320, 340)):
+                    tap(x, y)
+                weather_wait()
+                tap(150, 65)
+                weather_wait()
+                capture("weather-city")
+                tap(390, 20)
+                tap(390, 20)
+                lib.sim_action(0)
+                scene("tank-trophies")
+                clock_collection = json.loads(sim.backup(lib))
+                clock_collection["tank"].update(clock_theme=3, clock_layout=0, clock_delay=1)
+                restore(clock_collection)
+                for _ in range(64):
+                    lib.sim_frame(0.25)
+                if not lib.sim_clock_active():
+                    raise RuntimeError("Collection clock did not activate")
+                capture("clock-collection")
+                clock_collection["tank"]["clock_theme"] = 5
+                restore(clock_collection)
+                for _ in range(64):
+                    lib.sim_frame(0.25)
+                capture("clock-weather")
+                restore(demo)
                 lib.sim_action(2)
                 capture("settings")
-                tap(70, 326)
+                tap(100, 100)
+                capture("settings-display")
+                lib.sim_action(0)
+                scene("tank-normal")
+                restore(demo)
+                lib.sim_action(2); tap(330, 260)
+                capture("settings-device")
+                tap(200, 120)
                 capture("sd-updates")
                 lib.sim_action(2)
-                tap(56, 18)
+                tap(330, 260); tap(100, 260)
                 capture("wipe-confirmation")
                 tap(140, 216)
                 # Unowned shop pages show the actual prices rather than owned controls.
@@ -278,7 +405,7 @@ def main():
                                              fish=fish))
                 restore(bank)
                 lib.sim_action(1)
-                tap(224, 356)
+                tap(173, 356)
                 if lib.sim_page() != 6:
                     raise RuntimeError("Bank navigation failed")
                 capture("bank-stored")

@@ -12,8 +12,8 @@ from package_cyd_release import create_bundle, release_version
 
 class ReleaseTests(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(release_version("v0.3.8-cyd.1"), "0.3.8-cyd.1")
-        for value in ("0.3.8", "v0.3.8-cyd.0", "../bad", "1.2.3-cyd.123456", "x';exit"):
+        self.assertEqual(release_version("v1.0.0"), "1.0.0")
+        for value in ("1.0", "v0.3.8-cyd.1", "../bad", "1.2.3-cyd.123456", "x';exit"):
             with self.assertRaises(ValueError):
                 release_version(value)
 
@@ -43,7 +43,7 @@ class ReleaseTests(unittest.TestCase):
                 Path(command[command.index("-o") + 1]).write_bytes(b"factory")
 
             with patch("package_cyd_release.subprocess.run", side_effect=merge):
-                archive = create_bundle(build, output, "v0.3.8-cyd.1")
+                archive = create_bundle(build, output, "v1.0.0")
             self.assertEqual((output / name).read_bytes(), icons)
             with zipfile.ZipFile(archive) as bundle:
                 self.assertIn("update.ptu", bundle.namelist())
@@ -53,10 +53,10 @@ class ReleaseTests(unittest.TestCase):
                 digest, filename = line.split("  ", 1)
                 self.assertEqual(digest, hashlib.sha256((output / filename).read_bytes()).hexdigest())
             with self.assertRaises(FileExistsError):
-                create_bundle(build, output, "v0.3.8-cyd.1")
+                create_bundle(build, output, "v1.0.0")
             header.write_text("wrong bank")
             with self.assertRaises(ValueError):
-                create_bundle(build, root / "bad", "v0.3.8-cyd.1")
+                create_bundle(build, root / "bad", "v1.0.0")
 
 
 if __name__ == "__main__":

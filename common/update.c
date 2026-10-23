@@ -395,9 +395,9 @@ static void type_password(bool fresh) {
 /* touch calibration (2026-09-30): nine crosshairs over the glass, a press
  * each; the platform logs the panel's position for each known centre and
  * the mapping is fitted from the log */
-static const int CAL_X[3] = { 48, TANK_W / 2, TANK_W - 48 }, CAL_Y[3] = { 40, TANK_H / 2, TANK_H - 40 };
+static const int CAL_X[3] = { 48, 120, 192 }, CAL_Y[3] = { 40, 90, 140 };
 static int s_cal = -1;
-int update_calib_target(int *x, int *y) { if (s_cal < 0 || s_cal > 8) return -1; *x = CAL_X[s_cal % 3]; *y = CAL_Y[s_cal / 3]; return s_cal; }
+int update_calib_target(int *x, int *y) { if (s_cal < 0 || s_cal > 8) return -1; *x = CAL_X[s_cal % 3] * TANK_W / 240; *y = CAL_Y[s_cal / 3] * TANK_H / 180; return s_cal; }
 void update_debug_calib(void) {
     if (s.step == STEP_NONE) return;
     net_port_abort(); s_cal = 0; s.hit = HIT_NONE;

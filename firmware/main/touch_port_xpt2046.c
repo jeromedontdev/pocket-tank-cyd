@@ -29,7 +29,8 @@ static float s_lx, s_ly;                          /* LAST touched position (rele
 static float s_fx[N_FISH_MAX], s_fy[N_FISH_MAX];  /* fish positions at press time */
 static int s_sel = -1; static int64_t s_sel_us;   /* tapped fish -> stats card */
 static bool s_ms;                                 /* milestones page up (its CLOSE button ends it) */
-static bool s_journal, s_bank, s_games;
+static bool s_from_home, s_home_tanks, s_child_from_keeper;                                 /* milestones page up (its CLOSE button ends it) */
+static bool s_journal, s_bank, s_games, s_life;
 static bool s_aquariums;
 static bool s_cf; static int64_t s_cf_us; static int s_cf_ans;   /* reset confirm prompt */
 static bool s_set;                                /* settings page up (CLOSE returns to the milestones page) */
@@ -93,7 +94,7 @@ static void cyd_cal_finish(void) {
     for (int i = 3; i < 5; i++) {
         float x = cal.x[0] * s_cal_x[i] + cal.x[1] * s_cal_y[i] + cal.x[2];
         float y = cal.y[0] * s_cal_x[i] + cal.y[1] * s_cal_y[i] + cal.y[2];
-        if (s_cal_inverted) { x = TANK_W - 1 - x; y = TANK_H - 1 - y; }
+        if (s_cal_inverted) { x = 239 - x; y = 179 - y; }
         error = fmaxf(error, hypotf(x - s_cal_targets[i][0], y - s_cal_targets[i][1]));
     }
     if (!cyd_cal_valid(&cal) || error > 6) {
@@ -139,13 +140,15 @@ void touch_port_calibrate(void) {
 }
 void touch_port_render_calibration(uint16_t *fb, int stride) {
     if (s_cal_target < 0) return;
-    for (int y = 0; y < TANK_H; y++) memset(fb + y * stride, 0, TANK_W * sizeof *fb);
+    for (int y = render_tile_top(); y < render_tile_bottom(); y++) memset(fb + (y - render_tile_top()) * stride, 0, TANK_W * sizeof *fb);
     render_text(fb, stride, 70, 146, 2, 0xffffff, "HOLD CROSS THEN RELEASE");
     render_text(fb, stride, 105, 220, 2, 0x80c080, "5 TARGETS - AUTO SAVE");
-    int x = (int)s_cal_targets[s_cal_target][0], y = (int)s_cal_targets[s_cal_target][1];
+    int x = (int)(s_cal_targets[s_cal_target][0] * TANK_W / 240), y = (int)(s_cal_targets[s_cal_target][1] * TANK_H / 180);
     for (int d = -8; d <= 8; d++) {
-        fb[y * stride + x + d] = 0xffff;
-        fb[(y + d) * stride + x] = 0xffff;
+        if (y >= render_tile_top() && y < render_tile_bottom())
+            fb[(y - render_tile_top()) * stride + x + d] = 0xffff;
+        if (y + d >= render_tile_top() && y + d < render_tile_bottom())
+            fb[(y + d - render_tile_top()) * stride + x] = 0xffff;
     }
 }
 void touch_port_set_inverted(bool inverted) { s_inverted = inverted; }
@@ -229,17 +232,17 @@ static bool xpt2046_read(uint16_t *x, uint16_t *y) {
         return false;
     }
 #if CYD_TOUCH_SWAP_XY
-    int px = xpt2046_scale(raw_y, CYD_TOUCH_Y_MIN, CYD_TOUCH_Y_MAX, TANK_W);
-    int py = xpt2046_scale(raw_x, CYD_TOUCH_X_MIN, CYD_TOUCH_X_MAX, TANK_H);
+    int px = xpt2046_scale(raw_y, CYD_TOUCH_Y_MIN, CYD_TOUCH_Y_MAX, 240);
+    int py = xpt2046_scale(raw_x, CYD_TOUCH_X_MIN, CYD_TOUCH_X_MAX, 180);
 #else
-    int px = xpt2046_scale(raw_x, CYD_TOUCH_X_MIN, CYD_TOUCH_X_MAX, TANK_W);
-    int py = xpt2046_scale(raw_y, CYD_TOUCH_Y_MIN, CYD_TOUCH_Y_MAX, TANK_H);
+    int px = xpt2046_scale(raw_x, CYD_TOUCH_X_MIN, CYD_TOUCH_X_MAX, 240);
+    int py = xpt2046_scale(raw_y, CYD_TOUCH_Y_MIN, CYD_TOUCH_Y_MAX, 180);
 #endif
 #if CYD_TOUCH_MIRROR_X
-    px = TANK_W - 1 - px;
+    px = 239 - px;
 #endif
 #if CYD_TOUCH_MIRROR_Y
-    py = TANK_H - 1 - py;
+    py = 179 - py;
 #endif
     *x = (uint16_t)px;
     *y = (uint16_t)py;
@@ -265,14 +268,14 @@ static void cal_point(float rx, float ry, float *tx, float *ty) {               
     rx = cx;
     ry -= s_inverted ? -s_bias_y : s_bias_y;
     if (rx < 0) rx = 0;
-    if (rx > TANK_W - 1) rx = TANK_W - 1;
+    if (rx > 239) rx = 239;
     if (ry < 0) ry = 0;
-    if (ry > TANK_H - 1) ry = TANK_H - 1;
-    *tx = rx; *ty = ry;
+    if (ry > 179) ry = 179;
+    *tx = rx * (TANK_W - 1) / 239; *ty = ry * (TANK_H - 1) / 179;
 }
 /* the panel's raw reach, as seen since boot (director `touch`): the stroke's
  * reach below takes it for 0..max on both axes - scrub the four walls, then ask */
-static int s_raw_x0 = TANK_W, s_raw_x1 = -1, s_raw_y0 = TANK_H, s_raw_y1 = -1;
+static int s_raw_x0 = 240, s_raw_x1 = -1, s_raw_y0 = 180, s_raw_y1 = -1;
 void touch_port_raw_seen(int *x0, int *x1, int *y0, int *y1) { *x0 = s_raw_x0; *x1 = s_raw_x1; *y0 = s_raw_y0; *y1 = s_raw_y1; }
 static void map_touch(uint16_t px, uint16_t py, float *tx, float *ty) {
     int rx = px, ry = py;
@@ -336,7 +339,7 @@ static float edge_stretch1(float v, float lo, float hi, float max, float band, f
 }
 static void edge_stretch(float x, float y, float *ox, float *oy) {
     float x0, y0, x1, y1;                         /* the panel's reach: its raw extremes through the same map (the bias is live) */
-    cal_view(0, 0, &x0, &y0); cal_view(TANK_W - 1, TANK_H - 1, &x1, &y1);
+    cal_view(0, 0, &x0, &y0); cal_view(239, 179, &x1, &y1);
     if (x0 > x1) { float k = x0; x0 = x1; x1 = k; }   /* turned: the far corner is the near one */
     if (y0 > y1) { float k = y0; y0 = y1; y1 = k; }
     *ox = edge_stretch1(x, x0, x1, TANK_W - 1, EDGE_BAND_X, EDGE_SNAP_X); *oy = edge_stretch1(y, y0, y1, TANK_H - 1, EDGE_BAND_Y, EDGE_SNAP_Y);
@@ -367,6 +370,42 @@ bool touch_port_read_raw(float *x, float *y) {
 }
 
 /* call every frame from the tank task */
+static void settings_touch(tank_t *t, float x, float y, bool down) {
+    int v = 0, r = render_settings_touch(t, x, y, down, &v);
+    if (r) ESP_LOGI(TAG, "settings action %d value %d", r, v);
+    if (r == SET_TAP_CLOSE) { s_set = false; s_ms = true; s_life = s_from_home && !s_child_from_keeper; s_back = true; }
+    else if (r == SET_TAP_CLOCK_SHOW) {
+        s_set = s_ms = s_shop = s_upd = false; s_sel = -1; s_back = true;
+        t->ui_cover = false; t->clock_requested = true;
+    }
+    else if (r == SET_TAP_TOUCH) touch_port_calibrate();
+    else if (r == SET_TAP_WIPE) touch_port_confirm_open();
+    else if (r == SET_TAP_UPDATES) { s_set = false; s_upd = true; s_back = true; sd_port_update_reset(); ESP_LOGI(TAG, "SD updates page up"); }
+    else if (r == SET_TAP_BRIGHT || r == SET_TAP_BRIGHT_PREVIEW || r == SET_TAP_LIGHT || r == SET_TAP_IDLE || r == SET_TAP_FEED
+             || r == SET_TAP_BACKUP || r == SET_TAP_RESTORE || r == SET_TAP_SAND || r == SET_TAP_WATER || r == SET_TAP_WIFI) { s_set_what = r; s_set_val = v; }
+}
+void touch_port_life_tap(tank_t *t, float x, float y) {
+    int action = render_life_tap(t, x, y);
+    if (action == HOME_CLOSE) { s_ms = s_life = s_from_home = false; s_sel = -1; }
+    else if (action) {
+        s_life = false; s_from_home = true; s_child_from_keeper = false; s_sel = -1;
+        if (action == HOME_BANK) { s_bank = true; render_bank_open(); }
+        if (action == HOME_JOURNAL) { s_journal = true; render_journal_open(); }
+        if (action == HOME_GAMES) { s_games = true; render_games_open(); }
+        if (action == HOME_SETTINGS) { s_ms = false; s_set = true; render_settings_open(); }
+        if (action == HOME_SHOP || action == HOME_TANKS) {
+            s_ms = false; s_shop = true; s_aquariums = s_home_tanks = action == HOME_TANKS;
+            if (s_aquariums) render_aquariums_open(t);
+        }
+    }
+}
+bool touch_port_settings_tap(tank_t *t, float x, float y) {
+    if (!s_set || s_cf || setup_active() || !isfinite(x) || !isfinite(y) ||
+        x < 0 || y < 0 || x >= TANK_W || y >= TANK_H) return false;
+    settings_touch(t, x, y, true);
+    settings_touch(t, x, y, false);
+    return true;
+}
 void touch_port_poll(tank_t *t) {
     static bool clock_wake;
     int64_t now = esp_timer_get_time();
@@ -390,18 +429,8 @@ void touch_port_poll(tank_t *t) {
     }
     bool su = setup_active();                                /* before the touch: BEGIN's release is not a tank tap */
     if (s_set && !s_cf && !su) {
-        int v = 0, r = render_settings_touch(t, tx, ty, touched, &v);
-        if (r) ESP_LOGI(TAG, "settings action %d value %d", r, v);
-        if (r == SET_TAP_CLOSE) { s_set = false; s_ms = true; s_back = true; }   /* back to the milestones page (2026-09-16); the release is spent */
-        else if (r == SET_TAP_CLOCK_SHOW) {
-            s_set = s_ms = s_shop = s_upd = false; s_sel = -1; s_back = true;
-            t->ui_cover = false; t->clock_requested = true;
-        }
-        else if (r == SET_TAP_TOUCH) { touch_port_calibrate(); return; }
-        else if (r == SET_TAP_WIPE) touch_port_confirm_open();
-        else if (r == SET_TAP_UPDATES) { s_set = false; s_upd = true; s_back = true; sd_port_update_reset(); ESP_LOGI(TAG, "SD updates page up"); }
-        else if (r == SET_TAP_BRIGHT || r == SET_TAP_LIGHT || r == SET_TAP_IDLE || r == SET_TAP_FEED
-                 || r == SET_TAP_BACKUP || r == SET_TAP_RESTORE || r == SET_TAP_SAND || r == SET_TAP_WATER || r == SET_TAP_WIFI) { s_set_what = r; s_set_val = v; }
+        settings_touch(t, tx, ty, touched);
+        if (touch_port_calibrating()) return;
     }
     if (s_upd && !s_cf && !su) {                             /* the UPDATES page: CHECK (main restarts), FORGET, CLOSE */
         int r = updates_page_touch(tx, ty, touched);
@@ -472,7 +501,10 @@ void touch_port_poll(tank_t *t) {
             if (s_shop) {                                           /* the shop: a row's modal, UNLOCK, HOW TO EARN, CLOSE */
                 if (s_aquariums) {
                     int result = render_aquariums_tap(t, s_px, s_py);
-                    if (result == 1) s_aquariums = false;
+                    if (result == 1) {
+                        s_aquariums = false;
+                        if (s_home_tanks) { s_shop = false; s_ms = s_life = true; s_home_tanks = false; }
+                    }
                     else if (result == 2) {
                         touch_port_dismiss(); setup_cancel(t); notice_sync(t); render_fb_primed(NULL, 0);
                         if (progression_setup_pending()) setup_begin(t);
@@ -482,27 +514,36 @@ void touch_port_poll(tank_t *t) {
                 int r = render_shop_tap(t, s_px, s_py);
                 ESP_LOGI(TAG, "shop tap at %.0f,%.0f -> %s", s_px, s_py, r == SHOP_TAP_CLOSE ? "CLOSE" : r >= SHOP_TAP_FRY ? "BUY A FRY" : r >= SHOP_TAP_SELL ? "SELL" : r >= SHOP_TAP_MOVE ? "MOVE" : r >= SHOP_TAP_BUY ? "UNLOCK" : r == SHOP_TAP_KEPT ? "modal" : "nothing");
                 if (r == SHOP_TAP_TANKS) { s_aquariums = true; render_aquariums_open(t); }
-                else if (r == SHOP_TAP_CLOSE) { s_shop = false; render_shop_leave(); s_ms = true; }   /* back to the milestones page (2026-09-16) */
+                else if (r == SHOP_TAP_CLOSE) { s_shop = false; render_shop_leave(); s_ms = true; s_life = s_from_home && !s_child_from_keeper; }   /* back to the milestones page (2026-09-16) */
                 else if (r >= SHOP_TAP_BUY) s_shop_act = r;   /* main.c buys (and plays the cue) or opens the placement page */
                 goto released;
             }
             if (s_ms) {
+                if (s_life) {
+                    touch_port_life_tap(t, s_px, s_py);
+                    goto released;
+                }
                 if (s_games) {
-                    if (render_games_tap(t, s_px, s_py)) s_games = false;
+                    if (render_games_tap(t, s_px, s_py)) { s_games = false; s_life = s_from_home && !s_child_from_keeper; }
                     goto released;
                 }
                 if (s_bank) {
-                    if (render_bank_tap(t, s_px, s_py)) s_bank = false;
+                    if (render_bank_tap(t, s_px, s_py)) { s_bank = false; s_life = s_from_home && !s_child_from_keeper; }
                     goto released;
                 }
                 if (s_journal) {
-                    if (render_journal_tap(t, s_px, s_py)) s_journal = false;
+                    if (render_journal_tap(t, s_px, s_py)) { s_journal = false; s_life = s_from_home && !s_child_from_keeper; }
                     goto released;
                 }
                 int r = render_milestones_tap(t, s_px, s_py);
+                if (r == MS_TAP_CLOSE && s_from_home) { s_life = true; goto released; }
+                if (r == MS_TAP_BANK || r == MS_TAP_JOURNAL || r == MS_TAP_GAMES ||
+                    r == MS_TAP_SETTINGS || r == MS_TAP_SHOP) s_child_from_keeper = true;
+                if (r == MS_TAP_SETTINGS) render_settings_open();
                 if (r == MS_TAP_BANK) { s_bank = true; s_sel = -1; render_bank_open(); goto released; }
                 if (r == MS_TAP_JOURNAL) { s_journal = true; render_journal_open(); goto released; }     /* CLOSE / SETTINGS / the sand dollar, detail modal, nothing */
                 if (r == MS_TAP_GAMES) { s_games = true; s_sel = -1; render_games_open(); tank_handled(t); goto released; }
+                if (r == MS_TAP_LIFE) { s_life = true; s_sel = -1; render_life_open(); tank_handled(t); goto released; }
                 ESP_LOGI(TAG, "page tap at %.0f,%.0f (release %.0f,%.0f) -> %s", s_px, s_py, s_lx, s_ly,
                          r >= MS_TAP_CUSTOM ? "CUSTOMIZE" : r >= MS_TAP_SELL ? "SELL (a fish's card)" : r >= MS_TAP_RENAME ? "RENAME (a fish's card)" :
                          r == MS_TAP_CLOSE ? "CLOSE" : r == MS_TAP_SETTINGS ? "SETTINGS" : r == MS_TAP_SHOP ? "SHOP" : r == MS_TAP_KEPT ? "detail" : "nothing");
@@ -558,7 +599,7 @@ void touch_port_poll(tank_t *t) {
             }
             if (s_sel >= 0 && s_sel != RENDER_CARD_SNAIL && s_sel != RENDER_CARD_SHRIMP && s_sel != RENDER_CARD_URCHIN && s_sel != RENDER_CARD_SEAHORSE && RENDER_CARD_HIT(s_px, s_py)) {   /* a tap ON the card (or the slop
                 ESP_LOGI(TAG, "card tap at %.0f,%.0f -> milestones", s_px, s_py);         under its MORE button) = milestones page */
-                s_ms = true; goto released;
+                s_ms = s_life = true; s_from_home = false; render_life_open(); goto released;
             }
             /* fish first; only an empty tap reaches the water. 38 px radius
                (a fingertip on this 322 ppi panel covers ~60 px) against BOTH
@@ -593,7 +634,7 @@ void touch_port_poll(tank_t *t) {
                                                   (no feed, no light-toggle burst) */
             else tank_touch_tap(t, s_px, s_py);
         }
-        else if (s_ms && !s_journal && !s_bank && !s_games && !s_back && fabsf(dx) >= 40 && fabsf(dx) > 2 * fabsf(dy)) {   /* sideways along the TANK row: its page (2026-09-30) */
+        else if (s_ms && !s_journal && !s_bank && !s_games && !s_life && !s_back && fabsf(dx) >= 40 && fabsf(dx) > 2 * fabsf(dy)) {   /* sideways along the TANK row: its page (2026-09-30) */
             if (render_milestones_swipe(t, s_px, s_py, dx)) ESP_LOGI(TAG, "page swipe %.0f px on the tank row", dx);
         }
         else if (!card_next && !s_ms && t->tool == TOOL_HAND && s_py - tank_glass_top(s_px) < 60 && dy >= 40) tank_feed(t, s_lx, 3);  /* drag down from the top = feed (not with a tool in hand) */
@@ -610,20 +651,22 @@ bool touch_port_milestones(void) { return s_ms; }
 bool touch_port_journal(void) { return s_ms && s_journal; }
 bool touch_port_bank(void) { return s_ms && s_bank; }
 bool touch_port_games(void) { return s_ms && s_games; }
+bool touch_port_life(void) { return s_ms && s_life; }
+void touch_port_show_life(void) { touch_port_dismiss(); s_ms = true; s_life = true; render_life_open(); }
 void touch_port_show_games(void) { touch_port_dismiss(); s_ms = true; s_games = true; render_games_open(); }
 void touch_port_show_bank(void) { touch_port_dismiss(); s_ms = true; s_bank = true; render_bank_open(); }
 void touch_port_show_journal(void) { touch_port_dismiss(); s_ms = true; s_journal = true; render_journal_open(); }
-void touch_port_show_milestones(bool on) { if (s_ms && !on) render_milestones_leave(); s_ms = on; s_games = s_journal = s_bank = false; }
-void touch_port_dismiss(void) { s_aquariums = false; s_games = s_journal = s_bank = false; s_sel = -1; if (s_ms) render_milestones_leave(); if (s_shop) render_shop_leave(); s_ms = false; s_set = false; s_shop = false; s_upd = false; }
+void touch_port_show_milestones(bool on) { if (s_ms && !on) render_milestones_leave(); s_ms = on; s_life = s_games = s_journal = s_bank = false; }
+void touch_port_dismiss(void) { s_from_home = s_home_tanks = s_child_from_keeper = false; s_aquariums = false; s_life = s_games = s_journal = s_bank = false; s_sel = -1; if (s_ms) render_milestones_leave(); if (s_shop) render_shop_leave(); s_ms = false; s_set = false; s_shop = false; s_upd = false; }
 bool touch_port_updates(void) { return s_upd; }
-void touch_port_show_updates(bool on) { s_games = s_journal = s_bank = false; s_upd = on; if (on) { s_ms = false; s_set = false; s_shop = false; s_sel = -1; } }
+void touch_port_show_updates(bool on) { s_life = s_games = s_journal = s_bank = false; s_upd = on; if (on) { s_ms = false; s_set = false; s_shop = false; s_sel = -1; } }
 int  touch_port_take_update(void) { int r = s_upd_act; s_upd_act = 0; return r; }
 
 /* ---- reset confirm prompt ---- */
 void touch_port_confirm_open(void) {
-    s_journal = s_bank = false;
+    s_life = s_journal = s_bank = false;
     s_cf = true; s_cf_us = esp_timer_get_time(); s_cf_ans = 0;
-    s_games = false; s_sel = -1; s_ms = false; s_set = false; s_shop = false; s_upd = false; render_shop_leave();   /* it replaces the card / the pages */
+    s_life = s_games = false; s_sel = -1; s_ms = false; s_set = false; s_shop = false; s_upd = false; render_shop_leave();   /* it replaces the card / the pages */
     ESP_LOGI(TAG, "reset prompt up (YES / NO on the glass; NO by itself in %d s)", (int)(CONFIRM_TIMEOUT_US / 1000000));
 }
 bool touch_port_confirm_answer(int ans) {
@@ -640,10 +683,10 @@ float touch_port_confirm_frac(void) {
 int  touch_port_confirm_take(void)  { int a = s_cf_ans; s_cf_ans = 0; return a; }
 bool touch_port_pressed_since(int64_t us) { return s_down && s_press_us > us; }
 bool touch_port_settings(void) { return s_set; }
-void touch_port_show_settings(bool on) { s_games = s_journal = s_bank = false; s_set = on; if (on) { s_ms = false; s_sel = -1; } }
+void touch_port_show_settings(bool on) { s_life = s_games = s_journal = s_bank = false; s_set = on; if (on) { s_ms = false; s_sel = -1; } }
 int  touch_port_take_setting(int *value) { int w = s_set_what; *value = s_set_val; s_set_what = 0; return w; }
 bool touch_port_shop(void) { return s_shop; }
 bool touch_port_aquariums(void) { return s_shop && s_aquariums; }
 void touch_port_show_aquariums(const tank_t *t) { touch_port_dismiss(); s_shop = s_aquariums = true; render_aquariums_open(t); }
-void touch_port_show_shop(bool on) { s_aquariums = false; s_games = s_journal = s_bank = false; if (s_shop && !on) render_shop_leave(); s_shop = on; if (on) { s_ms = false; s_set = false; s_sel = -1; } }
+void touch_port_show_shop(bool on) { s_aquariums = false; s_life = s_games = s_journal = s_bank = false; if (s_shop && !on) render_shop_leave(); s_shop = on; if (on) { s_ms = false; s_set = false; s_sel = -1; } }
 int  touch_port_take_shop(void) { int r = s_shop_act; s_shop_act = 0; return r; }

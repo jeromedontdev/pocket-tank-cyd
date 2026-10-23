@@ -18,7 +18,7 @@ state, credentials, calibration and collection identity.**
    merged flash image):
 
    ```powershell
-   python tools\make_sd_update.py firmware\build_cyd\pocket_tank.bin --release 0.3.8-cyd.2 --out update.ptu
+   python tools\make_sd_update.py firmware\build_cyd\pocket_tank.bin --release 1.0.0 --out update.ptu
    ```
 
 2. Copy `update.ptu` into the SD card's `pocket-tank` directory. Alternatively,
@@ -63,7 +63,7 @@ same check/confirm operation as the button.
 
 ## On-screen Wi-Fi for the clock
 
-**Settings > CLOCK > WI-FI / SYNC** saves the aquarium and briefly
+**Settings > WI-FI / SYNC** saves the aquarium and briefly
 restarts into a Wi-Fi-only version of the existing network picker and password
 keyboard. It can connect, change, or confirm forgetting a device-wide saved
 network. Connection and credential-save errors are visible; cancel leaves
@@ -115,19 +115,18 @@ or replace signing failures with unsigned downloads.
 
 ## Publishing CYD releases
 
-Push `main`, then a new immutable tag matching `vMAJOR.MINOR.PATCH-cyd.N`,
-for example `v0.3.8-cyd.2`. The label without `v` must fit 15 characters.
+Push `main`, then a new immutable tag matching `vMAJOR.MINOR.PATCH`,
+for example `v1.0.0`. The label without `v` must fit 15 characters.
 The [release workflow](../.github/workflows/release.yml) builds with ESP-IDF
 v6.1, runs Python/native/emulator checks, and publishes a normal GitHub release
-marked Latest. The firmware remains alpha-quality; omitting GitHub's prerelease
-flag makes the built downloads available at
+marked Latest, making the built downloads available at
 [Latest release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest).
 It includes the bundle, app-only image, new-board factory image, SD package,
-matching icon bank, install instructions, license and SHA-256 checksums.
+optional legacy icon bank, install instructions, license and SHA-256 checksums.
 Normal branch pushes run checks without creating a release.
 
-The `-cyd.N` suffix is a distribution revision for this fork; the firmware
-retains base version 0.3.8 and its CYD build identity. SD package labels are
+Pocket Tank CYD uses its own semantic version starting at 1.0.0; the firmware,
+SD update label and release tag agree. SD package labels are
 informational, not signed version claims. Do not overwrite old tags or assets.
 See [the hardware guide](../firmware/CYD.md#downloadable-releases) for local
 packaging instructions and the factory-image warning.

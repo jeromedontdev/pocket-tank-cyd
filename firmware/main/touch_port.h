@@ -15,6 +15,9 @@ bool touch_port_journal(void);
 void touch_port_show_journal(void);
 bool touch_port_bank(void);
 bool touch_port_games(void);
+bool touch_port_life(void);
+void touch_port_show_life(void);
+void touch_port_life_tap(tank_t *t, float x, float y);
 void touch_port_show_games(void);
 void touch_port_show_bank(void);
 void touch_port_show_milestones(bool on);
@@ -33,10 +36,11 @@ float touch_port_confirm_frac(void);           /* time left before it gives up, 
 int  touch_port_confirm_take(void);            /* +1 / -1 once, then 0 */
 bool touch_port_pressed_since(int64_t us);     /* a finger is down and landed after `us` */
 /* the settings page (2026-09-15): opened from the milestones page's SETTINGS
- * button; a tap on a segment is handed to main as SET_TAP_BRIGHT / _VOLUME
- * with its value (one-shot), CLOSE ends the page */
+ * button; slider moves yield SET_TAP_BRIGHT_PREVIEW without flash writes;
+ * release yields SET_TAP_BRIGHT to persist the final value. CLOSE ends it. */
 bool touch_port_settings(void);
 void touch_port_show_settings(bool on);
+bool touch_port_settings_tap(tank_t *t, float x, float y);
 int  touch_port_take_setting(int *value);       /* SET_TAP_* or 0 */
 /* the shop page (2026-09-15): up / show it; an UNLOCK or MOVE tapped hands
  * the raw tap code (SHOP_TAP_BUY / SHOP_TAP_MOVE + item; 0 = none) to main

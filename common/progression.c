@@ -1,4 +1,5 @@
 #include "progression.h"
+#include "companion.h"
 #include "tank_events.h"
 #include "version.h"
 #include <stddef.h>
@@ -40,7 +41,7 @@ const char *const TMS_NAMES[TMS_COUNT] = {
  * layout lock below. A build with another grid (the bowl's 26 x 22) saves its
  * own cells into the front of the same array: the layout never moves. */
 #define ALGAE_SAVE 644
-_Static_assert(ALGAE_CELLS <= ALGAE_SAVE, "the film grid outgrew the 644 cells the save keeps");
+_Static_assert(ALGAE_CAP <= ALGAE_SAVE, "the film grid outgrew the 644 cells the save keeps");
 
 typedef fish_record_t fish_save_t;
 
@@ -206,6 +207,7 @@ typedef struct {
     bank_fish_t bank[FISH_BANK_CAP];
     uint32_t pad_bank_tail;
     aquarium_state_t aquariums;
+    companion_state_t companion;
 } save_t;
 /* the smallest PTK2 save (pre-upkeep, 2026-08-30): anything shorter is not
  * ours. Every later build wrote sizeof(save_t) of its day - 448, 1112, 1304,
@@ -310,20 +312,20 @@ SAVE_AT(bank_count, 2040); SAVE_AT(bank, 2044);
 _Static_assert(sizeof(bank_fish_t) == 96, "SAVE LAYOUT LOCK: bank fish");
 SAVE_AT(aquariums, 3968);
 _Static_assert(sizeof(aquarium_state_t) == 32, "SAVE LAYOUT LOCK: aquarium metadata and name");
-_Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: aquarium tail");
+SAVE_AT(companion, 4000);
+_Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: companion tail");
 /* NVS budget: the save is one blob in the nvs partition (0x9000, 0x6000 =
  * 6 pages of 4096 B; tools/make_installer.py pins the row). A page is 126
  * entries of 32 B, and NVS keeps one page free for its garbage collection:
  * 5 x 126 = 630 entries usable. A blob costs an entry per 32 B, a header per
  * chunk (a chunk stays on one page) and an index entry, and nvs_set_blob
  * writes the new copy before it erases the old - on top of the director's
- * parked "bk" copy, three at once at worst. At 4000 B (a page's worth) that
- * is 3 x ~128 = ~390 entries, plus ~10 for the settings, "bat"/"hist" and
- * the batlog's "bed": under 2/3 of the 630, so GC always has room. Past it,
- * saves can start failing for space, and any nvs_flash_init error makes
- * main.c ERASE the partition. The 4000-byte aquarium save stays within
- * this budget; inactive aquariums live on SD, not in additional NVS blobs. */
-#define SAVE_NVS_BUDGET 4000
+ * parked "bk" copy, three at once at worst. At 4520 B (two chunks) that
+ * is 3 x ~146 = ~438 entries, plus ~10 for settings, "bat"/"hist" and the
+ * batlog's "bed": below 630 with a spare page. Inactive aquariums live on
+ * SD, not additional NVS blobs; their shorter records zero-fill the new
+ * tail after checksum validation, retaining the frozen 4000-byte prefix. */
+#define SAVE_NVS_BUDGET 4608
 _Static_assert(sizeof(save_t) <= SAVE_NVS_BUDGET, "the save outgrew its NVS budget - see the math above");
 
 float progression_time_scale = 1.0f;
@@ -664,13 +666,72 @@ static void bank_restore(tank_t *t, int i, const bank_fish_t *b) {
     f->parent_a = f->parent_b = -1; /* Slot-based family links cannot follow a fish outside this tank. */
     t->sd_paid_fish[i] = b->paid; s_age[i] = s->age_s; s_starve_s[i] = 0;
 }
+static int occupied_slots(const tank_t *t) { return t->n_fish + t->companion.away; }
+bool progression_adventure_depart(tank_t *t, int adventure, int fish) {
+    if (adventure < 0 || adventure >= COMPANION_ADVENTURE_COUNT || fish < 0 || fish >= t->n_fish ||
+        t->n_fish < 2 || t->companion.adventure || s_setup_pending || s_newborn >= 0 ||
+        (t->companion.adventure_claimed & (1u << adventure))) return false;
+    tank_t *next = malloc(sizeof *next);
+    if (!next) { fprintf(stderr, "Not enough memory for adventure departure\n"); return false; }
+    *next = *t;
+    companion_state_t *s = &next->companion;
+    s->version = COMPANION_VERSION; s->adventure = (uint8_t)(adventure + 1); s->adventure_s = 0;
+    s->traveler = bank_capture(t, fish); s->traveler_bond = s->active[fish]; s->away = 1;
+    s->adventure_clock = clock_port_now_unix();
+    if (s->adventure_clock < 0 || s->adventure_clock > 4102444800LL) s->adventure_clock = 0;
+    memcpy(s->portrait_name, t->fish[fish].name, sizeof s->portrait_name);
+    s->portrait_body = t->fish[fish].color; s->portrait_accent = t->fish[fish].accent;
+    s->portrait_variety = t->fish[fish].variety; s->portrait_pattern = t->fish[fish].pattern;
+    s->portrait_wearable = s->active[fish].wearable;
+    s->portrait_colors = s->active[fish].wear_colors;
+    double old_age[N_FISH_MAX]; float old_starve[N_FISH_MAX];
+    memcpy(old_age, s_age, sizeof old_age); memcpy(old_starve, s_starve_s, sizeof old_starve);
+    tank_remove_fish(next, fish);
+    for (int i = fish; i < next->n_fish; i++) { s_age[i] = s_age[i + 1]; s_starve_s[i] = s_starve_s[i + 1]; }
+    s_age[next->n_fish] = 0; s_starve_s[next->n_fish] = 0;
+    bool arrival = s_arrival_pending; float spawn = s_spawn_in;
+    s_arrival_pending = false; s_spawn_in = -1;
+    bool saved = progression_save(next);
+    if (saved) *t = *next;
+    else {
+        memcpy(s_age, old_age, sizeof s_age); memcpy(s_starve_s, old_starve, sizeof s_starve_s);
+        s_arrival_pending = arrival; s_spawn_in = spawn;
+        fprintf(stderr, "Adventure departure save failed; fish remains in aquarium\n");
+    }
+    free(next); return saved;
+}
+bool progression_adventure_return(tank_t *t) {
+    companion_state_t *s = &t->companion;
+    if (!s->away || !s->adventure || s->adventure_s < companion_adventure_total(s, s->adventure - 1) ||
+        t->n_fish >= POP_CAP || t->n_fish >= N_FISH_MAX) return false;
+    tank_t *next = malloc(sizeof *next);
+    if (!next) { fprintf(stderr, "Not enough memory for adventure return\n"); return false; }
+    *next = *t;
+    int slot = next->n_fish++, a = s->adventure - 1;
+    double age = s_age[slot]; float starve = s_starve_s[slot];
+    bank_restore(next, slot, &s->traveler);
+    next->companion.active[slot] = s->traveler_bond;
+    next->fish[slot].wearable = s->traveler_bond.wearable;
+    next->fish[slot].wear_colors = s->traveler_bond.wear_colors;
+    next->companion.away = 0; next->companion.adventure_clock = 0;
+    memset(&next->companion.traveler, 0, sizeof next->companion.traveler);
+    memset(&next->companion.traveler_bond, 0, sizeof next->companion.traveler_bond);
+    next->companion.adventure_done |= (uint8_t)(1u << a);
+    if (s->adventure_choice) next->companion.adventure_routes |= (uint8_t)(1u << a);
+    next->companion.discoveries |= 1u << (8 + a); next->companion.last_discovery = (uint8_t)(9 + a);
+    next->roster_gen++;
+    bool saved = progression_save(next);
+    if (saved) *t = *next;
+    else { s_age[slot] = age; s_starve_s[slot] = starve; }
+    free(next); return saved;
+}
 const char *progression_bank_move(tank_t *t, int bank, int active) {
     if (bank < -1 || bank >= t->bank_count || active < -1 || active >= t->n_fish || (bank < 0 && active < 0))
         return "INVALID FISH SELECTION";
     if (s_setup_pending || s_newborn >= 0) return "FINISH NAMING YOUR FRY FIRST";
     if (bank < 0 && t->bank_count >= FISH_BANK_CAP) return "BANK FULL - SWAP A FISH INSTEAD";
     if (bank < 0 && t->n_fish <= FISH_KEEP_MIN) return "KEEP TWO IN TANK - USE SWAP";
-    if (active < 0 && t->n_fish >= POP_CAP) return "TANK FULL - SELECT A SWAP";
+    if (active < 0 && occupied_slots(t) >= POP_CAP) return "TANK FULL / ADVENTURE SLOT RESERVED";
     /* A heap draft avoids a large stack snapshot and keeps failed writes entirely transactional. */
     tank_t *next = malloc(sizeof *next);
     if (!next) return "NOT ENOUGH MEMORY - TRY AGAIN";
@@ -678,17 +739,23 @@ const char *progression_bank_move(tank_t *t, int bank, int active) {
     double old_age[N_FISH_MAX]; float old_starve[N_FISH_MAX];
     memcpy(old_age, s_age, sizeof old_age); memcpy(old_starve, s_starve_s, sizeof old_starve);
     if (bank < 0) {
+        next->companion.bank[next->bank_count] = next->companion.active[active];
         next->bank[next->bank_count++] = bank_capture(t, active);
         tank_remove_fish(next, active);
         for (int i = active; i < next->n_fish; i++) { s_age[i] = s_age[i + 1]; s_starve_s[i] = s_starve_s[i + 1]; }
         s_age[next->n_fish] = 0; s_starve_s[next->n_fish] = 0;
     } else {
         bank_fish_t incoming = next->bank[bank];
+        companion_bond_t incoming_bond = next->companion.bank[bank];
         if (active < 0) {
             active = next->n_fish++;
+            memmove(&next->companion.bank[bank], &next->companion.bank[bank + 1],
+                    (next->bank_count - bank - 1) * sizeof next->companion.bank[0]);
+            memset(&next->companion.bank[next->bank_count - 1], 0, sizeof next->companion.bank[0]);
             memmove(&next->bank[bank], &next->bank[bank + 1], (next->bank_count - bank - 1) * sizeof next->bank[0]);
             memset(&next->bank[--next->bank_count], 0, sizeof next->bank[0]);
         } else {
+            next->companion.bank[bank] = next->companion.active[active];
             next->bank[bank] = bank_capture(t, active);
             for (int i = 0; i < next->n_fish; i++) {
                 if (next->fish[i].parent_a == active) next->fish[i].parent_a = -1;
@@ -696,6 +763,9 @@ const char *progression_bank_move(tank_t *t, int bank, int active) {
             }
         }
         bank_restore(next, active, &incoming);
+        next->companion.active[active] = incoming_bond;
+        next->fish[active].wearable = incoming_bond.wearable;
+        next->fish[active].wear_colors = incoming_bond.wear_colors;
         next->roster_gen++;
     }
     next->courting = false; next->court_a = next->court_b = -1; next->court_active = 0;
@@ -716,7 +786,17 @@ static void fry_age(tank_t *t, float seconds);
 bool progression_sell_fish(tank_t *t, int fish) {
     if (!progression_fish_sellable(t, fish)) return false;
     int worth = progression_fish_value(t, fish);
-    if (!tank_remove_fish(t, fish)) return false;
+    if (t->sd_balance > INT_MAX - worth || t->sd_earned > INT_MAX - worth ||
+        t->player_feedings > INT_MAX - SELL_FRY_MEALS) return false;
+    tank_t *old = malloc(sizeof *old);
+    if (!old) return false;
+    *old = *t;
+    double old_age[N_FISH_MAX]; float old_starve[N_FISH_MAX];
+    memcpy(old_age, s_age, sizeof old_age); memcpy(old_starve, s_starve_s, sizeof old_starve);
+    bool arrival = s_arrival_pending; float spawn = s_spawn_in;
+    int32_t sale = s_sale_need; int pending = s_sd_pending;
+    uint16_t seed = s_fry_seed; double fry_seconds = s_fry_age; uint8_t sold = s_fry_sold;
+    if (!tank_remove_fish(t, fish)) { free(old); return false; }
     for (int i = fish; i < t->n_fish; i++) { s_age[i] = s_age[i + 1]; s_starve_s[i] = s_starve_s[i + 1]; }   /* the clocks move down with their fish */
     s_age[t->n_fish] = 0; s_starve_s[t->n_fish] = 0;
     /* the slot it leaves is earned again by care, not handed back: a fry
@@ -729,9 +809,14 @@ bool progression_sell_fish(tank_t *t, int fish) {
     set_tms(t, TMS_FIRST_SALE);                            /* the first sale opens the shop's fry (0.3.5) */
     fry_age(t, 0);                                         /* ... and draws the first three */
     sd_award(t, worth);
-    tank_emit(TEV_CONFIRM, -1);
-    progression_save(t);                                   /* a sale sticks at once */
-    return true;
+    bool ok = progression_save(t);
+    if (!ok) {
+        *t = *old;
+        memcpy(s_age, old_age, sizeof s_age); memcpy(s_starve_s, old_starve, sizeof s_starve_s);
+        s_arrival_pending = arrival; s_spawn_in = spawn; s_sale_need = sale; s_sd_pending = pending;
+        s_fry_seed = seed; s_fry_age = fry_seconds; s_fry_sold = sold;
+    } else tank_emit(TEV_CONFIRM, -1);
+    free(old); return ok;
 }
 bool progression_buy(tank_t *t, int item) {
     if (item < 0 || item >= SD_ITEM_COUNT) return false;
@@ -856,7 +941,7 @@ static const uint32_t FRY_COLORS[9] = { 0x38dcc7, 0xff725c, 0x78d67d, 0xa799ff, 
 #define FRY_BODY_N 8
 static uint32_t fry_hash(uint32_t x) { x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
 bool progression_fry_for_sale(const tank_t *t) { return (t->tank_ms_bits & TMS_FIRST_SALE) != 0; }
-bool progression_fry_room(const tank_t *t) { return t->n_fish < POP_CAP && t->n_fish < N_FISH_MAX && s_newborn < 0; }
+bool progression_fry_room(const tank_t *t) { return occupied_slots(t) < POP_CAP && occupied_slots(t) < N_FISH_MAX && s_newborn < 0; }
 int  progression_fry_left(void) { int n = 0; for (int k = 0; k < FRY_OFFER_N; k++) n += !(s_fry_sold >> k & 1); return n; }
 float progression_fry_new_in_s(void) { double s = FRY_OFFER_S - s_fry_age; return s > 0 ? (float)s : 0; }
 void progression_fry_offer(const tank_t *t, int k, fry_offer_t *o) {
@@ -903,7 +988,7 @@ bool progression_buy_fry(tank_t *t, int k) {
     t->sd_paid_fish[slot] = 0;                     /* its stages pay; no birth dollars - it was bought */
     apply_growth(&t->fish[slot]);
     if (t->n_fish <= N_FISH_MAX) set_tms(t, POP_TMS[t->n_fish]);
-    if (t->n_fish >= POP_CAP) { s_arrival_pending = false; s_spawn_in = -1; t->spawning = false; t->spawn_danced = 0; }   /* the last slot: a staged fry is called off */
+    if (occupied_slots(t) >= POP_CAP) { s_arrival_pending = false; s_spawn_in = -1; t->spawning = false; t->spawn_danced = 0; }   /* the last slot: a staged fry is called off */
     s_newborn = slot;                              /* owed its welcome: the birth flow (setup.c) */
     progression_save(t);
     return true;
@@ -1009,7 +1094,7 @@ const char *const *progression_fry_tip(int kind) {
 static const char *const STAGE_WORDS[4] = { "A FRY", "A JUVENILE", "AN ADULT", "AN ELDER" };
 int progression_next_fry(const tank_t *t, fry_req_t out[FRY_REQ_MAX], bool *staged) {
     if (staged) *staged = s_arrival_pending;
-    if (t->n_fish >= POP_CAP || t->n_fish >= N_FISH_MAX || t->n_fish < 2) return 0;
+    if (occupied_slots(t) >= POP_CAP || occupied_slots(t) >= N_FISH_MAX || t->n_fish < 2) return 0;
     gate_t g[CARE_GATES_MAX];
     int n = care_gates(t, g);
     for (int i = 0; i < n; i++) {
@@ -1082,7 +1167,7 @@ int progression_next_fry(const tank_t *t, fry_req_t out[FRY_REQ_MAX], bool *stag
 }
 
 static bool arrival_earned(const tank_t *t) {
-    if (t->n_fish >= POP_CAP || t->n_fish >= N_FISH_MAX) return false;
+    if (occupied_slots(t) >= POP_CAP || occupied_slots(t) >= N_FISH_MAX) return false;
     if (tank_nursery_bed(t) < 0) return false;   /* no grass to be born in */
     int met, total;
     arrival_conditions(t, &met, &total);
@@ -1094,6 +1179,9 @@ void progression_woke(tank_t *t) { if (s_arrival_pending) do_arrival(t); }
 void progression_stage_arrival(tank_t *t) { (void)t; if (!s_arrival_pending) { s_arrival_pending = true; mark_dirty(); } }
 
 void progression_fresh(tank_t *t) {
+    tank_reframe(t, true);
+    t->companion.version = COMPANION_VERSION;
+    t->companion.display_compact = 1;
     tank_new_population(t);          /* a new tank: two FRY, contrasting -
                                       * the keeper watches them grow up */
     for (int i = 0; i < N_FISH_MAX; i++) s_age[i] = 0;
@@ -1148,13 +1236,20 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     bool loaded;
     if (record) { sv = *record; got = sizeof sv; loaded = true; }
     else loaded = persist_port_load(&sv, sizeof sv, &got) && got >= SAVE_CORE_SIZE && got <= sizeof sv;
-    if (!loaded || sv.magic != SAVE_MAGIC || sv.n_fish < 2 || sv.n_fish > N_FISH_MAX) return false;
+    if (!loaded || sv.magic != SAVE_MAGIC || sv.n_fish < 1 || sv.n_fish > N_FISH_MAX ||
+        (sv.n_fish < 2 && !sv.companion.away) || sv.n_fish + sv.companion.away > N_FISH_MAX) return false;
     if (!sv.aquariums.count) sv.aquariums.count = 1;
     if (sv.aquariums.count > AQUARIUM_CAP || sv.aquariums.active >= sv.aquariums.count ||
         (sv.aquariums.stat_upgrades & ~STAT_MASK) ||
         (sv.aquariums.count > 1 && !(sv.aquariums.id[0] | sv.aquariums.id[1]))) return false;
     if (sv.bank_count > FISH_BANK_CAP) return false;
+    if (got > offsetof(save_t, companion) && got != offsetof(save_t, companion) + 392 &&
+        got != offsetof(save_t, companion) + 512 &&
+        got < offsetof(save_t, companion) + sizeof sv.companion) return false;
+    if (!companion_valid(&sv.companion)) return false;
+    if (sv.companion.away && !bank_valid(&sv.companion.traveler)) return false;
     for (int i = 0; i < sv.bank_count; i++) if (!bank_valid(&sv.bank[i])) return false;
+    tank_reframe(t, sv.companion.display_compact != 0);
     if (got == SAVE_PRE_BUBBLE_SIZE) {         /* the first public installer's layout: see SAVE_PRE_BUBBLE_SIZE */
         memmove(&sv.ms_seen, &sv.bubble_x, sizeof sv.ms_seen + sizeof sv.tank_ms_seen);
         sv.bubble_x = 0;                       /* = the default column */
@@ -1246,6 +1341,13 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
         t->fish[i].pattern = sv.fish_pattern[i] < FISH_PATTERN_COUNT ? sv.fish_pattern[i] : 0;
     }
     t->aquariums = sv.aquariums;
+    t->companion = sv.companion;
+    for (int i = 0; i < t->n_fish; i++) {
+        t->fish[i].wearable = t->companion.active[i].wearable;
+        t->fish[i].wear_colors = t->companion.active[i].wear_colors;
+    }
+    if (!t->companion.version) t->companion.version = COMPANION_VERSION;
+    t->companion_fraction = 0;
     if (t->aquariums.clock_theme >= CLOCK_THEME_COUNT ||
         t->aquariums.clock_utc_quarters < -48 || t->aquariums.clock_utc_quarters > 56 ||
         t->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (t->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT || (t->aquariums.clock_delay & CLOCK_DELAY_MASK) >= CLOCK_DELAY_COUNT) {
@@ -1430,7 +1532,7 @@ void progression_tick(tank_t *t, float dt) {
     /* AUTO FEED off: going hungry costs trust (the constants' note above) */
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
-        if (!t->autofeed_off || f->hunger < STARVE_HUNGER) { s_starve_s[i] = 0; continue; }
+        if (t->companion.cozy || !t->autofeed_off || f->hunger < STARVE_HUNGER) { s_starve_s[i] = 0; continue; }
         if (t->night) continue;                               /* dark: they rest; the count holds */
         s_starve_s[i] += dt;
         if (s_starve_s[i] > STARVE_GRACE_S && f->trust > STARVE_TRUST_FLOOR)
@@ -1445,7 +1547,7 @@ void progression_tick(tank_t *t, float dt) {
      * the parents-to-be pair up - tank.c stages the episodes. The pair is
      * the one do_arrival will name (pick_parents). */
     t->courting = false; t->court_a = t->court_b = -1;
-    if (t->n_fish < POP_CAP && t->n_fish < N_FISH_MAX && tank_nursery_bed(t) >= 0) {
+    if (occupied_slots(t) < POP_CAP && occupied_slots(t) < N_FISH_MAX && tank_nursery_bed(t) >= 0) {
         /* ... and only with a nursery: a bed tall enough to hide in. Shave
          * every bed and the courting stops until one regrows. */
         int met, total;
@@ -1486,86 +1588,87 @@ void progression_tick(tank_t *t, float dt) {
         progression_save(t);
 }
 
-static save_t capture_save(const tank_t *t) {
-    save_t sv; memset(&sv, 0, sizeof sv);
-    sv.magic = SAVE_MAGIC; sv.saved_unix = clock_port_now_unix(); sv.clock = t->clock;
-    sv.aquariums = t->aquariums;
-    sv.saved_release = PT_RELEASE_NUM;
-    sv.sale_meals_need = s_sale_need;
-    sv.fry_seed = s_fry_seed; sv.fry_sold = s_fry_sold;
-    sv.fry_age_min = (uint16_t)(s_fry_age / 60 < 65535 ? s_fry_age / 60 : 65535);
+/* Fill caller storage: returning a whole save adds a second large CYD stack frame. */
+static void capture_save(const tank_t *t, save_t *sv) {
+    memset(sv, 0, sizeof *sv);
+    sv->magic = SAVE_MAGIC; sv->saved_unix = clock_port_now_unix(); sv->clock = t->clock;
+    sv->aquariums = t->aquariums;
+    sv->companion = t->companion;
+    sv->saved_release = PT_RELEASE_NUM;
+    sv->sale_meals_need = s_sale_need;
+    sv->fry_seed = s_fry_seed; sv->fry_sold = s_fry_sold;
+    sv->fry_age_min = (uint16_t)(s_fry_age / 60 < 65535 ? s_fry_age / 60 : 65535);
     /* light_override / light_on stay zero in the save (2026-09-15) */
-    sv.light_idle_s = (uint16_t)t->light_idle_s; sv.light_auto = t->light_auto; sv.light_manual_off = t->light_manual_off;
-    sv.light_tip_seen = t->light_tip_seen;
-    sv.tools_locked = t->tools_locked;
-    sv.screen_turned = t->screen_turned;
-    sv.orient = (uint8_t)(t->orient_lock ? 1 | (t->orient_inv ? 2 : 0) : 0);
-    sv.autofeed_off = t->autofeed_off;
-    sv.arrival_pending = s_arrival_pending; sv.n_fish = (uint8_t)t->n_fish;
-    sv.feed_spot_x = t->feed_spot_x; sv.player_feedings = t->player_feedings;
-    sv.hold_approaches = t->hold_approaches; sv.tank_ms_bits = t->tank_ms_bits;
-    sv.tank_ms_seen = t->tank_ms_seen;
+    sv->light_idle_s = (uint16_t)t->light_idle_s; sv->light_auto = t->light_auto; sv->light_manual_off = t->light_manual_off;
+    sv->light_tip_seen = t->light_tip_seen;
+    sv->tools_locked = t->tools_locked;
+    sv->screen_turned = t->screen_turned;
+    sv->orient = (uint8_t)(t->orient_lock ? 1 | (t->orient_inv ? 2 : 0) : 0);
+    sv->autofeed_off = t->autofeed_off;
+    sv->arrival_pending = s_arrival_pending; sv->n_fish = (uint8_t)t->n_fish;
+    sv->feed_spot_x = t->feed_spot_x; sv->player_feedings = t->player_feedings;
+    sv->hold_approaches = t->hold_approaches; sv->tank_ms_bits = t->tank_ms_bits;
+    sv->tank_ms_seen = t->tank_ms_seen;
     for (int b = 0; b < VEG_BEDS; b++) {
-        sv.veg_growth[b] = t->veg_growth[b];
-        for (int i = 0; i < VEG_FRONDS_MAX; i++) sv.veg_h[b][i] = t->veg_h[b][i];
+        sv->veg_growth[b] = t->veg_growth[b];
+        for (int i = 0; i < VEG_FRONDS_MAX; i++) sv->veg_h[b][i] = t->veg_h[b][i];
     }
-    memcpy(sv.algae, t->algae, ALGAE_CELLS);
-    sv.trims = t->trims; sv.cells_cleaned = t->cells_cleaned;
-    sv.sd_balance = t->sd_balance; sv.sd_earned = t->sd_earned; sv.sd_unlocks = t->sd_unlocks;
-    for (int i = 0; i < N_FISH_MAX; i++) sv.sd_paid_fish[i] = t->sd_paid_fish[i];
-    sv.sd_colonies_paid = t->sd_colonies_paid; sv.sd_inches_paid = t->sd_inches_paid;
-    sv.algae_colonies = t->algae_colonies; sv.trim_px = t->trim_px;
-    sv.snail_x = t->snail_x > 0 ? t->snail_x : 0; sv.snail_y = t->snail_y > 0 ? t->snail_y : 0;
-    sv.snail_grazed = t->snail_grazed;
-    for (int i = 0; i < VEG_FRONDS_MAX; i++) sv.veg_h3[i] = (t->sd_unlocks & SD_ITEM_PLANT) ? t->veg_h[3][i] : 0;
-    sv.plant_x = t->plant_x > 0 ? t->plant_x : 0; sv.plant_z1 = (uint8_t)(t->plant_z + 1);
-    sv.castle_x = t->castle_x > 0 ? t->castle_x : 0; sv.castle_z1 = (uint8_t)(t->castle_z + 1);
-    sv.coral_x = t->coral_x > 0 ? t->coral_x : 0; sv.coral_z1 = (uint8_t)(t->coral_z + 1); sv.coral_rgb = t->coral_rgb;
-    sv.coral_growth = t->coral_growth;
-    sv.cluster_x = t->cluster_x > 0 ? t->cluster_x : 0; sv.cluster_z1 = (uint8_t)(t->cluster_z + 1); sv.cluster_scheme = t->cluster_scheme;
-    sv.cluster_growth = t->cluster_growth;
-    sv.pumpkin_x = t->pumpkin_x > 0 ? t->pumpkin_x : 0; sv.pumpkin_z1 = (uint8_t)(t->pumpkin_z + 1);
-    memcpy(sv.decor_rank, t->decor_rank, sizeof sv.decor_rank);
-    sv.chest_x = t->chest_x; sv.chest_z1 = (uint8_t)(t->chest_z + 1); sv.chest_rank = t->decor_rank[5];
+    memcpy(sv->algae, t->algae, ALGAE_CELLS);
+    sv->trims = t->trims; sv->cells_cleaned = t->cells_cleaned;
+    sv->sd_balance = t->sd_balance; sv->sd_earned = t->sd_earned; sv->sd_unlocks = t->sd_unlocks;
+    for (int i = 0; i < N_FISH_MAX; i++) sv->sd_paid_fish[i] = t->sd_paid_fish[i];
+    sv->sd_colonies_paid = t->sd_colonies_paid; sv->sd_inches_paid = t->sd_inches_paid;
+    sv->algae_colonies = t->algae_colonies; sv->trim_px = t->trim_px;
+    sv->snail_x = t->snail_x > 0 ? t->snail_x : 0; sv->snail_y = t->snail_y > 0 ? t->snail_y : 0;
+    sv->snail_grazed = t->snail_grazed;
+    for (int i = 0; i < VEG_FRONDS_MAX; i++) sv->veg_h3[i] = (t->sd_unlocks & SD_ITEM_PLANT) ? t->veg_h[3][i] : 0;
+    sv->plant_x = t->plant_x > 0 ? t->plant_x : 0; sv->plant_z1 = (uint8_t)(t->plant_z + 1);
+    sv->castle_x = t->castle_x > 0 ? t->castle_x : 0; sv->castle_z1 = (uint8_t)(t->castle_z + 1);
+    sv->coral_x = t->coral_x > 0 ? t->coral_x : 0; sv->coral_z1 = (uint8_t)(t->coral_z + 1); sv->coral_rgb = t->coral_rgb;
+    sv->coral_growth = t->coral_growth;
+    sv->cluster_x = t->cluster_x > 0 ? t->cluster_x : 0; sv->cluster_z1 = (uint8_t)(t->cluster_z + 1); sv->cluster_scheme = t->cluster_scheme;
+    sv->cluster_growth = t->cluster_growth;
+    sv->pumpkin_x = t->pumpkin_x > 0 ? t->pumpkin_x : 0; sv->pumpkin_z1 = (uint8_t)(t->pumpkin_z + 1);
+    memcpy(sv->decor_rank, t->decor_rank, sizeof sv->decor_rank);
+    sv->chest_x = t->chest_x; sv->chest_z1 = (uint8_t)(t->chest_z + 1); sv->chest_rank = t->decor_rank[5];
     for (int i = 0; i < 4; i++) {
-        sv.ornament_x[i] = t->ornament_x[i]; sv.ornament_z1[i] = (uint8_t)(t->ornament_z[i] + 1);
-        sv.ornament_rank[i] = t->decor_rank[6 + i];
+        sv->ornament_x[i] = t->ornament_x[i]; sv->ornament_z1[i] = (uint8_t)(t->ornament_z[i] + 1);
+        sv->ornament_rank[i] = t->decor_rank[6 + i];
     }
-    sv.sand_style = t->sand_style; sv.water_style = t->water_style;
-    sv.journal = t->journal;
-    sv.bank_count = t->bank_count;
-    memcpy(sv.bank, t->bank, sizeof sv.bank);
+    sv->sand_style = t->sand_style; sv->water_style = t->water_style;
+    sv->journal = t->journal;
+    sv->bank_count = t->bank_count;
+    memcpy(sv->bank, t->bank, sizeof sv->bank);
     for (int i = 0; i < 6; i++) {
-        sv.extra_x[i] = t->ornament_x[4 + i]; sv.extra_z1[i] = (uint8_t)(t->ornament_z[4 + i] + 1);
-        sv.extra_rank[i] = t->decor_rank[10 + i];
+        sv->extra_x[i] = t->ornament_x[4 + i]; sv->extra_z1[i] = (uint8_t)(t->ornament_z[4 + i] + 1);
+        sv->extra_rank[i] = t->decor_rank[10 + i];
     }
     for (int i = 0; i < N_FISH_MAX; i++) {
-        if (i < t->n_fish) { sv.fish_variety[i] = t->fish[i].variety; sv.fish_pattern[i] = t->fish[i].pattern; }
+        if (i < t->n_fish) { sv->fish_variety[i] = t->fish[i].variety; sv->fish_pattern[i] = t->fish[i].pattern; }
     }
-    sv.shrimp_n = (t->sd_unlocks & SD_ITEM_SHRIMP) ? t->shrimp_n : 0; sv.shrimp_food = t->shrimp_food;
-    sv.shrimp_cool = t->shrimp_cool > 0 ? t->shrimp_cool : 0; sv.shrimp_eaten = t->shrimp_eaten;
-    sv.urchin_x = (t->sd_unlocks & SD_ITEM_URCHIN) && t->urchin_x > 0 ? t->urchin_x : 0;
-    sv.urchin_grazed_px = t->urchin_grazed_px > 0 ? t->urchin_grazed_px : 0;
+    sv->shrimp_n = (t->sd_unlocks & SD_ITEM_SHRIMP) ? t->shrimp_n : 0; sv->shrimp_food = t->shrimp_food;
+    sv->shrimp_cool = t->shrimp_cool > 0 ? t->shrimp_cool : 0; sv->shrimp_eaten = t->shrimp_eaten;
+    sv->urchin_x = (t->sd_unlocks & SD_ITEM_URCHIN) && t->urchin_x > 0 ? t->urchin_x : 0;
+    sv->urchin_grazed_px = t->urchin_grazed_px > 0 ? t->urchin_grazed_px : 0;
     if (t->sd_unlocks & SD_ITEM_SEAHORSE) {
-        sv.sh_s = t->sh_s > 0 ? t->sh_s : 0; sv.sh_hitches = t->sh_hitches; sv.sh_trust_passed = t->sh_trust_passed;
-        sv.sh_eaten = t->sh_eaten; sv.sh_snack_pay = t->sh_snack_pay; sv.sd_snacks_paid = t->sd_snacks_paid; sv.sh_snack_cool = t->sh_snack_cool > 0 ? t->sh_snack_cool : 0;
+        sv->sh_s = t->sh_s > 0 ? t->sh_s : 0; sv->sh_hitches = t->sh_hitches; sv->sh_trust_passed = t->sh_trust_passed;
+        sv->sh_eaten = t->sh_eaten; sv->sh_snack_pay = t->sh_snack_pay; sv->sd_snacks_paid = t->sd_snacks_paid; sv->sh_snack_cool = t->sh_snack_cool > 0 ? t->sh_snack_cool : 0;
     }
-    sv.setup_pending = s_setup_pending;
-    sv.newborn_p1 = (uint8_t)(s_newborn >= 0 && s_newborn < t->n_fish ? s_newborn + 1 : 0);
-    sv.bubble_x = t->bubble_x;
+    sv->setup_pending = s_setup_pending;
+    sv->newborn_p1 = (uint8_t)(s_newborn >= 0 && s_newborn < t->n_fish ? s_newborn + 1 : 0);
+    sv->bubble_x = t->bubble_x;
     for (int i = 0; i < t->n_fish; i++) {
-        const fish_t *f = &t->fish[i]; fish_save_t *s = &sv.fish[i];
-        if (strcmp(f->name, tank_roster_name(f->preset))) memcpy(sv.names[i], f->name, FISH_NAME_MAX + 1);
-        sv.body[i] = f->color; sv.accent[i] = f->accent;      /* the preset's too: harmless, exact */
-        sv.parent_p1[i][0] = (uint8_t)(f->parent_a + 1); sv.parent_p1[i][1] = (uint8_t)(f->parent_b + 1);
+        const fish_t *f = &t->fish[i]; fish_save_t *s = &sv->fish[i];
+        if (strcmp(f->name, tank_roster_name(f->preset))) memcpy(sv->names[i], f->name, FISH_NAME_MAX + 1);
+        sv->body[i] = f->color; sv->accent[i] = f->accent;      /* the preset's too: harmless, exact */
+        sv->parent_p1[i][0] = (uint8_t)(f->parent_a + 1); sv->parent_p1[i][1] = (uint8_t)(f->parent_b + 1);
         *s = capture_fish(f, s_age[i]);
-        sv.ms_seen[i] = f->ms_seen;
-        sv.drift_acc[i] = f->drift_acc;
+        sv->ms_seen[i] = f->ms_seen;
+        sv->drift_acc[i] = f->drift_acc;
     }
-    return sv;
 }
 bool progression_save(tank_t *t) {
-    save_t sv = capture_save(t);
+    save_t sv; capture_save(t, &sv);
     if (!persist_port_save(&sv, sizeof sv)) {
         if (!s_dirty) { s_dirty = true; s_dirty_since = 0; }
         s_since_save = 0;                         /* retry after SAVE_MIN_GAP_S */
@@ -1598,15 +1701,15 @@ typedef struct {
 static const json_field_t SAVE_FIELDS[] = {
     J(saved_unix, J_I64, 1, 0, 9007199254740991.0), J(clock, J_FLOAT, 1, 0, 1e12),
     J(light_override, J_BOOL, 1, 0, 1), J(light_on, J_BOOL, 1, 0, 1),
-    J(arrival_pending, J_BOOL, 1, 0, 1), J(n_fish, J_U8, 1, 2, N_FISH_MAX),
-    J(feed_spot_x, J_FLOAT, 1, -1, TANK_W), J(player_feedings, J_I32, 1, 0, INT_MAX),
+    J(arrival_pending, J_BOOL, 1, 0, 1), J(n_fish, J_U8, 1, 1, N_FISH_MAX),
+    J(feed_spot_x, J_FLOAT, 1, -1, TANK_MAX_W), J(player_feedings, J_I32, 1, 0, INT_MAX),
     J(hold_approaches, J_I32, 1, 0, INT_MAX), J(tank_ms_bits, J_U32, 1, 0, UINT32_MAX),
     J(veg_growth, J_FLOAT, VEG_BEDS, 0, 1), J(algae, J_HEX, ALGAE_SAVE, 0, 255),
     J(trims, J_I32, 1, 0, INT_MAX), J(cells_cleaned, J_I32, 1, 0, INT_MAX),
     J(veg_h, J_FLOAT, VEG_BEDS * VEG_FRONDS_MAX, 0, 1),
     J(setup_pending, J_U8, 1, 0, 1), J(names, J_NAMES, N_FISH_MAX, 0, FISH_NAME_MAX),
     J(body, J_U32, N_FISH_MAX, 0, 0xffffff), J(accent, J_U32, N_FISH_MAX, 0, 0xffffff),
-    J(bubble_x, J_FLOAT, 1, 0, TANK_W), J(ms_seen, J_U32, N_FISH_MAX, 0, UINT32_MAX),
+    J(bubble_x, J_FLOAT, 1, 0, TANK_MAX_W), J(ms_seen, J_U32, N_FISH_MAX, 0, UINT32_MAX),
     J(tank_ms_seen, J_U32, 1, 0, UINT32_MAX), J(newborn_p1, J_U8, 1, 0, N_FISH_MAX),
     J(parent_p1, J_U8, N_FISH_MAX * 2, 0, N_FISH_MAX),
     J(drift_acc, J_FLOAT, N_FISH_MAX, 0, 1e12),
@@ -1616,32 +1719,32 @@ static const json_field_t SAVE_FIELDS[] = {
     J(sd_paid_fish, J_U32, N_FISH_MAX, 0, UINT32_MAX),
     J(sd_colonies_paid, J_I32, 1, 0, INT_MAX), J(sd_inches_paid, J_I32, 1, 0, INT_MAX),
     J(algae_colonies, J_I32, 1, 0, INT_MAX), J(trim_px, J_FLOAT, 1, 0, 1e12),
-    J(snail_x, J_FLOAT, 1, 0, TANK_W), J(snail_y, J_FLOAT, 1, 0, TANK_H),
-    J(veg_h3, J_FLOAT, VEG_FRONDS_MAX, 0, 1), J(plant_x, J_FLOAT, 1, 0, TANK_W),
+    J(snail_x, J_FLOAT, 1, 0, TANK_MAX_W), J(snail_y, J_FLOAT, 1, 0, TANK_MAX_H),
+    J(veg_h3, J_FLOAT, VEG_FRONDS_MAX, 0, 1), J(plant_x, J_FLOAT, 1, 0, TANK_MAX_W),
     J(plant_z1, J_U8, 1, 0, 3), J(snail_grazed, J_I32, 1, 0, INT_MAX),
-    J(castle_x, J_FLOAT, 1, 0, TANK_W), J(castle_z1, J_U8, 1, 0, 3),
-    J(coral_x, J_FLOAT, 1, 0, TANK_W), J(coral_z1, J_U8, 1, 0, 3),
+    J(castle_x, J_FLOAT, 1, 0, TANK_MAX_W), J(castle_z1, J_U8, 1, 0, 3),
+    J(coral_x, J_FLOAT, 1, 0, TANK_MAX_W), J(coral_z1, J_U8, 1, 0, 3),
     J(coral_rgb, J_U32, 1, 0, 0xffffff), J(coral_growth, J_FLOAT, 1, 0, CORAL_FULL),
-    J(cluster_x, J_FLOAT, 1, 0, TANK_W), J(cluster_z1, J_U8, 1, 0, 3),
+    J(cluster_x, J_FLOAT, 1, 0, TANK_MAX_W), J(cluster_z1, J_U8, 1, 0, 3),
     J(cluster_scheme, J_U8, 1, 0, CLUSTER_SCHEME_N - 1), J(fry_seed, J_U16, 1, 0, UINT16_MAX),
     J(cluster_growth, J_FLOAT, 1, 0, CLUSTER_FULL), J(shrimp_n, J_U8, 1, 0, SHRIMP_MAX),
     J(shrimp_food, J_U8, 1, 0, SHRIMP_PER_JOIN), J(fry_age_min, J_U16, 1, 0, UINT16_MAX),
     J(shrimp_cool, J_FLOAT, 1, 0, SHRIMP_COOLDOWN_S), J(shrimp_eaten, J_I32, 1, 0, INT_MAX),
     J(saved_release, J_U32, 1, 0, UINT32_MAX), J(sale_meals_need, J_I32, 1, 0, INT_MAX),
     J(screen_turned, J_U8, 1, 0, 1), J(orient, J_U8, 1, 0, 3), J(autofeed_off, J_U8, 1, 0, 1),
-    J(urchin_x, J_FLOAT, 1, 0, TANK_W), J(urchin_grazed_px, J_FLOAT, 1, 0, 1e12),
+    J(urchin_x, J_FLOAT, 1, 0, TANK_MAX_W), J(urchin_grazed_px, J_FLOAT, 1, 0, 1e12),
     J(light_tip_seen, J_U8, 1, 0, 1), J(tools_locked, J_U8, 1, 0, 1),
     J(fry_sold, J_U8, 1, 0, (1u << FRY_OFFER_N) - 1),
     J(sh_s, J_FLOAT, 1, 0, 1e12), J(sh_hitches, J_I32, 1, 0, INT_MAX),
     J(sh_trust_passed, J_FLOAT, 1, 0, 1e12), J(sh_eaten, J_I32, 1, 0, INT_MAX),
     J(sh_snack_pay, J_I32, 1, 0, INT_MAX), J(sd_snacks_paid, J_I32, 1, 0, INT_MAX),
     J(sh_snack_cool, J_FLOAT, 1, 0, SH_SNACK_COOL_S),
-    J(pumpkin_x, J_FLOAT, 1, 0, TANK_W), J(pumpkin_z1, J_U8, 1, 0, 3),
+    J(pumpkin_x, J_FLOAT, 1, 0, TANK_MAX_W), J(pumpkin_z1, J_U8, 1, 0, 3),
     J(decor_rank, J_U8, 5, 0, UINT8_MAX),
-    J(chest_x, J_FLOAT, 1, 0, TANK_W), J(chest_z1, J_U8, 1, 0, 3), J(chest_rank, J_U8, 1, 0, UINT8_MAX),
-    J(ornament_x, J_FLOAT, 4, 0, TANK_W), J(ornament_z1, J_U8, 4, 0, 3), J(ornament_rank, J_U8, 4, 0, UINT8_MAX),
+    J(chest_x, J_FLOAT, 1, 0, TANK_MAX_W), J(chest_z1, J_U8, 1, 0, 3), J(chest_rank, J_U8, 1, 0, UINT8_MAX),
+    J(ornament_x, J_FLOAT, 4, 0, TANK_MAX_W), J(ornament_z1, J_U8, 4, 0, 3), J(ornament_rank, J_U8, 4, 0, UINT8_MAX),
     J(sand_style, J_U8, 1, 0, SAND_STYLE_COUNT - 1), J(water_style, J_U8, 1, 0, WATER_STYLE_COUNT - 1),
-    J(extra_x, J_FLOAT, 6, 0, TANK_W), J(extra_z1, J_U8, 6, 0, 3), J(extra_rank, J_U8, 6, 0, UINT8_MAX),
+    J(extra_x, J_FLOAT, 6, 0, TANK_MAX_W), J(extra_z1, J_U8, 6, 0, 3), J(extra_rank, J_U8, 6, 0, UINT8_MAX),
     J(fish_variety, J_U8, N_FISH_MAX, 0, FISH_VARIETY_COUNT - 1), J(fish_pattern, J_U8, N_FISH_MAX, 0, FISH_PATTERN_COUNT - 1),
     {"journal_xp", offsetof(save_t, journal.xp), 1, J_U32, 0, JOURNAL_XP_MAX},
     {"journal_claimed", offsetof(save_t, journal.claimed), 1, J_U32, 0, (1u << JOURNAL_GOAL_N) - 1},
@@ -1664,6 +1767,32 @@ static const json_field_t FISH_FIELDS[] = {
     F(eaten, J_I32, 0, INT_MAX), F(eaten_player, J_I32, 0, INT_MAX), F(ms_bits, J_U32, 0, UINT32_MAX),
 };
 #undef F
+#define C(f, k, n, lo, hi) { #f, offsetof(companion_state_t, f), n, k, lo, hi }
+static const json_field_t COMPANION_FIELDS[] = {
+    C(powered_s, J_U32, 1, 0, UINT32_MAX), C(discoveries, J_U32, 1, 0, 0xfff),
+    C(collections, J_U32, 1, 0, 7), C(adventure_s, J_U32, 1, 0, 43200),
+    C(portrait_body, J_U32, 1, 0, 0xffffff), C(portrait_accent, J_U32, 1, 0, 0xffffff),
+    C(active, J_HEX, sizeof(((companion_state_t *)0)->active), 0, 255),
+    C(bank, J_HEX, sizeof(((companion_state_t *)0)->bank), 0, 255),
+    C(game_best, J_U16, 6, 0, UINT16_MAX), C(game_rounds, J_U16, 6, 0, UINT16_MAX),
+    C(portrait_name, J_NAMES, 1, 0, FISH_NAME_MAX), C(game_medals, J_U8, 6, 0, 3),
+    C(game_challenges, J_U8, 1, 0, 63), C(featured, J_U8, 1, 0, 5),
+    C(version, J_U8, 1, 1, COMPANION_VERSION), C(cozy, J_U8, 1, 0, 1),
+    C(captions, J_U8, 1, 0, 1), C(lively, J_U8, 1, 0, 1),
+    C(adventure, J_U8, 1, 0, 3), C(adventure_done, J_U8, 1, 0, 7),
+    C(adventure_claimed, J_U8, 1, 0, 7), C(cosmetic, J_U8, 1, 0, 3),
+    C(last_discovery, J_U8, 1, 0, COMPANION_DISCOVERY_COUNT),
+    C(adventure_choice, J_U8, 1, 0, 1), C(adventure_routes, J_U8, 1, 0, 7),
+    C(decor, J_U8, 1, 0, 1),
+    C(portrait_variety, J_U8, 1, 0, FISH_VARIETY_COUNT - 1), C(portrait_pattern, J_U8, 1, 0, FISH_PATTERN_COUNT - 1),
+    C(traveler, J_HEX, sizeof(bank_fish_t), 0, 255),
+    C(traveler_bond, J_HEX, sizeof(companion_bond_t), 0, 255),
+    C(away, J_U8, 1, 0, 1), C(adventure_clock, J_I64, 1, 0, 4102444800LL),
+    C(portrait_wearable, J_U8, 1, 0, WEAR_COUNT - 1),
+    C(portrait_colors, J_U8, 1, 0, 255), C(creature_colors, J_U8, CREATURE_COUNT, 0, 255),
+    C(display_compact, J_U8, 1, 0, 1),
+};
+#undef C
 #define B(f, k, n, lo, hi) { #f, offsetof(bank_fish_t, f), n, k, lo, hi }
 static const json_field_t BANK_FIELDS[] = {
     B(name, J_NAMES, 1, 0, 0), B(body, J_U32, 1, 1, 0xffffff), B(accent, J_U32, 1, 1, 0xffffff),
@@ -1743,61 +1872,62 @@ static cJSON *json_fields(const void *data, const json_field_t *fields, size_t c
 fail:
     cJSON_Delete(obj); return NULL;
 }
+static bool json_append(char **text, size_t *used, const char *part) {
+    size_t n = strlen(part);
+    if (n > 32768 - *used) return false;
+    char *next = realloc(*text, *used + n + 1);
+    if (!next) return false;
+    memcpy(next + *used, part, n + 1);
+    *text = next; *used += n;
+    return true;
+}
+static bool json_append_value(char **text, size_t *used, cJSON *value) {
+    if (!value) return false;
+    char *part = cJSON_PrintUnformatted(value);
+    cJSON_Delete(value);
+    if (!part) return false;
+    bool ok = json_append(text, used, part);
+    free(part);
+    return ok;
+}
 char *progression_backup_json(const tank_t *t) {
-    save_t sv = capture_save(t);
-    cJSON *root = cJSON_CreateObject();
-    if (!root) return NULL;
-    char *text = NULL;
-    if (!cJSON_AddStringToObject(root, "format", "pocket-tank") || !cJSON_AddNumberToObject(root, "schema", 5)
-        || !cJSON_AddStringToObject(root, "board", "cyd2432s028")
-        || !cJSON_AddNumberToObject(root, "width", TANK_W) || !cJSON_AddNumberToObject(root, "height", TANK_H)) goto done;
+    save_t sv; capture_save(t, &sv);
+    char header[128], *text = NULL;
+    size_t used = 0;
+    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":10,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
+    if (!json_append(&text, &used, header)) goto fail;
     cJSON *tank = json_fields(&sv, SAVE_FIELDS, FIELD_COUNT(SAVE_FIELDS));
-    if (!tank || !cJSON_AddItemToObject(root, "tank", tank)) { cJSON_Delete(tank); goto done; }
-    if (!cJSON_AddNumberToObject(tank, "stat_upgrades", sv.aquariums.stat_upgrades)) goto done;
-    if (!cJSON_AddNumberToObject(tank, "clock_theme", sv.aquariums.clock_theme) ||
+    if (!tank) goto fail;
+    if (!cJSON_AddNumberToObject(tank, "stat_upgrades", sv.aquariums.stat_upgrades) ||
+        !cJSON_AddNumberToObject(tank, "clock_theme", sv.aquariums.clock_theme) ||
         !cJSON_AddNumberToObject(tank, "clock_flags", sv.aquariums.clock_flags) ||
         !cJSON_AddNumberToObject(tank, "clock_utc_quarters", sv.aquariums.clock_utc_quarters) ||
         !cJSON_AddNumberToObject(tank, "clock_layout", sv.aquariums.clock_layout) ||
         !cJSON_AddNumberToObject(tank, "clock_delay", sv.aquariums.clock_delay & CLOCK_DELAY_MASK) ||
-        !cJSON_AddNumberToObject(tank, "clock_secondary", sv.aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT)) goto done;
-    cJSON *fish = cJSON_AddArrayToObject(root, "fish");
-    if (!fish) goto done;
+        !cJSON_AddNumberToObject(tank, "clock_secondary", sv.aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT)) {
+        cJSON_Delete(tank); goto fail;
+    }
+    /* Serialize one section at a time so SD backup fits beside weather's Wi-Fi buffers. */
+    if (!json_append_value(&text, &used, tank) || !json_append(&text, &used, ",\"companion\":") ||
+        !json_append_value(&text, &used, json_fields(&sv.companion, COMPANION_FIELDS, FIELD_COUNT(COMPANION_FIELDS))) ||
+        !json_append(&text, &used, ",\"fish\":[")) goto fail;
     for (int i = 0; i < N_FISH_MAX; i++) {
-        cJSON *f = json_fields(&sv.fish[i], FISH_FIELDS, FIELD_COUNT(FISH_FIELDS));
-        if (!f || !cJSON_AddItemToArray(fish, f)) { cJSON_Delete(f); goto done; }
+        if ((i && !json_append(&text, &used, ",")) ||
+            !json_append_value(&text, &used, json_fields(&sv.fish[i], FISH_FIELDS, FIELD_COUNT(FISH_FIELDS)))) goto fail;
     }
-    char *prefix = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root); root = NULL;
-    if (!prefix) return NULL;
-    size_t capacity = strlen(prefix) + 11;
-    char *records[FISH_BANK_CAP] = {0};
-    /* Keep just one bank record's JSON tree alive on the no-PSRAM CYD. */
+    if (!json_append(&text, &used, "],\"bank\":[")) goto fail;
     for (int i = 0; i < sv.bank_count; i++) {
+        if (i && !json_append(&text, &used, ",")) goto fail;
         cJSON *b = json_fields(&sv.bank[i], BANK_FIELDS, FIELD_COUNT(BANK_FIELDS));
-        if (!b) goto bank_fail;
+        if (!b) goto fail;
         cJSON *f = json_fields(&sv.bank[i].fish, FISH_FIELDS, FIELD_COUNT(FISH_FIELDS));
-        if (!f || !cJSON_AddItemToObject(b, "fish", f)) { cJSON_Delete(f); cJSON_Delete(b); goto bank_fail; }
-        records[i] = cJSON_PrintUnformatted(b);
-        cJSON_Delete(b);
-        if (!records[i]) goto bank_fail;
-        capacity += strlen(records[i]) + (i ? 1 : 0);
+        if (!f || !cJSON_AddItemToObject(b, "fish", f)) { cJSON_Delete(f); cJSON_Delete(b); goto fail; }
+        if (!json_append_value(&text, &used, b)) goto fail;
     }
-    if (capacity > 32769 || !(text = malloc(capacity))) goto bank_fail;
-    size_t used = strlen(prefix) - 1;
-    memcpy(text, prefix, used);
-    memcpy(text + used, ",\"bank\":[", 9); used += 9;
-    for (int i = 0; i < sv.bank_count; i++) {
-        if (i) text[used++] = ',';
-        size_t n = strlen(records[i]);
-        memcpy(text + used, records[i], n); used += n;
-    }
-    memcpy(text + used, "]}", 3);
-bank_fail:
-    free(prefix);
-    for (int i = 0; i < FISH_BANK_CAP; i++) free(records[i]);
+    if (!json_append(&text, &used, "]}")) goto fail;
     return text;
-done:
-    cJSON_Delete(root); return text;
+fail:
+    free(text); return NULL;
 }
 static int json_hex_digit(char c) {
     return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
@@ -1926,11 +2056,12 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     const cJSON *height = cJSON_GetObjectItemCaseSensitive(root, "height");
     const cJSON *fish = cJSON_GetObjectItemCaseSensitive(root, "fish");
     if (!cJSON_IsString(format) || strcmp(format->valuestring, "pocket-tank")
-        || !cJSON_IsNumber(schema) || (schema->valuedouble != 1 && schema->valuedouble != 2 && schema->valuedouble != 3 && schema->valuedouble != 4 && schema->valuedouble != 5)
-        || cJSON_GetArraySize(root) != (schema->valuedouble == 5 ? 8 : 7)
+        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 10 ||
+           schema->valuedouble != floor(schema->valuedouble)
+        || cJSON_GetArraySize(root) != (schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
         || !cJSON_IsString(board) || strcmp(board->valuestring, "cyd2432s028")
-        || !cJSON_IsNumber(width) || width->valuedouble != TANK_W
-        || !cJSON_IsNumber(height) || height->valuedouble != TANK_H
+        || !cJSON_IsNumber(width) || (width->valuedouble != 240 && width->valuedouble != 320)
+        || !cJSON_IsNumber(height) || height->valuedouble * 4 != width->valuedouble * 3
         || !cJSON_IsArray(fish) || cJSON_GetArraySize(fish) != N_FISH_MAX) goto done;
     size_t fields = FIELD_COUNT(SAVE_FIELDS) - (schema->valuedouble < 4 ? 9 : 0) - (schema->valuedouble < 3 ? 5 : 0) - (schema->valuedouble == 1 ? 5 : 0);
     cJSON *tank_fields = cJSON_GetObjectItemCaseSensitive(root, "tank");
@@ -1972,7 +2103,36 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         if (!json_read_fields(&sv.fish[i], cJSON_GetArrayItem(fish, i), FISH_FIELDS, FIELD_COUNT(FISH_FIELDS), error, error_size)) goto done;
         if (i < sv.n_fish && sv.fish[i].preset >= tank_roster_count()) { snprintf(error, error_size, "Invalid fish preset"); goto done; }
     }
-    if (schema->valuedouble == 5) {
+    if (schema->valuedouble >= 6) {
+        memset(&sv.companion, 0, sizeof sv.companion);
+        if (!json_read_fields(&sv.companion, cJSON_GetObjectItemCaseSensitive(root, "companion"),
+                              COMPANION_FIELDS, FIELD_COUNT(COMPANION_FIELDS) - (schema->valuedouble == 6 ? 8 : schema->valuedouble == 7 ? 4 : schema->valuedouble == 8 ? 3 : schema->valuedouble == 9 ? 1 : 0), error, error_size) ||
+            (schema->valuedouble == 6 && sv.companion.version > 1) ||
+            (schema->valuedouble == 7 && sv.companion.version > 2) || !companion_valid(&sv.companion) ||
+            (schema->valuedouble == 8 && sv.companion.version > 3) ||
+            (schema->valuedouble == 9 && sv.companion.version > 4) ||
+            (sv.companion.away && !bank_valid(&sv.companion.traveler))) {
+            snprintf(error, error_size, "Invalid companion state"); goto done;
+        }
+    }
+    if ((sv.n_fish < 2 && !sv.companion.away) || sv.n_fish + sv.companion.away > N_FISH_MAX) {
+        snprintf(error, error_size, "Invalid aquarium population / adventure reservation"); goto done;
+    }
+    if (width->valuedouble != (sv.companion.display_compact ? 320 : 240)) {
+        snprintf(error, error_size, "Display size does not match saved scale"); goto done;
+    }
+    for (size_t i = 0; i < FIELD_COUNT(SAVE_FIELDS); i++) {
+        const json_field_t *field = &SAVE_FIELDS[i];
+        if (field->kind != J_FLOAT) continue;
+        double bound = field->max == TANK_MAX_W ? width->valuedouble :
+                       field->max == TANK_MAX_H ? height->valuedouble : -1;
+        if (bound < 0) continue;
+        const float *values = (const float *)((const char *)&sv + field->offset);
+        for (size_t j = 0; j < field->count; j++) if (values[j] > bound) {
+            snprintf(error, error_size, "Position outside saved display"); goto done;
+        }
+    }
+    if (schema->valuedouble >= 5) {
         const cJSON *bank = cJSON_GetObjectItemCaseSensitive(root, "bank");
         if (!cJSON_IsArray(bank)) {
             snprintf(error, error_size, "Invalid fish bank"); goto done;
@@ -1986,7 +2146,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         save_t *current = calloc(1, sizeof *current);
         if (!current) { snprintf(error, error_size, "Not enough memory for restore identity"); goto done; }
         size_t got = 0;
-        if (persist_port_load(current, sizeof *current, &got) && got >= sizeof *current && current->magic == SAVE_MAGIC)
+        if (persist_port_load(current, sizeof *current, &got) && got >= offsetof(save_t, companion) && current->magic == SAVE_MAGIC)
             sv.aquariums = current->aquariums;
         free(current);
         sv.aquariums.stat_upgrades = restored_stats;
@@ -2015,21 +2175,26 @@ const char *progression_aquarium_move(tank_t *t, int target) {
     struct { save_t outgoing, incoming; } *s = malloc(sizeof *s);
     if (!s) return "NOT ENOUGH MEMORY";
     const char *error = NULL;
-    s->outgoing = capture_save(t);
+    capture_save(t, &s->outgoing);
     aquarium_state_t owned = t->aquariums;
     if (!(owned.id[0] | owned.id[1])) aquarium_port_id(owned.id);
     if (!(owned.id[0] | owned.id[1])) { error = "COULD NOT CREATE TANK ID"; goto done; }
     if (buy) {
         tank_t *fresh = malloc(sizeof *fresh);
         if (!fresh) { error = "NOT ENOUGH MEMORY"; goto done; }
+        bool compact = TANK_W == TANK_MAX_W;
+        tank_resolution(true);
         tank_init(fresh, owned.id[0] ^ owned.id[1] ^ (uint32_t)target);
+        fresh->companion.version = COMPANION_VERSION;
+        fresh->companion.display_compact = 1;
         tank_new_population(fresh);
         fresh->tank_ms_bits = TMS_PAIR;
         for (int i = 0; i < fresh->n_fish; i++) {
             fresh->fish[i].ms_bits = MS_ARRIVED;
             apply_growth(&fresh->fish[i]);
         }
-        s->incoming = capture_save(fresh);
+        capture_save(fresh, &s->incoming);
+        tank_resolution(compact);
         free(fresh);
         for (int i = 0; i < N_FISH_MAX; i++) s->incoming.fish[i].age_s = 0;
         s->incoming.setup_pending = 1; s->incoming.newborn_p1 = 0;
@@ -2042,7 +2207,10 @@ const char *progression_aquarium_move(tank_t *t, int target) {
             error = "TANK READ FAILED - NOT SWITCHED"; goto done;
         }
         save_t *v = &s->incoming;
-        if (v->magic != SAVE_MAGIC || v->n_fish < 2 || v->n_fish > POP_CAP || v->bank_count > FISH_BANK_CAP ||
+        if (v->magic != SAVE_MAGIC || v->n_fish < 1 || (v->n_fish < 2 && !v->companion.away) ||
+            v->n_fish + v->companion.away > POP_CAP || v->bank_count > FISH_BANK_CAP ||
+            !companion_valid(&v->companion) ||
+            (v->companion.away && !bank_valid(&v->companion.traveler)) ||
             (v->aquariums.stat_upgrades & ~STAT_MASK) ||
             v->aquariums.clock_theme >= CLOCK_THEME_COUNT ||
             v->aquariums.clock_utc_quarters < -48 || v->aquariums.clock_utc_quarters > 56 ||

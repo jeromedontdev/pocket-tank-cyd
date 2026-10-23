@@ -38,12 +38,12 @@ static int inspect(const char *path, size_t size, uint32_t *sequence) {
         if (errno == ENOENT) return 0;
         fprintf(stderr, "Aquarium open failed: %s (%s)\n", path, strerror(errno)); return -1;
     }
-    header_t h;
+    header_t h = {0};
     bool ok = fread(&h, 1, sizeof h, file) == sizeof h && h.magic == STORE_MAGIC && h.version == 1 &&
-              h.length == size && h.sequence && h.header_crc == crc32(0, &h, offsetof(header_t, header_crc));
+              h.length && h.length <= size && h.sequence && h.header_crc == crc32(0, &h, offsetof(header_t, header_crc));
     unsigned char buffer[256];
     uint32_t crc = 0;
-    size_t left = size;
+    size_t left = h.length;
     while (ok && left) {
         size_t n = left < sizeof buffer ? left : sizeof buffer;
         if (fread(buffer, 1, n, file) != n) { ok = false; break; }
@@ -69,11 +69,12 @@ bool aquarium_store_read(const char *directory, const uint32_t id[2], int slot, 
     if (status[use] != 1) { fprintf(stderr, "No valid aquarium snapshot for tank %d\n", slot + 1); return false; }
     FILE *file = fopen(paths[use], "rb");
     if (!file) { fprintf(stderr, "Aquarium reread failed: %s\n", strerror(errno)); return false; }
-    header_t h;
+    header_t h = {0};
+    memset(data, 0, size); /* Append-only save tails: old SD aquariums migrate as a zero tail. */
     bool ok = fread(&h, 1, sizeof h, file) == sizeof h && h.magic == STORE_MAGIC && h.version == 1 &&
-              h.sequence == sequence[use] && h.length == size && fread(data, 1, size, file) == size &&
+              h.sequence == sequence[use] && h.length && h.length <= size && fread(data, 1, h.length, file) == h.length &&
               h.header_crc == crc32(0, &h, offsetof(header_t, header_crc)) &&
-              h.crc == crc32(0, data, size) && fgetc(file) == EOF && !ferror(file);
+              h.crc == crc32(0, data, h.length) && fgetc(file) == EOF && !ferror(file);
     if (fclose(file) != 0) ok = false;
     if (!ok) fprintf(stderr, "Aquarium reread verification failed\n");
     return ok;

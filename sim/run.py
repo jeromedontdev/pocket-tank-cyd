@@ -25,13 +25,14 @@ def build(compiler, output, *, defines=()):
     command += ["-shared", "-O1", "-std=c11", "-Wall", "-Wextra", "-Werror",
                 "-I" + str(ROOT / "common"), "-I" + str(cjson)]
     command += ["-D" + define for define in defines]
-    sources = [ROOT / "sim" / name for name in ("main.c", "persist_port_sim.c", "net_port_sim.c")]
+    sources = [ROOT / "sim" / name for name in ("main.c", "persist_port_sim.c", "net_port_sim.c", "weather_port_sim.c")]
     sources += [ROOT / "common" / name for name in
-                ("tank.c", "advisor.c", "render.c", "progression.c", "setup.c", "notice.c", "update.c", "aquarium_store.c")]
+                ("tank.c", "advisor.c", "render.c", "progression.c", "setup.c", "notice.c", "update.c", "aquarium_store.c",
+                 "companion.c", "companion_ui.c", "weather.c")]
     command += [*(str(path) for path in sources), str(cjson / "cJSON.c"),
                 str(output / "icons_sd.c"), "-o", str(library)]
     if sys.platform != "win32":
-        command += ["-fPIC", "-lm"]
+        command += ["-fPIC", "-pthread", "-lm"]
     subprocess.run(command, check=True)
     return library
 
@@ -76,8 +77,8 @@ def window(lib):
     panel = tk.Label(app)
     panel.pack()
     tk.Label(app, text="Mouse = touch/drag/hold. Preview only; no real Wi-Fi or hardware emulation.").pack()
-    colors = [bytes((((p >> 11) & 31) * 255 // 31, ((p >> 5) & 63) * 255 // 63,
-                     (p & 31) * 255 // 31)) for p in range(65536)]
+    colors = []
+    last_brightness = -1
 
     def touch(event, down):
         lib.sim_touch(max(0, min(239, event.x / 3)), max(0, min(179, event.y / 3)), down)
@@ -109,8 +110,16 @@ def window(lib):
     tk.Button(toolbar, text="Restore JSON", command=restore).pack(side="left")
 
     def frame():
+        nonlocal colors, last_brightness
         pixels = lib.sim_frame(0.04)
-        ppm = b"P6\n240 180\n255\n" + b"".join(colors[pixels[i]] for i in range(240 * 180))
+        brightness = lib.sim_display_brightness()
+        if brightness != last_brightness:
+            colors = [bytes((((p >> 11) & 31) * brightness // 31,
+                             ((p >> 5) & 63) * brightness // 63,
+                             (p & 31) * brightness // 31)) for p in range(65536)]
+            last_brightness = brightness
+        width, height = lib.sim_width(), lib.sim_height()
+        ppm = f"P6\n{width} {height}\n255\n".encode() + b"".join(colors[pixels[i]] for i in range(width * height))
         panel.image = tk.PhotoImage(data=ppm, format="PPM").zoom(3)
         panel.configure(image=panel.image)
         app.after(40, frame)
@@ -146,24 +155,24 @@ def main():
                         assert lib.sim_page() == action
                     for _ in range(5):
                         pixels = lib.sim_frame(0.04)
-                        assert any(pixels[i] for i in range(240 * 180))
+                        assert any(pixels[i] for i in range(lib.sim_width() * lib.sim_height()))
                     if action <= 3:
-                        frames.add(ctypes.string_at(pixels, 240 * 180 * 2))
+                        frames.add(ctypes.string_at(pixels, lib.sim_width() * lib.sim_height() * 2))
                 assert len(frames) == 4, "Tank, Keeper, Settings and Shop must render different pages"
                 data = backup(lib)
                 assert lib.sim_restore(data, len(data))
                 assert not lib.sim_restore(b"{}", 2)
                 assert lib.sim_save()
                 def tap(x, y):
-                    lib.sim_touch(x * 240 / 448, y * 180 / 368, 1)
-                    lib.sim_touch(x * 240 / 448, y * 180 / 368, 0)
+                    lib.sim_touch(x * lib.sim_width() / 448, y * lib.sim_height() / 368, 1)
+                    lib.sim_touch(x * lib.sim_width() / 448, y * lib.sim_height() / 368, 0)
 
                 def advance():
                     for _ in range(12):
                         lib.sim_frame(0.25)
 
                 lib.sim_action(2)
-                tap(220, 20)  # Clock subpage.
+                tap(330, 100)  # Clock subpage.
                 tap(220, 69); tap(220, 109); tap(220, 149); tap(120, 189); tap(220, 229); tap(380, 270)
                 options = json.loads(backup(lib))["tank"]
                 assert (options["clock_theme"], options["clock_flags"], options["clock_utc_quarters"], options["clock_layout"], options["clock_delay"]) == (1, 1, 4, 5, 1)
@@ -182,7 +191,7 @@ def main():
                 tap(224, 300)
                 assert lib.sim_clock_active(), "Appearance preview must enter clock mode"
                 tap(160, 90)
-                lib.sim_action(2); tap(220, 20); tap(220, 20)
+                lib.sim_action(2); tap(330, 100); tap(220, 20)
                 for _ in range(7):
                     tap(220, 80)
                     tap(220, 119)
@@ -201,7 +210,7 @@ def main():
                 lib.sim_frame(0.25)
                 assert lib.sim_clock_active(), "15-second clock must activate at the configured delay"
                 tap(160, 90)
-                lib.sim_action(2); tap(220, 20)
+                lib.sim_action(2); tap(330, 100)
                 for _ in range(5):
                     tap(220, 229)
                 assert json.loads(backup(lib))["tank"]["clock_delay"] == 6
@@ -210,7 +219,7 @@ def main():
                 tap(160, 90)
                 advance()
                 assert not lib.sim_clock_active()
-                lib.sim_action(2); tap(220, 20)
+                lib.sim_action(2); tap(330, 100)
                 for _ in range(7):
                     tap(220, 69)
                 assert json.loads(backup(lib))["tank"]["clock_theme"] == 0
@@ -319,14 +328,16 @@ def main():
                     current_cycle = json.loads(backup(lib))
                     current_cycle["tank"]["saved_unix"] = before_cycle["tank"]["saved_unix"]
                     assert current_cycle == before_cycle, "Next-fish arrow must not feed or modify the tank"
-                lib.sim_touch(176 * 240 / 448, 28 * 180 / 368, 1)
-                lib.sim_touch(206 * 240 / 448, 28 * 180 / 368, 0)
+                lib.sim_touch(176 * lib.sim_width() / 448, 28 * lib.sim_height() / 368, 1)
+                lib.sim_touch(206 * lib.sim_width() / 448, 28 * lib.sim_height() / 368, 0)
                 assert lib.sim_selected() == first and lib.sim_page() == 0, "Sliding outside the arrow cancels cycling"
                 tap(70, 80)
-                assert lib.sim_page() == 1, "The fish card itself must still open Keeper"
+                assert lib.sim_page() == 9, "The fish card MENU must open Home"
                 print("PASS: fish-card arrow cycles all fish, wraps, cancels off-target releases and does not feed/open Keeper")
                 from test_games import exercise
                 exercise(lib, backup, output)
+                from test_life import exercise as exercise_life
+                exercise_life(lib, backup)
                 lib.sim_action(5)
                 lib.sim_action(1)
                 tap(88, 356)
@@ -334,16 +345,16 @@ def main():
                 journal_frames = set()
                 for x in (70, 200, 340):
                     tap(x, 328)
-                    journal_frames.add(ctypes.string_at(lib.sim_frame(0.04), 240 * 180 * 2))
+                    journal_frames.add(ctypes.string_at(lib.sim_frame(0.04), lib.sim_width() * lib.sim_height() * 2))
                 assert len(journal_frames) == 3, "Goals, album and themes must differ"
                 locked = json.loads(backup(lib))
                 locked["tank"].update(journal_xp=0, journal_theme=0)
                 encoded = json.dumps(locked).encode()
                 assert lib.sim_restore(encoded, len(encoded))
                 lib.sim_action(1); tap(88, 356); tap(340, 328)
-                first_themes = ctypes.string_at(lib.sim_frame(0), 240 * 180 * 2)
+                first_themes = ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
                 tap(400, 86)
-                more_themes = ctypes.string_at(lib.sim_frame(0), 240 * 180 * 2)
+                more_themes = ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
                 assert first_themes != more_themes, "Theme arrows must expose new backdrops"
                 tap(100, 124)
                 assert json.loads(backup(lib))["tank"]["journal_theme"] == 0, "Locked new themes must not apply"
@@ -397,7 +408,7 @@ def main():
                 assert lib.sim_restore(data, len(data))
                 print("PASS: fourteen new shop purchases through price-sorted UI, including all four stat upgrades")
                 lib.sim_action(1)
-                tap(224, 356)
+                tap(173, 356)
                 assert lib.sim_page() == 6, "Keeper must open the fish bank"
                 lib.sim_frame(0.04)
                 bank_before = json.loads(backup(lib))
@@ -453,17 +464,18 @@ def main():
                 assert returned["tank"]["names"] == rich["tank"]["names"]
                 assert returned["bank"] == rich["bank"]
                 lib.sim_action(2)
+                tap(330, 260)
                 before = json.loads(backup(lib))["tank"]
-                tap(56, 19)
+                tap(100, 260)
                 tap(146, 216)  # Cancel leaves the tank intact.
                 assert json.loads(backup(lib))["tank"]["sd_balance"] == before["sd_balance"]
-                tap(56, 19)
+                tap(100, 260)
                 for _ in range(81):
                     lib.sim_frame(0.25)
                 assert json.loads(backup(lib))["tank"]["sd_balance"] == before["sd_balance"]
-                tap(56, 19)
-                lib.sim_touch(146 * 240 / 448, 216 * 180 / 368, 1)
-                lib.sim_touch(302 * 240 / 448, 216 * 180 / 368, 0)
+                tap(100, 260)
+                lib.sim_touch(146 * lib.sim_width() / 448, 216 * lib.sim_height() / 368, 1)
+                lib.sim_touch(302 * lib.sim_width() / 448, 216 * lib.sim_height() / 368, 0)
                 assert json.loads(backup(lib))["tank"]["sd_balance"] == before["sd_balance"]
                 wipe_balance = json.loads(backup(lib))["tank"]["sd_balance"]
                 tap(302, 216)

@@ -2,8 +2,9 @@ set(COMMON ${CMAKE_CURRENT_LIST_DIR}/../../../common)
 set(CYD_ASSETS "${CMAKE_BINARY_DIR}/cyd_assets")
 idf_component_register(
     SRCS "${COMMON}/tank.c" "${COMMON}/advisor.c" "${COMMON}/render.c"
-         "${CYD_ASSETS}/icons_sd.c" "${COMMON}/progression.c"
+         "${COMMON}/icons.c" "${COMMON}/progression.c"
          "${COMMON}/setup.c" "${COMMON}/notice.c" "${COMMON}/update.c" "${COMMON}/aquarium_store.c"
+         "${COMMON}/companion.c" "${COMMON}/companion_ui.c" "${COMMON}/weather.c"
          "persist_port_esp.c" "clock_port_esp.c"
     INCLUDE_DIRS "${COMMON}" "."
     PRIV_REQUIRES nvs_flash cjson
@@ -14,5 +15,6 @@ add_custom_command(
     DEPENDS "${COMMON}/icons.c" "${COMMON}/../tools/pack_cyd_icons.py"
     VERBATIM)
 target_compile_options(${COMPONENT_LIB} PRIVATE -O2 -ffast-math)
-target_compile_definitions(${COMPONENT_LIB} PUBLIC POP_CAP=5)
-set_source_files_properties("${COMMON}/progression.c" PROPERTIES COMPILE_OPTIONS "-fno-fast-math")
+target_compile_definitions(${COMPONENT_LIB} PUBLIC POP_CAP=5 CYD_FLAT_EDGES=1)
+set_source_files_properties("${COMMON}/progression.c" "${COMMON}/weather.c" "${COMMON}/companion.c"
+    PROPERTIES COMPILE_OPTIONS "-fno-fast-math")

@@ -32,14 +32,10 @@ static const char *TAG = "sd";
 #define BANK_PATH "/sdcard/" CYD_ICON_FILE
 #define TEMP_PATH BANK_PATH ".upload"
 static bool s_mounted;
-static FILE *s_bank, *s_upload;
+static FILE *s_upload;
+static bool s_bank;
 static size_t s_uploaded;
 static uint32_t s_upload_crc;
-static const icon_t *s_cached;
-static uint16_t *s_rgb;
-static uint8_t *s_alpha;
-static icon_t s_view;
-static bool s_warned;
 
 static bool verify_bank(FILE *file) {
     uint8_t buffer[512];
@@ -62,14 +58,11 @@ static bool open_bank(void) {
         ESP_LOGE(TAG, "icon bank size/CRC mismatch; file left unchanged");
         fclose(file); return false;
     }
-    s_bank = file; s_cached = NULL;
+    fclose(file); s_bank = true;
     ESP_LOGI(TAG, "icon bank verified: %u bytes CRC32 %08lx", CYD_ICON_BYTES, (unsigned long)CYD_ICON_CRC);
     return true;
 }
 bool sd_port_init(void) {
-    s_rgb = malloc(64 * 64 * sizeof *s_rgb);
-    s_alpha = malloc(64 * 64);
-    if (!s_rgb || !s_alpha) { ESP_LOGE(TAG, "cannot allocate SD icon cache"); abort(); }
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     host.slot = SPI3_HOST; host.max_freq_khz = 10000;
     spi_bus_config_t bus = {
@@ -91,30 +84,12 @@ bool sd_port_init(void) {
     }
     s_mounted = true;
     ESP_LOGI(TAG, "SD mounted: %llu MiB", (unsigned long long)card->csd.capacity * card->csd.sector_size / (1024 * 1024));
-    open_bank();
+    ESP_LOGI(TAG, "menu artwork embedded in flash; no SD icon cache allocated");
     return true;
 }
 const icon_t *icons_resolve(const icon_t *icon) {
-    if (s_cached == icon) return &s_view;
-    size_t n = (size_t)icon->w * icon->h;
-    if (!n || n > 4096) { ESP_LOGE(TAG, "invalid icon dimensions"); abort(); }
-    bool ok = s_bank && fseek(s_bank, (long)icon->offset, SEEK_SET) == 0
-        && fread(s_rgb, sizeof *s_rgb, n, s_bank) == n
-        && fread(s_alpha, 1, n, s_bank) == n;
-    if (!ok) {
-        if (!s_warned) {
-            ESP_LOGE(TAG, "SD icons unavailable; showing marked placeholders (tank and text remain usable)");
-            s_warned = true;
-        }
-        memset(s_rgb, 0, n * sizeof *s_rgb);
-        memset(s_alpha, 0, n);
-        for (int y = 0; y < icon->h; y++) {
-            int x = y * icon->w / icon->h;
-            s_rgb[y * icon->w + x] = 0xf81f; s_alpha[y * icon->w + x] = 255;
-        }
-    }
-    s_view = *icon; s_view.rgb = s_rgb; s_view.a = s_alpha; s_cached = icon;
-    return &s_view;
+    if (!icon || !icon->rgb || !icon->a) { ESP_LOGE(TAG, "invalid embedded icon"); abort(); }
+    return icon;
 }
 #define SAVE_DIR "/sdcard/pocket-tank"
 bool aquarium_port_ready(void) {
@@ -176,6 +151,7 @@ done:
     return text;
 }
 static bool backup_write(const tank_t *tank, const char *prefix, char path[96]) {
+    render_work_caches(false);
     unsigned n;
     if (!backup_latest(prefix, path, &n) || n >= 9999) { ESP_LOGE(TAG, "backup slots unavailable"); return false; }
     snprintf(path, 96, SAVE_DIR "/%s-%04u.json", prefix, n + 1);
@@ -206,6 +182,7 @@ static bool backup_write(const tank_t *tank, const char *prefix, char path[96]) 
     return ok;
 }
 static void backup_action(tank_t *tank, bool restore, bool confirmed, const char *prefix, unsigned requested) {
+    render_work_caches(false);
     if (!tank || !s_mounted || s_upload) {
         ESP_LOGE(TAG, "backup unavailable: no tank/card or upload active");
         render_backup_status("SD UNAVAILABLE / BUSY", false); return;
@@ -440,6 +417,7 @@ void sd_port_command(tank_t *tank, int argc, char **argv) {
         if (backup_latest("backup", path, &n)) ESP_LOGI(TAG, "JSON latest: %s", n ? path : "none");
         if (backup_latest("before-restore", path, &n)) ESP_LOGI(TAG, "JSON safety: %s", n ? path : "none");
     } else if (argc < 2 || !strcmp(argv[1], "status")) {
+        open_bank();
         ESP_LOGI(TAG, "SD READY %u %08lx %s", CYD_ICON_BYTES, (unsigned long)CYD_ICON_CRC, s_bank ? "verified" : "missing");
     } else if (!strcmp(argv[1], "cancel")) {
         if (s_upload) { fclose(s_upload); s_upload = NULL; }
@@ -448,7 +426,7 @@ void sd_port_command(tank_t *tank, int argc, char **argv) {
         }
         ESP_LOGI(TAG, "SD CANCELED partial upload");
     } else if (!strcmp(argv[1], "begin")) {
-        if (s_bank) { ESP_LOGI(TAG, "SD EXISTS verified"); return; }
+        if (open_bank()) { ESP_LOGI(TAG, "SD EXISTS verified"); return; }
         struct stat st;
         if (stat(BANK_PATH, &st) == 0 || stat(TEMP_PATH, &st) == 0) {
             ESP_LOGE(TAG, "SD FAIL destination exists; refusing overwrite"); return;
@@ -489,7 +467,6 @@ void sd_port_command(tank_t *tank, int argc, char **argv) {
         if (!ok || rename(TEMP_PATH, BANK_PATH) != 0 || !open_bank()) {
             ESP_LOGE(TAG, "SD FAIL readback/finalize"); return;
         }
-        s_warned = false;
         ESP_LOGI(TAG, "SD COMPLETE verified");
     } else {
         ESP_LOGE(TAG, "SD FAIL use status, backup, backups, export, restore|undo [number] [confirm], begin, chunk <offset> <hex>, finish");

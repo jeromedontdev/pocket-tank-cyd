@@ -63,6 +63,11 @@ enum { NET_ERR_NONE = 0, NET_ERR_NO_SIGNAL, NET_ERR_PASSWORD, NET_ERR_NO_NET, NE
 bool net_port_creds_get(char *ssid, char *pass);            /* the saved network (buffers NET_*_MAX + 1); false = none */
 bool net_port_creds_set(const char *ssid, const char *pass);
 bool net_port_creds_forget(void);
+bool net_port_connected(void);                          /* snapshot only; never starts/connects the radio */
+/* Frame-safe background lease. Foreground scan/connect/update always wins;
+ * releasing the lease powers down only background-owned Wi-Fi. */
+void net_port_weather(bool wanted);
+bool net_port_weather_active(void); /* includes asynchronous radio teardown */
 /* the radio. Every call returns at once; the flow polls the *_state calls
  * each frame (NET_BUSY / NET_DONE / NET_FAILED, the reason in
  * net_port_fail_reason). One operation at a time. */

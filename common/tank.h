@@ -17,15 +17,21 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
-#define TANK_W 240
-#define TANK_H 180
+#define TANK_MAX_W 320
+#define TANK_MAX_H 240
+extern int tank_width, tank_height;
+#define TANK_W tank_width
+#define TANK_H tank_height
+void tank_resolution(bool compact);
 
 /* Floor-relative geometry also scales the original 448-wide decor positions. */
 #define TANK_BOT  TANK_H
 #define TANK_FX0  0
 #define TANK_FX1  TANK_W
 #define TANK_FW   (TANK_FX1 - TANK_FX0)
+#define TANK_SAND_TOP (TANK_BOT - 18)
 /* a floor x given as the rectangle's (0..448), on this build's floor */
 #define TANK_FLOOR_X(x448) (TANK_FX0 + (x448) * TANK_FW / 448.0f)
 float tank_glass_x0(float y);
@@ -109,6 +115,7 @@ typedef enum { VEG_KIND_GRASS, VEG_KIND_SWORD } veg_kind_t;
 #define ALGAE_COLS (TANK_W / ALGAE_CELL)       /* 28 */
 #define ALGAE_ROWS (TANK_H / ALGAE_CELL)       /* 23 */
 #define ALGAE_CELLS (ALGAE_COLS * ALGAE_ROWS)
+#define ALGAE_CAP ((TANK_MAX_W / ALGAE_CELL) * (TANK_MAX_H / ALGAE_CELL))
 /* a frond segment's height. 3.2 px on the 1.8 puts a full frond's tip just
  * under the surface; the watch's portrait tank is 118 px taller, so its
  * segments are too (107 x 4.3 from y 486: the tip at 26) - growth is still
@@ -246,13 +253,24 @@ typedef struct {
     /* colors as 0xRRGGBB, used by render only: the preset's, or the keeper's
      * picks from LOOK_BODY / LOOK_ACCENT (setup.c); saved per fish */
     uint32_t color, fin, accent;
-    uint8_t variety, pattern;
+    uint8_t variety, pattern, wearable, wear_colors;
     /* family (2026-09-14, the birth flow): the slots of the two fish it
      * inherited from - its body colour is parent_a's, its markings (accent)
      * parent_b's, bold / sociable the pair's average with a nudge. -1 = one
      * of the founding pair (or an older save). Saved per fish. */
     int8_t parent_a, parent_b;
 } fish_t;
+float tank_fish_pitch(const fish_t *f);
+float tank_fish_clearance(const fish_t *f);
+float tank_fish_top_clearance(const fish_t *f);
+float tank_fish_half_width(const fish_t *f);
+enum { WEAR_NONE, WEAR_TOP_HAT, WEAR_PARTY_HAT, WEAR_CROWN, WEAR_TIE, WEAR_BOWTIE, WEAR_BANDANA, WEAR_COUNT };
+enum { CREATURE_SHRIMP, CREATURE_SNAIL, CREATURE_URCHIN, CREATURE_SEAHORSE, CREATURE_COUNT };
+#define COSMETIC_COLOR_COUNT 16
+extern const char *const COSMETIC_COLOR_NAMES[COSMETIC_COLOR_COUNT];
+extern const char *const CREATURE_NAMES[CREATURE_COUNT];
+uint32_t tank_cosmetic_color(unsigned color, uint32_t natural);
+int tank_wearable_polygon(const fish_t *f, int part, float x[8], float y[8], uint32_t *color);
 
 #define FISH_BANK_CAP 20
 /* Frozen 68-byte active-save core, shared by bank records. */
@@ -271,6 +289,35 @@ typedef struct {
 } bank_fish_t;
 static inline uint8_t bank_variety(const bank_fish_t *f) { return (uint8_t)f->fish.pad; }
 static inline uint8_t bank_pattern(const bank_fish_t *f) { return (uint8_t)(f->fish.pad >> 8); }
+
+/* Append-only companion save data. Relationships follow active/banked fish,
+ * not their names or roster presets (both can be shared by different fish). */
+typedef struct {
+    uint32_t next_greet_s;
+    uint16_t bond, greetings;
+    uint8_t tricks, wearable, wearables, wear_colors;
+} companion_bond_t;
+typedef struct {
+    uint32_t powered_s, discoveries, collections;
+    uint32_t adventure_s, portrait_body, portrait_accent;
+    companion_bond_t active[N_FISH_MAX], bank[FISH_BANK_CAP];
+    uint16_t game_best[6], game_rounds[6];
+    char portrait_name[FISH_NAME_MAX + 1];
+    uint8_t game_medals[6], game_challenges, featured;
+    uint8_t version, cozy, captions, lively;
+    uint8_t adventure, adventure_done, adventure_claimed, cosmetic;
+    uint8_t last_discovery, adventure_choice, adventure_routes, decor;
+    uint8_t portrait_variety, portrait_pattern, portrait_wearable, portrait_colors;
+    bank_fish_t traveler;
+    companion_bond_t traveler_bond;
+    uint8_t away, travel_pad[3];
+    int64_t adventure_clock;
+    uint8_t creature_colors[CREATURE_COUNT], display_compact, color_pad[3];
+} companion_state_t;
+_Static_assert(sizeof(companion_bond_t) == 12, "companion relationship layout");
+_Static_assert(offsetof(companion_state_t, traveler) == 392, "legacy companion prefix");
+_Static_assert(offsetof(companion_state_t, creature_colors) == 512, "legacy wardrobe prefix");
+_Static_assert(sizeof(companion_state_t) == 520, "companion save layout");
 
 /* a pellet: it sinks FOOD_SINK_PX_S from the surface to the floor (~43 s on
  * the 1.8, ~60 on the watch), then RESTS there FOOD_FLOOR_S before it
@@ -426,7 +473,7 @@ typedef struct tank {
     float    veg_growth[VEG_BEDS_MAX]; /* per-bed canopy = MEAN frond height, VEG_NUB..1,
                                     * derived (tank.c veg_sync) - read-only outside;
                                     * set a bed with tank_veg_set */
-    uint8_t  algae[ALGAE_CELLS];   /* glass film per cell, 0..255 */
+    uint8_t  algae[ALGAE_CAP];   /* glass film per active grid cell, 0..255 */
     float    algae_acc;            /* seconds toward the next algae growth step */
     int32_t  trims;                /* lifetime bed trims (milestone + save) */
     int32_t  cells_cleaned;        /* lifetime algae cells wiped (milestone + save) */
@@ -650,7 +697,10 @@ typedef struct tank {
     int      ask_rr;               /* rotating start index for fairness */
     uint32_t advisor_asks;         /* diagnostic: requests issued */
     uint32_t rng;                  /* xorshift state, deterministic */
+    companion_state_t companion;
+    float companion_fraction;      /* powered-on fractional second; not saved */
 } tank_t;
+void tank_reframe(tank_t *t, bool compact);
 
 /* Rules advisor interface.
  * Called EVERY frame for every live fish. `request` is true when the tank
@@ -902,6 +952,7 @@ void  tank_snail_place(tank_t *t);
  * (a load, the sim's key); refusing = the glass is too fouled for them to eat */
 void  tank_shrimp_place(tank_t *t, int n);
 bool  tank_shrimp_refusing(const tank_t *t);
+int tank_shrimp_display_count(const tank_t *t);
 /* a tap on the school (2026-09-29, Strato: "one tap should bring up a card
  * ... it should be a triple tap which scares them (same as for fish)"). Hit:
  * within a fingertip of any shrimp (the platforms test the fish and the snail

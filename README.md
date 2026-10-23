@@ -1,14 +1,16 @@
-# Pocket Tank CYD
+# Pocket Tank CYD 1.0
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-based on v0.3.8. Targets the **ESP32-2432S028 Cheap Yellow Display**:
+now versioned independently as **1.0.0**. Originally based on upstream v0.3.8.
+Targets the **ESP32-2432S028 Cheap Yellow Display**:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
 are not included. See [LICENSE](LICENSE) for the original project license.
 
 **Take the illustrated tour:** [CYD features and screenshots](docs/CYD-FEATURES.md)
 covers named tanks, the bank, creature customization, Journal, mini-games,
-decorations, fish-care upgrades, themed clocks, Wi-Fi setup, releases and SD workflows with 64 captures from the
+decorations, fish-care upgrades, desk-companion progression, optional weather,
+themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer. A [five-post Discord kit](docs/discord/START-HERE.txt)
 includes matching image boards and ready-to-paste text.
 
@@ -18,15 +20,15 @@ includes matching image boards and ready-to-paste text.
   trust, milestones, breeding, tank maintenance and the shop.
 - Touch-only navigation, persistent five-point touch calibration, fixed
   display orientation, brightness and gameplay settings.
-- SD-backed icon art and versioned JSON tank backups with safety snapshots
+- Flash-resident icon art and versioned SD JSON tank backups with safety snapshots
   before restores.
-- Offline SD firmware packages through **Settings > Updates**, with
+- Offline SD firmware packages through **Settings > Device > SD Updates**, with
   checksum/board validation, explicit confirmation and a pre-update tank backup.
 - Treasure chest: 120 sand dollars, placement/layering, move/sell and persistence.
 - Scallop shell (60), starfish ornament (60), sunken anchor (80), and a
   bobbing, bottom-tethered buoy (80). All support placement, depth and selling.
 - One-time sand palette (300) and mood lights (300) upgrades. Tap **SAND** or
-  **WATER** in Settings to cycle colors for free, including the original look.
+  **WATER** in **Home > Tank > Sand & Water** to cycle colors for free, including the original look.
   Mood Lights includes Rainbow, Hot Pink and Neon Lime alongside the classic
   blue, teal, violet and amber gradients; no flashing or strobing.
   Sand Palette also includes Rainbow, Hot Pink, Electric Cyan and Neon Lime.
@@ -47,12 +49,12 @@ includes matching image boards and ready-to-paste text.
 - Fish customization offers 24 body colors and 24 marking colors, including
   hot pink, vivid red/orange/yellow, neon lime/green, cyan, electric blue,
   purple, magenta, pastels, white and dark slate.
-- **Settings > WIPE** opens a separate **WIPE TANK?** confirmation.
+- **Settings > Device > WIPE AQUARIUM** opens a separate **WIPE TANK?** confirmation.
   Confirming starts over with two fry and first-time setup; CANCEL or waiting
   20 seconds keeps the tank. SD backups and touch calibration are preserved.
 - Optional **Minimal, Digital, Analog, Neon, Flip, Binary and Orbit idle clocks**
   over the aquarium.
-  Open **Settings > CLOCK** for large/medium/small sizes, center or four-corner
+  Open **Settings > CLOCK/WEATHER** for large/medium/small sizes, center or four-corner
   placement, 12/24-hour time, a DST toggle and UTC offsets in selectable
   1-hour, 30-minute or 15-minute steps. The default
   layout is large and centered. Clocks are **OFF by default** and saved per tank.
@@ -61,9 +63,12 @@ includes matching image boards and ready-to-paste text.
   **STYLE** offers separate primary and secondary colors: theme defaults or
   white, amber, mint, cyan, rose, lavender and red, plus independent seconds,
   panel/border and date toggles.
+  Visible panels are opaque. Normal skips hidden aquarium drawing and reduces
+  ambient bubbles, grass sway updates and visible shrimp representatives
+  (10 real shrimp display as 5); population and care/progression rules stay intact.
 - A selected fish's card has a **>** button just outside its top-right edge
   to cycle through fish, wrapping to the first. Tapping the card still opens Keeper.
-- **Settings > CLOCK > WI-FI / SYNC** scans 2.4 GHz networks and
+- **Settings > WI-FI / SYNC** scans 2.4 GHz networks and
   provides a full single-page QWERTY password keyboard with separate
   numbers/symbols, connection errors, change-network and confirmed
   forget options. The tank is saved before a brief restart into setup; Wi-Fi
@@ -97,8 +102,9 @@ instructions are available under
 | [Install instructions](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/INSTALL.txt) | SD placement, USB flashing and warnings |
 | [Checksums](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/SHA256SUMS.txt) | Verify downloaded files |
 
-Download the matching `icons-<crc>.bin` artwork from the same release and put
-it at the SD card root. No source build is needed for these downloads.
+Current source builds embed menu artwork in flash. Older releases may require
+the matching `icons-<crc>.bin` from that release at the SD card root; follow
+the included install instructions. No source build is needed for these downloads.
 Use the SD update for an existing installation. **Factory images overwrite
 saved tanks and settings** and are only for new boards or deliberate resets.
 See [release instructions](firmware/CYD.md#downloadable-releases).
@@ -162,7 +168,7 @@ stable ordering for equal prices. The nursery's FRY row, when available, stays
 separate at the top. Existing item IDs, prices, placements and ownership are
 unchanged.
 
-Ten more tank-local unlocks fit the existing 4000-byte save:
+Ten more tank-local unlocks fit the existing 4000-byte save prefix:
 
 | Unlock | Sand dollars | Effect |
 |---|---:|---|
@@ -208,7 +214,7 @@ change food rewards, energy drain, curiosity spending, maximum stats, size,
 aging, hunger or breeding requirements. Sleeping tanks in the SD collection
 stay paused. Purchases travel with their own tank, survive reboot and JSON
 backups, and clear when that tank is wiped. Older backups start without them.
-The binary save remains 4000 bytes; a formerly reserved byte holds the flags.
+The binary save's 4000-byte prefix is unchanged; a formerly reserved byte holds the flags.
 
 The fork also includes upstream's daytime breather fix: exhausted fish duck
 into nearby seagrass (or their resting corner) to recover without changing
@@ -217,11 +223,11 @@ fork retains its separate update channel and existing release-number format.
 
 ## Display readability
 
-CYD menu text is pixel-aligned in the 240x180 framebuffer, with a minimum
+CYD menu text is pixel-aligned in both Enlarged and Normal modes, with a minimum
 5x7 glyph (including subtext), brighter secondary labels, and wrapped status
 messages. Journal cards, the collection album, fry offers, Settings and SD
 Updates use full-size captions rather than downscaled microtext. Detailed
-build information is on Updates; Settings keeps a readable version footer.
+build information is on Updates; Settings > Device keeps a readable version footer.
 
 ## Aquarium Journal
 
@@ -308,15 +314,124 @@ not fish transfers: games cannot injure, feed, train or change the actual fish.
 
 Each sand dollar also earns **3 permanent Journal XP**, contributing to Keeper
 levels and backdrop unlocks without falsely completing care objectives.
-**CLAIM** saves both rewards together; a failed save changes neither and
+**CLAIM** saves rewards and game records together; a failed save changes neither and
 leaves the claim available to retry. A round can only be claimed once.
 BACK or PLAY AGAIN requires a second tap before discarding an unclaimed reward.
 
 Aquarium care, growth and care progression pause throughout the games menu,
 round and results. Leaving resumes normal care; manually sleeping/rebooting
 still uses the normal offline-care rules. Games, in-progress scores and
-unclaimed rewards are temporary, not saved sessions or high-score records.
+unclaimed rewards are temporary. Claimed challenge-mode personal bests, round
+counts and bronze/silver/gold medals are permanent per aquarium.
 There are no entry fees, wagers or penalties to your actual aquarium.
+
+Use **CHALLENGE / RELAXED** on the games menu to switch modes. Relaxed Bubble
+Pop and Feed Frenzy have no countdown: tap **FINISH** whenever you like.
+Relaxed Slalom and Treasure Cast move at half speed; Match and Reef remain
+untimed. Relaxed play still offers the usual capped coins/XP but does not
+set records or medals. **RECORDS** shows personal bests and permanent gold
+challenge targets: 24 Bubble points, Match in 16 moves, 24 Slalom points,
+10 Cast points, 40 Frenzy points, and Reef in 18 moves. Meeting a move target
+means that many moves or fewer. The suggested game advances after you claim
+its challenge-mode reward; it has no calendar deadline or streak.
+
+## Desk companion, discoveries and safe adventures
+
+Tap a fish and its **MENU** button for **Home**: **Fish**, **Tank**,
+**Adventures**, **Collections**, **Games**, and **Settings**. The existing
+Keeper page also has a **HOME** shortcut. Fish holds care, Bank, wardrobe and
+names/looks; Tank holds the shop, aquariums, palettes and creature colors.
+Collections holds the Journal, discoveries/frames and progress. Adventures
+is its own destination, not a container for unrelated features. Back returns
+to the category you used. There are no daily streaks or missed-visit penalties.
+
+**Settings** is grouped into **Display**, **Clock/Weather**, **Wi-Fi/Sync**,
+**SD Backups**, **Feeding**, and **Device** (updates/calibration/wipe).
+**Display > SCALE** toggles **Normal 320x240** (formerly Compact, now the default
+for fresh installations, resets and new aquariums) / **Enlarged 240x180**.
+Existing saves retain their selected scale. Normal renders
+the full tank natively, making scene objects and clock graphics about 25%
+smaller in each dimension, with no crop or inset. Page controls remain
+readable. The setting and remapped positions persist per aquarium; failed
+saves roll back. Three horizontal tiles reuse the existing framebuffer to
+preserve weather's RAM budget. Normal can have a lower animation rate.
+
+- **Cozy Care** keeps unattended care comfortable without pretending you fed,
+  cleaned or trained your fish. Classic keeps the original care behaviour.
+  New aquariums start Cozy; existing aquariums stay Classic until you change
+  the option. Bonds never decay in either mode.
+- **SAY HELLO** adds 5 bond, up to 100, once per 30 powered-on seconds.
+  It doesn't manufacture trust, feeding counters or Journal care milestones.
+  DART unlocks at bond 10, BUBBLES at 25, FOLLOW at 50. Tap an unlocked trick
+  to request a playful dart, a visit to the bubble column, or following a
+  tankmate; close the menu to watch. CARE's **BOND / TRICK HELP** explains
+  this alongside **trust**, the separate 0–10 confidence built through food
+  and calm care. Bond is permanent friendship, not another trust multiplier
+  or a source of care XP. Bonds/tricks travel with banked and adventuring fish.
+- **CAPTIONS** adds aquarium activity beside the idle clock. **CALM / LIVELY**
+  chooses whether extra drifting clock-mode specks are shown.
+- **Collections > Discoveries** automatically records bubble watching, exploration, seagrass naps,
+  swimming together, playful darts, reef visits, greetings, learned tricks,
+  growing up and adventure postcards. Behaviour discoveries require at least
+  two seconds of the activity with the aquarium visible; you don't have to
+  tap the event while it happens.
+- Complete **Nature** (six activity discoveries), **Friendship** (hello and a
+  trick), or **Story** (all three postcards) and claim its permanent cosmetic
+  frame. Frames colour the companion page and add small clock-corner ornaments;
+  **FRAME >** cycles owned frames and displays the selected name; it explicitly
+  shows **LOCKED** until you complete and claim a collection. DEFAULT removes
+  the ornament without changing your clock colours.
+  **TROPHIES** shows/hides earned shells and gold game-challenge markers in
+  the aquarium. Collection claims are one-time, not a repeatable currency source.
+
+### Story quests
+
+Choose a fish, destination and postcard route, then tap **SEND FISH** and
+**CONFIRM SEND**. ARCH/BUBBLES choose the postcard's scenery, not different
+risks, durations or rewards.
+
+| Destination | Time away | Reward | Postcard find |
+|---|---|---|---|
+| Lantern Lagoon | 2 hours | 10 sand dollars + 30 Journal XP | Lantern shell |
+| Pearl Library | 6 hours | 20 sand dollars + 60 Journal XP | Pearl bookmark |
+| Starlight Cove | 12 hours | 30 sand dollars + 90 Journal XP | Star stone |
+
+The selected fish **actually leaves the aquarium** and cannot be fed, sold
+or banked while away. Its care, age, appearance, trust and bond are preserved
+in the save. Its tank slot is reserved so it **automatically returns** when
+the timer finishes, without waiting for you to claim rewards. At least one
+fish stays home. One adventure runs at a time.
+Each destination can be completed and claimed once; postcards and
+route choices remain in the Album. There are no entry fees, failures,
+deadlines or expiring rewards.
+
+Progress is saved and resumes after restart. With a synced clock, elapsed time
+includes power-off/sleep; without valid time, powered-on seconds advance it.
+No time is guessed while the clock is unknown. Completed rewards wait for you.
+CLAIM saves coins, XP and claim state together, with rollback/retry if saving
+fails. Schema 9 includes the safely stored traveler, per-fish wardrobe/colors
+and creature colors;
+schema 6/7 companion saves
+still import, including already-running short portrait stories. Schemas 1–5
+still import with Classic settings and empty companion progress.
+Do not downgrade after using the new progression.
+
+### Optional weather with the clock
+
+Open **Settings > CLOCK/WEATHER > WEATHER**, search for a city, select the correct
+result, choose F/C and enable weather. No location is inferred automatically.
+Weather is off by default and needs a saved Wi-Fi connection; city search and
+selected coordinates are sent to [Open-Meteo](https://open-meteo.com/) over
+HTTPS. Location and units are device-wide settings, separate from aquarium
+backups.
+
+The clock displays current temperature/conditions, or an explicit
+unavailable/offline/stale status. Weather occupies a bordered, larger-text area
+attached to the clock, with the city on its own bounded line. Activity captions
+share the reserved clock area without covering its face. Conditions refresh
+about every **15 minutes**; readings **30 minutes** old are marked stale.
+Disabled weather makes no requests.
+Weather data: Open-Meteo; city search: GeoNames via Open-Meteo.
 
 ## Fish bank
 
@@ -383,14 +498,17 @@ after buying aquariums: older builds do not preserve collection metadata.
 This is intentionally no longer a multi-board tree. Upstream gameplay changes
 can still be ported manually, but merges and release compatibility are not
 automatic. Preserve existing binary offsets and append new fields; the save
-is now 4000 bytes, within the existing 4000-byte NVS budget, with the
+is now 4520 bytes, with the first 4512 bytes and the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
-tail identifies the purchased aquarium collection, active slot, its name and
+aquarium metadata identifies the purchased collection, active slot, its name and
 four care-upgrade flags in a formerly reserved byte. The 36-item shop uses
 the original full 32-bit ownership field plus those four flags.
-JSON exports use schema 5 for an individual aquarium; schema
-1, 2, 3 and 4 backups remain importable. Older firmware cannot restore schema 5 backups; keep a matching
+The appended companion section holds bonds, discoveries, quests, wearables and game records.
+Wardrobe/color data uses reserved relationship/portrait bytes; four per-creature color
+pairs append eight bytes (including reserved alignment bytes).
+JSON exports use schema 10 for an individual aquarium, including saved Enlarged/Normal scale; schema
+1 through 9 backups remain importable. Older firmware cannot restore schema 10 backups; keep a matching
 pre-upgrade backup before downgrading. The historical progression documents under `docs`
 describe the original game design; this README and the CYD guide are the
 authoritative build/hardware instructions.

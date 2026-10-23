@@ -5,23 +5,38 @@
 #include "esp_log.h"
 
 static const char *TAG = "brightness";
-static int s_pct = 100, s_applied = -1;
+static int s_pct = 100, s_saved = 100, s_applied = -1;
 
 void brightness_init(void) {
+    s_pct = s_saved = 100; s_applied = -1;
     nvs_handle_t h; uint8_t v;
     if (nvs_open("tank", NVS_READONLY, &h) != ESP_OK) return;
-    if (nvs_get_u8(h, "bright", &v) == ESP_OK && (v == 30 || v == 60 || v == 100)) s_pct = v;
+    if (nvs_get_u8(h, "bright", &v) == ESP_OK && v >= 10 && v <= 100) s_pct = s_saved = v;
     nvs_close(h);
 }
-void brightness_save(void) {
+bool brightness_save(void) {
     nvs_handle_t h;
-    if (nvs_open("tank", NVS_READWRITE, &h) != ESP_OK) return;
-    nvs_set_u8(h, "bright", (uint8_t)s_pct); nvs_commit(h); nvs_close(h);
+    esp_err_t err = nvs_open("tank", NVS_READWRITE, &h);
+    if (err == ESP_OK) {
+        err = nvs_set_u8(h, "bright", (uint8_t)s_pct);
+        if (err == ESP_OK) err = nvs_commit(h);
+        nvs_close(h);
+    }
+    if (err != ESP_OK) { ESP_LOGE(TAG, "save failed: %s", esp_err_to_name(err)); return false; }
+    s_saved = s_pct;
+    return true;
 }
 int brightness_level(void) { return s_pct; }
+bool brightness_preview_level(int pct) {
+    if (pct < 10 || pct > 100) return false;
+    s_pct = pct; s_applied = -1;
+    return true;
+}
 bool brightness_set_level(int pct) {
-    if (pct != 30 && pct != 60 && pct != 100) return false;
-    s_pct = pct; brightness_save(); s_applied = -1;
+    if (!brightness_preview_level(pct)) return false;
+    if (pct != s_saved && !brightness_save()) {
+        s_pct = s_saved; s_applied = -1; return false;
+    }
     ESP_LOGI(TAG, "level %d%%", s_pct);
     return true;
 }

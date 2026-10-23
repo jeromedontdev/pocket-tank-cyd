@@ -16,7 +16,7 @@ def pack(source, output):
         values = [int(v.strip(), 0) for v in body.split(",") if v.strip()]
         arrays[name] = struct.pack("<" + ("H" if kind == "uint16_t" else "B") * len(values), *values)
     entries = re.findall(
-        r"const icon_t (\w+) = \{\s*(\d+),\s*(\d+),\s*(\w+),\s*(\w+)\s*\};", text
+        r"const icon_t (\w+) = \{\s*(\d+),\s*(\d+),\s*(\w+),\s*(\w+)\s*(?:,\s*0\s*)?\};", text
     )
     if not entries:
         raise ValueError("No canonical icon definitions found")

@@ -55,7 +55,9 @@ bool journal_claim(tank_t *t, int goal);
 const char *progression_bank_move(tank_t *t, int bank, int active);
 #define AQUARIUM_CAP 8
 #define AQUARIUM_PRICE 500
-#define AQUARIUM_SAVE_BYTES 4000
+#define AQUARIUM_SAVE_BYTES 4520
+bool progression_adventure_depart(tank_t *t, int adventure, int fish);
+bool progression_adventure_return(tank_t *t);
 /* target == count buys and enters a new tank; otherwise switches to an owned tank.
  * Success loads the tank in memory after its atomic internal-save commit. */
 const char *progression_aquarium_move(tank_t *t, int target);

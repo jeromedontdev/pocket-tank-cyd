@@ -2,12 +2,45 @@
  * updateFish/targetForGoal/wall handling, with prototype px values scaled by
  * ~0.55 for the 448-wide tank. */
 #include "tank.h"
+#include <stdio.h>
 #include "tank_events.h"
 #include <math.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
+int tank_width = 240, tank_height = 180;
+void tank_resolution(bool compact) { tank_width = compact ? 320 : 240; tank_height = compact ? 240 : 180; }
+void tank_reframe(tank_t *t, bool compact) {
+    int old_w = TANK_W, old_cols = ALGAE_COLS, old_rows = ALGAE_ROWS;
+    if (old_w == (compact ? 320 : 240)) return;
+    uint8_t algae[ALGAE_CAP]; memcpy(algae, t->algae, sizeof algae);
+    tank_resolution(compact);
+    float scale = (float)TANK_W / old_w;
+#define SCALE(member) t->member *= scale
+    SCALE(bubble_x); SCALE(bubble_y); SCALE(reef_x); SCALE(reef_y);
+    if (t->feed_spot_x >= 0) SCALE(feed_spot_x);
+    if (t->snail_x >= 0) { SCALE(snail_x); SCALE(snail_y); }
+    if (t->urchin_x >= 0) SCALE(urchin_x);
+    if (t->urchin_to >= 0) SCALE(urchin_to);
+    if (t->sh_x >= 0) { SCALE(sh_x); SCALE(sh_y); SCALE(sh_aref); }
+    SCALE(castle_x); SCALE(coral_x); SCALE(cluster_x); SCALE(pumpkin_x); SCALE(chest_x); SCALE(plant_x);
+    SCALE(stage_x); SCALE(stage_y); SCALE(startle_x); SCALE(startle_y); SCALE(tap_x); SCALE(tap_y);
+    for (int i = 0; i < 10; i++) SCALE(ornament_x[i]);
+    for (int i = 0; i < t->n_fish; i++) {
+        SCALE(fish[i].x); SCALE(fish[i].y); SCALE(fish[i].explore_x); SCALE(fish[i].explore_y);
+        SCALE(fish[i].dart_x); SCALE(fish[i].dart_y);
+        t->fish[i].explore_set = false;
+    }
+    for (int i = 0; i < MAX_FOOD; i++) { SCALE(food[i].x); SCALE(food[i].y); }
+    for (int i = 0; i < MAX_BUBBLE; i++) { SCALE(bubble[i].x); SCALE(bubble[i].y); }
+    for (int i = 0; i < t->shrimp_n; i++) { SCALE(shrimp[i].x); SCALE(shrimp[i].y); }
+#undef SCALE
+    memset(t->algae, 0, sizeof t->algae);
+    for (int y = 0; y < ALGAE_ROWS; y++) for (int x = 0; x < ALGAE_COLS; x++)
+        t->algae[y * ALGAE_COLS + x] = algae[(y * old_rows / ALGAE_ROWS) * old_cols + x * old_cols / ALGAE_COLS];
+    t->snail_cell = -1; t->drag_active = t->drag_has_prev = t->hold_active = false;
+}
 #define TAU 6.2831853f
 static void veg_sync(tank_t *t);   /* veg_growth[] = per-bed mean of veg_h[][] */
 
@@ -63,6 +96,130 @@ void tank_glass_clamp(float *x, float *y, float m) {
     *x = clampf(*x, m, TANK_W - m); *y = clampf(*y, m, TANK_H - m);
 }
 #define corner_clamp(x, y, m) ((void)0)            /* the plain rectangle (and the bowl, which has its own): no corners */
+float tank_fish_pitch(const fish_t *f) {
+    float limit = 0.61f + 0.35f * clampf((f->speed - 35) / 40, 0, 1);
+    return limit * tanhf(0.8f * atan2f(sinf(f->heading), fabsf(cosf(f->heading))) / limit);
+}
+int tank_wearable_polygon(const fish_t *f, int part, float x[8], float y[8], uint32_t *color) {
+    if (!f->wearable || f->wearable >= WEAR_COUNT || part > 1) return 0;
+    float head = f->variety == FISH_JELLYFISH ? -17 : f->variety == FISH_ANGEL ? -16 :
+                 f->variety == FISH_PUFFER ? -14 : f->variety == FISH_TETRA ? -7 :
+                 f->variety == FISH_SHARK ? -8 : -11;
+    float neck = f->variety == FISH_JELLYFISH ? 3 : f->variety == FISH_ANGEL ? 14 :
+                 f->variety == FISH_PUFFER ? 13 : f->variety == FISH_TETRA ? 6 :
+                 f->variety == FISH_SHARK ? 7 : 10;
+    int n = 4;
+    if (part && f->wearable != WEAR_TOP_HAT && f->wearable != WEAR_BOWTIE) {
+        if (f->wearable == WEAR_PARTY_HAT || f->wearable == WEAR_CROWN) {
+            float cx = f->wearable == WEAR_CROWN ? 1 : 2, width = f->wearable == WEAR_CROWN ? 2 : 4;
+            x[0] = cx - width; x[1] = cx; x[2] = cx + width;
+            y[0] = y[2] = head - 4; y[1] = head - (f->wearable == WEAR_CROWN ? 7 : 10);
+            *color = 0xffef9a; return 3;
+        }
+        if (f->wearable == WEAR_TIE) {
+            x[0] = 6; x[1] = 8; x[2] = 6; x[3] = 4;
+            y[0] = neck - 3; y[1] = y[3] = neck - 1; y[2] = neck + 1;
+        } else {
+            x[0] = x[3] = -2; x[1] = x[2] = 12;
+            y[0] = y[1] = neck - 2; y[2] = y[3] = neck;
+        }
+        *color = 0xffe8b0; return 4;
+    }
+    if (f->wearable == WEAR_TOP_HAT) {
+        float xx[4] = {-6, 8, 8, -6}, yy[4] = {head - 9, head - 9, head - 1, head - 1};
+        if (part) { xx[0] = xx[3] = -9; xx[1] = xx[2] = 11; yy[0] = yy[1] = head - 2; yy[2] = yy[3] = head; }
+        memcpy(x, xx, sizeof xx); memcpy(y, yy, sizeof yy); *color = part ? 0xf5cd65 : 0x673cab;
+    } else if (f->wearable == WEAR_PARTY_HAT) {
+        if (part) return 0;
+        x[0] = -7; x[1] = 2; x[2] = 10; y[0] = y[2] = head; y[1] = head - 13;
+        n = 3; *color = 0xff65b5;
+    } else if (f->wearable == WEAR_CROWN) {
+        if (part) return 0;
+        float xx[7] = {-8, -9, -4, 1, 6, 11, 10};
+        float yy[7] = {head, head - 9, head - 5, head - 12, head - 5, head - 9, head};
+        memcpy(x, xx, sizeof xx); memcpy(y, yy, sizeof yy); n = 7; *color = 0xffda46;
+    } else if (f->wearable == WEAR_TIE) {
+        if (part) return 0;
+        float xx[4] = {6, 9, 6, 3}, yy[4] = {neck - 3, neck + 7, neck + 10, neck + 7};
+        memcpy(x, xx, sizeof xx); memcpy(y, yy, sizeof yy); *color = 0xff4c68;
+    } else if (f->wearable == WEAR_BOWTIE) {
+        x[0] = 5; x[1] = part ? 11 : -1; x[2] = x[1];
+        y[0] = neck; y[1] = neck - 4; y[2] = neck + 4;
+        n = 3; *color = part ? 0x86f1f3 : 0x45c3de;
+    } else {
+        if (part) return 0;
+        x[0] = -2; x[1] = 12; x[2] = 5;
+        y[0] = y[1] = neck - 2; y[2] = neck + 8;
+        n = 3; *color = 0x7cdd76;
+    }
+    return n;
+}
+static float fish_projected_extent(const fish_t *f, float direction, bool horizontal) {
+    float p = tank_fish_pitch(f), sp = (horizontal ? cosf(p) : sinf(p)) * direction;
+    float cp = (horizontal ? -sinf(p) : cosf(p)) * direction, extent = 0;
+#define EXTENT(x, y) extent = fmaxf(extent, (x) * sp + (y) * cp)
+    float bx = f->variety == FISH_SHARK ? 1.4f : f->variety == FISH_TETRA ? 1.15f :
+               f->variety == FISH_PUFFER ? 0.85f : f->variety == FISH_CLOWNFISH ? 0.9f : 1;
+    float by = f->variety == FISH_ANGEL ? 1.55f : f->variety == FISH_TETRA ? 0.65f :
+               f->variety == FISH_PUFFER ? 1.35f : f->variety == FISH_SHARK ? 0.7f :
+               f->variety == FISH_CLOWNFISH ? 1.15f : 1;
+    static const float body_x[] = {16, 10, 2, -8, -15, -18, -15, -8, 2, 10};
+    static const float shark_x[] = {20, 9, 0, -9, -17, -21, -17, -9, 0, 12};
+    static const float ray_x[] = {13, 9, 2, -5, -10, -13, -10, -5, 2, 9};
+    static const float body_y[] = {0, -7, -10, -9, -6, 0, 6, 9, 10, 7};
+    if (f->variety == FISH_JELLYFISH) {
+        static const float x[] = {-16, -15, -11, -6, 0, 6, 11, 15, 16, 8, -8};
+        static const float y[] = {1, -5, -11, -15, -17, -15, -11, -5, 1, 3, 3};
+        for (int i = 0; i < 11; i++) { EXTENT(x[i] * 1.07f, y[i]); }
+        for (int strand = 0; strand < 5; strand++)
+            for (int segment = 0; segment <= 6; segment++) {
+                float y = segment ? segment * (strand % 2 ? 3 : 3.6f) : 1;
+                float x = (strand - 2) * 5, sway = segment * 0.55f + 0.6f;
+                EXTENT(x - sway, y); EXTENT(x + sway, y);
+            }
+    } else {
+        for (int i = 0; i < 10; i++) {
+            float x = f->variety == FISH_SHARK ? shark_x[i] : f->variety == FISH_STINGRAY ? ray_x[i] : body_x[i];
+            EXTENT(x * bx, body_y[i] * by);
+        }
+        extent = fmaxf(extent, horizontal ? 6.5f : 2 * sp + 9.5f * by);
+        float tail = (0.32f + f->speed * 0.007f) * 8;
+        if (f->variety == FISH_STINGRAY) {
+            EXTENT(2, -28); EXTENT(2, 28); EXTENT(-9, -20); EXTENT(-9, 20);
+            EXTENT(-38, tail * 3 / 8); EXTENT(-38, -tail * 3 / 8);
+        } else {
+            float tx = -26 * (f->stage == STAGE_ELDER ? 1.22f : 1) * (f->variety == FISH_GUPPY ? 1.3f : 1);
+            float spread = f->variety == FISH_GUPPY ? 17 : f->variety == FISH_PUFFER ? 6 :
+                           f->variety == FISH_BETTA ? 20 : f->variety == FISH_SHARK ? 15 : 10;
+            EXTENT(f->variety == FISH_SHARK ? -32 : tx, -spread - tail);
+            EXTENT(f->variety == FISH_SHARK ? -30 : tx, f->variety == FISH_SHARK ? 10 + tail / 2 : spread + tail);
+            EXTENT(-11, 0);
+            if (f->stage >= STAGE_ADULT || f->variety == FISH_SHARK || f->variety == FISH_BETTA || f->variety == FISH_CLOWNFISH) {
+                float h = f->variety == FISH_ANGEL ? -27 : f->variety == FISH_SHARK ? -23 :
+                          f->variety == FISH_BETTA ? -21 : f->stage == STAGE_ELDER ? -17 : -13;
+                EXTENT(6, -8); EXTENT(-2, h); EXTENT(-9, -8);
+            }
+            if (f->variety == FISH_ANGEL) { EXTENT(5, 9); EXTENT(-8, 25); EXTENT(-11, 7); }
+            if (f->variety == FISH_SHARK) { EXTENT(7, 3); EXTENT(-5, 17); EXTENT(-10, 5); }
+            if (f->variety == FISH_BETTA) {
+                EXTENT(8, 6); EXTENT(-3, 22 + tail / 4); EXTENT(-24, 25);
+                EXTENT(-22, 11); EXTENT(-8, 7); EXTENT(4, 5);
+            }
+        }
+    }
+    for (int part = 0; part < 2; part++) {
+        float x[8], y[8]; uint32_t color;
+        int n = tank_wearable_polygon(f, part, x, y, &color);
+        for (int i = 0; i < n; i++) { EXTENT(x[i], y[i]); }
+    }
+#undef EXTENT
+    return extent * f->size + 1.5f;
+}
+float tank_fish_clearance(const fish_t *f) { return fish_projected_extent(f, 1, false); }
+float tank_fish_top_clearance(const fish_t *f) { return fish_projected_extent(f, -1, false); }
+float tank_fish_half_width(const fish_t *f) {
+    return fmaxf(fish_projected_extent(f, 1, true), fish_projected_extent(f, -1, true));
+}
 /* a random point of open water: y in [y0, y1], x at least mx off the side glass at that height */
 static void rand_water(tank_t *t, float mx, float y0, float y1, float *x, float *y) {
     *x = tank_randf(t, mx, TANK_W - mx); *y = tank_randf(t, y0, y1);
@@ -120,6 +277,16 @@ const uint32_t FISH_BODY_COLORS[FISH_COLOR_N] = {
     0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
     0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xffffff, 0x263d50
 };
+const char *const CREATURE_NAMES[CREATURE_COUNT] = {"SHRIMP", "SNAIL", "URCHIN", "SEAHORSE"};
+const char *const COSMETIC_COLOR_NAMES[COSMETIC_COLOR_COUNT] = {
+    "NATURAL", "WHITE", "SLATE", "RED", "ORANGE", "GOLD", "YELLOW", "LIME",
+    "GREEN", "MINT", "CYAN", "BLUE", "PURPLE", "PINK", "ROSE", "LAVENDER"
+};
+uint32_t tank_cosmetic_color(unsigned color, uint32_t natural) {
+    static const uint8_t palette[COSMETIC_COLOR_COUNT] = {0, 22, 23, 9, 10, 4, 11, 12, 13, 20, 14, 15, 17, 8, 5, 21};
+    if (color >= COSMETIC_COLOR_COUNT) fprintf(stderr, "Invalid cosmetic color: %u\n", color);
+    return color && color < COSMETIC_COLOR_COUNT ? FISH_BODY_COLORS[palette[color]] : natural;
+}
 const uint32_t FISH_MARKING_COLORS[FISH_COLOR_N] = {
     0xffbd59, 0xffe08a, 0xa799ff, 0x78d67d, 0x38dcc7, 0xffffff, 0xf25b65, 0x1a2a30,
     0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
@@ -176,6 +343,7 @@ void tank_fish_face(fish_t *f) {
 }
 
 void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold, stage_t stage) {
+    memset(&t->companion.active[slot], 0, sizeof t->companion.active[slot]);
     fish_t *f = &t->fish[slot];
     const preset_t *p = &ROSTER[preset];
     f->preset = preset; tank_set_name(t, slot, p->name);
@@ -202,7 +370,7 @@ void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold,
     f->rest_dx = 8 + slot * 24 + bold * 14; f->rest_dy = -slot * 9 - tank_randf(t, 0, 10);   /* a body apart (was 9 px per slot) */
     f->sig = 0xffffffffu; f->ms_bits = 0; f->ms_seen = 0;
     f->color = p->color; f->fin = p->fin; f->accent = p->accent;
-    f->variety = FISH_CLASSIC; f->pattern = PATTERN_STRIPES;
+    f->variety = FISH_CLASSIC; f->pattern = PATTERN_STRIPES; f->wearable = WEAR_NONE; f->wear_colors = 0;
     f->parent_a = f->parent_b = -1;
 }
 
@@ -240,7 +408,7 @@ void tank_new_population(tank_t *t) {
 }
 
 int tank_add_fish(tank_t *t, int parent_a, int parent_b) {
-    if (t->n_fish >= N_FISH_MAX || t->n_fish >= ROSTER_N) return -1;
+    if (t->n_fish + t->companion.away >= N_FISH_MAX || t->n_fish + t->companion.away >= ROSTER_N) return -1;
     int used[ROSTER_N] = {0};
     for (int i = 0; i < t->n_fish; i++) used[t->fish[i].preset] = 1;
     int free_n = 0, free_idx[ROSTER_N];
@@ -271,7 +439,7 @@ int tank_add_fish(tank_t *t, int parent_a, int parent_b) {
  * was offered in, a temperament of its own (nobody's to inherit), and in at
  * the surface under the middle of the glass, as if poured from the bag */
 int tank_add_bought_fry(tank_t *t, uint32_t body, uint32_t accent) {
-    if (t->n_fish >= N_FISH_MAX || t->n_fish >= ROSTER_N) return -1;
+    if (t->n_fish + t->companion.away >= N_FISH_MAX || t->n_fish + t->companion.away >= ROSTER_N) return -1;
     int used[ROSTER_N] = {0};
     for (int i = 0; i < t->n_fish; i++) used[t->fish[i].preset] = 1;
     int free_n = 0, free_idx[ROSTER_N];
@@ -295,12 +463,14 @@ bool tank_remove_fish(tank_t *t, int idx) {
     for (int i = idx; i < t->n_fish - 1; i++) {
         t->fish[i] = t->fish[i + 1];
         t->sd_paid_fish[i] = t->sd_paid_fish[i + 1];
+        t->companion.active[i] = t->companion.active[i + 1];
         /* its spot by the reef is its slot's (tank_make_fish): a slot nearer,
            so the next arrival's spot is free again */
         t->fish[i].rest_dx -= 24; t->fish[i].rest_dy += 9;
     }
     t->n_fish--;
     t->sd_paid_fish[t->n_fish] = 0;
+    memset(&t->companion.active[t->n_fish], 0, sizeof t->companion.active[0]);
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
         if (f->parent_a == idx) f->parent_a = -1; else if (f->parent_a > idx) f->parent_a--;
@@ -314,6 +484,12 @@ bool tank_remove_fish(tank_t *t, int idx) {
 }
 
 void tank_init(tank_t *t, uint32_t seed) {
+    memset(&t->companion, 0, sizeof t->companion);
+    t->companion.version = 2;
+    t->companion.cozy = t->companion.captions = 1;
+    t->companion.lively = 0;
+    t->companion.decor = 1;
+    t->companion_fraction = 0;
     memset(&t->journal, 0, sizeof t->journal);
     memset(t->bank, 0, sizeof t->bank); t->bank_count = 0;
     memset(&t->aquariums, 0, sizeof t->aquariums); t->aquariums.count = 1;
@@ -555,7 +731,9 @@ static void veg_bed_base(const tank_t *t, int b, float *bx0, int *n) {
        to vanish because its MEAN height dropped */
     int nn = base_n + 6;
     if (nn > VEG_FRONDS_MAX) nn = VEG_FRONDS_MAX;
-    while (nn > 1 && *bx0 + nn * 12 > TANK_FX1 - 8) nn--;   /* beds stop at the glass */
+    *bx0 = clampf(*bx0, TANK_FX0 + 12, TANK_FX1 - 12);
+    while (nn > 1 && *bx0 + (nn - 1) * veg_pitch(b) > TANK_FX1 - 12) nn--;
+    if (b == 1) *bx0 = TANK_FX1 - 12 - (nn - 1) * veg_pitch(b);
     *n = nn;
 }
 int tank_veg_beds(const tank_t *t) { return (t->sd_unlocks & SD_ITEM_PLANT) ? VEG_BEDS_MAX : VEG_BEDS; }
@@ -1497,6 +1675,9 @@ static float shrimp_hash(int i, int k) {  /* a fixed 0..1 per shrimp: its place 
     return (h & 0xffff) / 65535.0f;
 }
 bool tank_shrimp_refusing(const tank_t *t) { return tank_algae_cover(t) > SHRIMP_REFUSE_COVER; }
+int tank_shrimp_display_count(const tank_t *t) {
+    return t->companion.display_compact ? (t->shrimp_n + 1) / 2 : t->shrimp_n;
+}
 static void shrimp_spawn(tank_t *t, int i, float x) {
     shrimp_t *q = &t->shrimp[i];
     memset(q, 0, sizeof *q);
@@ -1588,6 +1769,7 @@ static void shrimp_tick(tank_t *t, float dt) {
     float gx = fp >= 0 ? t->food[fp].x : t->shrimp_tx;
     float gy = fp < 0 ? t->shrimp_ty : t->food[fp].floor_s > 0 ? FOOD_FLOOR_Y - 2 : t->food[fp].y;   /* on the floor, or still sinking */
     float spread = 40 + n * 9;                                    /* the school's width: 76 px for 4, 130 for 10 */
+    if (t->companion.display_compact) spread *= 0.6f;
     /* the whole school fits between the side glass: a goal by the wall (a bed
        against it, a pellet in the corner) keeps them spread, not piled up on
        the glass; the ones nearest a corner pellet still reach it */
@@ -1600,13 +1782,15 @@ static void shrimp_tick(tank_t *t, float dt) {
             q->dart -= dt;
             float k = powf(0.2f, dt); q->vx *= k; q->vy *= k;
         } else {
-            float ox = (shrimp_hash(i, 1) - 0.5f) * spread, oy = (shrimp_hash(i, 2) - 0.5f) * 24;
+            float ox = (shrimp_hash(i, 1) - 0.5f) * spread;
+            float oy = (shrimp_hash(i, 2) - 0.5f) * (t->companion.display_compact ? 16 : 24);
             float tx = gx + (fp >= 0 ? ox * 0.45f : ox), ty = gy + (fp >= 0 ? 0 : oy);
             float dx = tx - q->x, dy = ty - q->y, d = sqrtf(dx * dx + dy * dy) + 1e-3f;
             bool chase = fp >= 0;                                       /* food in reach: they hurry, up or down alike */
             float sp = fminf(SHRIMP_CRUISE * (chase ? 1.6f : 1.0f), d * 0.9f);
             float wx = dx / d * sp, wy = dy / d * sp * (chase ? 1.0f : 0.7f);
             float sx = fp >= 0 ? SHRIMP_SEP_X * 0.6f : SHRIMP_SEP_X, sy = fp >= 0 ? SHRIMP_SEP_Y * 0.6f : SHRIMP_SEP_Y;
+            if (t->companion.display_compact) { sx *= 0.75f; sy *= 0.75f; }
             for (int j = 0; j < n; j++) {
                 if (j == i) continue;
                 float nx = (q->x - t->shrimp[j].x) / sx, ny = (q->y - t->shrimp[j].y) / sy, e = sqrtf(nx * nx + ny * ny);
@@ -2107,7 +2291,7 @@ void tank_tick_sleep(tank_t *t, float seconds) {
     t->clock += seconds;
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
-        f->hunger = clampf(f->hunger + SLEEP_HUNGER_PER_H * h, 0, 10);
+        f->hunger = clampf(f->hunger + SLEEP_HUNGER_PER_H * h, 0, t->companion.cozy ? 6 : 10);
         f->energy = clampf(f->energy + SLEEP_ENERGY_PER_H * h * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1), 0, 10);
         f->stress = clampf(f->stress - SLEEP_STRESS_PER_H * h * ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1), 0, 10);
         f->speed = 0; f->target_speed = 0; f->bored = 0; f->breather = 0;  /* a night's sleep is a fresh start */
@@ -2172,6 +2356,7 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
             float h = clampf(f->hunger / 10.0f, 0, 1);
             float slow = clampf(d / 60, 0.4f + h * 0.35f, 1);
             tg.x = t->food[i].x; tg.y = t->food[i].y;
+            tg.y = fminf(tg.y, TANK_SAND_TOP - tank_fish_clearance(f));
             tg.speed = lerpf(29, 62, f->bold) * slow * (0.75f + h * 0.55f);
             return tg;   /* skip the margin clamp: pellets rest at the floor */
         }
@@ -2217,7 +2402,7 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
             f->dart_timer = tank_randf(t, 0.8f, 1.5f);
         }
         tg.x = f->dart_x; tg.y = f->dart_y;
-        tg.speed = lerpf(65, 95, f->bold);
+        tg.speed = lerpf(42, 58, f->bold);
         break;
     case GOAL_INSPECT_REEF: {
         float rx, ry; tank_reef_spot(t, &rx, &ry);   /* the reef cluster, once there is one */
@@ -2236,7 +2421,7 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
          * cruises to a point inside it, and on arrival picks the next. The
          * model still owns the goal; this is the reflex layer resolving the
          * concrete target, as it does for every other goal. */
-        if (!f->explore_set || tank_dist(f->x, f->y, f->explore_x, f->explore_y) < 26) {
+        if (!f->explore_set || tank_dist(f->x, f->y, f->explore_x, f->explore_y) < 10) {
             int cur = zone_of(f->x, f->y), best = -1, second = -1;
             for (int z = 0; z < 6; z++) {
                 if (z == cur) continue;
@@ -2245,7 +2430,11 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
             }
             int z = (second >= 0 && (xr(t) % 3) == 0) ? second : best;
             int col = z % 3, row = z / 3;
-            f->explore_x = tank_randf(t, col * (TANK_W / 3.0f) + 40, (col + 1) * (TANK_W / 3.0f) - 40);
+            float cell = TANK_W / 3.0f;
+            float margin = 15 * f->size + 3;
+            float x0 = col ? col * cell + 12 : margin;
+            float x1 = col < 2 ? (col + 1) * cell - 12 : TANK_W - margin;
+            f->explore_x = tank_randf(t, x0, x1);
             f->explore_y = tank_randf(t, row * (TANK_BOT / 2.0f) + 42, (row + 1) * (TANK_BOT / 2.0f) - 40);
             f->explore_set = true;
         }
@@ -2257,7 +2446,8 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
     default: break;
     }
     float m = 23;
-    tg.x = clampf(tg.x, m, TANK_W - m);
+    float side = 15 * f->size + 3;
+    tg.x = clampf(tg.x, side, TANK_W - side);
     tg.y = clampf(tg.y, m + 9, TANK_H - m);
     corner_clamp(&tg.x, &tg.y, m + 4);
     return tg;
@@ -2266,10 +2456,12 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
 static float wall_avoidance(const fish_t *f, bool *hit) {
     const float m = 34;
     float vx = 0, vy = 0;
-    if (f->x < m)          vx += 1 - f->x / m;
-    if (f->x > TANK_W - m) vx -= 1 - (TANK_W - f->x) / m;
+    float side = 15 * f->size + 6;
+    if (f->x < side)          vx += 1 - f->x / side;
+    if (f->x > TANK_W - side) vx -= 1 - (TANK_W - f->x) / side;
     if (f->y < m + 6)      vy += 1 - (f->y - 6) / m;
-    if (f->y > TANK_H - m) vy -= 1 - (TANK_H - f->y) / m;
+    float bottom = TANK_SAND_TOP - tank_fish_clearance(f);
+    if (f->y > bottom - 4) vy -= (f->y - (bottom - 4)) / m;
     *hit = (vx != 0 || vy != 0);
     return *hit ? atan2f(vy, vx) : 0;
 }
@@ -2277,7 +2469,10 @@ static float wall_avoidance(const fish_t *f, bool *hit) {
 static void eat_nearby_food(tank_t *t, fish_t *f) {
     for (int i = 0; i < MAX_FOOD; i++) {
         if (!t->food[i].alive) continue;
-        if (tank_dist(f->x, f->y, t->food[i].x, t->food[i].y) < 12 * f->size + 4) {
+        float food_y = t->food[i].y;
+        if (food_y >= TANK_SAND_TOP)
+            food_y = fminf(food_y, TANK_SAND_TOP - tank_fish_clearance(f));
+        if (tank_dist(f->x, f->y, t->food[i].x, food_y) < 12 * f->size + 4) {
             t->food[i].alive = false;
             f->hunger = clampf(f->hunger - 4.3f, 0, 10);
             f->energy = clampf(f->energy + 1.0f, 0, 10);
@@ -2300,6 +2495,8 @@ static void eat_nearby_food(tank_t *t, fish_t *f) {
 
 static void update_fish(tank_t *t, int idx, float dt) {
     fish_t *f = &t->fish[idx];
+    f->wearable = t->companion.active[idx].wearable;
+    f->wear_colors = t->companion.active[idx].wear_colors;
     /* drives (prototype rates, speed rescaled by the same 0.55) */
     f->hunger    = clampf(f->hunger + dt * (HUNGER_PER_S + f->bold * HUNGER_BOLD_PER_S +
                           (f->goal.id == GOAL_DART_PLAY ? HUNGER_DART_PER_S : 0)), 0, 10);
@@ -2541,18 +2738,20 @@ static void update_fish(tank_t *t, int idx, float dt) {
     if (!f->facing) f->facing = cosf(f->heading) < 0 ? -1 : 1;
     bool urgent = agile || (t->ravenous && f->hunger > 6.5f) || (t->startled && touch_speed >= 55);
     bool behind = cosf(desired) * f->facing < -BEHIND_BAND;
-    if (behind) f->behind += dt;
-    else f->behind = f->behind > 0 ? 0 : fminf(0, f->behind + dt);
+    bool settling = f->behind < 0;
+    if (settling) f->behind = fminf(0, f->behind + dt);
+    else if (behind) f->behind += dt;
+    else f->behind = 0;
     /* hanging about its spot (the goal's point within ~30 px) a fish is in
      * no hurry: the lane swinging past it is a glance, not a turn */
     bool at_spot = tg.valid && tank_dist(f->x, f->y, tg.x, tg.y) < 30;
     float commit = urgent ? 0 : lerpf(2.0f, 0.3f, clampf((f->speed - 10) * (1 / 25.0f), 0, 1)) + (at_spot ? 1.2f : 0);
-    if (behind && f->behind >= commit) {
+    if (!settling && behind && f->behind >= commit) {
         f->facing = (int8_t)-f->facing;
         f->heading = norm_ang(3.14159f - f->heading);   /* the climb or dive kept */
-        f->behind = urgent ? 0 : -TURN_SETTLE;
+        f->behind = -(urgent ? 0.65f : TURN_SETTLE);
     }
-    bool glancing = f->behind > 0;       /* the way is behind, the turn not yet committed */
+    bool glancing = behind && f->behind > 0;
     if (cosf(desired) * f->facing < 0)   /* on its own side until it turns */
         desired = atan2f(sinf(desired), f->facing * fabsf(cosf(desired)));
     float turn = clampf(norm_ang(desired - f->heading), -f->turn_rate * dt, f->turn_rate * dt);
@@ -2587,12 +2786,18 @@ static void update_fish(tank_t *t, int idx, float dt) {
     float m = 15 * f->size;
 /* the bowl's glass: back onto the circle m inside it, the heading mirrored
                                                               in the glass while it points out, the body turned to swim back in */
-    if (f->x < m)          { f->x = m;          if (cosf(f->heading) < 0) f->heading = norm_ang(3.14159f - f->heading);
+    if (f->x < m)          { f->x = m; f->behind = -TURN_SETTLE;
+                                                if (cosf(f->heading) < 0) f->heading = norm_ang(3.14159f - f->heading);
                                                 if (f->facing < 0) { f->facing = 1; f->behind = -TURN_SETTLE; } }
-    if (f->x > TANK_W - m) { f->x = TANK_W - m; if (cosf(f->heading) > 0) f->heading = norm_ang(3.14159f - f->heading);
+    if (f->x > TANK_W - m) { f->x = TANK_W - m; f->behind = -TURN_SETTLE;
+                                                if (cosf(f->heading) > 0) f->heading = norm_ang(3.14159f - f->heading);
                                                 if (f->facing > 0) { f->facing = -1; f->behind = -TURN_SETTLE; } }
-    if (f->y < m)          { f->y = m;          f->heading = -f->heading; }
-    if (f->y > TANK_H - m) { f->y = TANK_H - m; f->heading = -f->heading; }
+    float top = fmaxf(m, tank_fish_top_clearance(f));
+    if (f->y < top)        { f->y = top; if (sinf(f->heading) < 0) f->heading = -f->heading;
+                            f->y = fmaxf(f->y, tank_fish_top_clearance(f)); }
+    float bottom = TANK_SAND_TOP - tank_fish_clearance(f);
+    if (f->y > bottom)     { f->y = bottom; if (sinf(f->heading) > 0) f->heading = -f->heading;
+                            f->y = fminf(f->y, TANK_SAND_TOP - tank_fish_clearance(f)); }
 /* the watch's corners: back onto the arc m inside it, the heading mirrored
                                                               in the glass while it points out (the bowl's rule, a corner at a time) */
 
@@ -2744,7 +2949,15 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
         if (f->goal.id == GOAL_SEEK_FOOD || f->hunger < 8.0f) f->starve_flagged = false;
     }
 
-    for (int i = 0; i < t->n_fish; i++) update_fish(t, i, dt);
+    for (int i = 0; i < t->n_fish; i++) {
+        update_fish(t, i, dt);
+        if (t->companion.cozy) {
+            /* Comfort is not a player meal, a hold, trust, or an achievement. */
+            t->fish[i].hunger = fminf(t->fish[i].hunger, 6);
+            t->fish[i].energy = fmaxf(t->fish[i].energy, 4);
+            t->fish[i].stress = fminf(t->fish[i].stress, 4);
+        }
+    }
 
     /* consume the hold AFTER the fish have seen it (the platform re-asserts
      * every frame the finger stays down). Clearing it at the top of the tick

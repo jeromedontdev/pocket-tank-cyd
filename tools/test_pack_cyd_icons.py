@@ -51,7 +51,7 @@ class IconBankTests(unittest.TestCase):
                 name: [int(v.strip(), 0) for v in body.split(",") if v.strip()]
                 for name, body in re.findall(r"static const \w+ (\w+)\[\d+\] = \{(.*?)\};", text, re.S)
             }
-            entries = re.findall(r"const icon_t (\w+) = \{\s*(\d+),\s*(\d+),\s*(\w+),\s*(\w+)\s*\};", text)
+            entries = re.findall(r"const icon_t (\w+) = \{\s*(\d+),\s*(\d+),\s*(\w+),\s*(\w+)\s*(?:,\s*0\s*)?\};", text)
             metadata = (root / "icons_sd.c").read_text()
             for name, w, h, rgb, alpha in entries:
                 offset = int(re.search(rf"const icon_t {name} = \{{ \d+, \d+, 0, 0, (\d+) \}};", metadata)[1])

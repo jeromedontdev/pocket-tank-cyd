@@ -20,6 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+static void forget_radio(void);
+static char cached_ssid[NET_SSID_MAX + 1], cached_pass[NET_PASS_MAX + 1];
 
 static const char *creds_path(void) {
     static char p[512];
@@ -29,21 +31,31 @@ static const char *creds_path(void) {
 }
 static void chomp(char *s) { size_t n = strlen(s); while (n && (s[n - 1] == '\n' || s[n - 1] == '\r')) s[--n] = 0; }
 bool net_port_creds_get(char *ssid, char *pass) {
-    FILE *f = fopen(creds_path(), "r"); if (!f) return false;
+    cached_ssid[0] = cached_pass[0] = 0;
+    FILE *f = fopen(creds_path(), "r");
+    if (!f) { cached_ssid[0] = cached_pass[0] = 0; return false; }
     char a[NET_SSID_MAX + 8] = "", b[NET_PASS_MAX + 8] = "";
     bool ok = fgets(a, sizeof a, f) != NULL; if (ok) { chomp(a); if (!fgets(b, sizeof b, f)) b[0] = 0; chomp(b); }
     fclose(f);
     if (!ok || !a[0]) return false;
     snprintf(ssid, NET_SSID_MAX + 1, "%.*s", NET_SSID_MAX, a);
     snprintf(pass, NET_PASS_MAX + 1, "%.*s", NET_PASS_MAX, b);
+    snprintf(cached_ssid, sizeof cached_ssid, "%s", ssid);
+    snprintf(cached_pass, sizeof cached_pass, "%s", pass);
     return true;
 }
 bool net_port_creds_set(const char *ssid, const char *pass) {
     FILE *f = fopen(creds_path(), "w"); if (!f) return false;
-    fprintf(f, "%s\n%s\n", ssid, pass); fclose(f); return true;
+    bool ok = fprintf(f, "%s\n%s\n", ssid, pass) >= 0;
+    if (fclose(f)) ok = false;
+    if (ok) {
+        snprintf(cached_ssid, sizeof cached_ssid, "%s", ssid);
+        snprintf(cached_pass, sizeof cached_pass, "%s", pass);
+    }
+    return ok;
 }
 bool net_port_creds_forget(void) {
-    if (remove(creds_path()) == 0 || errno == ENOENT) return true;
+    if (remove(creds_path()) == 0 || errno == ENOENT) { forget_radio(); return true; }
     perror("Simulator Wi-Fi forget"); return false;
 }
 
@@ -55,6 +67,24 @@ static char  s_ssid[NET_SSID_MAX + 1], s_pass[NET_PASS_MAX + 1];
 static update_manifest_t s_m;
 static int   s_percent;
 static bool  s_radio;
+static bool  s_connected;
+static bool  s_weather, s_foreground, s_background;
+static float s_weather_retry;
+static void forget_radio(void) {
+    s_connected = false; s_weather_retry = 0;
+    cached_ssid[0] = cached_pass[0] = 0;
+}
+bool net_port_connected(void) { return s_connected; }
+bool net_port_weather_active(void) { return s_weather || s_background; }
+void net_port_weather(bool wanted) {
+    if (wanted && !s_weather) s_weather_retry = 0;
+    s_weather = wanted;
+    if (!wanted && !s_foreground) {
+        s_radio = s_connected = false;
+        if (s_background) { s_op = OP_NONE; s_state = NET_IDLE; s_background = false; }
+        s_weather_retry = 0;
+    }
+}
 
 static const net_ap_t FAKE_APS[] = {
     { "Fishbowl", -48, true }, { "Strato's Wi-Fi", -60, true }, { "CoffeeShop Guest", -70, false },
@@ -64,6 +94,16 @@ static const net_ap_t FAKE_APS[] = {
 #define N_FAKE ((int)(sizeof FAKE_APS / sizeof FAKE_APS[0]))
 
 void net_sim_advance(float dt) {                     /* the sim's clock */
+    if (s_weather_retry > 0) s_weather_retry -= dt;
+    if (s_weather && !s_foreground && !s_connected && s_state != NET_BUSY && s_weather_retry <= 0) {
+        s_weather_retry = 60;
+        if (cached_ssid[0]) {
+            snprintf(s_ssid, sizeof s_ssid, "%s", cached_ssid);
+            snprintf(s_pass, sizeof s_pass, "%s", cached_pass);
+            s_op = OP_CONNECT; s_state = NET_BUSY; s_err = NET_ERR_NONE;
+            s_t = 0; s_radio = true; s_background = true;
+        }
+    }
     if (s_state != NET_BUSY) return;
     s_t += dt;
     const char *fake = getenv("POCKET_TANK_FAKE_UPDATE");
@@ -73,7 +113,7 @@ void net_sim_advance(float dt) {                     /* the sim's clock */
         if (s_t >= 1.5f) {
             if (!strcmp(s_ssid, "Ghost")) { s_state = NET_FAILED; s_err = NET_ERR_NO_SIGNAL; }
             else if (!strncmp(s_pass, "wrong", 5)) { s_state = NET_FAILED; s_err = NET_ERR_PASSWORD; }
-            else s_state = NET_DONE;
+            else { s_state = NET_DONE; s_connected = true; }
         }
         break;
     case OP_CHECK:
@@ -105,7 +145,10 @@ void net_sim_advance(float dt) {                     /* the sim's clock */
     default: break;
     }
 }
-static void begin(int op) { s_op = op; s_state = NET_BUSY; s_err = NET_ERR_NONE; s_t = 0; s_radio = true; }
+static void begin(int op) {
+    s_foreground = true; s_background = false;
+    s_op = op; s_state = NET_BUSY; s_err = NET_ERR_NONE; s_t = 0; s_radio = true;
+}
 void net_port_scan_start(void) { begin(OP_SCAN); }
 int  net_port_scan_state(void) { return s_op == OP_SCAN ? s_state : NET_IDLE; }
 int  net_port_scan_results(net_ap_t *out, int max) {
@@ -114,6 +157,7 @@ int  net_port_scan_results(net_ap_t *out, int max) {
     return n;
 }
 void net_port_connect_start(const char *ssid, const char *pass) {
+    s_connected = false;
     snprintf(s_ssid, sizeof s_ssid, "%s", ssid); snprintf(s_pass, sizeof s_pass, "%s", pass); begin(OP_CONNECT);
 }
 int  net_port_connect_state(void) { return s_op == OP_CONNECT ? s_state : NET_IDLE; }
@@ -122,6 +166,14 @@ int  net_port_check_state(const update_manifest_t **m) { if (s_op != OP_CHECK) r
 void net_port_install_start(void) { s_percent = 0; begin(OP_INSTALL); }
 int  net_port_install_state(int *percent) { if (s_op != OP_INSTALL) return NET_IDLE; *percent = s_percent; return s_state; }
 void net_port_abort(void) { if (s_state == NET_BUSY) { s_state = NET_FAILED; s_err = NET_ERR_ABORTED; } }
-void net_port_off(void) { s_op = OP_NONE; s_state = NET_IDLE; s_radio = false; }
+void net_port_off(void) {
+    s_foreground = false;
+    if (s_weather) {
+        s_op = OP_NONE; s_state = NET_IDLE; s_background = true;
+        return;
+    }
+    s_op = OP_NONE; s_state = NET_IDLE; s_radio = false; s_connected = false; s_background = false;
+}
 int  net_port_fail_reason(void) { return s_err; }
 bool net_sim_radio_on(void) { return s_radio; }
+void net_sim_disconnect(void) { s_connected = false; s_weather_retry = 0; }

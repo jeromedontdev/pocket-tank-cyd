@@ -24,6 +24,11 @@
 #define PAGE_Y 0
 #define PAGE_FRAME_W PAGE_W
 #define PAGE_FRAME_H PAGE_H
+void render_tile(int y, int height);
+int render_tile_top(void);
+int render_tile_bottom(void);
+const char *render_palette_name(bool sand, int index);
+void render_settings_open(void);
 static inline float render_page_x(float x) {
     return x * PAGE_W / TANK_W;
 }
@@ -42,19 +47,40 @@ bool render_clock_format(const tank_t *t, int64_t unix_time, char text[9], int *
 void render_clock_synchronized(bool synchronized);
 bool render_clock_active(const tank_t *t);
 void render_clock_bounds(const tank_t *t, int *x, int *y, int *w, int *h);
+/* Whole clock bounds include the separate, non-overlapping caption panel.
+ * Circular faces step down if necessary to keep legible captions on screen. */
+typedef struct {
+    int x, y, w, h, face_x, face_y, face_w, face_h;
+    int caption_y, caption_h, caption_scale, caption_pitch, size, rows;
+} render_clock_layout_t;
+void render_clock_layout(const tank_t *t, render_clock_layout_t *layout);
 
 /* Optional frame profiling: set a microsecond clock and render_tank fills
  * render_prof_us per stage (0 scene-copy, 1 shafts, 2 veg (back), 3 food+
- * bubbles, 4 fish + front veg, 5 vignette sweep, 6 algae film). Accumulates
+ * bubbles, 4 fish + front veg, 5 vignette sweep, 6 algae film, 7 clock). Accumulates
  * until the caller zeroes it. NULL = off. */
 extern int64_t (*render_clock_us)(void);
-extern int64_t render_prof_us[7];
+extern int64_t render_prof_us[8];
 
 /* Optional static-scene cache (TANK_W*TANK_H uint16): the water gradient,
  * pebbles and backdrop decor are rendered once per lighting state and copied each
  * frame instead of recomputed - keeps core 0's frame budget flat as the scene
  * gets lusher. NULL disables. */
 void render_set_scene_cache(uint16_t *buf);
+/* Lossless row RLE of background and a stable decoration prefix; complex rows draw live. */
+void render_set_backdrop_cache(void *buf, size_t bytes);
+/* Begin once after simulation; ranges include old bounds and require retained LCD contents. */
+void render_damage_begin(const tank_t *t, bool force_full);
+bool render_damage_range(int tile_y, int tile_height, int *first, int *height);
+/* Consumes merged 32x40 block rectangles, at most 80 rows high. */
+bool render_damage_next(int *cursor, int *x, int *y, int *width, int *height);
+/* Width zero restores the full horizontal viewport; framebuffer stride stays unchanged. */
+void render_region(int x, int width);
+int render_region_left(void);
+int render_region_right(void);
+/* Release before starting network work; caches are optional and allocated lazily. */
+void render_work_caches(bool enabled);
+size_t render_work_cache_bytes(void);
 
 /* Optional vignette alpha cache (TANK_W*TANK_H bytes): with a scene cache the
  * porthole vignette is baked into the scene and re-applied per frame only on
@@ -72,6 +98,9 @@ const uint16_t *render_scene_buf(unsigned *epoch);
  * not the scene. Without it the renderer falls back to full redraws. */
 #define RENDER_DIRTY_WORDS (TANK_H * ((TANK_W + 31) / 32))
 void render_set_dirty_mask(uint32_t *buf);
+/* Word-only masks/palette may live in ESP32 32-bit instruction RAM. Set at startup. */
+size_t render_mask_scratch_size(void);
+void render_set_mask_scratch(uint32_t *buf);
 void render_fb_primed(const uint16_t *fb, unsigned epoch);
 
 /* Stats overlay for one selected fish: selection ring + a small card of
@@ -198,7 +227,7 @@ void render_milestones(const tank_t *t, uint16_t *fb, int stride);
  * brightness row). */
 enum { MS_TAP_NONE = 0, MS_TAP_KEPT = 1, MS_TAP_CLOSE = 2, MS_TAP_SETTINGS = 3,   /* SETTINGS: the button bottom left (2026-09-15) opens the settings page */
        MS_TAP_SHOP = 4,                                                            /* the sand dollar left of the TANK row opens the shop */
-       MS_TAP_JOURNAL = 5, MS_TAP_BANK = 6, MS_TAP_GAMES = 7, MS_TAP_RENAME = 16, MS_TAP_SELL = 32, MS_TAP_CUSTOM = 64 };
+       MS_TAP_JOURNAL = 5, MS_TAP_BANK = 6, MS_TAP_GAMES = 7, MS_TAP_LIFE = 8, MS_TAP_RENAME = 16, MS_TAP_SELL = 32, MS_TAP_CUSTOM = 64 };
 void render_games_open(void);
 void render_games_tick(float dt);
 bool render_games_tap(tank_t *t, float x, float y);
@@ -213,6 +242,10 @@ void render_journal_open(void);
 void render_journal(const tank_t *t, uint16_t *fb, int stride);
 int render_journal_tap(tank_t *t, float x, float y); /* 1 closes; 0 keeps page */
 #define JOURNAL_ENTRY_Y 348
+void render_life_open(void);
+void render_life(const tank_t *t, uint16_t *fb, int stride);
+enum { HOME_NONE, HOME_CLOSE, HOME_BANK, HOME_SHOP, HOME_JOURNAL, HOME_GAMES, HOME_SETTINGS, HOME_TANKS, HOME_KEEPER };
+int render_life_tap(tank_t *t, float x, float y);
 #define JOURNAL_TAB_Y 312
 #define JOURNAL_GOAL_Y 94
 #define JOURNAL_GOAL_DY 64
@@ -310,7 +343,7 @@ int  render_confirm_hit(float x, float y);
  * Brightness and SD operations are handed back to the platform. */
 enum { SET_TAP_NONE = 0, SET_TAP_CLOSE = 1, SET_TAP_BRIGHT = 2, SET_TAP_LIGHT = 4, SET_TAP_IDLE = 5,
        SET_TAP_UPDATES = 6, SET_TAP_FEED = 8,
-       SET_TAP_BACKUP = 10, SET_TAP_RESTORE = 11, SET_TAP_SAND = 12, SET_TAP_WATER = 13, SET_TAP_TOUCH = 14, SET_TAP_WIPE = 15, SET_TAP_WIFI = 16, SET_TAP_CLOCK_SHOW = 17 };
+       SET_TAP_BACKUP = 10, SET_TAP_RESTORE = 11, SET_TAP_SAND = 12, SET_TAP_WATER = 13, SET_TAP_TOUCH = 14, SET_TAP_WIPE = 15, SET_TAP_WIFI = 16, SET_TAP_CLOCK_SHOW = 17, SET_TAP_BRIGHT_PREVIEW = 18 };
 void render_backup_status(const char *message, bool arm_restore);
 void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct);
 int  render_settings_tap(float x, float y, int *value);
@@ -340,6 +373,7 @@ void render_fish_preview(uint16_t *fb, int stride, float x, float y, float size,
 /* the same, but AS THE FISH IS: its own stage (a fry shows no markings yet,
  * an elder its long tail), calm and fed - the birth flow's portrait */
 void render_fish_portrait(uint16_t *fb, int stride, float x, float y, float size, const fish_t *who, float clock);
+void render_creature_portrait(uint16_t *fb, int stride, float x, float y, int creature, uint8_t colors, float clock);
 
 /* ---- the pages' layouts (2026-10-01). These lived in render.c; they are here
  * so the sim's selftests tap where the layout says on every board instead of
@@ -444,6 +478,9 @@ void render_fish_portrait(uint16_t *fb, int stride, float x, float y, float size
 /* the settings page */
 #define SET_TITLE_Y   14
 #define SET_ROW1_Y    58             /* BRIGHTNESS */
+#define SET_SLIDER_X  48
+#define SET_SLIDER_W  352
+#define SET_SLIDER_Y  84
 #define SET_ROW2_Y    108            /* SD backup / restore */
 #define SET_NOTE_Y    140
 #define SET_ROW3_Y    176            /* AUTO FEED */

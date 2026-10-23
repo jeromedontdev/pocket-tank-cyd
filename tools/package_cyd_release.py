@@ -15,8 +15,8 @@ from make_sd_update import package
 
 def release_version(value):
     value = value.removeprefix("v")
-    if not re.fullmatch(r"\d+\.\d+\.\d+-cyd\.[1-9]\d*", value) or len(value) > 15:
-        raise ValueError("Use vMAJOR.MINOR.PATCH-cyd.N, at most 15 characters without v")
+    if not re.fullmatch(r"\d+\.\d+\.\d+", value) or len(value) > 15:
+        raise ValueError("Use vMAJOR.MINOR.PATCH, at most 15 characters without v")
     return value
 
 
@@ -51,15 +51,15 @@ def create_bundle(build, output, version):
     (output / icon_name).write_bytes(icons)
     source = Path(__file__).resolve().parent.parent
     shutil.copyfile(source / "LICENSE", output / "LICENSE")
-    instructions = f"""Pocket Tank CYD {version} (alpha)
+    instructions = f"""Pocket Tank CYD {version}
 ESP32-2432S028 only. Not for other ESP32 displays.
 
 EXISTING CYD INSTALLATION (preserve your tanks)
-1. Use Settings > Updates > BACKUP TO SD before updating.
+1. Use Settings > SD BACKUPS > BACKUP TO SD before updating.
 2. Power off before moving the SD card.
-3. Copy {icon_name} to the SD card root.
+3. Menu artwork is embedded; the optional legacy {icon_name} is not required.
 4. Copy update.ptu to pocket-tank/update.ptu on the SD card.
-5. Reinsert the card, power on, and use Settings > Updates to install.
+5. Reinsert the card, power on, and use Settings > Device > SD Updates to install.
 The SD updater verifies board, size and SHA-256. Packages are not signed:
 only install files from a source you trust.
 
@@ -75,7 +75,7 @@ WARNING: the factory image overwrites NVS, saved tanks, Wi-Fi credentials,
 touch calibration and OTA slot selection. Never use it for a normal upgrade.
 With esptool v5 installed:
 python -m esptool --chip esp32 --port COM4 --baud 460800 write-flash 0x0 pocket-tank-cyd-factory.bin
-Copy {icon_name} to the SD card root, then complete first-time setup.
+Complete first-time setup; no SD artwork installation is required.
 Back up the entire SD card separately; NVS reset loses collection identity.
 
 Do not downgrade: the extended CYD save format is not supported upstream.
@@ -85,13 +85,24 @@ https://github.com/jeromedontdev/pocket-tank-cyd
     (output / "INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""## Pocket Tank CYD {version}
 
-Alpha release for **ESP32-2432S028 CYD only**.
+Version 1.0 release for **ESP32-2432S028 CYD only**.
 
+- Normal (320x240, formerly Compact) is the default for fresh tanks; Enlarged is 240x180.
+- Existing saved scale choices are preserved; no save reset is required.
+- Opaque clock/weather panels, scene occlusion, cached artwork and 2D damage tracking.
+- Tested warmed Normal aquarium around 10 FPS with and without clock; not a minimum guarantee.
+- Gentler grass sway, representative shrimp schools and fewer ambient bubbles.
+- Per-fish hats/ties/bowties, wearable colors and four companion-creature color palettes.
+- Reorganized Home navigation and real adventures that safely store the traveling fish.
 - Corrected display scaling/colors, touch calibration and readable menus.
-- SD-backed artwork, verified JSON backups and offline firmware updates.
+- Flash-embedded menu artwork, verified JSON backups and offline firmware updates.
 - Fish customization, Aquarium Journal and a free 20-slot Fish Bank.
 - Six Keeper mini-games: Bubble Pop, Pearl Match, Fish Slalom, Treasure Cast, Feed Frenzy and Reef Puzzle.
 - Real aquarium fish portraits, paused care and atomic sand-dollar plus Journal XP rewards.
+- Persistent challenge-mode game records/medals and untimed/slower relaxed play.
+- Home hub with fish care, bonds/tricks, collections and fish adventures.
+- Permanent collectible rewards and optional aquarium trophy display.
+- Optional city-configured Open-Meteo weather and activity captions alongside the idle clock.
 - More distinctive Kelp Forest, Coral Reef and Deep Glow Journal backdrops.
 - Eight paginated Journal backdrops, adding Sunken Ruins, Sunset Lagoon, Ice Cavern and Moonlit Reef.
 - Keeper-level fish-variety unlocks for customization and shop fry; existing owned/seen looks stay available.
@@ -105,13 +116,13 @@ Alpha release for **ESP32-2432S028 CYD only**.
 - Selectable 1-hour/30-minute/15-minute UTC adjustment and manual DST +1-hour toggle.
 - On-screen Wi-Fi setup, saved-network management and boot/on-demand NTP time.
 - Full single-page QWERTY password keyboard with clear keycaps and separate numbers/symbols.
-  Clocks start OFF; open Settings > CLOCK. Unsynchronized time says SYNC NEEDED.
+  Clocks start OFF; open Settings > CLOCK/WEATHER. Unsynchronized time says SYNC NEEDED.
 - Upstream daytime fish-rest recovery fix.
 
 ### Downloads
 - **pocket-tank-cyd-{version}.zip**: complete bundle with installation instructions.
 - **update.ptu**: existing installations; copy to `pocket-tank/update.ptu` on SD.
-- **{icon_name}**: required artwork; copy to the SD card root.
+- **{icon_name}**: optional legacy artwork bank; current firmware embeds menu artwork.
 - **pocket-tank-cyd-app.bin**: advanced, active-slot USB upgrades only.
 - **pocket-tank-cyd-factory.bin**: new boards only, flashed at `0x0`.
 - **SHA256SUMS.txt**: download checksums.

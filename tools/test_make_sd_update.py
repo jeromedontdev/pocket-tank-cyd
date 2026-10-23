@@ -14,14 +14,14 @@ class SDUpdateTests(unittest.TestCase):
 
     def test_package_layout_and_integrity(self):
         image = self.image()
-        result = package(image, "0.3.8-cyd")
+        result = package(image, "1.0.0")
         magic, board, size, sha, release = HEADER.unpack(result[:HEADER.size])
         self.assertEqual(HEADER.size, 84)
         self.assertEqual(magic, b"PTCYDSD1")
         self.assertEqual(board.rstrip(b"\0"), b"cyd2432s028")
         self.assertEqual(size, len(image))
         self.assertEqual(sha, hashlib.sha256(image).digest())
-        self.assertEqual(release.rstrip(b"\0"), b"0.3.8-cyd")
+        self.assertEqual(release.rstrip(b"\0"), b"1.0.0")
         self.assertEqual(result[HEADER.size:], image)
         damaged = bytearray(image)
         damaged[-1] ^= 1

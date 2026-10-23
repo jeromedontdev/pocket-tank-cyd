@@ -2,7 +2,7 @@ name: CYD release
 on:
   push:
     tags:
-      - "v*-cyd.*"
+      - "v[0-9]*.[0-9]*.[0-9]*"
 permissions:
   contents: write
 concurrency:
@@ -31,6 +31,9 @@ jobs:
         run: |
           python -m unittest discover -s tools -p "test_*.py"
           python tools/test_tank_backup.py --cc gcc
+          python tools/test_tank_backup.py --cc gcc --flat-edges
+          python tools/test_cyd_display.py --cc gcc
+          python tools/test_weather.py --cc gcc
           python sim/run.py --cc gcc --smoke
       - name: Package verified firmware
         env:
@@ -43,7 +46,7 @@ jobs:
           name: cyd-release
           path: dist/*
           if-no-files-found: error
-      - name: Publish alpha release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}

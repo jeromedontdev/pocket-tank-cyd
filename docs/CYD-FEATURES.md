@@ -1,7 +1,7 @@
 # Pocket Tank CYD: a more personal little ocean
 
-**An illustrated tour of the CYD fork, based on Pocket Tank v0.3.8**  
-Updated October 22, 2026
+**An illustrated tour of Pocket Tank CYD 1.0.0**
+Updated October 23, 2026
 
 **Sharing on Discord?** Use the [Discord posting kit](discord/START-HERE.txt):
 five short copy/paste posts with matching PNG image boards. Paste each text
@@ -22,6 +22,11 @@ The headline additions:
 - **An Aquarium Journal** with 15 Keeper levels, objectives, an appearance
   album and unlockable backdrops.
 - **Six mini-games** using your fish, with sand-dollar and Journal XP rewards.
+- **A desk-companion hub:** optional Cozy Care, fish bonds, discoveries,
+  collections and safe story adventures.
+- **Game records and medals**, permanent challenges and relaxed play without
+  countdowns in Bubble Pop or Feed Frenzy.
+- **Optional real weather** beside the idle clock, with on-device city setup.
 - **Nineteen added decorations**, including three simultaneous surface floats.
 - **Two upkeep and four fish-care upgrades**, purchased separately for each tank.
 - **A price-sorted shop:** gray icons before purchase, full color afterward.
@@ -42,12 +47,12 @@ The headline additions:
 
 Download a complete bundle from
 [GitHub Releases](https://github.com/jeromedontdev/pocket-tank-cyd/releases).
-These are CYD-only alpha builds, not upstream multi-board releases.
+These are independently versioned CYD-only releases, not upstream multi-board releases.
 Read the included `INSTALL.txt` and check `SHA256SUMS.txt`.
 
 - **Already using this CYD fork:** back up your active aquarium, power off
   before moving SD, copy the matching `icons-<crc>.bin` to the card root and
-  `update.ptu` to `pocket-tank/update.ptu`, then install through Settings > Updates.
+  `update.ptu` to `pocket-tank/update.ptu`, then install through Settings > Device > SD Updates.
 - **New board:** use the factory image at `0x0` and install the matching SD art.
   **Factory flashing overwrites saved tanks, Wi-Fi credentials, calibration
   and collection identity. Never use it for a normal upgrade.**
@@ -89,6 +94,12 @@ or duplicating rewards. BACK/replay asks for a second tap before discarding
 an unclaimed prize. Sessions and unclaimed prizes are not saved across reboot.
 See the [complete rules and reward table](../README.md#mini-games).
 
+Use **CHALLENGE / RELAXED** to choose the pace. Relaxed Bubble Pop and Feed
+Frenzy continue until you tap FINISH; Slalom and Treasure Cast move more
+slowly. Relaxed rewards retain the usual cap, but records/medals belong to
+challenge mode. **RECORDS** shows your claimed personal bests and the permanent
+gold challenge for each game. There are no daily streaks or expiring challenges.
+
 The Journal's Kelp Forest, Coral Reef and Deep Glow backdrops now use stronger
 green/blue/midnight palettes, leafy kelp, branching coral and luminous jellyfish.
 Their existing unlock levels (3/6/10) and IDs are unchanged. Original stays
@@ -121,6 +132,153 @@ already recorded in the Journal stay unlocked, so upgrading never takes away
 a favorite. These unlocks are per aquarium, like Journal XP.
 
 ![A starter aquarium's Album shows required Keeper levels for unavailable varieties](media/cyd-features/journal-variety-unlocks.png)
+
+## Your aquarium as a desk companion
+
+Tap a fish, then its card's **MENU** button to open **Home**. The old
+**Keeper > HOME** shortcut also works. Features are organized by purpose:
+
+| Home category | Inside |
+|---|---|
+| **Fish** | Care & Bonds, Fish Bank, Wardrobe, Names & Looks |
+| **Tank** | Shop & Decor, Aquariums, Sand & Water, Creature Colors |
+| **Adventures** | Send a fish away, see its return time, claim postcards |
+| **Collections** | Journal (themes/rewards/varieties), Discoveries (sets/frames/shelf), Progress |
+| **Games** | Six games, records, relaxed mode |
+| **Settings** | Display, Clock/Weather, Wi-Fi/Sync, SD Backups, Feeding, Device |
+
+Back returns to the category used to enter a feature; **TANK** on Home
+returns to the aquarium. Appearance is no longer nested under fish quests.
+Weather belongs to **Settings > CLOCK/WEATHER > WEATHER**.
+**Fish > Care & Bonds** offers Cozy/Classic care, permanent fish bonds,
+greetings, learned tricks, activity captions and a Calm/Lively setting.
+Existing tanks retain Classic care; new tanks start Cozy. Comfort does not
+fabricate feeding, cleaning or training achievements.
+
+| Desk companion hub | Care and permanent fish bonds |
+|---|---|
+| ![Home groups Fish, Tank, Adventures, Collections, Games and Settings](media/cyd-features/desk-companion.png) | ![Care options, separate bond and trust, greetings and trick help](media/cyd-features/companion-home.png) |
+
+SAY HELLO earns 5 bond every 30 powered-on seconds; DART unlocks at 10,
+BUBBLES at 25, FOLLOW at 50. Bonds never fade and travel with banked fish.
+Bond is friendship (0–100); trust is care confidence (0–10), not the same
+stat. **BOND / TRICK HELP** explains both and each trick. Tricks request a
+playful dart, a bubble visit or following a tankmate; close CARE to watch.
+Confident, energetic fish can also choose dart play on their own; learning a
+trick does not permanently enable a speed boost. Playful darts are now gentler
+(42–58 internal pixels/second before urgency/vegetation adjustments), rather
+than the old 65–95. A requested dart chooses a fresh destination immediately.
+Startle reactions and hungry-food pursuit retain their separate behavior.
+
+**Home > Fish > Wardrobe** opens the fish wardrobe. Care also has a **DRESS UP** shortcut.
+Use the arrows to preview an accessory, **NEXT FISH** to choose its owner,
+and **BUY + EQUIP** to purchase it with sand dollars.
+
+| Accessory | Journal level | Sand dollars |
+|---|---:|---:|
+| Party hat | 2 | 20 |
+| Bandana | 2 | 20 |
+| Top hat | 3 | 45 |
+| Bowtie | 4 | 30 |
+| Tie | 5 | 35 |
+| Crown | 10 | 100 |
+
+Each fish owns its purchases: one accessory equipped at a time, with free
+re-equipping and **REMOVE** (which keeps ownership). Previews are free and
+do not change the tank. Wearables are cosmetic only, with no XP or stat
+bonus, and follow the fish through the Bank, adventures and backups.
+Postcards retain the traveler's departure accessory; newborns start bare.
+All ten fish varieties support all six accessories.
+**DRESS UP → COLORS** gives the selected fish independent primary and detail
+colors for its wearables. Each fish keeps one color pair across its wardrobe,
+including Bank transfers and adventures; the postcard preserves departure colors.
+Colors are free, including before buying an accessory.
+
+**Home > Tank > Creature Colors** opens color settings for the
+shrimp colony, snail, urchin and seahorse. **NEXT TYPE** cycles between them.
+All shrimp share one color pair; each other creature has its own pair per tank.
+Primary colors affect bodies/shells; detail colors affect legs, soft bodies,
+spine tips or fins. Eye colors and procedural shading remain intact.
+
+Both editors provide **Natural + 15 colors** for each channel, a live portrait,
+and **SAVE COLORS**. Browsing does not change the tank or spend coins.
+**NATURAL** previews original colors; tap SAVE to restore them permanently.
+Changing colors does not purchase creatures or accessories or grant XP.
+Whole-tank, resolution-style scaling is deferred to the next update.
+
+![Fish wardrobe with accessory preview, unlock level, price and equip/remove controls](media/cyd-features/fish-wardrobe.png)
+
+| Creature primary/detail colors | Wearable primary/detail colors |
+|---|---|
+| ![Blue snail shell and gold body preview](media/cyd-features/creature-colors-snail.png) | ![Red top hat with white brim preview](media/cyd-features/wearable-colors.png) |
+
+| Bond, trust and trick help | Explicit frame unlock guidance |
+|---|---|
+| ![Help explains friendship, care confidence and each trick](media/cyd-features/companion-help.png) | ![A locked frame explains how to unlock it without overlapping the footer](media/cyd-features/companion-frame-locked.png) |
+
+**Collections > Discoveries** automatically records aquarium activities and saves the discoveries
+until you decide to browse them.
+Frames show **LOCKED** until a set is completed and claimed; **FRAME >**
+then cycles owned frames, with the current name underneath. SHELF toggles
+earned aquarium trophies. Collection buttons show discovery counts.
+
+| Discovery Album | Permanent collection cosmetics |
+|---|---|
+| ![Album records activities without requiring a timed tap](media/cyd-features/companion-album.png) | ![Collection claims unlock cosmetic frames and optional trophies](media/cyd-features/companion-collection.png) |
+
+**Home > Adventures** offers three safe adventures: Lantern Lagoon (**2 hours**),
+Pearl Library (**6 hours**), and Starlight Cove (**12 hours**).
+Pick a fish and ARCH/BUBBLES postcard scenery (same rewards), then
+**SEND FISH > CONFIRM SEND**. The real fish leaves until its automatic return,
+with no hunger, aging, injury, failure or expiry. Its tank slot stays reserved.
+Each destination has one permanent postcard and one claim: 10/20/30 coins
+plus 30/60/90 Journal XP. Timers include unplugged time when a synced clock
+is available; otherwise powered-on time advances them. Rewards wait without
+a deadline after the fish is home.
+
+| Choose a destination and route | A completed adventure waits for you |
+|---|---|
+| ![Destination, time away, selected fish and postcard scenery](media/cyd-features/adventure-menu.png) | ![Returned fish leaves a persistent reward claim](media/cyd-features/adventure-ready.png) |
+
+| Earned aquarium trophies | Collection ornament and activity caption |
+|---|---|
+| ![Optional earned collection shells and game challenge markers](media/cyd-features/tank-trophies.png) | ![Large clock with earned corner ornaments and non-overlapping caption](media/cyd-features/clock-collection.png) |
+
+Under **Settings > CLOCK/WEATHER > WEATHER**, search for a city, select the correct result and
+choose F/C. Only your city query/selected coordinates go to Open-Meteo over
+HTTPS; nothing infers your location. Saved Wi-Fi is required, and unavailable,
+offline or stale readings are identified rather than replaced with fake data.
+Weather settings are device-wide, separate from aquarium backups.
+Weather refreshes about every **15 minutes**, with a stale warning after
+**30 minutes**. Wi-Fi sleeps between refreshes and reconnects when needed;
+the last reading stays visible without a false offline warning during sleep.
+City searches also temporarily wake Wi-Fi. Failed updates retain the reading
+with a stale/offline warning and retry with backoff.
+The city and conditions now use a bordered, larger-text clock
+area rather than a tiny aquarium caption.
+The clock's **SIZE** control also scales this panel: Large uses larger lettering,
+while Medium and Small use compact, readable text with narrower borders and spacing.
+
+**Postcards** are saved adventure souvenirs, not photos or messages. Returning fish
+leave a destination's find and ARCH/BUBBLES scenery recorded in Adventures. Claiming
+the postcard pays that destination's one-time coins and XP; completing the three
+stories also progresses the Story collection. There is no deadline to claim.
+
+**Frames** are cosmetic collection rewards, not picture holders. Complete and
+claim Nature, Friend or Story in Discoveries to unlock its frame. **FRAME >** cycles
+the default and unlocked styles, changing the companion page/portrait border
+colors and adding matching clock-corner accents. They do not boost fish stats
+or rewards. **SHELF** separately controls earned aquarium trophies.
+
+**Settings > Display > BRIGHTNESS** is a draggable percentage slider, from 10% to 100%.
+
+| Optional city-configured weather | Bordered clock weather |
+|---|---|
+| ![Weather starts disabled and requires an explicit city choice](media/cyd-features/weather-settings.png) | ![Illustrative Paris weather fixture in its own larger bordered clock area](media/cyd-features/clock-weather.png) |
+
+See [complete companion, quest and weather details](../README.md#desk-companion-discoveries-and-safe-adventures).
+Schema 7 backups include the traveling fish and companion progress. Earlier backups still import;
+do not downgrade after using the new progression.
 
 ## 1. Keep favorites in the Fish Bank
 
@@ -225,6 +383,17 @@ Clownfish and Betta.**
 These are more than palette swaps: sharks have pointed snouts, dorsal
 fins and gills; jellyfish pulse and wave their tentacles; stingrays flap
 their wings; bettas have flowing fins.
+Swimming clearance projects each silhouette, growth size, pitch, animated
+fins/tails and wearable above the highest sand edge. Dorsal fins no longer add
+an unnecessary downward margin, and gentle upward steering begins only four
+pixels before the safe limit. Sharks and jellyfish can approach the sand
+without letting their bodies or tentacles sink into it; floor pellets remain
+reachable.
+Exploration uses the full width in both display modes, with body-size-based
+side clearance rather than large empty margins within each third of the tank.
+Fish approach destinations more closely before choosing another one. Grass
+beds include their last safe frond position near the right glass; there is
+still a small clearance for leaf sway rather than drawing past the screen.
 
 Each appearance supports:
 
@@ -396,7 +565,7 @@ the optional care-upgrade field restore without these upgrades.
 
 **Sand Palette** and **Mood Lights** each cost **300** as one-time
 upgrades. After purchase, use the separate **SAND** and **WATER** rows in
-Settings to cycle freely.
+**Home > Tank > Sand & Water** to cycle freely.
 
 - **Sand:** Original, Gold, Pearl, Volcanic, Rainbow, Hot Pink,
   Electric Cyan and Neon Lime.
@@ -422,15 +591,125 @@ Page arrows and tank-name letter cycling use `<` / `>`, not plus/minus.
 
 | Keeper navigation | Reorganized Settings |
 |---|---|
-| ![Keeper page with fish portraits, milestones, Settings, Upgrades, Journal and Fish Bank navigation](media/cyd-features/keeper.png) | ![Settings with brightness, SD Backup and Restore, separate sand and water rows, Updates and Touch Calibration](media/cyd-features/settings.png) |
+| ![Keeper page with fish portraits, milestones and Home shortcut](media/cyd-features/keeper.png) | ![Settings grouped into Display, Clock/Weather, Wi-Fi, SD Backups, Feeding and Device](media/cyd-features/settings.png) |
 
-Settings puts **CLOSE** at the top right, **TOUCH CALIBRATION** at the
-bottom right, and **UPDATES** at the bottom left. Sand and water have their
-own lines. The old Lights Out setting button is no longer on this page.
+Settings groups brightness and scale in **Display**, network setup in
+**Wi-Fi / Sync**, and backup/restore in **SD Backups**. **Device** contains
+updates, touch calibration and the confirmed aquarium wipe. Sand and water
+palettes live under **Home > Tank > Sand & Water**.
+
+### Whole-tank Normal mode
+
+Open **Settings > Display > SCALE** to switch between **Enlarged** (240x180)
+and **Normal** (320x240, formerly Compact). Normal is the default for fresh
+installations, resets and newly purchased aquariums. Existing saves keep their
+chosen scale; the old Normal view is now called Enlarged. Normal uses
+the LCD's native resolution: fish, wearables, creatures, decorations, food,
+bubbles and clock graphics occupy about **25% less screen width/height**,
+leaving more tank space without cropping or adding an inset border.
+Full-page controls retain their readable layout and matching touch targets.
+
+The choice is saved per aquarium and included in backups. Positions and
+algae are remapped when switching; fish identity, ownership, coins and XP
+are unchanged. A failed save leaves the old scale active. On the no-PSRAM
+CYD, Normal draws three horizontal tiles through the existing framebuffer,
+so weather still has RAM available; animation can be slower than Enlarged.
+Longer Normal frames use bounded simulation steps so care and idle timers
+still advance in real time rather than slowing with the animation.
+The renderer clips shape/decor work to each tile and reuses row colors;
+the LCD runs at 40 MHz. On the tested CYD, the
+populated Ice Cavern aquarium measured about 6.5–6.8 FPS in Normal after
+artwork/clock caching and weather radio sleep (previous builds measured
+about 2.4 FPS, then 4 FPS, then 5–6 FPS). This does not meet a 15 FPS aquarium target.
+Actual speed varies with fish, decorations and effects.
+An additional tile-culling pass skips off-tile fish and limits seagrass
+scanline calculations to the visible rows. Exact full-frame/tiled comparisons
+cover all fish varieties, stages and wearables. On-device samples after this
+pass ranged about 6.6–7.3 FPS; clock size/state, fish positions and user
+interaction affect the result, so this is not a fixed-FPS guarantee.
+The latest pass removes the cosmetic edge-darkening vignette on CYD (it has
+no gameplay function). The warmed aquarium with large clock/weather measured
+about 7.5–7.7 FPS (about 8.2–8.4 FPS before the idle clock appeared); the
+vignette profile is now 0 ms. The following Normal pass measured about
+10.4-11.1 FPS with the saved Medium Flip clock/weather visible and
+10.6-11.5 FPS with the clock OFF after warm-up in the same populated aquarium.
+These are measured samples, not a minimum-FPS guarantee; boot, weather
+refreshes, different populations and fish positions can still cause dips.
+This meets the tested 10 FPS goal, not the original 15 FPS aspiration.
+A later hard-edged vignette trial used integer RGB565 shifts, a dark perimeter
+and wider corners. The shading stage cost about 3 ms/frame, but the complete
+trial build measured only 8.0-8.4 FPS after warm-up; that overall regression
+was larger than the shading stage alone explains. It was not retained.
+Restoring the vignette-free build recovered 10.6-10.7 FPS with clock/weather.
+
+Normal draws half the ambient bubbles and uses gently leaning, more rigid
+grass blades with a 2 Hz sway update. Growth and trimming still apply immediately.
+Seahorse secondary artwork updates at 5 Hz; its blade attachment uses the same
+grass shape. Fish movement and the care simulation are not slowed down.
+A shrimp school is represented by one visible shrimp per two actual shrimp,
+rounded up (10 actual shrimp show as 5). Its formation is tighter, but the
+actual population, feeding/progression rules and card totals are unchanged.
+Enlarged mode retains its full bubble/shrimp display and original grass motion.
+
+Normal reuses the unused end of its existing framebuffer for a lossless,
+run-length-compressed water/theme/sand and static-scenery cache, without allocating another
+full screen or taking RAM away from weather. Complex rows that do not fit
+are rendered normally. Cache keys include resolution, theme, water/sand
+palettes, day/night dimming, scenery ownership, decoration order/positions and
+coral growth/colors. Stable decorations are cached in painter order up to the
+first animated/dragged piece; later pieces and foreground redraws remain live,
+preserving transparency and fish occlusion. Complex rows still fall back exactly.
+
+The LCD driver fingerprints output blocks and only transmits changed blocks,
+so old fish positions are restored when fish move and unchanged clock/menu
+regions are not repeatedly sent. Small alternating DMA buffers overlap
+pixel preparation with the preceding transfer. This is **changed-block LCD
+updating**. Normal additionally tracks conservative **two-dimensional CPU
+dirty regions**: old and new creature/overlay rectangles are united
+into 32x40 blocks. Unchanged blocks are not drawn or transferred. Algae
+changes invalidate their own cells; covering pages or background changes
+invalidate the frame. Rectangles merge within the existing 80-row buffer;
+over 40% coverage falls back to large canonical tiles to avoid excessive setup
+overhead and preserve changed-block LCD fingerprints. Grass invalidates its
+old/new bounds only on a sway tick, height change or move, without an extra
+repaint on the following frame. Fish bounds follow their projected anatomy,
+including fins, jellyfish strands and wearables, rather than a fixed wide box.
+This is block-based, not per-pixel damage. Dense grass, bubbles and a large
+clock can still select full tiles. This does not redraw the hidden scene:
+visible clock/weather panels are opaque, and Normal skips scene pixels and
+wholly covered creatures/fronds behind them in a single scene traversal.
+A stationary Normal Home menu
+measured about 25 FPS with zero pixel blocks transmitted after settling;
+that is not the aquarium's animation rate.
+
+The expensive urchin uses 16 reusable spine poses, with separate invalidation
+when chewing changes. Floor-snail shell artwork uses eight subpixel heave
+positions (at most about 0.09 pixel from the live shape); eye stalks and foot
+waves stay live. Colors, water tint, night dimming and blending are still
+applied when drawing. Existing glass-snail and seahorse geometry caches remain.
+Clock/weather artwork is cached as exact paint runs until displayed time,
+text or settings change. Visible panels are solid; hiding the clock face panel
+still leaves any weather/activity caption panel opaque and occluded.
+These bounded optional caches use small allocations and are released before
+weather reconnects; low-memory cases explicitly fall back to live drawing.
+SD backup/restore validation also releases them first, so warm artwork caches
+do not take memory needed by the JSON safety checks.
+
+Menu icons now live in firmware flash instead of an SD-loaded RAM buffer.
+This removes a 12 KiB icon cache and menu card reads; fish and scenery were
+already procedural, not loaded from SD. The card is still used for backups,
+updates and inactive aquarium snapshots, so keep it inserted for multiple tanks.
+Fish keep a short settling interval even during urgent turns, preventing
+rapid collision-induced left/right reversals. Both grass beds now use the
+same 12-pixel root inset rather than letting a lush left bed start off-screen.
+
+| Display controls | Normal aquarium |
+|---|---|
+| ![Brightness slider and Enlarged/Normal toggle](media/cyd-features/settings-display.png) | ![Native-resolution aquarium with smaller scene objects and more space](media/cyd-features/tank-normal.png) |
 
 ### A clock over your aquarium
 
-Open **Settings > CLOCK** to choose **Minimal, Digital, Analog, Neon, Flip,
+Open **Settings > CLOCK/WEATHER** to choose **Minimal, Digital, Analog, Neon, Flip,
 Binary or Orbit**.
 This is an idle display mode, **large and centered by default**, with
 large/medium/small sizes, center or four-corner placement, 12/24-hour time and
@@ -440,7 +719,8 @@ for each tank, and follows its SD snapshots and JSON restores.
 **ACTIVATE** offers **15 sec, 30 sec, 1, 2, 5 or 10 min**, or **Manual Only**.
 **SHOW CLOCK** enters immediately; the first touch only dismisses it, without
 affecting fish or tools. Menus do not count as inactivity. Fish keep swimming
-behind the translucent panel. Set your standard-time UTC offset, then use
+behind the solid panel, without drawing the hidden scene in Normal mode.
+Set your standard-time UTC offset, then use
 **DST: +1 HOUR** during daylight saving; turn it OFF for standard time. This
 manual toggle changes the time and date together and saves per tank. It does
 not select regional rules or switch automatically.
@@ -510,7 +790,7 @@ backups. The screenshots use fake emulator networks, not real credentials.
 
 ### A deliberate fresh start
 
-**Settings > WIPE** opens a separate confirmation before starting over
+**Settings > Device > WIPE AQUARIUM** opens a separate confirmation before starting over
 with two fry and first-time setup. Cancel, or wait 20 seconds, to keep
 the aquarium.
 
@@ -533,22 +813,23 @@ palettes, Journal and bank.
 Backups are written and read back for validation. A restore first creates
 a safety snapshot of the current aquarium.
 
-New backups use **schema 5**, with an optional `tank.stat_upgrades` field
-for the four fish-care purchases. Schemas 1 through 4 remain importable;
-older firmware cannot restore schema 5 files. Keep a matching backup
+New backups use **schema 10**, including the display scale, traveling fish, creature colors, per-fish wearables/colors,
+companion progression and the optional `tank.stat_upgrades` field for the four
+fish-care purchases. Schemas 1 through 9 remain importable; older firmware
+cannot restore schema 10 files. Keep a matching backup
 when deliberately downgrading.
 
-Full-bank backup handling processes stored fish one record at a time to
-reduce RAM use on the no-PSRAM CYD. Restore releases the input buffer
+Backup export processes sections and stored fish one record at a time to
+reduce RAM use beside weather's Wi-Fi buffers on the no-PSRAM CYD. Restore releases the input buffer
 before writing its safety snapshot, then rereads and checks the original
 file before committing. The compact internal save stays within its
-4,000-byte budget (including aquarium identity, name and care-upgrade flags),
+4,520-byte layout (including aquarium identity, care upgrades, colors, scale and the reserved traveler),
 so normal play and bank storage do not depend on keeping
 the card inserted.
 
 ### Offline firmware updates
 
-**Settings > Updates** checks a local package at
+**Settings > Device > SD Updates** checks a local package at
 `pocket-tank/update.ptu` on SD. It does not require Wi-Fi or install
 anything automatically at boot.
 

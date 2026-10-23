@@ -54,7 +54,7 @@ def upload(data, port_name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", type=Path, help="Application .bin, NOT a merged flash image")
-    parser.add_argument("--release", required=True, help="Display label, e.g. 0.3.8-cyd")
+    parser.add_argument("--release", required=True, help="Display label, e.g. 1.0.0")
     parser.add_argument("--out", required=True, type=Path, help="Output update.ptu")
     parser.add_argument("--port", help="Optional USB copy to SD, e.g. COM4; requires pyserial")
     args = parser.parse_args()

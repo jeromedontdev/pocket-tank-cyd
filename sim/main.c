@@ -7,27 +7,68 @@
 #include "notice.h"
 #include "icons.h"
 #include "update.h"
+#include "companion.h"
+#include "weather.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
+#include <windows.h>
 #define API __declspec(dllexport)
 #else
 #define API __attribute__((visibility("default")))
 #endif
 
 static tank_t tank;
-static uint16_t frame[TANK_W * TANK_H];
+static uint16_t frame[TANK_MAX_W * TANK_MAX_H];
 static unsigned char *bank;
 static size_t bank_size;
-static int page, selected = -1, bright = 100;
+static int page, selected = -1, bright = 100, bright_saved = 100;
 static float px, py, held, last_x, last_y;
 static bool pressed;
+static bool from_home, home_tanks;
+static int child_parent = 1;
 static float wipe_left;
 static char error[128];
 void net_sim_advance(float dt);
+
+static bool brightness_path(char *out, size_t cap) {
+    const char *explicit_path = getenv("POCKET_TANK_BRIGHTNESS");
+    const char *save = getenv("POCKET_TANK_SAVE");
+    int n = explicit_path ? snprintf(out, cap, "%s", explicit_path) :
+        snprintf(out, cap, "%s.brightness", save ? save : "tank.sav");
+    return n > 0 && (size_t)n < cap;
+}
+static void brightness_load(void) {
+    char path[1024]; bright = bright_saved = 100;
+    if (!brightness_path(path, sizeof path)) return;
+    FILE *file = fopen(path, "rb");
+    if (!file) return;
+    int v = fgetc(file), end = fgetc(file);
+    bool ok = !ferror(file);
+    if (fclose(file)) ok = false;
+    if (ok && end == EOF && v >= 10 && v <= 100) bright = bright_saved = v;
+}
+static bool brightness_save(void) {
+    if (bright == bright_saved) return true;
+    char path[1024], next[1030];
+    if (!brightness_path(path, sizeof path)) return false;
+    snprintf(next, sizeof next, "%s.next", path);
+    FILE *file = fopen(next, "wb");
+    if (!file) return false;
+    bool ok = fputc(bright, file) != EOF;
+    if (fclose(file)) ok = false;
+#ifdef _WIN32
+    if (ok) ok = MoveFileExA(next, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+    if (ok) ok = rename(next, path) == 0;
+#endif
+    if (!ok) { remove(next); return false; }
+    bright_saved = bright;
+    return true;
+}
 
 const icon_t *icons_resolve(const icon_t *icon) {
     static icon_t view;
@@ -43,6 +84,8 @@ const icon_t *icons_resolve(const icon_t *icon) {
 }
 
 API int sim_init(const void *icons, size_t size) {
+    brightness_load();
+    weather_init();
     render_clock_synchronized(true);
     bank = malloc(size);
     void *scratch = calloc(1, render_decor_scratch_size());
@@ -66,6 +109,12 @@ API const char *sim_error(void) { return error; }
 API int sim_network_page(void) { return update_active() ? update_page() : 0; }
 API const char *sim_network_message(void) { return update_message_title(); }
 API int sim_clock_active(void) { return render_clock_active(&tank); }
+API int sim_brightness(void) { return bright; }
+API int sim_brightness_reload(void) { brightness_load(); return bright; }
+API int sim_display_brightness(void) {
+    int target = bright * 255 / 100;
+    return tank.night && !render_clock_active(&tank) && page != 8 ? target * 6 / 10 : target;
+}
 API int sim_restore(const char *json, size_t size) {
     if (!progression_restore_json(json, size, true, error, sizeof error)) return 0;
     setup_cancel(&tank);
@@ -76,22 +125,24 @@ API int sim_restore(const char *json, size_t size) {
 
 API void sim_action(int action) {
     if (wipe_left > 0) return;
-    if (action >= 0 && action <= 3) { tank_handled(&tank); tank.ui_cover = action != 0; }
+    if (action >= 0 && action <= 3) { from_home = home_tanks = false; child_parent = 1; tank_handled(&tank); tank.ui_cover = action != 0; }
     if (action >= 0 && action <= 3) setup_cancel(&tank);
     if (action == 0) { page = 0; render_shop_leave(); render_milestones_leave(); }
     else if (action == 1) page = 1;
-    else if (action == 2) page = 2;
+    else if (action == 2) { render_settings_open(); page = 2; }
     else if (action == 3) page = 3;
     else if (action == 4) tank_feed(&tank, TANK_W / 2.0f, 3);
     else if (action == 5) progression_sd_grant(&tank, 25);
     else if (action == 6) tank_toggle_light(&tank);
 }
 API int sim_page(void) { return page; }
+API int sim_width(void) { return TANK_W; }
+API int sim_height(void) { return TANK_H; }
 API int sim_selected(void) { return selected; }
 
 static void shop_action(int result) {
     if (result == SHOP_TAP_TANKS) { render_aquariums_open(&tank); page = 7; }
-    else if (result == SHOP_TAP_CLOSE) { render_shop_leave(); page = 1; }
+    else if (result == SHOP_TAP_CLOSE) { render_shop_leave(); page = child_parent; }
     else if (result >= SHOP_TAP_FRY) progression_buy_fry(&tank, result - SHOP_TAP_FRY);
     else if (result >= SHOP_TAP_SELL) progression_sell(&tank, result - SHOP_TAP_SELL);
     else if (result >= SHOP_TAP_MOVE) {
@@ -138,28 +189,45 @@ API void sim_touch(float x, float y, int down) {
         if (page == 7) {
             if (held < 0.35f && hypotf(x - px, y - py) < 24) {
                 int result = render_aquariums_tap(&tank, px, py);
-                if (result == 1) page = 3;
+                if (result == 1) { page = home_tanks ? 9 : 3; home_tanks = false; }
                 else if (result == 2) {
                     page = 0; selected = -1; setup_cancel(&tank); notice_sync(&tank);
                     render_fb_primed(NULL, 0);
                     if (progression_setup_pending()) setup_begin(&tank);
                 }
             }
+        } else if (page == 9) {
+            if (held < 0.35f && hypotf(x - px, y - py) < 24) {
+                int action = render_life_tap(&tank, px, py);
+                if (action == HOME_CLOSE) { page = 0; from_home = false; }
+                else if (action) {
+                    from_home = true; child_parent = 9;
+                    if (action == HOME_BANK) { render_bank_open(); page = 6; }
+                    if (action == HOME_JOURNAL) { render_journal_open(); page = 5; }
+                    if (action == HOME_GAMES) { render_games_open(); page = 8; }
+                    if (action == HOME_SETTINGS) { render_settings_open(); page = 2; }
+                    if (action == HOME_KEEPER) page = 1;
+                    if (action == HOME_SHOP) page = 3;
+                    if (action == HOME_TANKS) { render_aquariums_open(&tank); home_tanks = true; page = 7; }
+                }
+            }
         } else if (page == 8) {
-            if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_games_tap(&tank, px, py)) page = 1;
+            if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_games_tap(&tank, px, py)) page = child_parent;
         } else if (page == 6) {
-            if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_bank_tap(&tank, px, py)) page = 1;
+            if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_bank_tap(&tank, px, py)) page = child_parent;
         } else if (page == 5) {
-            if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_journal_tap(&tank, px, py)) page = 1;
+            if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_journal_tap(&tank, px, py)) page = child_parent;
         } else
         if (page == 1) {
             int result = render_milestones_tap(&tank, px, py);
-            if (result == MS_TAP_CLOSE) { progression_ack_milestones(&tank); render_milestones_leave(); page = 0; }
-            else if (result == MS_TAP_SETTINGS) page = 2;
+            if (result != MS_TAP_CLOSE) child_parent = 1;
+            if (result == MS_TAP_CLOSE) { progression_ack_milestones(&tank); render_milestones_leave(); page = from_home ? 9 : 0; }
+            else if (result == MS_TAP_SETTINGS) { render_settings_open(); page = 2; }
             else if (result == MS_TAP_SHOP) page = 3;
             else if (result == MS_TAP_JOURNAL) { render_journal_open(); page = 5; }
             else if (result == MS_TAP_BANK) { render_bank_open(); page = 6; }
             else if (result == MS_TAP_GAMES) { render_games_open(); page = 8; tank_handled(&tank); }
+            else if (result == MS_TAP_LIFE) { render_life_open(); page = 9; tank_handled(&tank); }
             else if (result >= MS_TAP_CUSTOM) { setup_begin_customize(&tank, result - MS_TAP_CUSTOM); page = 0; }
             else if (result >= MS_TAP_SELL) progression_sell_fish(&tank, result - MS_TAP_SELL);
             else if (result >= MS_TAP_RENAME) { setup_begin_rename(&tank, result - MS_TAP_RENAME); page = 0; }
@@ -172,7 +240,7 @@ API void sim_touch(float x, float y, int down) {
             if (!notice_dismiss()) {
                 if (render_stats_next_hit(&tank, selected, px, py)) {
                     if (render_stats_next_hit(&tank, selected, x, y)) selected = (selected + 1) % tank.n_fish;
-                } else if (selected >= 0 && RENDER_CARD_HIT(px, py)) page = 1;
+                } else if (selected >= 0 && RENDER_CARD_HIT(px, py)) { render_life_open(); from_home = false; page = 9; }
                 else {
                     int best = -1; float distance = 38;
                     for (int i = 0; i < tank.n_fish; i++) {
@@ -191,10 +259,17 @@ API void sim_touch(float x, float y, int down) {
     if (update_active()) update_touch(x, y, down != 0);
     if (page == 2) {
         int value, result = render_settings_touch(&tank, x, y, down != 0, &value);
-        if (result == SET_TAP_CLOSE) page = 1;
+        if (result == SET_TAP_CLOSE) page = child_parent;
         else if (result == SET_TAP_CLOCK_SHOW) { page = 0; selected = -1; tank.ui_cover = false; tank.clock_requested = true; }
         else if (result == SET_TAP_WIPE) wipe_left = 20;
-        else if (result == SET_TAP_BRIGHT) bright = value;
+        else if (result == SET_TAP_BRIGHT_PREVIEW) bright = value;
+        else if (result == SET_TAP_BRIGHT) {
+            bright = value;
+            if (!brightness_save()) {
+                bright = bright_saved;
+                render_backup_status("BRIGHTNESS SAVE FAILED - RETRY", false);
+            }
+        }
         else if (result == SET_TAP_TOUCH) render_backup_status("TOUCH CALIBRATION IS ON THE CYD", false);
         else if (result == SET_TAP_UPDATES) page = 4;
         else if (result == SET_TAP_WIFI) {
@@ -210,6 +285,7 @@ API void sim_touch(float x, float y, int down) {
 
 API const uint16_t *sim_frame(float dt) {
     if (dt < 0 || dt > 0.25f) dt = 0.04f;
+    weather_tick(dt);
     if (wipe_left > 0) { wipe_left -= dt; if (wipe_left < 0) wipe_left = 0; }
     if (update_active()) {
         net_sim_advance(dt); update_tick(dt);
@@ -228,6 +304,7 @@ API const uint16_t *sim_frame(float dt) {
     tank.ui_cover = page != 0 || setup_active() || wipe_left > 0;
     if (page == 8) render_games_tick(dt);
     else { tank_tick(&tank, dt, advisor_rules); progression_tick(&tank, dt); }
+    companion_tick(&tank, dt);
     if (page != 8) notice_tick(&tank, dt, tank.ui_cover || setup_birth_due());
     if (!setup_active() && page != 8) setup_poll_birth(&tank);
     if (setup_take_renamed() >= 0) page = 1;
@@ -239,6 +316,7 @@ API const uint16_t *sim_frame(float dt) {
     else if (page == 6) render_bank(&tank, frame, TANK_W);
     else if (page == 7) render_aquariums(&tank, frame, TANK_W);
     else if (page == 8) render_games(&tank, frame, TANK_W);
+    else if (page == 9) render_life(&tank, frame, TANK_W);
     else {
         render_tank(&tank, frame, TANK_W);
         if (!render_clock_active(&tank)) {

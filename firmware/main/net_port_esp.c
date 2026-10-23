@@ -45,9 +45,11 @@
 #include "freertos/event_groups.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 
 static const char *TAG = "net";
 #define WIFI_NVS_NS   "wifi"
+static void forget_radio(void);
 #include "sdkconfig.h"
 /* the board marker: in .rodata_custom_desc, which the linker places right
  * after esp_app_desc_t - a fixed offset in the image (PT_BOARD_MARKER_OFFSET;
@@ -84,7 +86,8 @@ bool net_port_creds_forget(void) {
     esp_err_t ssid = nvs_erase_key(h, "ssid"), pass = nvs_erase_key(h, "pass");
     bool ok = (ssid == ESP_OK || ssid == ESP_ERR_NVS_NOT_FOUND) && (pass == ESP_OK || pass == ESP_ERR_NVS_NOT_FOUND) && nvs_commit(h) == ESP_OK;
     nvs_close(h);
-    if (ok) ESP_LOGI(TAG, "network forgotten"); else ESP_LOGE(TAG, "network forget failed");
+    if (ok) { forget_radio(); ESP_LOGI(TAG, "network forgotten"); }
+    else ESP_LOGE(TAG, "network forget failed");
     return ok;
 }
 const char *net_port_manifest_url(void) {                   /* the director's override, else the release channel */
@@ -108,7 +111,22 @@ static EventGroupHandle_t s_ev;
 #define EV_GOT_IP       (1 << 0)
 #define EV_DISCONNECTED (1 << 1)
 static esp_netif_t  *s_netif;
-static bool          s_up, s_connected;
+static bool          s_up;
+static atomic_bool   s_connected;
+static atomic_bool   s_weather, s_foreground, s_background_busy, s_weather_reconnect;
+static atomic_bool   s_weather_radio;
+static int64_t       s_weather_retry;
+static int64_t       s_weather_init_retry;
+static unsigned      s_weather_failures;
+bool net_port_connected(void) { return atomic_load(&s_connected); }
+bool net_port_weather_active(void) {
+    return atomic_load(&s_weather) || atomic_load(&s_weather_radio) || atomic_load(&s_background_busy);
+}
+static void forget_radio(void) {
+    s_connected = false;
+    if (s_up) esp_wifi_disconnect();
+    atomic_store(&s_weather_reconnect, true);
+}
 static int           s_disc_reason;
 static char          s_ssid[NET_SSID_MAX + 1], s_pass[NET_PASS_MAX + 1];
 static net_ap_t      s_aps[NET_SCAN_MAX]; static int s_n_aps;
@@ -125,23 +143,64 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data) {
         xEventGroupSetBits(s_ev, EV_GOT_IP);
     }
 }
+static void log_dram(const char *what) {
+    ESP_LOGI(TAG, "%s: 8-bit internal free %u, largest %u; all internal free %u",
+             what, (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+}
 static bool radio_up(void) {
     if (s_up) return true;
-    ESP_LOGI(TAG, "radio up: internal heap %u KB, psram %u KB free before", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+    log_dram("radio up (before)");
+    ESP_LOGI(TAG, "radio up: internal heap %u KB, largest %u KB, psram %u KB free before",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024,
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
     if (esp_netif_init() != ESP_OK) return false;
-    if (esp_event_loop_create_default() != ESP_OK) return false;
+    esp_err_t err = esp_event_loop_create_default();
+    if (err != ESP_OK) return false;
     s_netif = esp_netif_create_default_wifi_sta();
+    if (!s_netif) { esp_event_loop_delete_default(); return false; }
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    if (esp_wifi_init(&cfg) != ESP_OK) return false;
-    esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi, NULL);
-    esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_wifi, NULL);
-    esp_wifi_set_mode(WIFI_MODE_STA);
-    esp_wifi_set_ps(WIFI_PS_NONE);
-    if (esp_wifi_start() != ESP_OK) return false;
+    bool background = atomic_load(&s_weather) && !atomic_load(&s_foreground);
+    if (background) {
+        /* One tiny HTTPS request at a time; aggregation throughput is wasted
+         * on this no-PSRAM device and retains scarce packet/reorder buffers. */
+        cfg.static_rx_buf_num = 3;
+        cfg.dynamic_rx_buf_num = 4;
+        cfg.dynamic_tx_buf_num = 4;
+        cfg.cache_tx_buf_num = 0;
+        cfg.ampdu_rx_enable = 0;
+        cfg.ampdu_tx_enable = 0;
+        cfg.rx_ba_win = 0;
+    }
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) goto failed_netif;
+    bool wifi_handler = false, ip_handler = false;
+    if ((err = esp_wifi_set_storage(WIFI_STORAGE_RAM)) != ESP_OK) goto failed_wifi;
+    if ((err = esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi, NULL)) != ESP_OK) goto failed_wifi;
+    wifi_handler = true;
+    if ((err = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_wifi, NULL)) != ESP_OK) goto failed_wifi;
+    ip_handler = true;
+    if ((err = esp_wifi_set_mode(WIFI_MODE_STA)) != ESP_OK) goto failed_wifi;
+    if ((err = esp_wifi_set_ps(WIFI_PS_NONE)) != ESP_OK) goto failed_wifi;
+    if ((err = esp_wifi_start()) != ESP_OK) goto failed_wifi;
     s_up = true;
+    log_dram("radio up (after)");
     ESP_LOGI(TAG, "radio up: internal heap %u KB free after", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
     return true;
+failed_wifi:
+    if (ip_handler) esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, on_wifi);
+    if (wifi_handler) esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi);
+    esp_wifi_deinit();
+failed_netif:
+    log_dram("radio init failed");
+    ESP_LOGE(TAG, "radio init failed: %s (free %u KB, largest %u KB)", esp_err_to_name(err),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024,
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024);
+    esp_netif_destroy_default_wifi(s_netif); s_netif = NULL;
+    esp_event_loop_delete_default();
+    return false;
 }
 
 static void do_scan(void) {
@@ -185,11 +244,18 @@ static void do_scan(void) {
     ESP_LOGI(TAG, "scan: %d networks (%d shown)", n, s_n_aps);
     s_state = NET_DONE;
 }
-static void do_connect_n(int attempts, int wait_ms) {
+static void log_link(const char *ssid) {
+    esp_netif_ip_info_t ip = {0};
+    esp_netif_dns_info_t dns = {0};
+    if (s_netif) { esp_netif_get_ip_info(s_netif, &ip); esp_netif_get_dns_info(s_netif, ESP_NETIF_DNS_MAIN, &dns); }
+    ESP_LOGI(TAG, "connected to %s: ip " IPSTR ", gw " IPSTR ", dns " IPSTR, ssid,
+             IP2STR(&ip.ip), IP2STR(&ip.gw), IP2STR(&dns.ip.u_addr.ip4));
+}
+static int connect_with(const char *ssid, const char *pass, int attempts, int wait_ms) {
     wifi_config_t wc = { 0 };
-    memcpy(wc.sta.ssid, s_ssid, sizeof wc.sta.ssid);             /* 32 bytes, NUL-padded or full (the driver takes both) */
-    memcpy(wc.sta.password, s_pass, sizeof wc.sta.password);
-    wc.sta.threshold.authmode = s_pass[0] ? WIFI_AUTH_WPA_PSK : WIFI_AUTH_OPEN;
+    memcpy(wc.sta.ssid, ssid, sizeof wc.sta.ssid);
+    memcpy(wc.sta.password, pass, sizeof wc.sta.password);
+    wc.sta.threshold.authmode = pass[0] ? WIFI_AUTH_WPA_PSK : WIFI_AUTH_OPEN;
     wc.sta.pmf_cfg.capable = true; wc.sta.pmf_cfg.required = false;
     wc.sta.scan_method = WIFI_ALL_CHANNEL_SCAN; wc.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
     esp_wifi_set_config(WIFI_IF_STA, &wc);
@@ -199,7 +265,7 @@ static void do_connect_n(int attempts, int wait_ms) {
         s_disc_reason = 0;
         if (esp_wifi_connect() != ESP_OK) { err = NET_ERR_RADIO; break; }
         EventBits_t b = xEventGroupWaitBits(s_ev, EV_GOT_IP | EV_DISCONNECTED, pdTRUE, pdFALSE, pdMS_TO_TICKS(wait_ms));
-        if (b & EV_GOT_IP) { ESP_LOGI(TAG, "connected to %s", s_ssid); s_state = NET_DONE; return; }
+        if (b & EV_GOT_IP) { log_link(ssid); return NET_ERR_NONE; }
         int r = s_disc_reason;
         ESP_LOGW(TAG, "connect attempt %d: %s (reason %d)", attempt + 1, b & EV_DISCONNECTED ? "disconnected" : "timed out", r);
         if (r == WIFI_REASON_NO_AP_FOUND) { err = NET_ERR_NO_SIGNAL; break; }
@@ -207,13 +273,22 @@ static void do_connect_n(int attempts, int wait_ms) {
             || r == WIFI_REASON_AUTH_EXPIRE || r == WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY
             || r == WIFI_REASON_CONNECTION_FAIL) err = NET_ERR_PASSWORD;
         else err = NET_ERR_NO_SIGNAL;
-        vTaskDelay(pdMS_TO_TICKS(1000 + attempt * 500));
+        /* DHCP can finish just after the timeout: accept that link instead of
+         * reconnecting over it (or dropping it below). */
+        b = xEventGroupWaitBits(s_ev, EV_GOT_IP, pdTRUE, pdFALSE, pdMS_TO_TICKS(1000 + attempt * 500));
+        if ((b & EV_GOT_IP) && s_connected && !s_abort) { log_link(ssid); return NET_ERR_NONE; }
     }
+    /* Clear the flag before disconnecting: the DISCONNECTED event arrives
+     * later, and nothing may treat this dropped link as usable meanwhile. */
+    s_connected = false;
     esp_wifi_disconnect();
-    s_err = s_abort ? NET_ERR_ABORTED : err; s_state = NET_FAILED;
+    return s_abort ? NET_ERR_ABORTED : err;
 }
 static int s_attempts = 5, s_wait_ms = 15000;
-static void do_connect(void) { do_connect_n(s_attempts, s_wait_ms); }
+static void do_connect(void) {
+    s_err = connect_with(s_ssid, s_pass, s_attempts, s_wait_ms);
+    s_state = s_err == NET_ERR_NONE ? NET_DONE : NET_FAILED;
+}
 /* provisioning at install (update_mode.c): the page waits 45 s for an answer */
 void net_port_esp_connect_budget(int attempts, int wait_ms) { s_attempts = attempts; s_wait_ms = wait_ms; }
 
@@ -253,8 +328,9 @@ bool net_time_sync(int64_t *unix_out, int64_t *at_us) {
     s_abort = false; s_state = NET_BUSY;
     bool ok = false;
     if (radio_up()) {
-        do_connect_n(2, 8000);                                   /* a dark glass is waiting: two tries, not the page's five */
-        if (s_state == NET_DONE) {
+        int err = connect_with(s_ssid, s_pass, 2, 8000);          /* a dark glass is waiting: two tries, not the page's five */
+        s_state = err == NET_ERR_NONE ? NET_DONE : NET_FAILED;
+        if (err == NET_ERR_NONE) {
             static const char *HOSTS[] = { "pool.ntp.org", "time.google.com", "time.cloudflare.com" };
             for (size_t i = 0; i < sizeof HOSTS / sizeof *HOSTS && !ok; i++)
                 if (ntp_ask(HOSTS[i], unix_out)) { *at_us = esp_timer_get_time(); ok = true; }
@@ -357,12 +433,58 @@ static void do_install(void) {
     ESP_LOGI(TAG, "installed: %s boots next", slot->label);
     s_state = NET_DONE;
 }
+static void radio_down(void) {
+    if (!s_up) return;
+    s_connected = false;
+    esp_wifi_disconnect(); esp_wifi_stop(); esp_wifi_deinit();
+    esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi);
+    esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, on_wifi);
+    if (s_netif) { esp_netif_destroy_default_wifi(s_netif); s_netif = NULL; }
+    esp_event_loop_delete_default();
+    s_up = false;
+    ESP_LOGI(TAG, "radio off: internal heap %u KB free", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+}
+void weather_port_esp_service(void);
+static void background_weather_work(void) {
+    if (atomic_load(&s_foreground)) return;
+    if (atomic_exchange(&s_weather_reconnect, false)) s_weather_retry = 0;
+    if (!atomic_load(&s_weather)) {
+        if (s_weather_radio) { radio_down(); s_weather_radio = false; }
+        return;
+    }
+    if (net_port_connected()) { s_weather_failures = 0; return; }
+    int64_t now = esp_timer_get_time();
+    if (now < s_weather_retry) return;
+    char ssid[NET_SSID_MAX + 1] = {0}, pass[NET_PASS_MAX + 1] = {0};
+    s_weather_retry = now + 60000000;
+    if (!net_port_creds_get(ssid, pass)) return;
+    s_weather_radio = true;
+    if (radio_up() && !atomic_load(&s_foreground) && atomic_load(&s_weather)) {
+        s_abort = false;
+        (void)connect_with(ssid, pass, 2, 8000);   /* all-channel scan + DHCP needs more than 3.5 s */
+    }
+    memset(pass, 0, sizeof pass);
+    if (net_port_connected()) s_weather_failures = 0;
+    else {
+        if (s_weather_failures < 4) ++s_weather_failures;
+        unsigned seconds = 30u << s_weather_failures;
+        if (seconds > 900) seconds = 900;
+        s_weather_retry = now + (int64_t)seconds * 1000000;
+    }
+}
+static void background_weather(void) {
+    atomic_store(&s_background_busy, true);
+    background_weather_work();
+    /* After the join attempt, so a queued request sees the fresh link. */
+    if (atomic_load(&s_weather) && !atomic_load(&s_foreground)) weather_port_esp_service();
+    atomic_store(&s_background_busy, false);
+}
 static void worker(void *arg) {
     (void)arg;
     for (;;) {
         uint32_t op = 0;
-        xTaskNotifyWait(0, 0xffffffff, &op, portMAX_DELAY);
-        if (op == OP_NONE) continue;
+        xTaskNotifyWait(0, 0xffffffff, &op, pdMS_TO_TICKS(1000));
+        if (op == OP_NONE) { background_weather(); continue; }
         if (!radio_up()) { s_err = NET_ERR_RADIO; s_state = NET_FAILED; continue; }
         switch (op) {
         case OP_SCAN: do_scan(); break;
@@ -374,15 +496,30 @@ static void worker(void *arg) {
     }
 }
 static void begin(int op) {
+    atomic_store(&s_foreground, true);
     if (!s_ev) s_ev = xEventGroupCreate();
     if (!s_task) xTaskCreatePinnedToCore(worker, "net", 12288, NULL, 5, &s_task, 1);
     s_op = op; s_state = NET_BUSY; s_err = NET_ERR_NONE; s_abort = false;
     xTaskNotify(s_task, (uint32_t)op, eSetValueWithOverwrite);
 }
+void net_port_weather(bool wanted) {
+    bool before = atomic_exchange(&s_weather, wanted);
+    if (wanted && !before) atomic_store(&s_weather_reconnect, true);
+    if (s_task) return;
+    if (!wanted && !s_task) return;
+    int64_t now = esp_timer_get_time();
+    if (now < s_weather_init_retry) return;
+    s_weather_init_retry = now + 60000000;
+    if (!s_ev) s_ev = xEventGroupCreate();
+    if (!s_ev) return;
+    if (!s_task && xTaskCreatePinnedToCore(worker, "net", 12288, NULL, 5, &s_task, 1) != pdPASS) return;
+    s_weather_init_retry = 0;
+}
 void net_port_scan_start(void) { begin(OP_SCAN); }
 int  net_port_scan_state(void) { return s_op == OP_SCAN ? s_state : NET_IDLE; }
 int  net_port_scan_results(net_ap_t *out, int max) { int n = s_n_aps < max ? s_n_aps : max; memcpy(out, s_aps, n * sizeof *out); return n; }
 void net_port_connect_start(const char *ssid, const char *pass) {
+    atomic_store(&s_foreground, true);
     snprintf(s_ssid, sizeof s_ssid, "%s", ssid); snprintf(s_pass, sizeof s_pass, "%s", pass ? pass : "");
     if (s_connected) { s_state = NET_DONE; s_op = OP_CONNECT; return; }   /* the retry after a failed check: still on */
     begin(OP_CONNECT);
@@ -395,19 +532,19 @@ int  net_port_install_state(int *percent) { if (s_op != OP_INSTALL) return NET_I
 void net_port_abort(void) { s_abort = true; if (s_op == OP_CONNECT) esp_wifi_disconnect(); }
 int  net_port_fail_reason(void) { return s_err; }
 void net_port_off(void) {
+    if (atomic_load(&s_weather)) {
+        /* Foreground releases its lease; weather may reuse this association. */
+        s_weather_radio = true;
+        atomic_store(&s_foreground, false);
+        return;
+    }
+    atomic_store(&s_foreground, true); /* no new background work during teardown */
     s_abort = true;
     if (s_task) {                                            /* let a download notice the abort before the driver goes */
-        for (int i = 0; i < 100 && s_state == NET_BUSY; i++) vTaskDelay(pdMS_TO_TICKS(50));
+        for (int i = 0; i < 100 && (s_state == NET_BUSY || atomic_load(&s_background_busy)); i++) vTaskDelay(pdMS_TO_TICKS(50));
         vTaskDelete(s_task); s_task = NULL;
     }
-    if (s_up) {
-        esp_wifi_disconnect(); esp_wifi_stop(); esp_wifi_deinit();
-        esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi);
-        esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, on_wifi);
-        if (s_netif) { esp_netif_destroy_default_wifi(s_netif); s_netif = NULL; }
-        esp_event_loop_delete_default();
-        s_up = false; s_connected = false;
-        ESP_LOGI(TAG, "radio off: internal heap %u KB free", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
-    }
+    radio_down(); s_weather_radio = false;
     s_op = OP_NONE; s_state = NET_IDLE;
+    atomic_store(&s_foreground, false);
 }

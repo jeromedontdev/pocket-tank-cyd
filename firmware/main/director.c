@@ -210,6 +210,8 @@ static void help(void) {
     ESP_LOGI(TAG, "milestones [off] (the page, on cue; on the device: tap the open stats card)");
     ESP_LOGI(TAG, "journal | journal tap <x> <y> | journal demo (parks the real tank, unlocks temporary theme previews; restore when finished)");
     ESP_LOGI(TAG, "games | games tap <x> <y> (framebuffer coordinates; real aquarium care pauses)");
+    ESP_LOGI(TAG, "home | home tap <x> <y> (main menu; life remains an alias; framebuffer coordinates)");
+    ESP_LOGI(TAG, "settings | settings tap <x> <y> | settings off (clock, weather and brightness; framebuffer coordinates)");
     ESP_LOGI(TAG, "bank | bank tap <x> <y> | bank verify (JSON validation) | bank demo (parks real tank; restore afterwards)");
     ESP_LOGI(TAG, "tanks | tanks tap <x> <y> | tanks demo (parks real tank, grants test coins; restore afterwards)");
     ESP_LOGI(TAG, "fry [open|roll|buy <0-2>] (the shop's fry: open = as if a fish was sold; roll = a fresh three now)");
@@ -218,7 +220,7 @@ static void help(void) {
     ESP_LOGI(TAG, "setup [off] (the first-run flow: welcome, names, colours; off drops the panel - the birth flow too) | name <fish|idx> <newname> (up to %d letters, saved)", FISH_NAME_MAX);
     ESP_LOGI(TAG, "kbd [wheel|grid|pages] (the name page's design: the wheel, or one of the two rejected keyboards of 09-13 - not saved, a boot is the wheel)");
     ESP_LOGI(TAG, "touch [bias <px>] [log on|off] [calibrate] (finger-landing correction: reported touches move up by px; not saved; also the raw span seen since boot)");
-    ESP_LOGI(TAG, "bright <0-255> (panel now; not saved) | level 100|60|30 (the keeper's setting, saved)");
+    ESP_LOGI(TAG, "bright <0-255> (panel now; not saved) | level <10-100> (the keeper's setting, saved)");
     ESP_LOGI(TAG, "shop: chest (%d), shell (%d), starfish (%d), anchor (%d), buoy (%d), sand (%d), lights (%d) | style sand <0..7> | style water <0..7>",
              SD_PRICE_CHEST, SD_PRICE_SHELL, SD_PRICE_STARFISH, SD_PRICE_ANCHOR, SD_PRICE_BUOY, SD_PRICE_SAND, SD_PRICE_LIGHTS);
     ESP_LOGI(TAG, "shop also: wreck, urn, crystal, fan, ruins, jelly | fish customize <0..%d> (free appearance editor)", N_FISH_MAX - 1);
@@ -401,6 +403,7 @@ static void run(tank_t *t, char *line) {
             if (!progression_save(t)) { ESP_LOGE(TAG, "bank demo final save failed"); return; }
             touch_port_show_bank();
         } else if (argc == 2 && !strcmp(argv[1], "verify")) {
+            render_work_caches(false);
             char error[96]; char *json = progression_backup_json(t);
             if (!json) { ESP_LOGE(TAG, "bank backup allocation failed"); return; }
             size_t len = strlen(json);
@@ -429,6 +432,17 @@ static void run(tank_t *t, char *line) {
             if (render_games_tap(t, x, y)) touch_port_show_milestones(true);
         } else { ESP_LOGW(TAG, "games | games tap <framebuffer x> <y>"); return; }
         ESP_LOGI(TAG, "games page %s; aquarium care %s", touch_port_games() ? "open" : "closed", touch_port_games() ? "paused" : "resumed");
+    } else if (!strcmp(c, "life") || !strcmp(c, "home")) {
+        if (argc == 1) touch_port_show_life();
+        else if (argc == 4 && !strcmp(argv[1], "tap")) {
+            float x, y; char extra;
+            if (sscanf(argv[2], "%f%c", &x, &extra) != 1 || sscanf(argv[3], "%f%c", &y, &extra) != 1 ||
+                !isfinite(x) || !isfinite(y) || x < 0 || y < 0 || x >= TANK_W || y >= TANK_H || !touch_port_life()) {
+                ESP_LOGW(TAG, "life tap requires an open LIFE page and framebuffer x y"); return;
+            }
+            touch_port_life_tap(t, x, y);
+        } else { ESP_LOGW(TAG, "life | life tap <framebuffer x> <y>"); return; }
+        ESP_LOGI(TAG, "desk companion page %s", touch_port_life() ? "open" : "closed");
     } else if (!strcmp(c, "journal")) {
         if (argc == 2 && !strcmp(argv[1], "demo")) {
             if (!stage_guard(t)) return;
@@ -449,8 +463,15 @@ static void run(tank_t *t, char *line) {
                  journal_level(t), (unsigned long)t->journal.xp, (unsigned long)t->journal.claimed,
                  (unsigned long)t->journal.seen, (unsigned long)t->journal.grown, JOURNAL_THEME_NAMES[t->journal.theme]);
     } else if (!strcmp(c, "settings")) {
-        bool on = argc < 2 || strcmp(argv[1], "off");
-        touch_port_show_settings(on); ESP_LOGI(TAG, "settings page %s", on ? "up (CLOSE ends it)" : "closed");
+        if (argc == 4 && !strcmp(argv[1], "tap")) {
+            float x, y; char extra;
+            if (sscanf(argv[2], "%f%c", &x, &extra) != 1 || sscanf(argv[3], "%f%c", &y, &extra) != 1 ||
+                !touch_port_settings_tap(t, x, y))
+                ESP_LOGW(TAG, "settings tap requires an open settings page and valid framebuffer x y");
+        } else if (argc == 1 || (argc == 2 && !strcmp(argv[1], "off"))) {
+            bool on = argc == 1;
+            touch_port_show_settings(on); ESP_LOGI(TAG, "settings page %s", on ? "up (CLOSE ends it)" : "closed");
+        } else ESP_LOGW(TAG, "settings | settings tap <framebuffer x> <y> | settings off");
     } else if (!strcmp(c, "milestones")) {
         bool on = argc < 2 || strcmp(argv[1], "off");
         touch_port_show_milestones(on); ESP_LOGI(TAG, "milestones page %s", on ? "up (CLOSE button ends it)" : "closed");
@@ -587,7 +608,7 @@ static void run(tank_t *t, char *line) {
         vTaskDelay(pdMS_TO_TICKS(50));
         device_poweroff();
     } else if (!strcmp(c, "level") && argc > 1) {
-        if (!brightness_set_level(atoi(argv[1]))) ESP_LOGW(TAG, "level is 100, 60 or 30");
+        if (!brightness_set_level(atoi(argv[1]))) ESP_LOGW(TAG, "level must be 10..100; check NVS if saving fails");
     } else if (!strcmp(c, "reset")) {
         if (argc < 2) { touch_port_confirm_open(); return; }
         int ans = !strcasecmp(argv[1], "yes") ? 1 : !strcasecmp(argv[1], "no") ? -1 : 0;
