@@ -86,7 +86,7 @@ def main():
 
                 def restore(snapshot, preserve_life=False):
                     snapshot = copy.deepcopy(snapshot)
-                    if snapshot.get("schema") in (11, 12, 13, 14, 15, 16) and not preserve_life:
+                    if snapshot.get("schema") in (11, 12, 13, 14, 15, 16, 17) and not preserve_life:
                         # Staged rosters replace identities; migrate their life records honestly.
                         snapshot["schema"] = 10
                         snapshot.pop("polish")
@@ -96,6 +96,7 @@ def main():
                         snapshot.pop("creative", None)
                         snapshot.pop("profile", None)
                         snapshot.pop("games_extra", None)
+                        snapshot.pop("care", None)
                     data = json.dumps(snapshot, separators=(",", ":")).encode()
                     if not lib.sim_restore(data, len(data)):
                         raise RuntimeError(lib.sim_error().decode())

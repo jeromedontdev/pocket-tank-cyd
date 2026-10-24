@@ -7516,8 +7516,9 @@ static void page_theme_thumb(ctx_t *c, int x, int y, int theme, bool unlocked) {
     rect_edge(c, x, y, 40, 26, ink);
 }
 static int g_journal_tab, g_journal_theme_page;
+static bool g_journal_daily;
 static char g_journal_message[48];
-void render_journal_open(void) { g_journal_tab = g_journal_theme_page = 0; g_journal_message[0] = 0; }
+void render_journal_open(void) { g_journal_tab = g_journal_theme_page = 0; g_journal_daily = true; g_journal_message[0] = 0; }
 void render_journal_open_section(int section) {
     render_journal_open();
     if (section >= 0 && section <= 2) g_journal_tab = section;
@@ -7547,7 +7548,22 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
         }
         snprintf(line, sizeof line, "SAND DOLLARS %ld", (long)t->sd_balance);
         draw_text(&c, 24, 76, 2, MSP_TEAL, line);
-        for (int slot = 0; slot < 3; slot++) {
+        if (g_journal_daily) for (int task = 0; task < CARE_TASK_COUNT; task++) {
+            int y = JOURNAL_GOAL_Y + task * JOURNAL_GOAL_DY;
+            bool ready = t->care.ready & (1u << task), paid = t->care.claimed & (1u << task);
+            rect_fill(&c, 24, y, 400, 58, 0x10282e);
+            rect_edge(&c, 24, y, 400, 58, ready && !paid ? 0x38dcc7 : MSP_DIM);
+            draw_text(&c, 32, y + 5, 2, paid ? MSP_DIM : 0xffffff, CARE_TASK_NAMES[task]);
+            draw_text(&c, 32, y + 25, 1, 0xb9d1d5, CARE_TASK_DETAILS[task]);
+            snprintf(line, sizeof line, "+%uC +%uXP", CARE_COINS[task], CARE_XP[task]);
+            draw_text(&c, 32, y + 40, 1, MSP_TEAL, line);
+            if (ready) draw_text(&c, paid ? 348 : 336, y + 39, 2, paid ? MSP_DIM : MSP_TEAL, paid ? "SAVED" : "CLAIM");
+            else if (task > 0) {
+                snprintf(line, sizeof line, "%us", task == 1 ? t->care.calm_s : t->care.viewed_s);
+                draw_text(&c, 340, y + 40, 1, MSP_TEAL, line);
+            }
+        }
+        if (!g_journal_daily) for (int slot = 0; slot < 3; slot++) {
             int goal = journal_active(t, slot), y = JOURNAL_GOAL_Y + slot * JOURNAL_GOAL_DY;
             if (goal < 0) continue;
             const journal_goal_t *g = &JOURNAL_GOALS[goal]; unsigned progress = journal_progress(t, goal);
@@ -7568,7 +7584,7 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
             rect_fill(&c, 64, y + 55, (int)(260u * progress / g->target), 2, MSP_TEAL);
             if (progress == g->target) draw_text(&c, 348, y + 39, 2, 0x38dcc7, "CLAIM");
         }
-        if (journal_active(t, 0) < 0) {
+        if (!g_journal_daily && journal_active(t, 0) < 0) {
             page_stamp(&c, 210, 108, STAMP_CUP, 0xffdc73);
             draw_text(&c, 50, 150, 2, MSP_TEAL, "ALL OBJECTIVES COMPLETE!");
             draw_text(&c, 50, 180, 2, 0xffffff, "CARE STILL EARNS XP");
@@ -7612,16 +7628,35 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
         }
     }
     draw_text_wrap(&c, 24, 280, 400, 0xffffff, g_journal_message);
-    draw_text(&c, 24, 320, 2, MSP_TEAL,
-              g_journal_tab == 0 ? "GOALS - TAP A READY REWARD" :
-              g_journal_tab == 1 ? "ALBUM - YOUR DISCOVERED LOOKS" : "THEMES - CHOOSE YOUR BACKDROP");
-    draw_text(&c, 24, 352, 1, MSP_TEAL, "BACK RETURNS TO YOUR MENU");
+    if (g_journal_tab == 0 && !progression_creative(t))
+        button(&c, 24, 316, 400, 32, 0x1c2f36, MSP_TEAL,
+               g_journal_daily ? "TODAY 100C/50XP > MILESTONES" : "MILESTONES > TODAY", 1);
+    else draw_text(&c, 24, 320, 2, MSP_TEAL,
+                   g_journal_tab == 1 ? "ALBUM - YOUR DISCOVERED LOOKS" : g_journal_tab == 2 ? "THEMES - CHOOSE YOUR BACKDROP" : "CREATIVE - CARE AT YOUR PACE");
+    draw_text(&c, 24, 352, 1, MSP_TEAL, g_journal_tab == 0 && g_journal_daily ?
+              "NO STREAKS - NO MISSED-DAY DEBT" : "BACK RETURNS TO YOUR MENU");
 }
 int render_journal_tap(tank_t *t, float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
     if (x >= SET_CLOSE_X && y >= SET_CLOSE_Y && y < SET_CLOSE_Y + SET_CLOSE_H) return 1;
     if (g_journal_tab == 0 && progression_creative(t)) return 0;
+    if (g_journal_tab == 0) progression_care_refresh(t);
+    if (g_journal_tab == 0 && x >= 24 && x < 424 && y >= 316 && y < 348) {
+        g_journal_daily = !g_journal_daily; g_journal_message[0] = 0; return 0;
+    }
     if (g_journal_tab == 0 && x >= 24 && x < 424 && y >= JOURNAL_GOAL_Y && y < JOURNAL_GOAL_Y + 3 * JOURNAL_GOAL_DY) {
+        if ((int)(y - JOURNAL_GOAL_Y) % JOURNAL_GOAL_DY >= 58) return 0;
+        if (g_journal_daily) {
+            int task = (int)((y - JOURNAL_GOAL_Y) / JOURNAL_GOAL_DY);
+            if (task < CARE_TASK_COUNT) {
+                if (t->care.claimed & (1u << task)) snprintf(g_journal_message, sizeof g_journal_message, "SAVED - COME BACK ANOTHER DAY");
+                else if (t->care.ready & (1u << task))
+                    snprintf(g_journal_message, sizeof g_journal_message, "%s", progression_care_claim(t, task) ?
+                             "CARE REWARD SAVED!" : "SAVE FAILED - RETRY YOUR REWARD");
+                else snprintf(g_journal_message, sizeof g_journal_message, "CARE AT YOUR PACE - NO PURCHASE NEEDED");
+            }
+            return 0;
+        }
         int goal = journal_active(t, (int)((y - JOURNAL_GOAL_Y) / JOURNAL_GOAL_DY));
         if (goal >= 0 && journal_progress(t, goal) == JOURNAL_GOALS[goal].target)
             snprintf(g_journal_message, sizeof g_journal_message, "%s", journal_claim(t, goal) ? "REWARD SAVED!" : "REWARD FAILED - CHECK SAVE STORAGE");

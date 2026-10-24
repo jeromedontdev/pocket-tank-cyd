@@ -20,7 +20,12 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.1.3**, simplifying Settings/Clock/Weather, exposing weather
+- Source release: **2.2.0**, adding shared daily care (100 dollars/50 XP),
+  five shared game-bonus dollars/day with no game XP, halved future milestone
+  XP and append-only 6032-byte/schema-17 saves. Existing XP/wallet/unlocks stay.
+  Clockless renewal uses 24 running care hours; valid time uses UTC days.
+  Backward clocks/reboots/tank changes must not renew allowances. No streak
+  penalties or missed-day debt/back-pay. 2.1.3 simplified Settings/Clock/Weather, exposing weather
   text sizing and cached-condition icons, and consistently naming this fork
   Pocket Tank CYD. 2.1.2 fixed browser fish-card lock/tool/DONE dispatch
   after 2.1.1 added browser fullscreen/food-placement/touch hints
@@ -58,7 +63,7 @@ or deployment is published. Update this file when its contracts change.
   profile. Old local Banks merge once, blocking safely if capacity is exceeded;
   all identity references are remapped together to avoid aliases. Multi-tank
   JSON restores allocate safe new identities without resetting the high-water
-  counter. Keep the 6008-byte/schema-16 layout; no additional NVS/PSRAM is needed.
+  counter. Keep the frozen 6008-byte/schema-16 prefix; no additional NVS/PSRAM is needed.
   Creative unlocks choices without fabricated XP/wallet, permits free fish
   additions (five including travelers) and confirmed removals (keep two).
   Hard permits online starvation deaths only: never offline or old-age deaths.
@@ -148,7 +153,10 @@ or further split modules without a concrete maintenance benefit.
 
 ## Persistence and memory: hard constraints
 
-- Current binary save **6008 bytes**, JSON **schema 16**; imports schemas 1-15.
+- Current binary save **6032 bytes**, JSON **schema 17**; imports schemas 1-16.
+  The 24-byte `care_state_t` appends at offset 6008; quotas and care progress
+  follow shared progression, never stale parked snapshots. Validate JSON and
+  binary tails; retain zero-tail migration without changing existing XP.
   Previous tails: 5848 before game records, 5888 before RPG, 5912 before Creative.
   Creative is an 8-byte append-only marker/version/enabled/reserved tail; every
   frozen prior save offset is unchanged. Append 40 bytes `games_extra` plus
@@ -180,7 +188,8 @@ or further split modules without a concrete maintenance benefit.
   RPG participant is uint32; chapter contributors are uint16 lineage IDs.
   IDs above 65535 must become unknown, never alias an unrelated ancestor.
 - Older-schema JSON fixtures must remove later fields: `<11` polish,
-  `<12` story, `<13` games, `<14` rpg, `<15` creative, `<16` profile/games_extra.
+  `<12` story, `<13` games, `<14` rpg, `<15` creative, `<16` profile/games_extra,
+  `<17` care.
 - Update every relevant import/export, active/Bank/away/tank-switch path,
   rollback snapshot, simulator fixture, viewer, and documentation together.
 - Active-save writes are event-driven/coalesced (30 seconds; 10-minute heartbeat).
@@ -364,7 +373,7 @@ For feature work, update the relevant entries in:
   and verify deployed content after Pages completes.
 - Tiny uses layout bit 5 (low size bits zero); detail size uses bits
   6..7, caption size uses delay bits 3..4. Use the shared packing/validation
-  helpers; preserve unrelated fields and the 6008-byte/schema-16 layout.
+  helpers; preserve unrelated fields and the frozen 6008-byte/schema-16 prefix.
   Test Small/Medium/Large detail and caption preferences at both resolutions,
   with all five sizes/positions, long captions, sync/no-sync, exact bounds,
   time/detail non-overlap and live/tiled-cache equality. Auto-fit is intentional.

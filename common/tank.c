@@ -646,6 +646,8 @@ void tank_init(tank_t *t, uint32_t seed) {
     memset(&t->creative, 0, sizeof t->creative);
     memset(&t->games_extra, 0, sizeof t->games_extra);
     memset(&t->profile, 0, sizeof t->profile);
+    memset(&t->care, 0, sizeof t->care);
+    t->care_fraction = 0;
     t->season = SEASON_NONE;
     t->visitor_left = 0;
     t->room_dark = false; t->visitor_species = 0;

@@ -417,6 +417,14 @@ typedef struct {
 } profile_state_t;
 _Static_assert(sizeof(profile_state_t) == 48, "profile save layout");
 
+typedef struct {
+    int64_t day;
+    uint32_t elapsed_s;
+    uint16_t viewed_s, calm_s;
+    uint8_t ready, claimed, game_paid, version, fallback;
+} care_state_t;
+_Static_assert(sizeof(care_state_t) == 24, "daily care save budget");
+
 /* a pellet: it sinks FOOD_SINK_PX_S from the surface to the floor (~43 s on
  * the 1.8, ~60 on the watch), then RESTS there FOOD_FLOOR_S before it
  * dissolves (2026-09-29, for the shrimp school - every tank alike; measured:
@@ -678,12 +686,11 @@ typedef struct tank {
     /* its SNACKS (Strato 10-15): it never chases food like the fish or the
      * shrimp, but a pellet that drifts within SH_REACH of its snout is
      * eaten on the spot. Every snack counts (its card); the first one in
-     * SH_SNACK_COOL_S earns SD_SNACK sand dollars (progression.c pays
-     * sh_snack_pay against its ledger sd_snacks_paid), the rest in that
-     * window are just lunch - so a tap-spammer cannot farm it. All saved. */
+     * SH_SNACK_COOL_S advances the historical snack ledger; daily care, not
+     * individual snacks, now pays repeat rewards. All saved. */
     int32_t  sh_eaten;             /* pellets snapped, lifetime */
-    int32_t  sh_snack_pay;         /* snacks that earned (the ledger pays these) */
-    float    sh_snack_cool;        /* seconds until the next snack earns again */
+    int32_t  sh_snack_pay;         /* frozen historical snack counter */
+    float    sh_snack_cool;        /* seconds until the next counter step */
     float    sh_snap;              /* the SNATCH (Strato 10-15: "its neck / head should jut out slightly to snatch
                                     * it"): seconds into it, < 0 = none; the head juts SH_JUT px forward over
                                     * SH_SNAP_S and the pellet is taken at SH_SNAP_AT, with the fish's eat cue */
@@ -820,6 +827,8 @@ typedef struct tank {
     creative_state_t creative;
     game_records_t games_extra;
     profile_state_t profile;
+    care_state_t care;
+    float care_fraction;
     float visitor_left;
     float companion_fraction;      /* powered-on fractional second; not saved */
     bool  room_dark;               /* 1.3: the platform's room-light sensor says the room is dark
@@ -1089,7 +1098,7 @@ enum { STAT_CURRENT = 1, STAT_SHELTER = 2, STAT_ENRICHMENT = 4, STAT_TRAINING = 
 /* per-fish paid bits (sd_paid_fish) */
 enum { SD_PAID_JUV = 1u << 0, SD_PAID_ADULT = 1u << 1, SD_PAID_ELDER = 1u << 2, SD_PAID_TRUST = 1u << 3 };
 #define PX_PER_INCH 24.0f          /* the tank reads as ~15 in tall; a fish ~1.7 in */
-#define PX_PER_CM   (PX_PER_INCH / 2.54f)   /* the shop pays grass by the centimeter (SD_TRIM_CM) */
+#define PX_PER_CM   (PX_PER_INCH / 2.54f)
 /* the live bed count: VEG_BEDS, or VEG_BEDS_MAX with the sword plant bought;
  * every loop over beds runs to this. tank_veg_kind is the species (render). */
 int   tank_veg_beds(const tank_t *t);

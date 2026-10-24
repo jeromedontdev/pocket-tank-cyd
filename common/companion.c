@@ -752,12 +752,15 @@ bool companion_greet(tank_t *t, int fish) {
     if (fish < 0 || fish >= t->n_fish) return false;
     companion_bond_t *b = &t->companion.active[fish];
     if (b->next_greet_s && t->companion.powered_s < b->next_greet_s) return false;
+    progression_care_refresh(t);
+    care_state_t old_care = t->care;
     companion_state_t old = t->companion;
     b->bond = b->bond > 95 ? 100 : b->bond + 5;
     if (b->greetings < UINT16_MAX) b->greetings++;
     b->next_greet_s = t->companion.powered_s > UINT32_MAX - 30 ? UINT32_MAX : t->companion.powered_s + 30;
     discover(t, 6);
-    if (!commit(t, &old)) return false;
+    progression_care_greet(t);
+    if (!commit(t, &old)) { t->care = old_care; return false; }
     t->greet_timer = 12;
     return true;
 }
@@ -852,7 +855,7 @@ int companion_game_reward(int game, int score, int moves) {
 }
 bool companion_game_claim(tank_t *t, int game, int score, int moves, int dollars, bool relaxed) {
     if (progression_creative(t) || game < 0 || game >= 18 || score < 0 || moves < 0 ||
-        dollars < (game >= 12 ? 0 : 1) || dollars > 10 ||
+        dollars < 0 || dollars > 10 ||
         (game >= 12 && dollars != companion_game_reward(game, score, moves))) return false;
     companion_state_t old = t->companion;
     game_records_t old_games = t->games;

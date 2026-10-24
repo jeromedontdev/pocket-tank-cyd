@@ -12,7 +12,7 @@ enum {
 
 typedef struct {
     int page, kind, score, moves, pairs, first, second, spawned, reward;
-    int fish, lane, target, errors, rounds, discard;
+    int fish, lane, target, errors, rounds, discard, paid;
     float left, spawn, reveal;
     float travel;
     bool claimed, save_failed;

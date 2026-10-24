@@ -216,6 +216,7 @@ typedef struct {
     creative_state_t creative;
     game_records_t games_extra;
     profile_state_t profile;
+    care_state_t care;
 } save_t;
 /* the smallest PTK2 save (pre-upkeep, 2026-08-30): anything shorter is not
  * ours. Every later build wrote sizeof(save_t) of its day - 448, 1112, 1304,
@@ -328,7 +329,8 @@ SAVE_AT(rpg, 5888);
 SAVE_AT(creative, 5912);
 SAVE_AT(games_extra, 5920);
 SAVE_AT(profile, 5960);
-_Static_assert(sizeof(save_t) == 6008, "profile and third-page records tail");
+SAVE_AT(care, 6008);
+_Static_assert(sizeof(save_t) == 6032, "daily care append-only tail");
 _Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: companion tail");
 /* Historical NVS budget: older saves were one blob in nvs (0x9000, 0x6000 =
  * 6 pages of 4096 B; tools/make_installer.py pins the row). A page is 126
@@ -340,7 +342,7 @@ _Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: compani
  * payload + two chunk headers + index costs 188 entries per copy:
  * 3 x 188 + 64 reserved for namespaces, Wi-Fi, settings and history = 628,
  * below 630, retaining the dedicated GC page. Inactive aquariums live on
- * SD, not additional NVS blobs. Current 6008-byte saves exceed this budget
+ * SD, not additional NVS blobs. Current 6032-byte saves exceed this budget
  * and use the existing SPIFFS storage partition with CRC/readback dual copies.
  * NVS is migration input only; the old director backup is disabled.
  * Older SD records zero-fill appended tails after checksum validation. */
@@ -374,8 +376,6 @@ static bool  s_wipe_save_pending;
 static bool  s_setup_pending;        /* the first-run flow still owed (setup.c) */
 static int   s_newborn = -1;         /* the arrival still owed its birth flow (setup.c), or -1 */
 static int   s_sd_pending;           /* dollars awarded and not yet shown (the toast) */
-static int32_t s_sd_prev_feedings = -1;   /* player_feedings at the last tick (-1 = adopt at the next) */
-static float   s_sd_meal_wait;            /* seconds before a meal pays again (SD_MEAL_GAP_S) */
 static int32_t s_sale_need;               /* player_feedings the next fry waits for since a fish was sold (0 = none sold) */
 static uint16_t s_fry_seed;               /* the fry offer (progression_fry_*): its seed, 0 = none drawn */
 static double   s_fry_age;                /* ... its age in tank seconds (a double, as s_age) */
@@ -385,21 +385,21 @@ static float clampf(float v, float lo, float hi) { return v < lo ? lo : v > hi ?
 static void mark_dirty(void) { if (!s_dirty) { s_dirty = true; s_dirty_since = 0; } }
 enum { JM_MEALS, JM_CLEAN, JM_TRIM, JM_HOLD, JM_TRUST, JM_GROWN, JM_SEEN, JM_DECOR, JM_POP };
 const journal_goal_t JOURNAL_GOALS[JOURNAL_GOAL_N] = {
-    {"FIRST MEALS", "SERVE MEALS THAT GET EATEN", JM_MEALS, 3, 100, 25},
-    {"CLEAR VIEW", "CLEAN ALGAE COLONIES", JM_CLEAN, 5, 100, 25},
-    {"MAKE IT YOURS", "OWN A PLACEABLE DECORATION", JM_DECOR, 1, 100, 30},
-    {"A CALM HELLO", "LET A FISH APPROACH YOUR HOLD", JM_HOLD, 1, 120, 30},
-    {"GROWING TOGETHER", "RECORD A LOOK ON AN ADULT FISH", JM_GROWN, 1, 160, 50},
-    {"GREEN THUMB", "TRIM 20 CM OF PLANTS", JM_TRIM, 20, 120, 30},
-    {"TRUSTED KEEPER", "REACH TRUST 4 WITH ANY FISH", JM_TRUST, 4, 180, 50},
-    {"CREATURE COLLECTOR", "RECORD THREE DIFFERENT LOOKS", JM_SEEN, 3, 140, 40},
-    {"REGULAR MEALS", "SERVE FIFTEEN EATEN MEALS", JM_MEALS, 15, 180, 50},
-    {"A PERSONAL REEF", "OWN FOUR PLACEABLE DECORATIONS", JM_DECOR, 4, 200, 60},
-    {"HELPING HAND", "CLEAN 25 ALGAE COLONIES", JM_CLEAN, 25, 200, 60},
-    {"CLOSE FRIEND", "REACH TRUST 6 WITH ANY FISH", JM_TRUST, 6, 260, 80},
-    {"NEW GENERATION", "HAVE THREE FISH IN YOUR TANK", JM_POP, 3, 300, 100},
-    {"OCEAN ALBUM", "RECORD SEVEN DIFFERENT LOOKS", JM_SEEN, 7, 260, 80},
-    {"MASTER KEEPER", "RECORD FIVE UNIQUE ADULT LOOKS", JM_GROWN, 5, 400, 120}
+    {"FIRST MEALS", "SERVE MEALS THAT GET EATEN", JM_MEALS, 3, 50, 25},
+    {"CLEAR VIEW", "CLEAN ALGAE COLONIES", JM_CLEAN, 5, 50, 25},
+    {"MAKE IT YOURS", "OWN A PLACEABLE DECORATION", JM_DECOR, 1, 50, 30},
+    {"A CALM HELLO", "LET A FISH APPROACH YOUR HOLD", JM_HOLD, 1, 60, 30},
+    {"GROWING TOGETHER", "RECORD A LOOK ON AN ADULT FISH", JM_GROWN, 1, 80, 50},
+    {"GREEN THUMB", "TRIM 20 CM OF PLANTS", JM_TRIM, 20, 60, 30},
+    {"TRUSTED KEEPER", "REACH TRUST 4 WITH ANY FISH", JM_TRUST, 4, 90, 50},
+    {"CREATURE COLLECTOR", "RECORD THREE DIFFERENT LOOKS", JM_SEEN, 3, 70, 40},
+    {"REGULAR MEALS", "SERVE FIFTEEN EATEN MEALS", JM_MEALS, 15, 90, 50},
+    {"A PERSONAL REEF", "OWN FOUR PLACEABLE DECORATIONS", JM_DECOR, 4, 100, 60},
+    {"HELPING HAND", "CLEAN 25 ALGAE COLONIES", JM_CLEAN, 25, 100, 60},
+    {"CLOSE FRIEND", "REACH TRUST 6 WITH ANY FISH", JM_TRUST, 6, 130, 80},
+    {"NEW GENERATION", "HAVE THREE FISH IN YOUR TANK", JM_POP, 3, 150, 100},
+    {"OCEAN ALBUM", "RECORD SEVEN DIFFERENT LOOKS", JM_SEEN, 7, 130, 80},
+    {"MASTER KEEPER", "RECORD FIVE UNIQUE ADULT LOOKS", JM_GROWN, 5, 200, 120}
 };
 const char *const JOURNAL_THEME_NAMES[JOURNAL_THEME_COUNT] = {
     "ORIGINAL", "KELP FOREST", "CORAL REEF", "DEEP GLOW",
@@ -506,8 +506,93 @@ bool journal_claim(tank_t *t, int goal) {
     if (progression_save(t)) return true;
     t->journal = old; t->sd_balance -= reward; t->sd_earned -= reward; return false;
 }
+const char *const CARE_TASK_NAMES[CARE_TASK_COUNT] = {"A GOOD MEAL", "A LITTLE CONNECTION", "YOUR DAILY REEF"};
+const char *const CARE_TASK_DETAILS[CARE_TASK_COUNT] = {
+    "ONE PLAYER FEEDING EATEN",
+    "SAY HELLO OR CALM HOLD 60S",
+    "TEND PLANTS/GLASS OR WATCH 5M"
+};
+const uint8_t CARE_COINS[CARE_TASK_COUNT] = {25, 25, 50};
+const uint8_t CARE_XP[CARE_TASK_COUNT] = {12, 13, 25};
+static bool care_valid(const care_state_t *s) {
+    if (!s->version) {
+        care_state_t empty = {0};
+        return !memcmp(s, &empty, sizeof empty);
+    }
+    return s->version == 1 && s->day >= 0 && s->day <= 47482 &&
+        s->elapsed_s < 86400 && s->viewed_s <= CARE_VIEW_SECONDS &&
+        s->calm_s <= CARE_CALM_SECONDS && !(s->ready & ~7u) &&
+        !(s->claimed & ~s->ready) && s->game_paid <= CARE_GAME_LIMIT && s->fallback <= 1;
+}
+void progression_care_refresh(tank_t *t) {
+    int64_t now = clock_port_now_unix();
+    int64_t day = now >= INT64_C(1609459200) && now <= INT64_C(4102444800) ? now / 86400 : 0;
+    care_state_t *s = &t->care;
+    if (!s->version) {
+        memset(s, 0, sizeof *s);
+        s->version = 1; s->day = day;
+        mark_dirty();
+    } else if (day && (!s->day || s->fallback)) {
+        /* Clock synchronization adopts an existing fallback allowance, never a second payout. */
+        if (day > s->day) s->day = day;
+        s->fallback = 0; mark_dirty();
+    } else if ((day && s->day && day > s->day) || (!day && s->elapsed_s >= 86400)) {
+        int64_t high = day > s->day ? day : s->day;
+        memset(s, 0, sizeof *s);
+        s->version = 1; s->day = high; s->fallback = !day;
+        mark_dirty();
+    }
+}
+void progression_care_greet(tank_t *t) {
+    progression_care_refresh(t);
+    if (!progression_creative(t)) { t->care.ready |= 2; mark_dirty(); }
+}
+bool progression_care_claim(tank_t *t, int task) {
+    progression_care_refresh(t);
+    if (progression_creative(t) || task < 0 || task >= CARE_TASK_COUNT ||
+        !(t->care.ready & (1u << task)) || (t->care.claimed & (1u << task))) return false;
+    int coins = CARE_COINS[task];
+    if (t->sd_balance > INT_MAX - coins || t->sd_earned > INT_MAX - coins) {
+        fprintf(stderr, "Daily care reward would overflow wallet\n"); return false;
+    }
+    uint32_t xp = t->journal.xp;
+    t->care.claimed |= (uint8_t)(1u << task);
+    t->sd_balance += coins; t->sd_earned += coins;
+    journal_add_xp(t, CARE_XP[task]);
+    if (progression_save(t)) return true;
+    t->care.claimed &= (uint8_t)~(1u << task);
+    t->sd_balance -= coins; t->sd_earned -= coins; t->journal.xp = xp;
+    fprintf(stderr, "Daily care save failed; reward rolled back\n");
+    return false;
+}
+static void care_tick(tank_t *t, float dt) {
+    if (!isfinite(dt) || dt <= 0 || progression_creative(t)) return;
+    progression_care_refresh(t);
+    float total = t->care_fraction + fminf(dt, 86400);
+    unsigned seconds = (unsigned)total;
+    t->care_fraction = total - seconds;
+    t->care.elapsed_s = (uint32_t)fminf(86400, t->care.elapsed_s + seconds);
+    progression_care_refresh(t);
+    /* A synchronized day uses the wall clock; elapsed time is only the offline-clock fallback. */
+    if (t->care.elapsed_s >= 86400) t->care.elapsed_s = 86399;
+    if (t->ui_cover || !t->n_fish || t->night) return;
+    bool settled = false, nearby = false;
+    for (int i = 0; i < t->n_fish; i++) {
+        const fish_t *f = &t->fish[i];
+        if (f->hunger < 8.5f && f->stress < 7) settled = true;
+        if (t->hold_active && t->hold_time >= 2.7f &&
+            tank_dist(f->x, f->y, t->hold_x, t->hold_y) < 80 && f->stress < 7) nearby = true;
+    }
+    if (settled) t->care.viewed_s = (uint16_t)fminf(CARE_VIEW_SECONDS, t->care.viewed_s + seconds);
+    if (nearby) t->care.calm_s = (uint16_t)fminf(CARE_CALM_SECONDS, t->care.calm_s + seconds);
+    uint8_t ready = t->care.ready;
+    if (t->care.calm_s >= CARE_CALM_SECONDS) t->care.ready |= 2;
+    if (t->care.viewed_s >= CARE_VIEW_SECONDS) t->care.ready |= 4;
+    if (ready != t->care.ready) mark_dirty();
+}
 void journal_tick(tank_t *t) {
     if (progression_creative(t)) return;
+    progression_care_refresh(t);
     journal_state_t before = t->journal;
     uint32_t values[4] = {
         (uint32_t)(t->player_feedings > 0 ? t->player_feedings : 0),
@@ -515,11 +600,11 @@ void journal_tick(tank_t *t) {
         (uint32_t)fminf(fmaxf(t->trim_px / (PX_PER_CM * 10), 0), 1000000),
         (uint32_t)(t->hold_approaches > 0 ? t->hold_approaches : 0)
     };
-    static const uint32_t rates[4] = {8, 2, 2, 10};
     for (int i = 0; i < 4; i++) {
         if (t->journal.initialized && values[i] > t->journal.baseline[i]) {
-            uint32_t delta = values[i] - t->journal.baseline[i];
-            journal_add_xp(t, delta > JOURNAL_XP_MAX / rates[i] ? JOURNAL_XP_MAX : delta * rates[i]);
+            if (i == 0) t->care.ready |= 1;
+            if (i == 1 || i == 2) t->care.ready |= 4;
+            mark_dirty();
         }
         t->journal.baseline[i] = values[i];
     }
@@ -656,18 +741,19 @@ bool progression_game_reward(tank_t *t, int dollars) {
     if (dollars < 1 || dollars > 10 || t->sd_balance > INT_MAX - dollars || t->sd_earned > INT_MAX - dollars) {
         fprintf(stderr, "Invalid or overflowing mini-game reward: %d\n", dollars); return false;
     }
-    uint32_t old_xp = t->journal.xp;
-    journal_add_xp(t, (uint32_t)dollars * 3);
-    t->sd_balance += dollars; t->sd_earned += dollars;
+    progression_care_refresh(t);
+    int paid = progression_game_payout(t, dollars);
+    t->care.game_paid += (uint8_t)paid;
+    t->sd_balance += paid; t->sd_earned += paid;
     if (progression_save(t)) return true;
-    t->sd_balance -= dollars; t->sd_earned -= dollars; t->journal.xp = old_xp;
+    t->sd_balance -= paid; t->sd_earned -= paid; t->care.game_paid -= (uint8_t)paid;
     fprintf(stderr, "Mini-game reward save failed; wallet rolled back\n"); return false;
 }
-/* the ledger against the tank: anything earned and not yet paid is paid now.
- * Runs every tick, so it is also the back pay for a save from before the
- * shop (paid bits all zero: the stages and the trust it already has, the
- * hundreds its counters already passed - once). MEALS are the exception: a
- * meal pays as it happens, so the count is adopted, not back-paid. */
+int progression_game_payout(const tank_t *t, int dollars) {
+    return !progression_creative(t) && dollars > 0 && t->care.game_paid < CARE_GAME_LIMIT ? 1 : 0;
+}
+/* Fish firsts retain one-time rewards. Historical chore/snack ledgers keep
+ * their frozen fields, but repeating care now pays through the daily checklist. */
 static void sd_tick(tank_t *t) {
     if (progression_creative(t)) return;
     for (int i = 0; i < t->n_fish; i++) {
@@ -677,14 +763,11 @@ static void sd_tick(tank_t *t) {
         if ((f->ms_bits & MS_REACHED_ELDER) && !(*paid & SD_PAID_ELDER)) { *paid |= SD_PAID_ELDER; sd_award(t, SD_STAGE_ELDER); }
         if (f->trust >= 10.0f && !(*paid & SD_PAID_TRUST))               { *paid |= SD_PAID_TRUST; sd_award(t, SD_TRUST); }
     }
-    if (s_sd_prev_feedings < 0) s_sd_prev_feedings = t->player_feedings;
-    if (t->player_feedings > s_sd_prev_feedings && s_sd_meal_wait <= 0) { sd_award(t, SD_MEAL); s_sd_meal_wait = SD_MEAL_GAP_S; }   /* one pay per gap, however many meals */
-    s_sd_prev_feedings = t->player_feedings;
     int32_t hund = t->algae_colonies / SD_CHORE_EVERY;
-    if (hund > t->sd_colonies_paid) { sd_award(t, SD_CHORE * (hund - t->sd_colonies_paid)); t->sd_colonies_paid = hund; }
+    if (hund > t->sd_colonies_paid) t->sd_colonies_paid = hund;
     hund = (int32_t)(t->trim_px / (PX_PER_CM * SD_TRIM_CM));
-    if (hund > t->sd_inches_paid) { sd_award(t, SD_CHORE * (hund - t->sd_inches_paid)); t->sd_inches_paid = hund; }
-    if (t->sh_snack_pay > t->sd_snacks_paid) { sd_award(t, SD_SNACK * (t->sh_snack_pay - t->sd_snacks_paid)); t->sd_snacks_paid = t->sh_snack_pay; }   /* the seahorse's snack (0.3.6) */
+    if (hund > t->sd_inches_paid) t->sd_inches_paid = hund;
+    if (t->sh_snack_pay > t->sd_snacks_paid) t->sd_snacks_paid = t->sh_snack_pay;
 }
 int progression_sell_value(int item) { return item < 0 || item >= SD_ITEM_COUNT ? 0 : SD_ITEMS[item].price * SD_SELL_PCT / 100; }
 int progression_sell_value_for(const tank_t *t, int item) {
@@ -1040,13 +1123,13 @@ const char *const *progression_sd_earn_lines(void) {
     static char lines[SD_EARN_LINES][30]; static const char *ptr[SD_EARN_LINES + 1]; static bool made;
     if (!made) {
         /* <= 25 chars each: the modal is 336 px wide at scale 2 */
-        snprintf(lines[0], 30, "+%d  EVERY MEAL EATEN", SD_MEAL);
+        snprintf(lines[0], 30, "GOALS > TODAY: +100/DAY");
         snprintf(lines[1], 30, "+%d/%d/%d  A FISH GROWS UP", SD_STAGE_JUV, SD_STAGE_ADULT, SD_STAGE_ELDER);
         snprintf(lines[2], 30, "+%d  A NEW FRY IS BORN", SD_BIRTH);
         snprintf(lines[3], 30, "+%d  A FISH FULLY TRUSTS", SD_TRUST);
-        snprintf(lines[4], 30, "+%d  %d ALGAE COLONIES", SD_CHORE, SD_CHORE_EVERY);
-        snprintf(lines[5], 30, "+%d  %d CM OF GRASS CUT", SD_CHORE, SD_TRIM_CM);
-        snprintf(lines[6], 30, "+%d  THE SEAHORSE SNACKS", SD_SNACK);
+        snprintf(lines[4], 30, "MILESTONE GOALS PAY ONCE");
+        snprintf(lines[5], 30, "GAMES: +1, MAX 5/DAY");
+        snprintf(lines[6], 30, "NO STREAKS OR DAILY DEBT");
         for (int i = 0; i < SD_EARN_LINES; i++) ptr[i] = lines[i];
         ptr[SD_EARN_LINES] = NULL; made = true;
     }
@@ -1392,7 +1475,7 @@ void progression_fresh(tank_t *t) {
     for (int i = 0; i < N_FISH_MAX; i++) s_starve_s[i] = 0;
     s_setup_pending = true;          /* a new tank: welcome, names, colours */
     s_newborn = -1;
-    s_sd_prev_feedings = 0; s_sd_pending = 0; s_sd_meal_wait = 0;   /* a fresh ledger (tank_init zeroed the tank's) */
+    s_sd_pending = 0;
     s_sale_need = 0;
     s_fry_seed = 0; s_fry_age = 0; s_fry_sold = 0;
     s_booted = true;
@@ -1453,7 +1536,8 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     bool loaded;
     if (record) { sv = *record; got = sizeof sv; loaded = true; }
     else loaded = persist_port_load(&sv, sizeof sv, &got) && got >= SAVE_CORE_SIZE && got <= sizeof sv;
-    if (!loaded || sv.magic != SAVE_MAGIC || !migrate_profile(&sv) || sv.n_fish > N_FISH_MAX ||
+    if (!loaded || (got > offsetof(save_t, care) && got < sizeof sv) ||
+        sv.magic != SAVE_MAGIC || !migrate_profile(&sv) || !care_valid(&sv.care) || sv.n_fish > N_FISH_MAX ||
         (sv.profile.mode != GAME_MODE_HARD && sv.n_fish < 2 && !sv.companion.away) ||
         sv.n_fish + sv.companion.away > N_FISH_MAX) return false;
     if (!sv.aquariums.count) sv.aquariums.count = 1;
@@ -1470,7 +1554,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
         (got > offsetof(save_t, games) && got < offsetof(save_t, rpg)) ||
         (got > offsetof(save_t, rpg) && got < offsetof(save_t, creative)) ||
         (got > offsetof(save_t, creative) && got < offsetof(save_t, games_extra)) ||
-        (got > offsetof(save_t, games_extra) && got < sizeof sv) ||
+        (got > offsetof(save_t, games_extra) && got < offsetof(save_t, care)) ||
         !creative_valid(&sv.creative) ||
         (sv.creative.enabled && sv.n_fish + sv.companion.away > CREATIVE_FISH_CAP) ||
         !companion_rpg_valid(&sv.rpg, sv.polish.next_id) ||
@@ -1582,6 +1666,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     t->creative = sv.creative;
     t->games_extra = sv.games_extra;
     t->profile = sv.profile;
+    t->care = sv.care; t->care_fraction = 0;
     s_hard_save_failed = s_hard_departed = false;
     t->visitor_left = 0;
     for (int i = 0; i < t->n_fish; i++) {
@@ -1631,8 +1716,6 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
         t->sd_snacks_paid = sv.sd_snacks_paid > 0 ? sv.sd_snacks_paid : 0;
         t->sh_snack_cool = sv.sh_snack_cool > 0 && sv.sh_snack_cool <= SH_SNACK_COOL_S ? sv.sh_snack_cool : 0;
     } else { t->sh_x = -1; t->sh_s = 0; t->sh_hitches = 0; t->sh_trust_passed = 0; t->sh_eaten = 0; t->sh_snack_pay = 0; t->sd_snacks_paid = 0; t->sh_snack_cool = 0; }
-    s_sd_prev_feedings = t->player_feedings;         /* meals before this boot are not back-paid */
-    s_sd_meal_wait = 0;
     s_sd_pending = 0;
     s_arrival_pending = sv.arrival_pending; s_spawn_in = -1;
     s_sale_need = sv.sale_meals_need > 0 ? sv.sale_meals_need : 0;
@@ -1661,7 +1744,6 @@ void progression_settings_changed(void) { mark_dirty(); }
 void progression_slept(tank_t *t, float seconds) {
     if (seconds <= 0) return;
     tank_tick_sleep(t, seconds);
-    s_sd_meal_wait = fmaxf(0, s_sd_meal_wait - seconds);   /* the meal pay's wait runs through sleep */
     fry_age(t, seconds);                      /* the fry offer ages asleep too, in full */
     for (int i = 0; i < t->n_fish; i++) {     /* and they grew, slowly, in the dark */
         s_age[i] += seconds * SLEEP_GROWTH_FRAC;
@@ -1689,7 +1771,7 @@ float progression_wake(tank_t *t, int64_t now_unix) {
             s_booted = false;
             return -1;
         }
-        progression_fresh(t); return -1;
+        progression_fresh(t); progression_care_refresh(t); return -1;
     }
     float slept = -1;
     if (now_unix > 0 && saved_unix > 0 && now_unix > saved_unix) {
@@ -1699,6 +1781,7 @@ float progression_wake(tank_t *t, int64_t now_unix) {
         slept = span / 3600.0f;
     }
     progression_woke(t);                     /* a fry staged before the sleep: born at the wake */
+    progression_care_refresh(t);
     return slept;
 }
 
@@ -1748,6 +1831,7 @@ static void hard_tick(tank_t *t, float dt) {
 }
 void progression_tick(tank_t *t, float dt) {
     if (!s_booted) return;
+    care_tick(t, dt);
     hard_tick(t, dt);
     float aged = dt * progression_time_scale;                    /* growth: every awake second, lit or not */
     float tended = t->night ? 0 : aged;                          /* drift: pressure only while lit and lived-in */
@@ -1802,7 +1886,6 @@ void progression_tick(tank_t *t, float dt) {
         s_prev_trims = t->trims; s_prev_cleaned = t->cells_cleaned;
         mark_dirty();
     }
-    if (s_sd_meal_wait > 0) s_sd_meal_wait -= dt;
     sd_tick(t);                                  /* the sand dollars owed for all of the above */
     journal_tick(t);
 
@@ -1902,6 +1985,7 @@ static void capture_save(const tank_t *t, save_t *sv) {
     sv->creative = t->creative;
     sv->games_extra = t->games_extra;
     sv->profile = t->profile;
+    sv->care = t->care;
     if (sv->polish.version)
         snprintf(sv->polish.tank_name, sizeof sv->polish.tank_name, "%s", t->aquariums.name);
     sv->saved_release = PT_RELEASE_NUM;
@@ -2184,6 +2268,14 @@ static const json_field_t PROFILE_FIELDS[] = {
     PROF(owned_items, J_HEX, 8, 255), PROF(paid_items, J_HEX, 8, 255)
 };
 #undef PROF
+#define CARE(f, k, hi) { #f, offsetof(care_state_t, f), 1, k, 0, hi }
+static const json_field_t CARE_FIELDS[] = {
+    CARE(day, J_I64, 47482), CARE(elapsed_s, J_U32, 86399),
+    CARE(viewed_s, J_U16, CARE_VIEW_SECONDS), CARE(calm_s, J_U16, CARE_CALM_SECONDS),
+    CARE(ready, J_U8, 7), CARE(claimed, J_U8, 7),
+    CARE(game_paid, J_U8, CARE_GAME_LIMIT), CARE(version, J_U8, 1), CARE(fallback, J_U8, 1)
+};
+#undef CARE
 #define B(f, k, n, lo, hi) { #f, offsetof(bank_fish_t, f), n, k, lo, hi }
 static const json_field_t BANK_FIELDS[] = {
     B(name, J_NAMES, 1, 0, 0), B(body, J_U32, 1, 1, 0xffffff), B(accent, J_U32, 1, 1, 0xffffff),
@@ -2285,7 +2377,7 @@ char *progression_backup_json(const tank_t *t) {
     save_t sv; capture_save(t, &sv);
     char header[128], *text = NULL;
     size_t used = 0;
-    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":16,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
+    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":17,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
     if (!json_append(&text, &used, header)) goto fail;
     cJSON *tank = json_fields(&sv, SAVE_FIELDS, FIELD_COUNT(SAVE_FIELDS));
     if (!tank) goto fail;
@@ -2315,6 +2407,8 @@ char *progression_backup_json(const tank_t *t) {
         !json_append_value(&text, &used, json_fields(&sv.games_extra, GAME_FIELDS, FIELD_COUNT(GAME_FIELDS))) ||
         !json_append(&text, &used, ",\"profile\":") ||
         !json_append_value(&text, &used, json_fields(&sv.profile, PROFILE_FIELDS, FIELD_COUNT(PROFILE_FIELDS))) ||
+        !json_append(&text, &used, ",\"care\":") ||
+        !json_append_value(&text, &used, json_fields(&sv.care, CARE_FIELDS, FIELD_COUNT(CARE_FIELDS))) ||
         !json_append(&text, &used, ",\"fish\":[")) goto fail;
     for (int i = 0; i < N_FISH_MAX; i++) {
         if ((i && !json_append(&text, &used, ",")) ||
@@ -2481,9 +2575,9 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     const cJSON *height = cJSON_GetObjectItemCaseSensitive(root, "height");
     const cJSON *fish = cJSON_GetObjectItemCaseSensitive(root, "fish");
     if (!cJSON_IsString(format) || strcmp(format->valuestring, "pocket-tank")
-        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 16 ||
+        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 17 ||
            schema->valuedouble != floor(schema->valuedouble)
-        || cJSON_GetArraySize(root) != (schema->valuedouble >= 16 ? 16 : schema->valuedouble >= 15 ? 14 : schema->valuedouble >= 14 ? 13 : schema->valuedouble >= 13 ? 12 : schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
+        || cJSON_GetArraySize(root) != (schema->valuedouble >= 17 ? 17 : schema->valuedouble >= 16 ? 16 : schema->valuedouble >= 15 ? 14 : schema->valuedouble >= 14 ? 13 : schema->valuedouble >= 13 ? 12 : schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
         || !cJSON_IsString(board) || strcmp(board->valuestring, "cyd2432s028")
         || !cJSON_IsNumber(width) || (width->valuedouble != 240 && width->valuedouble != 320)
         || !cJSON_IsNumber(height) || height->valuedouble * 4 != width->valuedouble * 3
@@ -2530,6 +2624,12 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     }
     if (!migrate_profile(&sv)) {
         snprintf(error, error_size, "Invalid profile; legacy Creative backups cannot migrate"); goto done;
+    }
+    if (schema->valuedouble >= 17 &&
+        (!json_read_fields(&sv.care, cJSON_GetObjectItemCaseSensitive(root, "care"),
+                           CARE_FIELDS, FIELD_COUNT(CARE_FIELDS), error, error_size) ||
+         !care_valid(&sv.care))) {
+        snprintf(error, error_size, "Invalid daily care state"); goto done;
     }
     if (schema->valuedouble == 1 && sv.sd_unlocks >= (1u << 10)) {
         snprintf(error, error_size, "Unknown items in schema 1 backup"); goto done;
@@ -2821,6 +2921,7 @@ static void share_progress(save_t *to, const save_t *from) {
     to->sd_colonies_paid = from->sd_colonies_paid; to->sd_inches_paid = from->sd_inches_paid;
     to->tank_ms_bits |= from->tank_ms_bits; to->tank_ms_seen |= from->tank_ms_seen;
     to->games = from->games; to->games_extra = from->games_extra;
+    to->care = from->care;
     to->rpg = from->rpg;
     /* Guides retain global identities; choose a resident for the next action. */
     to->rpg.participant = 0;

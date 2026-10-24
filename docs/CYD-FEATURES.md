@@ -2,7 +2,13 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.1.3**
+**An illustrated tour of Pocket Tank CYD 2.2.0**
+
+**2.2.0** makes care the progression path: **Collections > Goals > TODAY**
+offers three flexible activities worth up to **100 dollars / 50 XP daily**.
+Games share just five bonus dollars per day and give no XP; play and Challenge
+records remain unlimited. Existing money, XP, fish and unlocks are preserved.
+See [the care loop and pacing budget](#3-give-everyday-care-a-sense-of-progression).
 
 **[Play the actual game in your browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html)**,
 using mouse/touch controls and a separate local save. It needs no CYD or account,
@@ -73,7 +79,7 @@ The headline additions:
 - **An Aquarium Journal** with 15 Keeper levels, objectives, an appearance
   album and unlockable backdrops.
 - **Eighteen mini-games** across three pages, with records, medals and
-  sand-dollar/Journal XP rewards in Normal and Hard.
+  one shared five-dollar daily bonus in Normal and Hard; no game XP.
 - **A desk-companion hub:** optional Cozy Care, fish bonds, discoveries,
   collections and safe story adventures.
 - **Game records and medals**, permanent challenges and relaxed play without
@@ -150,8 +156,8 @@ Discoveries no longer duplicates Display Rewards.
 **Games page 3** adds six games: Lighthouse (cross-toggle logic),
 Shell Slide (sliding puzzle), Sonar Sweep (row/column clues), Tide 2048
 (merging tiles), Harbor Stack (timed stacking), and Echo Reef (sequence memory).
-All have help, pause, replay, saved records and medals. All eighteen offer
-balanced coin/XP rewards in Normal/Hard, with save-failure rollback.
+All have help, pause, replay, saved records and medals. All eighteen share
+five bonus dollars per day in Normal/Hard, with no XP and save-failure rollback.
 
 ![Third games page with six distinct compact illustrations](media/cyd-features/games-page-three.png)
 
@@ -420,13 +426,14 @@ HELP, PAUSE, replay, and its own saved challenge records and medals.
 
 ![Reef Puzzle rotates real pipe connections from inlet to outlet](media/cyd-features/game-reef-puzzle.png)
 
-| Claim both rewards | Saved once, ready to replay |
+| Save the daily bonus | Saved once, ready to replay |
 |---|---|
-| ![Round result offers sand dollars and Journal XP](media/cyd-features/game-rewards.png) | ![Saved rewards cannot be claimed twice](media/cyd-features/game-rewards-saved.png) |
+| ![Round result offers a bounded daily sand-dollar bonus, not XP](media/cyd-features/game-rewards.png) | ![Saved rewards cannot be claimed twice](media/cyd-features/game-rewards-saved.png) |
 
-Rounds award **up to 10 sand dollars plus 3 Journal XP per dollar**, helping
-unlock Keeper levels and backdrops without faking care objectives.
-Tap CLAIM to save both together; failed saves can be retried without losing
+Qualifying rounds award **1 sand dollar**, with a shared **5-dollar daily limit**
+across all eighteen games and both paces. Games give **no Journal XP** and are
+never required for care progression. Further Challenge rounds still save
+records/medals. Tap SAVE RESULT; failed saves can be retried without losing
 or duplicating rewards. BACK/replay asks for a second tap before discarding
 an unclaimed prize. Sessions and unclaimed prizes are not saved across reboot.
 See the [complete rules and reward table](../README.md#mini-games).
@@ -829,16 +836,29 @@ There are **15 Keeper levels** and **15 one-time objectives**, with three
 objectives active at a time. When a goal is ready, tap it to claim its XP
 and sand-dollar reward; the next objective takes its place.
 
-![Aquarium Journal Goals tab showing Keeper level, XP and three objectives with readable requirements and rewards](media/cyd-features/journal-goals.png)
+![Aquarium Journal TODAY showing Keeper level, XP and three daily care activities with requirements and rewards](media/cyd-features/journal-goals.png)
 
-Care earns ongoing XP:
+**Goals opens TODAY.** MILESTONES switches to the one-time objectives.
+Daily care earns:
 
-| Activity | XP |
-|---|---:|
-| Eaten meal batches | 8 |
-| Cleaned algae colonies | 2 |
-| Each 10 cm of plant trimming | 2 |
-| A successful calm-hold approach | 10 |
+| Activity | Sand dollars | XP |
+|---|---:|---:|
+| One eaten player feeding | 25 | 12 |
+| Say Hello or 60 seconds of calm holding near a fish | 25 | 13 |
+| Clean a colony, trim a 10 cm counter step, or watch a settled tank five minutes | 50 | 25 |
+
+Claim ready cards once per profile per UTC day: **100 dollars / 50 XP**.
+Watching only counts with the lit tank uncovered and a fed, calm fish present.
+Menus and games do not count. Without a usable clock, renewal takes 24 hours
+of running care time; rebooting, switching aquariums or changing games cannot
+reset the allowance. No streaks or missed-day debt; no accumulated back-pay.
+Unclaimed daily progress refreshes with the day; saved rewards remain yours.
+One-time goals now total **1,410 XP / 830 dollars**; existing XP is not reduced.
+Growth/birth/full-trust milestone money remains. Repeated gestures do not farm
+XP or money, and helpful cleaners do not remove the observation alternative.
+The budget aims at roughly 6-8 weeks for the shop and about eight weeks for
+Keeper 15 with short daily visits and milestone claims. Extra tanks extend it
+to roughly 10-12 weeks; games are an optional small bonus, never the fast track.
 
 Spending sand dollars does not lower your Keeper level. Level 15 starts at
 **4,200 XP**. There are no daily streaks or absence penalties in this
@@ -1269,13 +1289,13 @@ palettes, Journal and bank.
 Backups are written and read back for validation. A restore first creates
 a safety snapshot of the current aquarium.
 
-New backups use **schema 16**, including fixed game mode, starvation timers,
+New backups use **schema 17**, including shared daily care/bonus limits, fixed game mode, starvation timers,
 global shop unlocks/local refundable purchases, eighteen-game records,
 Lost Current progress, family lineage, genes, visitor sightings, fish identities/stories, remembered buddies,
 recaps, tank identity, fixed scenery, backup status, display scale, traveling fish, creature colors, per-fish wearables/colors,
 companion progression and the optional `tank.stat_upgrades` field for the four
-fish-care purchases. Schemas 1 through 15 remain importable when valid for the
-chosen mode; older firmware cannot restore schema 16 files. Restores must
+fish-care purchases. Schemas 1 through 16 remain importable when valid for the
+chosen mode; older firmware cannot restore schema 17 files. Restores must
 match the chosen Normal/Creative/Hard mode; changing it requires a full wipe.
 Keep a matching backup
 when deliberately downgrading.
@@ -1283,7 +1303,7 @@ when deliberately downgrading.
 Backup export processes sections and stored fish one record at a time to
 reduce RAM use beside weather's Wi-Fi buffers on the no-PSRAM CYD. Restore releases the input buffer
 before writing its safety snapshot, then rereads and checks the original
-file before committing. The 6,008-byte internal save preserves the frozen
+file before committing. The 6,032-byte internal save preserves the frozen
 4,520-byte base and append-only tails. It now uses dual CRC/readback-verified
 copies in the existing 128 KiB internal SPIFFS partition, not the crowded NVS
 blob. Only erased storage may be formatted automatically; corruption never

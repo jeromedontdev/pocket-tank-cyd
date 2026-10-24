@@ -222,6 +222,30 @@ async function main() {
       return image;
     }
     for (let scale = 0; scale < 2; scale++) {
+      const fixture = await snapshot();
+      fixture.care.ready = 7; fixture.care.claimed = 0; fixture.care.game_paid = 5;
+      fixture.tank.setup_pending = 0; fixture.tank.newborn_p1 = 0;
+      assert.equal(await native(`
+        const bytes = new TextEncoder().encode(${JSON.stringify(JSON.stringify(fixture))});
+        const pointer = game._malloc(bytes.length);
+        try { game.HEAPU8.set(bytes, pointer); return game._sim_restore(pointer, bytes.length); }
+        finally { game._free(pointer); }`), 1);
+      await page.locator('[data-action="7"]').click(); await tap(330,180); await tap(100,100);
+      const daily = await menuImage(`daily-care-${scale}`);
+      const balance = (await snapshot()).tank.sd_balance, xp = (await snapshot()).tank.journal_xp;
+      await tap(350,330);
+      assert.notEqual(await menuImage(`milestones-${scale}`), daily);
+      await tap(350,330);
+      for (const y of [123,187,251]) { await tap(350,y); await tap(350,y); }
+      const careSaved = await snapshot();
+      assert.equal(careSaved.care.claimed, 7);
+      assert.equal(careSaved.care.game_paid, 5);
+      assert.equal(careSaved.tank.sd_balance, balance + 100);
+      assert.equal(careSaved.tank.journal_xp, xp + 50);
+      await menuImage(`daily-care-saved-${scale}`);
+      await page.locator("#save").click(); await page.reload(); await ready();
+      assert.equal((await snapshot()).care.claimed, 7, "Daily care allowance survives browser reload");
+      assert.equal((await snapshot()).care.game_paid, 5, "Games share a persistent profile allowance");
       await page.locator('[data-action="2"]').click();
       await menuImage(`settings-${scale}`);
       await tap(330, 100);
@@ -285,6 +309,15 @@ async function main() {
       return null;`);
     assert.ok(bubble, "Bubble Pop must render a playable bubble");
     await tap(...bubble);
+    await native("for (let i = 0; i < 120; i++) game._sim_frame(.25)");
+    await menuImage("game-rewards");
+    const beforeResult = await snapshot();
+    await tap(224,218);
+    const afterResult = await snapshot();
+    assert.equal(afterResult.tank.sd_balance, beforeResult.tank.sd_balance, "No payout beyond shared five-dollar allowance");
+    assert.equal(afterResult.tank.journal_xp, beforeResult.tank.journal_xp, "Games never award journal XP");
+    assert.equal(afterResult.companion.game_rounds[0], beforeResult.companion.game_rounds[0] + 1, "Records still save after daily bonus is exhausted");
+    await menuImage("game-rewards-saved");
     await page.locator('[data-action="0"]').click();
     await page.locator('[data-action="2"]').click();
     await tap(100, 100); await tap(200, 192);

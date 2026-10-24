@@ -89,7 +89,17 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.1.3: clean settings, readable weather and CYD naming
+### New in 2.2.0: care-first daily progression
+
+- Goals opens TODAY: an eaten player feeding (25 dollars/12 XP), Say Hello or 60 seconds holding near a calm fish (25/13), and cleaning a colony, trimming a 10 cm counter step or five minutes watching a fed, calm, lit tank (50/25). Ready rewards are claimed once per profile per day; MILESTONES keeps the original objectives.
+- Daily care totals 100 dollars and 50 XP. Repeat gestures and seahorse snacks no longer farm care money/XP. Growth, births and full-trust firsts retain their one-time dollars.
+- All eighteen games, Challenge and Relaxed combined, share a five-dollar daily allowance: one dollar per qualifying round, no Journal XP. Further play and Challenge records/medals remain available; actual payouts/allowances/records save atomically.
+- New milestone XP rewards are halved, totaling 1410 XP/830 dollars. Existing XP, levels, money, fish and unlocks are unchanged. Postcard rewards remain one-time.
+- UTC days refresh allowances; no usable clock falls back to 24 hours of running care time. Clock synchronization does not double-pay, backward clocks do not renew allowances, missed days have no streak penalties, debt or back-pay.
+- The deterministic budget targets roughly 6-8 weeks for the shop/maximum Keeper level and 10-12 weeks including all aquarium expansions with short daily visits and milestone claims, without requiring games. Optional wardrobe/fry spending extends this; this is an income model, not a human playtest guarantee.
+- Saves append 24 daily-care bytes: 6032 bytes, JSON schema 17, imports schemas 1-16. Frozen old fields, shared profile quotas, transactional rollback, migrations, no-clock/rollback handling and 84 daily visits are tested. Back up before upgrading; do not downgrade upgraded saves.
+
+### Previously in 2.1.3: clean settings, readable weather and CYD naming
 
 - One Clock/Weather hub with Face, Colors, Text / Effects, Time / Zone, Weather and one Show Clock preview. BACK returns one level; nested Style/Text tabs and repeated preview buttons are removed.
 - Visible Small/Medium/Large weather text sizing in Weather and Text / Effects; the saved size also controls clock weather/event captions. Adaptive layout keeps the face, supporting text and icons separate.

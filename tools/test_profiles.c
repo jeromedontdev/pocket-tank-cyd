@@ -131,6 +131,7 @@ static void test_aquariums(tank_t *t) {
     t->player_feedings = 5; t->algae_colonies = 8;
     t->trim_px = 50 * PX_PER_CM; t->hold_approaches = 2;
     journal_tick(t);
+    t->care.ready = t->care.claimed = 7; t->care.game_paid = CARE_GAME_LIMIT;
     t->companion.discoveries = 63; t->companion.collections = 1;
     t->companion.active[0].bond = 80; tank_set_name(t, 0, "LOCAL");
     assert(progression_buy(t, 0)); assert(t->sd_balance == 1160);
@@ -146,6 +147,7 @@ static void test_aquariums(tank_t *t) {
     assert(t->player_feedings == 5 && t->algae_colonies == 8 &&
            t->trim_px == 50 * PX_PER_CM && t->hold_approaches == 2);
     journal_tick(t); assert(t->journal.xp == 500);
+    assert(t->care.claimed == 7 && t->care.game_paid == CARE_GAME_LIMIT);
     assert(t->companion.discoveries == 63 && t->companion.collections == 1);
     assert(t->companion.active[0].bond == 0 && strcmp(t->fish[0].name, "local"));
     assert(!progression_item_owned(t, 0)); /* globally unlocked, not cloned */
@@ -158,6 +160,7 @@ static void test_aquariums(tank_t *t) {
     assert(!progression_aquarium_move(t, 0));
     assert(t->sd_balance == 777 && t->journal.xp == 700 && t->companion.discoveries == 127);
     assert(t->games_extra.rounds[0] == 2 && t->games_extra.best[0] == 2);
+    assert(t->care.claimed == 7 && t->care.game_paid == CARE_GAME_LIMIT);
     assert(t->companion.active[0].bond == 80 && !strcmp(t->fish[0].name, "local"));
     assert(progression_item_owned(t, 0));
     assert(progression_item_owned(t, SD_SCENERY_FIRST));
@@ -166,7 +169,7 @@ static void test_aquariums(tank_t *t) {
     reject_slot_read = false;
     char *json = progression_backup_json(t); assert(json);
     char error[160];
-    assert(strstr(json, "\"schema\":16") && strstr(json, "\"games_extra\":") && strstr(json, "\"profile\":"));
+    assert(strstr(json, "\"schema\":17") && strstr(json, "\"games_extra\":") && strstr(json, "\"profile\":"));
     assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     free(json); reload(t);

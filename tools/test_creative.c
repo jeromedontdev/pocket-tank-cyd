@@ -78,7 +78,7 @@ int main(void) {
     card_ready = false; /* Mode selection needs internal storage, not an SD slot. */
     assert(!progression_creative_enter(&t));
     card_ready = true;
-    assert(saved_size == AQUARIUM_SAVE_BYTES && AQUARIUM_SAVE_BYTES == 6008);
+    assert(saved_size == AQUARIUM_SAVE_BYTES && AQUARIUM_SAVE_BYTES == 6032);
     assert(progression_creative(&t) && t.aquariums.count == 1 && t.aquariums.active == 0);
     assert(progression_setup_pending());
     progression_setup_done(&t);
@@ -88,7 +88,7 @@ int main(void) {
     assert(progression_aquarium_summary(&t, 0, &summary) && summary.creative);
     wallet(&t, 37, 59, 0);
     char *creative_json = progression_backup_json(&t); assert(creative_json);
-    assert(strstr(creative_json, "\"schema\":16") && strstr(creative_json, "\"creative\":"));
+    assert(strstr(creative_json, "\"schema\":17") && strstr(creative_json, "\"creative\":"));
     reload(&t); assert(progression_creative(&t)); wallet(&t, 37, 59, 0);
     assert(!t.companion.collections && !t.companion.active[0].bond);
     assert(companion_cosmetic(&t, 3));
@@ -198,6 +198,7 @@ int main(void) {
     cJSON *root = cJSON_Parse(json); free(json); assert(root);
     cJSON_DeleteItemFromObjectCaseSensitive(root, "creative");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "profile");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "care");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "games_extra");
     cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(root, "schema"), 14);
     json = cJSON_PrintUnformatted(root); cJSON_Delete(root);

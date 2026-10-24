@@ -462,7 +462,7 @@ fish identities/life records, a bounded recap, tank identity, visitor/backup
 records and six fixed-scenery ownership bits. The 24 KiB NVS partition remains
 unchanged; the practical 5920-byte NVS ceiling budgets three copies and 64
 settings entries within the 630 usable entries, retaining the GC page.
-Source saves are 6008 bytes/schema 16: the existing 128 KiB SPIFFS partition
+Source saves are 6032 bytes/schema 17: the existing 128 KiB SPIFFS partition
 holds alternating CRC/readback-verified active copies and a durable wipe
 marker. NVS is migration input only; never put the expanded blob back there.
 Only a byte-for-byte erased filesystem may be formatted automatically.
@@ -579,12 +579,12 @@ Console examples: `buy shell`, `buy starfish`, `buy anchor`, `buy buoy`,
 Open **Settings > SD Backups** and tap **BACKUP TO SD**. Each successful backup creates a
 new file in the card's `pocket-tank` directory: `backup-0001.json`,
 `backup-0002.json`, and so on. Existing backups are not overwritten.
-New exports use JSON schema 16, including fixed mode, starvation/global unlock/
+New exports use JSON schema 17, including shared daily care/bonus limits, fixed mode, starvation/global unlock/
 local refund state, eighteen-game records, Lost Current progress, family
 lineage, genes, the visitor log, persistent fish stories/buddies, recaps,
 tank identity, rare sightings, fixed scenery, backup status, Enlarged/Normal scale, creature/wardrobe colors, per-fish wearables, the traveling fish, companion progress, item ownership, placement,
 stacking, palette selections, fish appearance, Aquarium Journal progress
-and all stored fish. Schema 1 through 15 backups
+and all stored fish. Schema 1 through 16 backups
 still restore, defaulting absent additions to unowned decorations and
 Classic/Stripes fish (schema 1 also defaults the palettes to original).
 Older backups start with an empty Journal; existing care totals and current
@@ -606,7 +606,9 @@ Sand dollars and lifetime earnings are global; switching cannot restore a
 stale balance. XP, objectives, unlocks, discoveries, campaign progress and game
 records and the Fish Bank follow every tank. Residents and decoration placement
 stay local; fish identities, family, genes and bonds travel through the Bank.
-The existing 6008-byte/schema-16 layout is unchanged: profile reserved bit 3
+The frozen 6008-byte/schema-16 prefix is unchanged; a 24-byte daily-care tail
+extends it to 6032 bytes/schema 17. Daily claims and the game bonus allowance
+follow the active profile across tanks. Profile reserved bit 3
 marks migrated shared-Bank snapshots. A single profile-wide identity counter
 prevents new fish colliding with residents in inactive tanks. Old local
 identity references are rebased together and old Banks merge once on first
@@ -738,16 +740,31 @@ Feed Frenzy and Reef Puzzle. The games menu, rounds and results pause aquarium
 simulation and care progression. Slalom and feeding games reuse active fish
 portraits without changing fish state. Gameplay uses a separate random stream.
 
-Completed rounds offer at most 10 sand dollars and 3 Journal XP per dollar.
-CLAIM persists coins, XP and challenge-mode records atomically, with rollback
-and retry on failure.
-These XP contribute to existing Keeper levels and theme unlocks, not care
-objective counters. Leaving/replaying an unclaimed result requires two taps.
+Qualifying rounds offer 1 sand dollar, at most 5 per UTC day across all eighteen
+games and both paces, with no Journal XP. SAVE RESULT persists the actual bonus,
+shared allowance and Challenge records atomically, with rollback and retry.
+At the cap, games remain playable and records/medals still save.
+Leaving/replaying an unclaimed result requires two taps.
 Game sessions and unclaimed rewards do not survive reboot. Claimed personal
 bests, medals and permanent challenges are saved in the companion extension.
 Relaxed mode removes Bubble/Frenzy timers (FINISH ends the round), halves
-Slalom/Cast speed, and pays the same capped rewards without records/medals.
+Slalom/Cast speed, and uses the same shared allowance without records/medals.
 Manual sleep follows the selected care mode's offline-care rules.
+
+**Collections > Goals** opens TODAY: an eaten feeding (25 dollars/12 XP),
+Say Hello or 60 seconds holding near a fish (25/13), and cleaning a colony,
+trimming through a 10 cm counter step or five minutes observing a settled,
+lit tank (50/25). Claim each once per profile per day. UI-covered time and
+games do not count as observation. No purchases are required. Repeat gestures
+no longer grant uncapped care money/XP; growth, births and full-trust firsts
+still pay once. MILESTONES retains the 15 one-time goals with half their old
+XP on future claims, totaling 1410 XP/830 dollars. Existing XP stays unchanged.
+UTC day rollover refreshes care and game allowances; no valid wall clock uses
+24 hours of running care time instead. Backward clocks, rebooting and switching
+tanks do not renew allowances. Missed days have no debt, streak loss or back-pay.
+Schema 17 stores the allowance transactionally. The native 84-visit budget test
+checks the 6-8 week shop/level target and 10-12 week aquarium-expansion budget;
+it is a deterministic income model, not a measured human playtest.
 
 Kelp Forest, Coral Reef and Deep Glow retain their existing IDs and unlock
 levels but now have much stronger water tints and scenery. Original is unchanged.
@@ -886,7 +903,7 @@ The serial `rpg` command reports campaign progress without advancing it.
 Source navigation separates Goals/Album, puts Themes under Tank and Identity
 under Aquariums, and uses a two-entry Adventures hub and two-page Fish menu.
 Six additional games add a third page (18 total), including persistent records,
-medals and balanced coin/XP rewards in Normal/Hard.
+medals and a shared five-dollar daily bonus in Normal/Hard, without game XP.
 
 Choose **Normal / Creative / Hard** on first run. This whole-profile choice is
 fixed until a confirmed full wipe: fish, money, progression, records and the

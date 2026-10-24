@@ -56,7 +56,18 @@ bool journal_claim(tank_t *t, int goal);
 const char *progression_bank_move(tank_t *t, int bank, int active);
 #define AQUARIUM_CAP 8
 #define AQUARIUM_PRICE 500
-#define AQUARIUM_SAVE_BYTES (5920 + sizeof(game_records_t) + sizeof(profile_state_t))
+#define AQUARIUM_SAVE_BYTES (5920 + sizeof(game_records_t) + sizeof(profile_state_t) + sizeof(care_state_t))
+#define CARE_TASK_COUNT 3
+#define CARE_GAME_LIMIT 5
+#define CARE_VIEW_SECONDS 300
+#define CARE_CALM_SECONDS 60
+extern const char *const CARE_TASK_NAMES[CARE_TASK_COUNT];
+extern const char *const CARE_TASK_DETAILS[CARE_TASK_COUNT];
+extern const uint8_t CARE_COINS[CARE_TASK_COUNT], CARE_XP[CARE_TASK_COUNT];
+void progression_care_refresh(tank_t *t);
+bool progression_care_claim(tank_t *t, int task);
+void progression_care_greet(tank_t *t);
+int progression_game_payout(const tank_t *t, int dollars);
 game_mode_t progression_mode(const tank_t *t);
 bool progression_mode_chosen(const tank_t *t);
 /* False after blocked/corrupt load; never treat that as an empty new profile. */
@@ -239,33 +250,14 @@ int progression_next_fry(const tank_t *t, fry_req_t out[FRY_REQ_MAX], bool *stag
 #define FRY_TIP_LINES 5
 const char *const *progression_fry_tip(int kind);
 
-/* ---- sand dollars (2026-09-15): the points behind the shop ----
- * Care earns them, the shop page (render_shop) spends them. Every award is
- * detected in progression_tick from what the tank already counts - a MEAL
- * (player_feedings), a stage reached (MS_REACHED_*), a birth (do_arrival),
- * full trust (10.0, once per fish), every SD_CHORE_EVERY algae colonies
- * removed and every SD_TRIM_CM of grass trimmed (tank.c's counters) - and the ledger
- * in tank_t (sd_paid_fish, sd_colonies_paid, sd_inches_paid) keeps a save
- * from paying twice. A tank saved before the shop is paid what it already
- * earned on its first boot with it, once (Strato: "yes, pay it once"). */
-#define SD_MEAL        2
-/* a meal pays SD_MEAL once per SD_MEAL_GAP_S of awake time (0.3.7): every
- * feed gesture the fish eat from is still a MEAL (the fry's feeding gates
- * count them as before), but tapping the surface while the school ate paid
- * SD_MEAL a tap (keeper feedback, 2026-10-18). A night's sleep runs the
- * wait down like awake time. */
-#define SD_MEAL_GAP_S  300.0f
+/* Daily care is the repeatable income. Fish stage/birth/full-trust firsts
+ * still pay once; frozen chore ledgers remain for save compatibility. */
 #define SD_STAGE_JUV   5
 #define SD_STAGE_ADULT 10
 #define SD_STAGE_ELDER 25
 #define SD_BIRTH       20
 #define SD_TRUST       15
-#define SD_SNACK       10          /* the seahorse's snack, one paid per SH_SNACK_COOL_S (0.3.6) */
-#define SD_CHORE       25          /* per SD_CHORE_EVERY colonies / SD_TRIM_CM of grass */
 #define SD_CHORE_EVERY 100
-/* the grass pays by length cut: 250 cm (2026-09-29, Strato; was 100 inches =
- * 254 cm). The HOW TO EARN line names it - "100 IN OF GRASS CUT" read as the
- * word "in" to a UK keeper (issue #9), and no unit read as 25 for any trim */
 #define SD_TRIM_CM     250
 #define SD_PRICE_PLANT 40
 #define SD_PRICE_SNAIL 80

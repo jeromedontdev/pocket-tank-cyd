@@ -173,14 +173,15 @@ def exercise(lib, backup, output):
         tap(224, 226)
         claimed = snapshot()
         dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
-        assert 1 <= dollars <= 10, ("Completed game must offer a bounded reward", game, dollars)
+        assert dollars == (1 if before["care"]["game_paid"] < 5 else 0), ("Shared daily game limit", game, dollars)
         assert claimed["tank"]["sd_earned"] - before["tank"]["sd_earned"] == dollars
-        assert claimed["tank"]["journal_xp"] - before["tank"]["journal_xp"] == dollars * 3
+        assert claimed["tank"]["journal_xp"] == before["tank"]["journal_xp"]
         expected = json.loads(json.dumps(before))
         for key in ("sd_balance", "sd_earned", "journal_xp"):
             expected["tank"][key] = claimed["tank"][key]
         expected["companion"] = claimed["companion"]
-        assert claimed == expected, "Only coins, Journal XP and companion game achievements may change"
+        expected["care"] = claimed["care"]
+        assert claimed == expected, "Only bounded coins, daily quota and companion game achievements may change"
         assert claimed["companion"]["game_rounds"][game] >= 1
         tap(224, 226)
         assert snapshot() == claimed, "Claims must be single-use"
@@ -197,7 +198,9 @@ def exercise(lib, backup, output):
     for _ in range(120):
         frame(0.25)
     tap(224, 226)
-    assert snapshot() == no_score, "An unsuccessful round must not pay coins or XP"
+    unsuccessful = snapshot()
+    assert unsuccessful["tank"] == no_score["tank"], "An unsuccessful round must not pay coins or XP"
+    assert unsuccessful["companion"]["game_rounds"][0] == no_score["companion"]["game_rounds"][0] + 1
     tap(380, 20)
     tap(380, 20)
     assert lib.sim_page() == 9, "A zero-reward round needs no discard confirmation"
@@ -213,6 +216,7 @@ def exercise(lib, backup, output):
         frame(0.25)
     assert snapshot() == relaxed_before, "Relaxed play must pause care beyond the challenge timer"
     tap(350, 70)  # Finish an untimed round.
+    tap(224, 226)  # A zero-bonus result can still be saved.
     tap(380, 20)
     tap(380, 20)
     assert lib.sim_page() == 9
@@ -325,7 +329,7 @@ def exercise(lib, backup, output):
         tap(224, 226)
         claimed = snapshot()
         dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
-        assert 1 <= dollars <= 10, ("New game must reach a meaningful payable result", game, dollars)
+        assert dollars == (1 if before["care"]["game_paid"] < 5 else 0), ("Shared daily game limit", game, dollars)
         assert claimed["games"]["rounds"][game] == before["games"]["rounds"][game] + 1
         assert claimed["games"]["best"][game] >= 4
         assert claimed["companion"] == old_six, "Original six records must remain byte-for-byte unchanged"
@@ -524,9 +528,9 @@ def exercise(lib, backup, output):
         tap(224, 226)
         claimed = snapshot()
         dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
-        assert 1 <= dollars <= 10, ("Third-page game must offer a meaningful bounded reward", game, dollars)
+        assert dollars == (1 if before["care"]["game_paid"] < 5 else 0), ("Shared daily game limit", game, dollars)
         assert claimed["tank"]["sd_earned"] - before["tank"]["sd_earned"] == dollars
-        assert claimed["tank"]["journal_xp"] - before["tank"]["journal_xp"] == dollars * 3
+        assert claimed["tank"]["journal_xp"] == before["tank"]["journal_xp"]
         assert claimed["games_extra"]["rounds"][game] == before["games_extra"]["rounds"][game] + 1
         assert claimed["games_extra"]["best"][game] > 0
         thresholds = ((24, 16, 8), (80, 40, 24), (10, 20, 25),
@@ -623,6 +627,7 @@ def exercise(lib, backup, output):
     legacy.pop("rpg", None)
     legacy.pop("creative", None)
     legacy.pop("profile", None)
+    legacy.pop("care", None)
     encoded = json.dumps(legacy).encode()
     if original.get("profile", {}).get("mode", 0) == 2:
         before = snapshot()

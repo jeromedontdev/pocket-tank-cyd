@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.1.3
+# Pocket Tank CYD 2.2.0
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.1.3**; firmware, update
+now versioned independently. This is **release 2.2.0**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,19 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.1.3: cleaner settings and readable weather
+## New in 2.2.0: care-first daily progression
+
+- **Collections > Goals > TODAY:** three flexible care activities, up to
+  **100 sand dollars and 50 XP per day**. MILESTONES keeps the original goals.
+- Games remain unlimited, but share only **5 bonus dollars/day and no XP**.
+  Challenge records and medals continue after the allowance runs out.
+- Budgeted for short daily visits over weeks, not repetitive feeding or game
+  grinding. No streak penalties or missed-day debt.
+- Existing XP, wallet, fish and unlocks are preserved. Append-only
+  **6032-byte saves / schema 17** import older saves; back up before upgrading.
+  See [the daily care rules and pacing assumptions](#aquarium-journal).
+
+## Previously in 2.1.3: cleaner settings and readable weather
 
 - One **Clock/Weather** hub: **Clock Face**, **Colors**, **Text / Effects**,
   **Time / Zone**, **Weather**, and one **Show Clock** action. BACK always
@@ -490,12 +502,44 @@ build information is on Updates; Settings > Device keeps a readable version foot
 ## Aquarium Journal
 
 Open **Home > Collections > Goals** or **Album**, or **Home > Tank > Themes**.
-Earn permanent XP
-from eaten meals (8), cleaned algae colonies (2), each 10 cm trimmed (2),
-and successful calm-hold approaches (10). Mini-game claims also grant three XP
-per sand dollar earned. Spending sand dollars never lowers your
-Keeper level. There are 15 levels (level 15 starts at 4200 XP), with no daily
-streaks or absence penalties.
+**Goals opens TODAY**, a care-first checklist. Tap **MILESTONES** for the
+original 15 one-time objectives; **TODAY** returns to daily care.
+
+| Daily activity | Sand dollars | XP |
+|---|---:|---:|
+| One player feeding actually eaten | 25 | 12 |
+| Say Hello, or hold calmly near a fish for 60 seconds | 25 | 13 |
+| Clean an algae colony, trim through a 10 cm counter step, or watch a settled tank for five minutes | 50 | 25 |
+
+Tap each ready **CLAIM** to save it, once per profile per day: **100 dollars
+and 50 XP** in total. Watching requires an uncovered, lit aquarium with at
+least one fed, non-distressed fish; menus and mini-games do not count.
+The alternatives need no purchased helpers, forced fish sales or excessive feeding.
+Repeat feeding, trimming and holds no longer farm XP or additional care money;
+growth, births and full-trust milestones still pay their one-time dollars.
+Games give no XP and only a small shared daily coin bonus.
+
+The checklist refreshes on a new **UTC day**, not your clock display's timezone.
+Without a usable clock it refreshes after 24 hours of running care time;
+restarting does not reset the allowance. Clock synchronization adopts the
+existing allowance, and moving the clock backward does not renew it.
+Missed days give no back-pay, streak loss or debt. Saved rewards never expire;
+unclaimed daily checklist progress refreshes with the day.
+
+Spending never lowers your Keeper level. The 15 levels still top out at
+**4,200 XP**; existing XP, levels and unlocks are preserved. Newly claimed
+milestone XP is half its old value (1,410 XP across all 15); already paid
+rewards are not removed. The three postcard adventures still add 180 XP total.
+
+**Pacing budget, not a promise of individual playtime:** completing daily care
+needs around 5-10 minutes including navigation. With milestone rewards, the
+5,265-dollar shop is affordable in roughly 6-8 weeks, maximum Keeper level in
+about 8 weeks, and all seven 500-dollar aquarium expansions in roughly 10-12
+weeks total. Daily care alone reaches level 15 in 84 visits; milestones and
+adventures shorten that. Wearables cost another 250 dollars per fully equipped
+fish and new fry cost 200 each, so optional collection spending extends the
+budget. Games are not required for these targets. No currency or existing
+progress was reset for this rebalance.
 
 Three of the 15 objectives are active at once. Tap a ready objective to
 claim its one-time XP and sand-dollar reward; the next objective replaces it.
@@ -525,8 +569,8 @@ recognize the new backdrops, so avoid downgrading.
 
 ### Fish-variety unlocks
 
-New aquariums start with **Classic** fish only. Keeper XP from care, objectives
-and mini-games gradually unlocks more appearances for **CUSTOMIZE** and
+New aquariums start with **Classic** fish only. Keeper XP from daily care,
+milestones and one-time adventures gradually unlocks more appearances for **CUSTOMIZE** and
 future shop fry offers:
 
 | Keeper level | Variety |
@@ -562,39 +606,39 @@ Slalom uses that fish's real appearance, Feed Frenzy visits the tank's fish,
 and Treasure Cast shows existing fish among the hazards. These are portraits,
 not fish transfers: games cannot injure, feed, train or change the actual fish.
 
-| Game | How to play | Sand dollars |
+| Game | How to play | Qualifies for the shared daily bonus |
 |---|---|---|
-| Bubble Pop | Pop rising bubbles for 30 seconds; gold bubbles score 3. | Score / 3, rounded down, up to 10 |
-| Pearl Match | Reveal cards and remember six pearl pairs; untimed. | 8 at 18 moves or fewer, otherwise 5 |
-| Fish Slalom | Use LEFT/RIGHT to pass 12 open gates and collect their snacks. | 1 per successful gate, up to 10 |
-| Treasure Cast | Time five casts over the chest, avoiding fish/debris. | 2 per accurate cast, up to 10 |
-| Feed Frenzy | Choose each visiting fish's requested snack for 30 seconds. Correct +2; wrong -1, never below zero. | Score / 2, rounded down, up to 10 |
-| Reef Puzzle | Rotate pipe tiles to connect the left inlet to the right outlet; untimed, always solvable. | 6 |
-| Reef Defender | Aim taps at incoming hazards; defend the reef across five increasingly busy waves. | Score / 4, up to 10 |
-| Current Runner | Choose among five lanes through 18 scrolling gates; gold gap scores 3, neighboring gap 1. | Score / 4, up to 10 |
-| Pearl Breaker | Move the paddle to keep the pearl bouncing and clear the reef blocks. | Score / 4, up to 10 |
-| Tide Tactics | Move/attack orthogonally, guard to heal, and capture three flags within 22 turns; enemies respond after each move. | Score / 4, up to 10 |
-| Reef Architect | Place coral and seagrass on a grid, balancing water access and neighboring habitats. | Score / 4, up to 10 |
-| Deep Expedition | Choose branching routes, manage oxygen and inventory, and return with your loot. | Score / 4, up to 10 |
+| Bubble Pop | Pop rising bubbles for 30 seconds; gold bubbles score 3. | Score 3+ |
+| Pearl Match | Reveal cards and remember six pearl pairs; untimed. | Solve all pairs |
+| Fish Slalom | Use LEFT/RIGHT to pass 12 open gates and collect their snacks. | Score 2+ |
+| Treasure Cast | Time five casts over the chest, avoiding fish/debris. | One accurate cast |
+| Feed Frenzy | Choose each visiting fish's requested snack for 30 seconds. Correct +2; wrong -1, never below zero. | Score 2+ |
+| Reef Puzzle | Rotate pipe tiles to connect the left inlet to the right outlet; untimed, always solvable. | Solve the pipes |
+| Reef Defender | Aim taps at incoming hazards; defend the reef across five increasingly busy waves. | Score 4+ |
+| Current Runner | Choose among five lanes through 18 scrolling gates; gold gap scores 3, neighboring gap 1. | Score 4+ |
+| Pearl Breaker | Move the paddle to keep the pearl bouncing and clear the reef blocks. | Score 4+ |
+| Tide Tactics | Move/attack orthogonally, guard to heal, and capture three flags within 22 turns; enemies respond after each move. | Score 4+ |
+| Reef Architect | Place coral and seagrass on a grid, balancing water access and neighboring habitats. | Score 4+ |
+| Deep Expedition | Choose branching routes, manage oxygen and inventory, and return with your loot. | Score 4+ |
 
 Use the page arrows to browse three pages. Page three adds **Lighthouse**
 (cross-toggle logic), **Shell Slide** (sliding puzzle), **Sonar Sweep**
 (row/column clue hunt), **Tide 2048** (tile merging), **Harbor Stack**
 (timed stacking), and **Echo Reef** (sequence memory). These six are
-integrated with persistent records, medals, and coin/XP rewards, just like the
+integrated with persistent records, medals, and the shared daily coin bonus, just like the
 original twelve. Extended save storage avoids growing the crowded NVS blob.
 
-| Page-three game | Coins (up to 10) | Bronze / Silver / Gold |
+| Page-three game | Qualifies for daily bonus | Bronze / Silver / Gold |
 |---|---|---|
-| Lighthouse | Solved in ≤8/≤16/other moves: 10/8/6 | ≤24 / ≤16 / ≤8 moves |
-| Shell Slide | Solved in ≤20/≤40/other moves: 10/8/6 | ≤80 / ≤40 / ≤24 moves |
-| Sonar Sweep | At least 10 points: points / 5, +3 for all pearls | 10 / 20 / 25 points |
-| Tide 2048 | At least 128 points: points / 128 | 128 / 512 / 2048 points |
-| Harbor Stack | At least 30 points: points / 14 | 30 / 80 / 120 points |
-| Echo Reef | At least 3 rounds: rounds - 2 | 3 / 7 / 12 rounds |
+| Lighthouse | Solved | ≤24 / ≤16 / ≤8 moves |
+| Shell Slide | Solved | ≤80 / ≤40 / ≤24 moves |
+| Sonar Sweep | At least 10 points | 10 / 20 / 25 points |
+| Tide 2048 | At least 128 points | 128 / 512 / 2048 points |
+| Harbor Stack | At least 30 points | 30 / 80 / 120 points |
+| Echo Reef | At least 3 rounds | 3 / 7 / 12 rounds |
 
-Division rounds down; unsolved/zero-progress finishes pay nothing.
-Rewards also grant 3 XP per coin. Relaxed play pays without records/medals.
+Unsolved/zero-progress finishes pay nothing. Relaxed uses the same allowance
+without records/medals. Games never grant XP.
 
 Each new game opens with its own rules. **PAUSE** freezes a round; **HELP**
 reopens its instructions. Strategy and placement games are turn-based, not
@@ -614,9 +658,11 @@ mode, but only challenge play records personal bests and medals.
 | Reef Architect | 12 | 24 | 36 |
 | Deep Expedition | 10 | 24 | 40 |
 
-Each sand dollar also earns **3 permanent Journal XP**, contributing to Keeper
-levels and backdrop unlocks without falsely completing care objectives.
-**CLAIM** saves rewards and game records together; a failed save changes neither and
+Each qualifying round offers **1 sand dollar**, up to **5 dollars per UTC day
+across all eighteen games, Challenge and Relaxed combined**. Games give **no
+Journal XP**. Further play remains unlimited; Challenge still saves records
+and medals even when the coin allowance is exhausted.
+**SAVE RESULT** saves the actual bonus, daily allowance and game records together; a failed save changes none and
 leaves the claim available to retry. A round can only be claimed once.
 BACK or PLAY AGAIN requires a second tap before discarding an unclaimed reward.
 
@@ -630,7 +676,7 @@ There are no entry fees, wagers or penalties to your actual aquarium.
 Use **CHALLENGE / RELAXED** on the games menu to switch modes. Relaxed Bubble
 Pop and Feed Frenzy have no countdown: tap **FINISH** whenever you like.
 Relaxed Slalom and Treasure Cast move at half speed; Match and Reef remain
-untimed. Relaxed play still offers the usual capped coins/XP but does not
+untimed. Relaxed play shares the five-dollar daily game allowance, gives no XP and does not
 set records or medals. **RECORDS** shows personal bests and permanent gold
 challenge targets: 24 Bubble points, Match in 16 moves, 24 Slalom points,
 10 Cast points, 40 Frenzy points, and Reef in 18 moves. Meeting a move target
@@ -881,9 +927,9 @@ after buying aquariums: older builds do not preserve collection metadata.
 This is intentionally no longer a multi-board tree. Upstream gameplay changes
 can still be ported manually, but merges and release compatibility are not
 automatic. Preserve existing binary offsets and append new fields; the save
-is now 6008 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
+is now 6032 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
 progress, an 8-byte compatibility Creative marker, 40 more game-record bytes
-and 48 bytes of mode/starvation/unlock/refund state), with the previous 4520-byte layout and the
+and 48 bytes of mode/starvation/unlock/refund state, plus 24 bytes of shared daily care), with the previous 4520-byte layout and the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
 aquarium metadata identifies the purchased collection, active slot, its name and
@@ -934,7 +980,7 @@ instead use the existing 128 KiB SPIFFS partition, with alternating CRC-checked,
 readback-verified copies and a durable wipe marker. Legacy NVS is migration
 input only; corrupt storage never silently falls back to stale NVS or formats
 nonblank data. No partition-table change or SD card is needed for the active save.
-JSON exports use schema 16 for an individual aquarium, including its fixed mode,
+JSON exports use schema 17 for an individual aquarium, including shared daily care and its fixed mode,
 Lost Current progress and eighteen-game records,
 the polish and story tails and saved Enlarged/Normal scale; schema
 1 through 15 backups remain importable when valid for the selected mode.
