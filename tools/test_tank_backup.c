@@ -701,7 +701,7 @@ static void test_clock(void) {
             for (int synced = 0; synced < 2; synced++) {
                 memset(fb + 1, 0, count * sizeof *fb);
                 t.aquariums.clock_theme = (uint8_t)theme; t.aquariums.clock_flags = CLOCK_12H;
-                t.aquariums.clock_layout = (uint8_t)((pos << 2) | size);
+                t.aquariums.clock_layout = clock_layout_set_size((uint8_t)(pos << 2), size);
                 int bx, by, w, h; render_clock_bounds(&t, &bx, &by, &w, &h);
                 assert(bx >= 0 && by >= 0 && bx + w <= TANK_W && by + h <= TANK_H);
                 if (pos == CLOCK_CENTER) assert(abs(2 * bx + w - TANK_W) <= 1 && abs(2 * by + h - TANK_H) <= 1);
@@ -728,7 +728,7 @@ static void test_clock(void) {
     for (int theme = CLOCK_COMPACT; theme < CLOCK_THEME_COUNT; theme++)
         for (int size = 0; size < CLOCK_SIZE_COUNT; size++)
             for (int color = 0; color < 8; color++) for (int secondary = 0; secondary < 8; secondary++) for (int hidden = 0; hidden < 8; hidden++) {
-                t.aquariums.clock_theme = (uint8_t)theme; t.aquariums.clock_layout = (uint8_t)size;
+                t.aquariums.clock_theme = (uint8_t)theme; t.aquariums.clock_layout = clock_layout_set_size(0, size);
                 t.aquariums.clock_flags = (uint8_t)((color << CLOCK_COLOR_SHIFT) | (hidden << 2));
                 t.aquariums.clock_delay = (uint8_t)(secondary << CLOCK_SECONDARY_SHIFT);
                 int bx, by, w, h; render_clock_bounds(&t, &bx, &by, &w, &h);
@@ -761,7 +761,7 @@ static void test_clock(void) {
                 assert(fb[0] == 0xbeef && fb[count + 1] == 0xbeef);
             }
     t.aquariums.clock_delay = 0;
-    for (int size = 0; size < CLOCK_SIZE_COUNT; size++) {
+    for (int size = CLOCK_LARGE; size <= CLOCK_SMALL; size++) {
         t.aquariums.clock_theme = CLOCK_ORBIT; t.aquariums.clock_layout = (uint8_t)size;
         t.aquariums.clock_flags = CLOCK_HIDE_PANEL | CLOCK_HIDE_DATE | CLOCK_12H;
         int bx, by, w, h; render_clock_bounds(&t, &bx, &by, &w, &h);
@@ -880,16 +880,22 @@ static void test_clock(void) {
     assert(loaded.aquariums.clock_layout == 5 && loaded.aquariums.clock_delay == ((4 << CLOCK_SECONDARY_SHIFT) | CLOCK_DELAY_30_SEC));
     loaded.clock_idle_s = 29; assert(!render_clock_active(&loaded));
     loaded.clock_idle_s = 30; assert(render_clock_active(&loaded));
+    loaded.aquariums.clock_layout = CLOCK_LAYOUT_MAX;
+    loaded.aquariums.clock_delay |= 2 << CLOCK_CAPTION_SHIFT;
+    assert(progression_save(&loaded));
+    tank_init(&loaded, 3); boot_enlarged(&loaded);
+    assert(loaded.aquariums.clock_layout == CLOCK_LAYOUT_MAX);
     char error[120], *json = progression_backup_json(&loaded); assert(json);
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     tank_init(&loaded, 3); boot_enlarged(&loaded);
-    assert(loaded.aquariums.clock_delay == ((4 << CLOCK_SECONDARY_SHIFT) | CLOCK_DELAY_30_SEC));
+    assert(loaded.aquariums.clock_delay == ((4 << CLOCK_SECONDARY_SHIFT) | (2 << CLOCK_CAPTION_SHIFT) | CLOCK_DELAY_30_SEC));
+    assert(loaded.aquariums.clock_layout == CLOCK_LAYOUT_MAX);
     cJSON *root = cJSON_Parse(json); free(json); assert(root);
     cJSON *fields = cJSON_GetObjectItemCaseSensitive(root, "tank");
     static const char *const keys[] = {"clock_theme", "clock_flags", "clock_utc_quarters", "clock_layout", "clock_delay", "clock_secondary"};
-    static const int invalid_values[] = {CLOCK_THEME_COUNT, CLOCK_FLAGS_MASK + 1, 57, 3, CLOCK_DELAY_COUNT, 8};
+    static const int invalid_values[] = {CLOCK_THEME_COUNT, CLOCK_FLAGS_MASK + 1, 57, CLOCK_LAYOUT_MAX + 1, CLOCK_DELAY_COUNT, 8};
     assert(cJSON_GetObjectItemCaseSensitive(fields, "clock_secondary")->valueint == 4);
-    assert(cJSON_GetObjectItemCaseSensitive(fields, "clock_delay")->valueint == CLOCK_DELAY_30_SEC);
+    assert(cJSON_GetObjectItemCaseSensitive(fields, "clock_delay")->valueint == ((2 << CLOCK_CAPTION_SHIFT) | CLOCK_DELAY_30_SEC));
     for (int i = 0; i < 6; i++) {
         cJSON *option = cJSON_GetObjectItemCaseSensitive(fields, keys[i]); double before = option->valuedouble;
         cJSON_SetNumberValue(option, invalid_values[i]);
@@ -899,7 +905,7 @@ static void test_clock(void) {
     }
     cJSON *layout = cJSON_GetObjectItemCaseSensitive(fields, "clock_layout");
     double valid_layout = layout->valuedouble;
-    cJSON_SetNumberValue(layout, 3); cJSON_DeleteItemFromObjectCaseSensitive(fields, "clock_delay");
+    cJSON_SetNumberValue(layout, CLOCK_LAYOUT_MAX + 1); cJSON_DeleteItemFromObjectCaseSensitive(fields, "clock_delay");
     json = cJSON_PrintUnformatted(root); assert(json);
     assert(!progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);
     cJSON_SetNumberValue(layout, valid_layout);
@@ -2194,7 +2200,7 @@ static void test_solid_clock(void) {
         render_work_caches(cache != 0);
         for (int theme = CLOCK_COMPACT; theme < CLOCK_THEME_COUNT; theme++)
             for (int size = 0; size < CLOCK_SIZE_COUNT; size++) for (int position = 0; position < CLOCK_POSITION_COUNT; position++) {
-                t.aquariums.clock_theme = (uint8_t)theme; t.aquariums.clock_layout = (uint8_t)((position << 2) | size);
+                t.aquariums.clock_theme = (uint8_t)theme; t.aquariums.clock_layout = clock_layout_set_size((uint8_t)(position << 2), size);
                 t.clock_requested = false;
                 render_tank(&t, reference, TANK_W);
                 t.clock_requested = true; render_clock_overlay(&t, reference, TANK_W, 0);
@@ -2758,6 +2764,136 @@ static void test_name_wheel(void) {
     puts("PASS: first-run/birth letter-wheel navigation, touch, retired key isolation, rename cancel/save/retry and reload at both scales");
 }
 
+static void test_simple_scene(void) {
+    render_device_t device = {0, 1, 1, -1, true};
+    for (int normal = 0; normal < 2; normal++) {
+        tank_t t;
+        tank_resolution(normal != 0);
+        tank_init(&t, 42);
+        t.companion.display_compact = normal != 0;
+        t.n_fish = 0;
+        t.sd_unlocks = SD_ITEM_SNAIL | SD_ITEM_SHRIMP | SD_ITEM_URCHIN | SD_ITEM_SEAHORSE;
+        t.aquariums.clock_theme = CLOCK_OFF;
+        setup_cancel(&t);
+        tank_t before = t;
+        size_t bytes = (size_t)TANK_W * TANK_H * sizeof(uint16_t);
+        uint16_t *full = malloc(bytes), *other = malloc(bytes);
+        uint16_t *tile = malloc(((size_t)TANK_W * 80 + 2) * sizeof(uint16_t));
+        assert(full && other && tile);
+        render_set_device(&device);
+        render_tile(0, 0); render_region(0, 0);
+        render_tank(&t, full, TANK_W);
+        assert(!memcmp(&t, &before, sizeof t));
+        assert(render_creature_card_hit(&t, t.snail_x, t.snail_y) == -1);
+        for (int y = 0; y < TANK_H; y += 80) {
+            int height = TANK_H - y < 80 ? TANK_H - y : 80;
+            tile[0] = tile[1 + TANK_W * height] = 0xa55a;
+            render_tile(y, height);
+            render_tank(&t, tile + 1, TANK_W);
+            assert(tile[0] == 0xa55a && tile[1 + TANK_W * height] == 0xa55a);
+            assert(!memcmp(full + y * TANK_W, tile + 1, (size_t)TANK_W * height * 2));
+        }
+        render_tile(0, 0);
+        t.clock += 10;
+        t.snail_x += 30;
+        t.bubble[0].x += 40;
+        render_tank(&t, other, TANK_W);
+        assert(!memcmp(full, other, bytes));
+        t.food[0].alive = true; t.food[0].x = TANK_W / 2; t.food[0].y = 40;
+        render_tank(&t, other, TANK_W);
+        assert(memcmp(full, other, bytes));
+        t.food[0].alive = false;
+        t.sd_unlocks |= SD_ITEM_CHEST;
+        render_tank(&t, other, TANK_W);
+        assert(memcmp(full, other, bytes));
+        memcpy(full, other, bytes);
+        t.sd_unlocks |= SD_ITEM_SHELL | SD_ITEM_CORAL;
+        render_tank(&t, other, TANK_W);
+        /* All owned decorations remain visible in Simple. */
+        assert(memcmp(full, other, bytes));
+        memcpy(full, other, bytes);
+        t.sd_unlocks &= ~SD_ITEM_SHELL;
+        render_tank(&t, other, TANK_W);
+        assert(memcmp(full, other, bytes));
+        /* Same static scene, cached or live, including partial rows/regions. */
+        render_set_backdrop_cache(NULL, 0);
+        render_tank(&t, full, TANK_W);
+        for (int capacity = 0; capacity < 2; capacity++) {
+            size_t cache_bytes = capacity ? 48000 : 64;
+            unsigned char *cache = malloc(cache_bytes + 4);
+            assert(cache);
+            cache[0] = cache[cache_bytes + 2] = 0xa5;
+            render_set_backdrop_cache(cache + 2, cache_bytes);
+            render_tank(&t, other, TANK_W);
+            assert(!memcmp(full, other, bytes));
+            assert(cache[0] == 0xa5 && cache[cache_bytes + 2] == 0xa5);
+            for (int y = 0; y < TANK_H; y += 80) {
+                int h = TANK_H - y < 80 ? TANK_H - y : 80;
+                render_tile(y, h);
+                render_tank(&t, tile + 1, TANK_W);
+                assert(!memcmp(full + y * TANK_W, tile + 1, (size_t)TANK_W * h * 2));
+            }
+            render_tile(0, 0);
+            render_region(17, 29);
+            render_tank(&t, other, TANK_W);
+            render_region(0, 0);
+            assert(!memcmp(full, other, bytes));
+            if (capacity) for (int change = 0; change < 6; change++) {
+                if (change == 0) t.coral_rgb = 0xf09030;
+                if (change == 1) tank_decor_set(&t, 3, TANK_W / 2, DECOR_Z_FRONT);
+                if (change == 2) t.veg_h[0][0] = .1f;
+                if (change == 3) t.season = 2;
+                if (change == 4) t.sd_unlocks |= SD_ITEM_SHELL;
+                if (change == 5) t.sd_unlocks &= ~SD_ITEM_CORAL;
+                render_tank(&t, other, TANK_W);
+                render_set_backdrop_cache(NULL, 0);
+                render_tank(&t, full, TANK_W);
+                assert(!memcmp(full, other, bytes));
+                render_set_backdrop_cache(cache + 2, cache_bytes);
+                render_tank(&t, other, TANK_W);
+            }
+            render_set_backdrop_cache(NULL, 0);
+            free(cache);
+        }
+        t.clock += .75f;
+        render_tank(&t, other, TANK_W);
+        assert(!memcmp(full, other, bytes));
+        t.n_fish = 1;
+        t.fish[0] = before.fish[0];
+        t.fish[0].x = TANK_W / 2; t.fish[0].y = TANK_H / 2;
+        render_tank(&t, other, TANK_W);
+        assert(memcmp(full, other, bytes));
+        render_settings_open();
+        clock_tap(&t, 100, 100);
+        assert(clock_tap(&t, 200, 192) == SET_TAP_DETAIL);
+        assert(clock_tap(&t, 200, 232) == SET_TAP_ROOM);
+        assert(clock_tap(&t, 200, 272) == SET_TAP_LED);
+        render_damage_begin(&t, false);
+        int cursor = 0, x, y, width, height, area = 0;
+        while (render_damage_next(&cursor, &x, &y, &width, &height)) area += width * height;
+        assert(area == TANK_W * TANK_H);
+        device.scene_detail = SCENE_BALANCED; render_set_device(&device);
+        render_damage_begin(&t, false);
+        cursor = area = 0;
+        while (render_damage_next(&cursor, &x, &y, &width, &height)) area += width * height;
+        assert(area == TANK_W * TANK_H);
+        t.n_fish = 0;
+        t.sd_unlocks = SD_ITEM_PLANT;
+        for (int b = 0; b < VEG_BEDS_MAX; b++)
+            for (int i = 0; i < VEG_FRONDS_MAX; i++) t.veg_h[b][i] = .8f;
+        for (int detail = SCENE_BALANCED; detail <= SCENE_ENHANCED; detail += 2) {
+            device.scene_detail = (uint8_t)detail; render_set_device(&device);
+            t.clock = 2.01f; render_tank(&t, full, TANK_W);
+            t.clock = 2.19f; render_tank(&t, other, TANK_W);
+            assert((memcmp(full, other, bytes) != 0) == (detail == SCENE_ENHANCED));
+        }
+        device.scene_detail = SCENE_SIMPLE;
+        free(full); free(other); free(tile);
+    }
+    device.scene_detail = SCENE_BALANCED; render_set_device(&device);
+    tank_resolution(false);
+    puts("PASS: Simple scene static grass/hidden helpers/bubbles, visible food, no tank mutation, guarded tiles, both scales and reversible settings/damage");
+}
 int main(int argc, char **argv) {
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
@@ -2979,7 +3115,7 @@ int main(int argc, char **argv) {
     render_settings_touch(&tank, rx, y, true, &value);
     assert(render_settings_touch(&tank, rx, y, false, &value) == SET_TAP_RESTORE && value == 0);
     const struct { int section, x, y, action; } device_taps[] = {
-        {0, 200, 190, SET_TAP_ROOM}, {0, 200, 244, SET_TAP_LED},
+        {0, 200, 190, SET_TAP_DETAIL}, {0, 200, 232, SET_TAP_ROOM}, {0, 200, 272, SET_TAP_LED},
         {3, 100, 232, SET_TAP_AUTO_BACKUP}, {3, 300, 232, SET_TAP_PHOTO}
     };
     for (int scale = 0; scale < 2; scale++) {
@@ -3376,6 +3512,7 @@ int main(int argc, char **argv) {
     assert(progression_save(&restored));
     test_journal();
     test_home_navigation();
+    test_simple_scene();
     test_name_wheel();
     test_normal_default();
     test_mode_care_notices();

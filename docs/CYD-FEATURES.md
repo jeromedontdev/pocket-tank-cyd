@@ -2,7 +2,13 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.0.0**
+**An illustrated tour of Pocket Tank CYD 2.1.0**
+
+**[Play the actual game in your browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html)**,
+using mouse/touch controls and a separate local save. It needs no CYD or account,
+does not upload your aquarium, and does not automatically synchronize a hardware
+save. Hardware-only features are unavailable. Clearing this site's data, private
+browsing or browser storage eviction can remove progress.
 Updated October 24, 2026
 
 This release also separates games from aquarium rendering, names companion
@@ -11,9 +17,10 @@ Compatibility fixtures and frozen save offsets remain. Physical-unit checks
 cover both scales, all eighteen game entries, existing-save migration and
 SD/Bank validation; see [hardware verification and budgets](../firmware/CYD.md#200-verification-and-budgets).
 
-This page describes **2.0.0**, including the illustrated interface, eighteen
+This page describes **2.1.0**, including three scene-detail levels, themed Jumbo
+clocks, linked low-light screen/LED dimming, the illustrated interface, eighteen
 games, permanent Normal/Creative/Hard modes and global Bank/shared progression.
-[Get the 2.0.0 release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v2.0.0)
+[Get the 2.1.0 release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v2.1.0)
 or use the [website flasher](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html).
 Older releases remain unchanged; for their original interface, use the
 [1.3.0 guide](https://github.com/jeromedontdev/pocket-tank-cyd/blob/v1.3.0/docs/CYD-FEATURES.md).
@@ -330,10 +337,13 @@ and draws each fish card with its family, genes and visitor history.
 The CYD's light sensor beside the screen and RGB LED on the back are now used.
 In **Settings > Display**:
 
-- **ROOM LIGHT: DIM** scales the backlight down (to 35% of your brightness)
-  as the room darkens. **DIM+NIGHT** also switches the tank to night after
+- **ROOM LIGHT: DIM** scales both the screen and automatic back LED down
+  aggressively as the room darkens: approximately 27% at 50% room light,
+  8% at 25%, and 2% in darkness. Screen output multiplies your chosen brightness
+  with a 1% floor before night dimming; the LED may become fully dark.
+  **DIM+NIGHT** also switches the tank to night after
   30 seconds of sustained darkness and back after 5 seconds of filtered light.
-  **OFF** ignores it. An eight-second filter softens brief shadows, and a
+  **OFF** ignores it for both screen and LED. An eight-second filter softens brief shadows, and a
   conservative low-end calibration avoids overreacting to very bright-room readings.
   The sensor learns your lit room automatically.
 - **BACK LED: GLOW** breathes softly in the water's color, dimmer at night.
@@ -986,6 +996,21 @@ palettes live under **Home > Tank > Sand & Water**.
 
 ### Whole-tank Normal mode
 
+**Settings > Display > SCENE** independently selects **BALANCED**, **SIMPLE**
+or **ENHANCED**. Normal size + Balanced detail are the defaults.
+Simple works with either size; Enlarged + Simple gives larger fish with less
+visual clutter. It shows fish, food, algae-care feedback, real stationary
+seagrass, placed decorations, fixed purchased scenery and floating ornaments.
+Helpers, bubbles, the trophy shelf and ambient sparkles are hidden; their
+simulation,
+ownership, benefits and progression remain unchanged. Balanced reduces grass
+and secondary animation; Enhanced retains smooth vegetation and the full
+bubble/shrimp density. The performance goals are approximately 20 FPS Simple,
+10 FPS Balanced and 5 FPS Enhanced at either size, not guaranteed minimums
+or artificial frame caps. Placement editors always show the complete scene.
+The CYD saves detail as a device preference,
+not in aquarium backups; simulator previews last for the current session.
+
 Open **Settings > Display > SCALE** to switch between **Enlarged** (240x180)
 and **Normal** (320x240, formerly Compact). Normal is the default for fresh
 installations, resets and newly purchased aquariums. Existing saves keep their
@@ -998,8 +1023,8 @@ Full-page controls retain their readable layout and matching touch targets.
 The choice is saved per aquarium and included in backups. Positions and
 algae are remapped when switching; fish identity, ownership, coins and XP
 are unchanged. A failed save leaves the old scale active. On the no-PSRAM
-CYD, Normal draws three horizontal tiles through the existing framebuffer,
-so weather still has RAM available; animation can be slower than Enlarged.
+CYD, both sizes draw horizontal tiles through the existing framebuffer,
+reusing its tail for a compressed static backdrop so weather still has RAM.
 Longer Normal frames use bounded simulation steps so care and idle timers
 still advance in real time rather than slowing with the animation.
 The renderer clips shape/decor work to each tile and reuses row colors;
@@ -1103,10 +1128,26 @@ same 12-pixel root inset rather than letting a lush left bed start off-screen.
 Open **Settings > CLOCK/WEATHER** to choose **Minimal, Digital, Analog, Neon, Flip,
 Binary or Orbit**.
 This is an idle display mode, **large and centered by default**, with
-large/medium/small sizes, center or four-corner placement, 12/24-hour time and
+large/medium/small/jumbo/tiny sizes, center or four-corner placement, 12/24-hour time and
 a UTC offset with selectable **1-hour / 30-minute / 15-minute** adjustment
 steps (tap **STEP**, default 1 hour). The clock starts **OFF**, saves separately
 for each tank, and follows its SD snapshots and JSON restores.
+**Jumbo** enlarges the selected clock design: Minimal text, Digital segments,
+Analog hands, Neon glow, Flip tiles, Binary dots and Orbit rings. Primary and
+secondary colors, seconds/date options and weather/activity captions remain.
+Large, Medium and Small retain their default appearance. **Tiny** uses a smaller
+face, with quarter-hour numerals on its Analog dial. **Clock > Style > Text**
+offers separate Small/Medium/Large controls for date/AM-PM/seconds and for
+weather/activity. Captions wrap, the face adapts, and text fits down when needed
+to keep every enabled element on screen without overlap. Choices save per tank;
+both resolutions, every theme/position and long captions are regression tested.
+Without captions and with default supporting text, Jumbo Minimal time
+covers at least 85% of the screen width and 70% of its height at either size;
+round clock faces retain their proportions.
+
+| Jumbo Digital | Jumbo Flip | Jumbo Analog |
+|---|---|---|
+| ![Jumbo seven-segment clock](media/cyd-features/clock-jumbo-digital.png) | ![Jumbo split-flap clock](media/cyd-features/clock-jumbo-flip.png) | ![Jumbo analog clock](media/cyd-features/clock-jumbo-analog.png) |
 **ACTIVATE** offers **15 sec, 30 sec, 1, 2, 5 or 10 min**, or **Manual Only**.
 **SHOW CLOCK** enters immediately; the first touch only dismisses it, without
 affecting fish or tools. Menus do not count as inactivity. Fish keep swimming

@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static int stored = 100, staged, fail, writes, commits, applied, applications;
+static int stored = 100, staged, fail, writes, commits, applied, applications, ambient_result = -1;
 const char *esp_err_to_name(esp_err_t error) { (void)error; return "test failure"; }
 esp_err_t nvs_open(const char *name, int mode, nvs_handle_t *handle) {
     assert(!strcmp(name, "tank")); (void)mode; *handle = 1;
@@ -27,7 +27,7 @@ esp_err_t nvs_commit(nvs_handle_t handle) {
 void nvs_close(nvs_handle_t handle) { assert(handle == 1); }
 void display_port_set_brightness(uint8_t level) { applied = level; applications++; }
 /* Isolate brightness policy; ambient filtering has its own real-code harness. */
-int ambient_brightness_pct(int requested) { return requested; }
+int ambient_brightness_pct(int requested) { return ambient_result < 0 ? requested : ambient_result; }
 
 int main(void) {
     brightness_init(); assert(brightness_level() == 100);
@@ -46,6 +46,14 @@ int main(void) {
     assert(!brightness_set_level(9) && !brightness_set_level(101));
     assert(!brightness_preview_level(-1) && !brightness_preview_level(255));
     assert(brightness_level() == 100);
+    for (int pct = 1; pct <= 100; pct++) {
+        ambient_result = pct;
+        int before = writes;
+        brightness_apply(false); assert(applied == pct * 255 / 100);
+        brightness_apply(true); assert(applied == (pct * 255 / 100) * 6 / 10 && applied >= 1);
+        assert(brightness_level() == 100 && writes == before);
+    }
+    ambient_result = -1;
     for (fail = 1; fail <= 3; fail++) {
         assert(brightness_preview_level(47) && brightness_level() == 47);
         assert(!brightness_set_level(47) && brightness_level() == 100 && stored == 100);

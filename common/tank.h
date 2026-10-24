@@ -481,13 +481,30 @@ enum { CLOCK_OFF, CLOCK_COMPACT, CLOCK_DIGITAL, CLOCK_ANALOG, CLOCK_NEON,
 enum { CLOCK_12H = 1, CLOCK_DST = 2, CLOCK_HIDE_SECONDS = 4,
        CLOCK_HIDE_PANEL = 8, CLOCK_HIDE_DATE = 16, CLOCK_COLOR_SHIFT = 5,
        CLOCK_COLOR_MASK = 224, CLOCK_FLAGS_MASK = 255 };
-enum { CLOCK_LARGE, CLOCK_MEDIUM, CLOCK_SMALL, CLOCK_SIZE_COUNT };
+enum { CLOCK_LARGE, CLOCK_MEDIUM, CLOCK_SMALL, CLOCK_JUMBO, CLOCK_TINY, CLOCK_SIZE_COUNT };
 enum { CLOCK_CENTER, CLOCK_TOP_LEFT, CLOCK_TOP_RIGHT, CLOCK_BOTTOM_LEFT, CLOCK_BOTTOM_RIGHT, CLOCK_POSITION_COUNT };
 enum { CLOCK_DELAY_1_MIN, CLOCK_DELAY_15_SEC, CLOCK_DELAY_30_SEC, CLOCK_DELAY_2_MIN,
        CLOCK_DELAY_5_MIN, CLOCK_DELAY_10_MIN, CLOCK_DELAY_MANUAL, CLOCK_DELAY_COUNT };
-/* Secondary color occupies the unused high bits of the saved delay byte. */
-enum { CLOCK_DELAY_MASK = 31, CLOCK_SECONDARY_SHIFT = 5, CLOCK_SECONDARY_MASK = 224 };
-#define CLOCK_LAYOUT_MAX 18
+/* Keep original size/position/color bits; use spare bits for Tiny and text sizes. */
+enum { CLOCK_DELAY_MASK = 7, CLOCK_CAPTION_SHIFT = 3, CLOCK_CAPTION_MASK = 24,
+       CLOCK_SECONDARY_SHIFT = 5, CLOCK_SECONDARY_MASK = 224,
+       CLOCK_TINY_FLAG = 32, CLOCK_SIZE_MASK = 35, CLOCK_POSITION_MASK = 28,
+       CLOCK_DETAIL_SHIFT = 6, CLOCK_DETAIL_MASK = 192, CLOCK_TEXT_SIZE_COUNT = 3 };
+#define CLOCK_LAYOUT_MAX 176
+static inline int clock_layout_size(uint8_t layout) { return layout & CLOCK_TINY_FLAG ? CLOCK_TINY : layout & 3; }
+static inline int clock_layout_position(uint8_t layout) { return (layout & CLOCK_POSITION_MASK) >> 2; }
+static inline uint8_t clock_layout_set_size(uint8_t layout, int size) {
+    return (uint8_t)((layout & ~CLOCK_SIZE_MASK) | (size == CLOCK_TINY ? CLOCK_TINY_FLAG : size));
+}
+static inline bool clock_layout_valid(uint8_t layout) {
+    return clock_layout_position(layout) < CLOCK_POSITION_COUNT &&
+           (layout >> CLOCK_DETAIL_SHIFT) < CLOCK_TEXT_SIZE_COUNT &&
+           (!(layout & CLOCK_TINY_FLAG) || !(layout & 3));
+}
+static inline bool clock_delay_valid(uint8_t delay) {
+    return (delay & CLOCK_DELAY_MASK) < CLOCK_DELAY_COUNT &&
+           ((delay & CLOCK_CAPTION_MASK) >> CLOCK_CAPTION_SHIFT) < CLOCK_TEXT_SIZE_COUNT;
+}
 typedef struct tank {
     aquarium_state_t aquariums;
     journal_state_t journal;

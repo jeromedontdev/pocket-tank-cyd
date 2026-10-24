@@ -1,6 +1,25 @@
 name: CYD checks
 on: [push, pull_request]
 jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: "4.0.18"
+      - run: git clone --branch v1.7.19 --depth 1 https://github.com/DaveGamble/cJSON.git .browser-tools/cJSON
+      - run: python tools/build_browser.py --out _site
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+      - run: |
+          npm install --prefix .browser-tools --no-save playwright@1.56.1
+          .browser-tools/node_modules/.bin/playwright install --with-deps chromium
+          node tools/test_browser.cjs
   cyd:
     runs-on: ubuntu-latest
     steps:

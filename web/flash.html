@@ -23,13 +23,13 @@
 </head>
 <body>
 <main>
-  <nav aria-label="Main navigation"><a href="./">Features &amp; home</a> &middot; <a href="./viewer.html">Save viewer</a></nav>
+  <nav aria-label="Main navigation"><a href="./">Features &amp; home</a> &middot; <a href="./play.html">Play in browser</a> &middot; <a href="./viewer.html">Save viewer</a></nav>
   <header class="brand"><img src="./logo.svg" alt="" width="128" height="96"><h1>Pocket Tank CYD</h1></header>
   <p>For the <strong>ESP32-2432S028 Cheap Yellow Display only</strong>
     (4 MB flash, 2.8-inch display). Not for other ESP32 boards.
     The factory installer checks the ESP32 chip family, but cannot identify your display model.
     The save-preserving updater additionally verifies Pocket Tank's CYD identity and layout.</p>
-  <p id="release-status" role="status">This flasher installs the latest published stable release. Illustrated menus, eighteen games, permanent modes and the global Bank require 2.0.0 or newer.</p>
+  <p id="release-status" role="status">This flasher installs the latest published stable release. Scene details, Tiny/Jumbo clocks, resizable supporting text and linked screen/LED dimming require 2.1.0 or newer. Illustrated menus, eighteen games, permanent modes and the global Bank require 2.0.0 or newer.</p>
   <p>Use desktop <strong>Chrome or Edge over HTTPS</strong> with a USB data cable.
     Close all serial monitors first. Choose one of these separate operations;
     a refused update never falls back to a factory install.</p>
@@ -124,7 +124,7 @@
     if (!response.ok) throw new Error(`Firmware manifest unavailable (${response.status}).`);
     const manifest = await response.json();
     document.querySelector("#release-status").textContent =
-      `Published firmware: ${manifest.version}. Illustrated menus, eighteen games, permanent modes and the global Bank require 2.0.0 or newer.`;
+      `Published firmware: ${manifest.version}. Scene details, Tiny/Jumbo clocks, resizable supporting text and linked screen/LED dimming require 2.1.0 or newer. Illustrated menus, eighteen games, permanent modes and the global Bank require 2.0.0 or newer.`;
     await import("https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module");
     await customElements.whenDefined("esp-web-install-button");
     status.textContent = `Ready to install Pocket Tank CYD ${manifest.version}.`;

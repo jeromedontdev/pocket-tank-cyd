@@ -1,0 +1,21 @@
+:root{color-scheme:dark;font:16px/1.55 system-ui,sans-serif;background:#091c24;color:#e1f1eb}
+*{box-sizing:border-box}
+body{margin:0}
+main{width:min(100% - 2rem,960px);margin:1.5rem auto 3rem}
+h1{font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.15;margin:.8rem 0}
+h2{font-size:1.25rem}
+a{color:#9cddcc}
+p{color:#bdd4d4}
+#status{border-left:4px solid #83d8b4;background:#13313b;padding:.8rem 1rem;margin:1rem 0}
+#status.error{border-color:#ffb69e;background:#442c2b}
+.game{background:#051217;padding:clamp(.4rem,2vw,1rem);border-radius:12px}
+canvas{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;background:#000;image-rendering:pixelated;touch-action:none;user-select:none}
+.buttons{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+button{font:inherit;font-weight:600;padding:.65rem .9rem;border:1px solid #507477;border-radius:7px;color:#e1f1eb;background:#193c45;cursor:pointer;min-height:44px}
+button:hover:not(:disabled){background:#28535b}
+button:focus-visible,canvas:focus-visible{outline:3px solid #ffd982;outline-offset:3px}
+button:disabled{opacity:.45;cursor:default}
+section{margin-bottom:1.5rem}
+aside{border-top:1px solid #36535a;padding-top:1rem;color:#b2c8ca;font-size:.9rem}
+#save-detail{font-size:.9rem}
+@media(max-width:480px){main{width:calc(100% - 1rem);margin-top:1rem}.buttons button{flex:1 0 auto}}

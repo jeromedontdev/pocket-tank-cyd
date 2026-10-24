@@ -388,7 +388,7 @@ static void settings_touch(tank_t *t, float x, float y, bool down) {
     else if (r == SET_TAP_UPDATES) { s_set = false; s_upd = true; s_back = true; sd_port_update_reset(); ESP_LOGI(TAG, "SD updates page up"); }
     else if (r == SET_TAP_BRIGHT || r == SET_TAP_BRIGHT_PREVIEW || r == SET_TAP_LIGHT || r == SET_TAP_IDLE || r == SET_TAP_FEED
              || r == SET_TAP_BACKUP || r == SET_TAP_RESTORE || r == SET_TAP_SAND || r == SET_TAP_WATER || r == SET_TAP_WIFI
-             || r == SET_TAP_ROOM || r == SET_TAP_LED || r == SET_TAP_AUTO_BACKUP || r == SET_TAP_PHOTO) { s_set_what = r; s_set_val = v; }
+             || r == SET_TAP_ROOM || r == SET_TAP_LED || r == SET_TAP_AUTO_BACKUP || r == SET_TAP_PHOTO || r == SET_TAP_DETAIL) { s_set_what = r; s_set_val = v; }
 }
 void touch_port_life_tap(tank_t *t, float x, float y) {
     int action = render_life_tap(t, x, y);
@@ -633,16 +633,16 @@ void touch_port_poll(tank_t *t) {
                 if (d2 < bd) { bd = d2; best = i; }
             }
             if (best >= 0) { s_sel = (best == s_sel) ? -1 : best; s_sel_us = now; }
-            else if (tank_snail_hit(t, s_px, s_py)) {   /* the snail: its card (2026-09-16), the fish first */
+            else if (!render_simple_scene() && tank_snail_hit(t, s_px, s_py)) {   /* the snail: its card (2026-09-16), the fish first */
                 s_sel = s_sel == RENDER_CARD_SNAIL ? -1 : RENDER_CARD_SNAIL; s_sel_us = now;
                 ESP_LOGI(TAG, "snail tapped: card %s (%d spots grazed)", s_sel >= 0 ? "up" : "down", (int)t->snail_grazed); }
-            else if (tank_urchin_hit(t, s_px, s_py)) {  /* the urchin: its card (2026-10-02) */
+            else if (!render_simple_scene() && tank_urchin_hit(t, s_px, s_py)) {  /* the urchin: its card (2026-10-02) */
                 s_sel = s_sel == RENDER_CARD_URCHIN ? -1 : RENDER_CARD_URCHIN; s_sel_us = now;
                 ESP_LOGI(TAG, "urchin tapped: card %s (%.0f cm of grass grazed)", s_sel >= 0 ? "up" : "down", t->urchin_grazed_px / PX_PER_CM); }
-            else if (tank_seahorse_hit(t, s_px, s_py)) {  /* the seahorse: its card (0.3.6) */
+            else if (!render_simple_scene() && tank_seahorse_hit(t, s_px, s_py)) {  /* the seahorse: its card (0.3.6) */
                 s_sel = s_sel == RENDER_CARD_SEAHORSE ? -1 : RENDER_CARD_SEAHORSE; s_sel_us = now;
                 ESP_LOGI(TAG, "seahorse tapped: card %s (%d hitches, %.1f days)", s_sel >= 0 ? "up" : "down", (int)t->sh_hitches, tank_seahorse_days(t)); }
-            else if (tank_shrimp_hit(t, s_px, s_py)) {  /* the shrimp school (2026-09-29): a tap its card, the third quick tap scares them */
+            else if (!render_simple_scene() && tank_shrimp_hit(t, s_px, s_py)) {  /* the shrimp school (2026-09-29): a tap its card, the third quick tap scares them */
                 int taps = tank_shrimp_tap(t, s_px, s_py);
                 if (taps == 1) { s_sel = s_sel == RENDER_CARD_SHRIMP ? -1 : RENDER_CARD_SHRIMP; s_sel_us = now; }
                 else if (taps >= 3) s_sel = -1;

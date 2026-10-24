@@ -1,8 +1,8 @@
-name: CYD web installer
+name: CYD website and playable browser game
 on:
   push:
     branches: [main]
-    paths: ["web/**", "docs/media/cyd-features/**", "tools/prepare_web_installer.py", ".github/workflows/pages.yml"]
+    paths: ["web/**", "common/**", "sim/**", "docs/media/cyd-features/**", "tools/prepare_web_installer.py", "tools/build_browser.py", "tools/test_browser.cjs", ".github/workflows/pages.yml"]
   release:
     types: [published]
   workflow_dispatch:
@@ -25,6 +25,20 @@ jobs:
         with:
           python-version: "3.12"
       - run: python tools/prepare_web_installer.py
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: "4.0.18"
+      - name: Restore pinned cJSON for the standalone browser build
+        run: git clone --branch v1.7.19 --depth 1 https://github.com/DaveGamble/cJSON.git .browser-tools/cJSON
+      - run: python tools/build_browser.py --out _site
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+      - name: Verify actual browser gameplay and durable saves
+        run: |
+          npm install --prefix .browser-tools --no-save playwright@1.56.1
+          .browser-tools/node_modules/.bin/playwright install --with-deps chromium
+          node tools/test_browser.cjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

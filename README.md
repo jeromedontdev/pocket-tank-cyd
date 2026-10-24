@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.0.0
+# Pocket Tank CYD 2.1.0
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.0.0**; firmware, update
+now versioned independently. This is **release 2.1.0**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,31 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.0.0: a distinct game, illustrated throughout
+## New in 2.1.0: scene detail, readable clocks and quieter low-light output
+
+- **[Play in your browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html)**:
+  the actual game simulation, mouse/touch controls and a separate local browser
+  save. No CYD, account or upload required. Browser storage is not a backup:
+  clearing site data, private browsing or eviction can remove progress.
+- **Tiny** joins Large, Medium, Small and Jumbo. Under **Clock > Style > Text**,
+  choose Small/Medium/Large separately for date/AM-PM/seconds and for
+  weather/activity. Text wraps and fits down only when needed; all seven
+  themes, five positions and both resolutions are covered by overlap tests.
+- Independent **Normal/Enlarged** size and **Balanced/Simple/Enhanced** scene
+  detail. Normal + Balanced are the defaults; existing saved choices remain.
+- Simple retains real stationary seagrass and placed decorations while hiding
+  helpers, bubbles and ambient effects. Their simulation and benefits continue.
+  Balanced reduces secondary animation; Enhanced retains smooth effects.
+- Measured on a populated CYD: approximately **20 FPS Simple**, **10 FPS Balanced**
+  and **8-9 FPS Enhanced** at either size. These are observations, not guarantees.
+- **Jumbo** enlarges the selected clock theme instead of replacing it: Minimal
+  text, Digital segments, Analog hands, Neon glow, Flip tiles, Binary dots and
+  Orbit rings remain distinct. Colors, date/seconds and weather/activity still work.
+- Room-light dimming now drives both screen and automatic back LED with a
+  stronger low-light curve; pagination buttons use arrows without page labels.
+- Existing saves, fish, wallet, progression and mode choices are preserved.
+
+## Previously in 2.0.0: a distinct game, illustrated throughout
 
 The interface now shares compact pixel-art icons, chapter scenery, and real
 fish portraits instead of relying on text alone:
@@ -93,6 +117,9 @@ This release adds:
 
 ### Recent releases
 
+- [2.1.0](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v2.1.0):
+  independent scene details, themed Jumbo clocks, stronger linked screen/LED
+  room-light dimming and arrow-only pagination.
 - [2.0.0](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v2.0.0):
   illustrated interface, eighteen games, permanent Normal/Creative/Hard modes,
   shared progression/global Bank, safer expanded storage and focused code cleanup.
@@ -176,10 +203,12 @@ This release adds:
   everything. Explicit SD backups and touch calibration are preserved.
 - Optional **Minimal, Digital, Analog, Neon, Flip, Binary and Orbit idle clocks**
   over the aquarium.
-  Open **Settings > CLOCK/WEATHER** for large/medium/small sizes, center or four-corner
+  Open **Settings > CLOCK/WEATHER** for large/medium/small/jumbo/tiny sizes, center or four-corner
   placement, 12/24-hour time, a DST toggle and UTC offsets in selectable
   1-hour, 30-minute or 15-minute steps. The default
   layout is large and centered. Clocks are **OFF by default** and saved per tank.
+  **Jumbo** enlarges the selected theme for distance reading, keeping its
+  design and colors with weather/activity beneath it. Other sizes are unchanged.
   Choose **15 sec, 30 sec, 1, 2, 5 or 10 min** of inactivity, or **Manual Only**;
   **SHOW CLOCK** opens it immediately. The first touch only dismisses the clock.
   **STYLE** offers separate primary and secondary colors: theme defaults or
@@ -286,6 +315,41 @@ are unchanged. Never erase NVS to perform a normal upgrade.
 
 See [firmware/CYD.md](firmware/CYD.md) for SD setup, calibration, console
 commands, JSON backup/restore and hardware limitations.
+
+## Playable website
+
+[Play Pocket Tank in your browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html).
+It runs the shared C simulation and renderer as WebAssembly, with mouse/touch
+input and Normal, Creative or Hard first-run profiles. Local browser storage
+keeps a complete archive of profiles, Bank, aquariums and preferences across
+reloads and browser restarts. Autosaves run every five seconds, after actions,
+when hidden and on exit; failures remain visible with retry/export controls.
+Only one tab can write the save at a time.
+
+Use **Export browser save** for a backup and **Import browser save** to restore
+that archive. Import validates the native save before replacing your current
+data; reset requires confirmation. Browser archives are not CYD JSON backups.
+HTTPS/localhost, JavaScript, WebAssembly, Web Locks and writable local storage
+are required. Hardware, Wi-Fi credentials, live weather, SD photos/calibration
+and firmware updates are intentionally unavailable.
+
+For a local build, activate **Emscripten 4.0.18**, restore **cJSON 1.7.19**
+(the firmware's managed component or `.browser-tools/cJSON`), then run:
+
+```powershell
+python tools\build_browser.py --out _site
+npm install --prefix .browser-tools --no-save playwright@1.56.1
+npx --prefix .browser-tools playwright install chromium
+node tools\test_browser.cjs
+```
+
+The test runner serves the staged game on an ephemeral localhost port and
+closes it afterward. It checks actual gameplay/input, all first-run modes,
+reload/pagehide/browser-restart persistence, exclusive tabs, save failures,
+export/import/reset and corrupt-save preservation. Pages builds and tests the
+same playable assets before deployment; JS/CSS/WASM use content-hashed paths.
+Run `tools/prepare_web_installer.py` before the browser build when staging a
+combined site with published USB firmware.
 
 ## Desktop preview and tests
 
@@ -580,6 +644,12 @@ There are no daily streaks or missed-visit penalties.
 
 **Settings** is grouped into **Display**, **Clock/Weather**, **Wi-Fi/Sync**,
 **SD Backups**, **Aquarium Care**, and **Device** (updates/calibration/wipe).
+Pagination buttons use arrows only; their touch areas and wrap behavior are unchanged.
+With **Display > ROOM LIGHT: DIM** or **DIM+NIGHT**, the screen and automatic
+back LED share an aggressive low-light curve: about 27% output at 50% room
+light, 8% at 25%, and 2% in darkness. Screen output is relative to your selected
+brightness, with a 1% floor before night dimming. ROOM LIGHT OFF disables
+sensor dimming for both outputs.
 Wi-Fi/Sync restarts into its low-memory setup mode with the backlight dark until
 the first complete frame, then returns to Settings after clock synchronization.
 **Display > SCALE** toggles **Normal 320x240** (formerly Compact, now the default
@@ -588,8 +658,23 @@ Existing saves retain their selected scale. Normal renders
 the full tank natively, making scene objects and clock graphics about 25%
 smaller in each dimension, with no crop or inset. Page controls remain
 readable. The setting and remapped positions persist per aquarium; failed
-saves roll back. Three horizontal tiles reuse the existing framebuffer to
-preserve weather's RAM budget. Normal can have a lower animation rate.
+saves roll back. Both sizes reuse tiled framebuffer storage to preserve
+weather's RAM budget.
+
+**Display > SCENE: BALANCED / SIMPLE / ENHANCED** is independent of scale.
+**Normal size + Balanced detail are the defaults.** Balanced keeps the complete
+scene with reduced secondary animation, aiming for about 10 FPS. Simple aims
+for about 20 FPS: real stationary seagrass and all placed decorations remain,
+but decorative animation, helpers, bubbles, the trophy shelf and ambient
+sparkles are hidden.
+Fish, dropped food and visible algae-care feedback remain active. Enhanced
+keeps smooth vegetation and full secondary animation; about 5 FPS is acceptable.
+These are performance goals, not frame caps or guarantees for every aquarium.
+Helpers still work normally; nothing is sold, removed or reset. Placement
+editors show the complete scene regardless of detail.
+This device-wide preference persists on the CYD outside aquarium/JSON saves.
+The simulator previews it for the current session. It is not a game mode,
+care assist. Existing saved size/detail choices are respected.
 
 - **Settings > Aquarium Care > Comfort Assist** (the saved Cozy Care option)
   keeps unattended care comfortable without pretending you fed,

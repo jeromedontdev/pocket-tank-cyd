@@ -851,8 +851,7 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
     if (g_game.page == GAME_MENU) {
         snprintf(text, sizeof text, "PLAY AS: %s >", t->n_fish ? t->fish[g_game.fish % t->n_fish].name : "GUEST");
         render_internal_button(&c, 32, 60, 240, 42, 0x1c2f36, MSP_TEAL, text, 1);
-        snprintf(text, sizeof text, "PAGE %d/3 >", g_game_menu + 1);
-        render_internal_button(&c, 280, 60, 144, 42, 0x1c2f36, MSP_TEAL, text, 2);
+        render_internal_button(&c, 280, 60, 144, 42, 0x1c2f36, MSP_TEAL, ">", 3);
         static const char *const genres[] = {
             "POP & SCORE", "FIND PAIRS", "SWIM GATES", "CAST & AIM",
             "FEED & TAP", "JOIN PIPES", "AIM & FIRE", "DODGE ROCKS",
@@ -870,8 +869,7 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
         render_internal_button(&c, 24, 314, 196, 32, 0x1c2f36, MSP_TEAL, g_game_relaxed ? "RELAXED" : "CHALLENGE", 2);
         render_internal_button(&c, 228, 314, 196, 32, 0x1c2f36, MSP_TEAL, "RECORDS", 2);
     } else if (g_game.page == GAME_RECORDS) {
-        snprintf(text, sizeof text, "PAGE %d/3 >", g_game_menu + 1);
-        render_internal_button(&c, 280, 54, 144, 32, 0x1c2f36, MSP_TEAL, text, 2);
+        render_internal_button(&c, 280, 54, 144, 32, 0x1c2f36, MSP_TEAL, ">", 3);
         static const char *const short_names[] = {"BUBBLES", "MATCH", "SLALOM", "CAST", "FRENZY", "REEF"};
         static const char *const medals[] = {"--", "BRONZE", "SILVER", "GOLD"};
         for (int i = 0; i < 6; i++) {

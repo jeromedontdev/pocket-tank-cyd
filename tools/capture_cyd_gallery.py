@@ -482,6 +482,13 @@ def main():
                 lib.sim_action(0)
                 scene("tank-trophies")
                 clock_collection = json.loads(sim.backup(lib))
+                for theme, name in ((2, "digital"), (3, "analog"), (5, "flip")):
+                    jumbo = copy.deepcopy(clock_collection)
+                    jumbo["tank"].update(clock_theme=theme, clock_layout=3, clock_flags=0)
+                    jumbo["companion"].update(captions=0, cosmetic=0)
+                    restore(jumbo)
+                    lib.sim_action(2); tap(330, 100); tap(100, 318)
+                    capture("clock-jumbo-" + name)
                 clock_collection["tank"].update(clock_theme=3, clock_layout=0, clock_delay=1)
                 restore(clock_collection)
                 for _ in range(64):

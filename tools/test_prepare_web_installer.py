@@ -81,6 +81,12 @@ class WebInstallerTests(unittest.TestCase):
         self.assertIn('href="./"', flasher)
         self.assertIn('href="./flash.html"', viewer)
         self.assertIn("require <strong>2.0.0 or newer</strong>", home)
+        self.assertIn("require <strong>2.1.0 or newer</strong>", home)
+        self.assertIn('id="latest-features"', home)
+        self.assertNotIn("coming-next", home)
+        self.assertNotIn("NEXT RELEASE", home.upper())
+        for theme in ("Digital", "Analog", "Flip", "Binary", "Orbit"):
+            self.assertIn(theme, home)
         self.assertIn("distinct aquarium game", home)
         self.assertNotIn("usb-update.mjs", home)
         self.assertNotIn("esp-web-install-button", home)

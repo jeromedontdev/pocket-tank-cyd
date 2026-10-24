@@ -54,7 +54,8 @@
 <nav aria-label="Main navigation">
   <strong>Pocket Tank CYD</strong>
   <a href="#features">Features</a>
-  <a href="#coming-next">New in 2.0</a>
+  <a href="#latest-features">New in 2.1</a>
+  <a href="./play.html">Play</a>
   <a href="./viewer.html">Save viewer</a>
   <a class="button" href="./flash.html">USB flasher</a>
 </nav>
@@ -73,6 +74,7 @@
         eighteen games. Its original simulation and authors remain credited.</p>
       <div class="actions">
         <a class="button primary" href="./flash.html">Install or update your CYD</a>
+        <a class="button" href="./play.html">Play in your browser</a>
         <a class="button" href="#features">Explore the features</a>
       </div>
       <p>Made for <strong>ESP32-2432S028 CYD</strong>: 2.8-inch touchscreen,
@@ -90,6 +92,8 @@
     <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">GitHub release</a>.
     The illustrated menus, eighteen games, first-run Normal/Creative/Hard modes,
     shared progression and global Fish Bank require <strong>2.0.0 or newer</strong>.
+    Three scene-detail levels, Tiny/Jumbo clocks, resizable supporting text and linked screen/LED dimming
+    require <strong>2.1.0 or newer</strong>.
     Check the published version above before installing. Older releases remain
     available, but cannot load the expanded current save format.
   </aside>
@@ -135,6 +139,18 @@
     </div>
   </section>
 
+  <section class="note" aria-labelledby="browser-heading">
+    <h2 id="browser-heading">No CYD yet? Play here.</h2>
+    <p>The browser simulator runs the actual game, with mouse and touchscreen
+      controls and its own locally saved aquarium. No board, USB cable or
+      account is needed. Your browser game is separate from a physical CYD;
+      it does not automatically synchronize device saves.</p>
+    <p>Progress stays in this browser on this device. Clearing site data,
+      private browsing or browser storage eviction can remove it. Hardware-only
+      features are not emulated.</p>
+    <a class="button primary" href="./play.html">Launch the browser simulator</a>
+  </section>
+
   <section class="split" aria-labelledby="family-heading">
     <div>
       <p class="eyebrow">Little fish, long memories</p>
@@ -153,9 +169,60 @@
     </figure>
   </section>
 
-  <section id="coming-next" aria-labelledby="next-heading">
+  <section id="latest-features" aria-labelledby="latest-heading">
+    <span class="badge">New in 2.1.0</span>
+    <h2 id="latest-heading">Your scene. Your clock. Comfortable light.</h2>
+    <p>Available in <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v2.1.0">Pocket Tank CYD 2.1.0</a>,
+      alongside all the game features below.</p>
+    <div class="grid">
+      <article class="card">
+        <h3>Three scene-detail levels</h3>
+        <p>Normal size and Balanced detail are the defaults. Choose Simple for
+          stationary real seagrass and decorations without helper creatures,
+          bubbles or ambient effects; their benefits continue. Enhanced keeps
+          smooth animations. Size and detail are independent.</p>
+        <p>Populated-device samples at either size: about 20 FPS Simple, 10 FPS
+          Balanced and 8-9 FPS Enhanced. Results depend on your aquarium.</p>
+      </article>
+      <article class="card">
+        <h3>Jumbo clocks that keep their style</h3>
+        <p>Tiny also joins the size choices. Clock &gt; Style &gt; Text has separate
+          Small/Medium/Large controls for date/AM-PM/seconds and weather/activity.
+          Captions wrap and sizes fit down when necessary to prevent overlap
+          at either screen resolution.</p>
+        <p>Make the time easier to read from across the room. Jumbo respects
+          Minimal, Digital, Analog, Neon, Flip, Binary and Orbit designs, plus
+          your colors, date/seconds options and enabled weather captions.
+          Large, Medium and Small remain available.</p>
+      </article>
+      <article class="card">
+        <h3>Quieter in a dark room</h3>
+        <p>Room-light dimming now controls both the screen and rear LED, with
+          much stronger low-light reduction: about 27% output at half room light,
+          8% at a quarter, and 2% in darkness. The screen keeps a small usable
+          minimum, while filtering softens brief shadows. Pagination buttons
+          use clear arrows instead of page labels.</p>
+      </article>
+    </div>
+    <div class="gallery">
+      <figure>
+        <img class="screen" src="./media/clock-jumbo-digital.png" loading="lazy" width="320" height="240" alt="Jumbo Digital clock with large seven-segment numerals">
+        <figcaption>Jumbo Digital</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/clock-jumbo-flip.png" loading="lazy" width="320" height="240" alt="Jumbo Flip clock with separate split-flap digit tiles">
+        <figcaption>Jumbo Flip</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/clock-jumbo-analog.png" loading="lazy" width="320" height="240" alt="Jumbo Analog clock with a round numbered dial and hands">
+        <figcaption>Jumbo Analog</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="expanded-game" aria-labelledby="game-heading">
     <span class="badge">New in 2.0.0</span>
-    <h2 id="next-heading">Deeper adventures. Still your quiet tank.</h2>
+    <h2 id="game-heading">Deeper adventures. Still your quiet tank.</h2>
     <p>These additions are included in
       <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v2.0.0">Pocket Tank CYD 2.0.0</a>.
       The flasher shows the exact published version it will install.</p>

@@ -10,4 +10,5 @@ firmware/keys/
 ota/
 dist/
 _site/
+.browser-tools/
 sim/tank.sav

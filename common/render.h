@@ -52,7 +52,7 @@ void render_clock_bounds(const tank_t *t, int *x, int *y, int *w, int *h);
  * Circular faces step down if necessary to keep legible captions on screen. */
 typedef struct {
     int x, y, w, h, face_x, face_y, face_w, face_h;
-    int caption_y, caption_h, caption_scale, caption_pitch, size, rows;
+    int caption_y, caption_h, caption_scale, caption_pitch, detail_scale, size, rows;
 } render_clock_layout_t;
 void render_clock_layout(const tank_t *t, render_clock_layout_t *layout);
 
@@ -351,11 +351,15 @@ enum { SET_TAP_NONE = 0, SET_TAP_CLOSE = 1, SET_TAP_BRIGHT = 2, SET_TAP_LIGHT = 
        SET_TAP_UPDATES = 6, SET_TAP_FEED = 8,
        SET_TAP_BACKUP = 10, SET_TAP_RESTORE = 11, SET_TAP_SAND = 12, SET_TAP_WATER = 13, SET_TAP_TOUCH = 14, SET_TAP_WIPE = 15, SET_TAP_WIFI = 16, SET_TAP_CLOCK_SHOW = 17, SET_TAP_BRIGHT_PREVIEW = 18,
        SET_TAP_ROOM = 19, SET_TAP_LED = 20, SET_TAP_AUTO_BACKUP = 21, SET_TAP_PHOTO = 22,
-       SET_TAP_RECOVERED = 23 };
-/* 1.3: the board's own options, kept by the platform (NVS on the CYD) and
- * shown on the settings page. room_pct < 0 = no sensor reading. */
-typedef struct { uint8_t room_mode, led_mode, auto_backup; int room_pct; } render_device_t;
+       SET_TAP_RECOVERED = 23, SET_TAP_DETAIL = 24 };
+/* Device options, kept by the platform (NVS on the CYD, session preview in
+ * the simulator). room_pct < 0 = no sensor reading; scene_detail is display-only. */
+/* Persisted CYD values: keep Balanced=0 and Simple=1. */
+enum { SCENE_BALANCED, SCENE_SIMPLE, SCENE_ENHANCED, SCENE_DETAIL_COUNT };
+typedef struct { uint8_t room_mode, led_mode, auto_backup; int room_pct; uint8_t scene_detail; } render_device_t;
 void render_set_device(const render_device_t *d);
+bool render_simple_scene(void);
+int render_scene_detail(void);
 void render_tank_emblem(uint16_t *fb, int stride, int x, int y, unsigned emblem);
 void render_backup_status(const char *message, bool arm_restore);
 uint32_t render_glow_rgb(const tank_t *t);   /* the water's surface colour, for the back LED */

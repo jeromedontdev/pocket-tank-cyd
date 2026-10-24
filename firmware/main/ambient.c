@@ -13,6 +13,7 @@ static const char *TAG = "ambient";
 static adc_oneshot_unit_handle_t s_adc;
 static bool s_led_ready, s_adc_ready;
 static uint8_t s_room = ROOM_LIGHT_OFF, s_led = BACK_LED_GLOW, s_auto_backup = 1;
+static uint8_t s_scene_detail;
 static int s_dark_raw, s_lit_raw;                 /* manual calibration; 0 = learn the room */
 static float s_base = -1, s_base_saved = -1, s_base_save_t;  /* the learned lit-room reading */
 static float s_raw_avg = -1, s_sample_t, s_dark_for, s_lit_for, s_phase;
@@ -43,6 +44,7 @@ void ambient_init(void) {
     s_room = nvs_get("room", ROOM_LIGHT_OFF, ROOM_LIGHT_MODES - 1);
     s_led = nvs_get("led", BACK_LED_GLOW, BACK_LED_MODES - 1);
     s_auto_backup = nvs_get("autobk", 1, 1);
+    s_scene_detail = nvs_get("simple", SCENE_BALANCED, SCENE_DETAIL_COUNT - 1);
     nvs_handle_t h; uint16_t base;
     if (nvs_open("tank", NVS_READONLY, &h) == ESP_OK) {
         if (nvs_get_u16(h, "ldrbase", &base) == ESP_OK && base > 0 && base < 4096) s_base = s_base_saved = base;
@@ -118,6 +120,17 @@ bool ambient_room_dark(void) { return s_dark; }
 int ambient_room_mode(void) { return s_room; }
 int ambient_led_mode(void) { return s_led; }
 bool ambient_auto_backup(void) { return s_auto_backup != 0; }
+int ambient_scene_detail(void) { return s_scene_detail; }
+bool ambient_set_scene_detail(int detail) {
+    if (detail < 0 || detail >= SCENE_DETAIL_COUNT) {
+        ESP_LOGE(TAG, "invalid scene detail %d", detail);
+        return false;
+    }
+    if (!nvs_put("simple", (uint8_t)detail)) return false;
+    s_scene_detail = (uint8_t)detail;
+    ESP_LOGI(TAG, "scene detail %d saved (display only)", detail);
+    return true;
+}
 bool ambient_set_room_mode(int mode) {
     if (mode < 0 || mode >= ROOM_LIGHT_MODES || !nvs_put("room", (uint8_t)mode)) return false;
     s_room = (uint8_t)mode; return true;
@@ -131,7 +144,8 @@ bool ambient_set_auto_backup(bool on) {
     s_auto_backup = on; return true;
 }
 bool ambient_save_all(void) {
-    return nvs_put("room", s_room) && nvs_put("led", s_led) && nvs_put("autobk", s_auto_backup);
+    return nvs_put("room", s_room) && nvs_put("led", s_led) && nvs_put("autobk", s_auto_backup) &&
+           nvs_put("simple", s_scene_detail);
 }
 void ambient_calibrate(int dark_raw, int bright_raw) {
     if (dark_raw <= bright_raw) dark_raw = bright_raw = 0;
@@ -158,11 +172,15 @@ static void learn_base(float dt) {
     }
 }
 
+static float room_light_gain(void) {
+    if (s_room == ROOM_LIGHT_OFF || s_raw_avg < 0) return 1;
+    float room = ambient_room_pct() / 100.0f;
+    /* Shared screen/LED curve: 100%, 26.5%, 8.1%, 2% at room 100/50/25/0. */
+    return 0.02f + 0.98f * room * room;
+}
 int ambient_brightness_pct(int pct) {
-    if (s_room == ROOM_LIGHT_OFF || s_raw_avg < 0) return pct;
-    int room = ambient_room_pct();
-    int scaled = pct * (35 + 65 * room / 100) / 100;   /* a dark room keeps 35% of the keeper's level */
-    return scaled < 8 ? 8 : scaled;
+    int scaled = (int)lroundf(pct * room_light_gain());
+    return scaled < 1 ? 1 : scaled;
 }
 bool ambient_force_night(void) { return s_room == ROOM_LIGHT_NIGHT && s_dark; }
 
@@ -211,11 +229,13 @@ void ambient_tick(const tank_t *t, float dt) {
             rgb = 0xff7800; level = (t->night ? 0.06f : 0.22f) * (0.25f + 0.75f * pulse);
         }
     }
-    led_from_rgb(rgb, level);
+    led_from_rgb(rgb, level * room_light_gain());
 }
 
 void ambient_log(void) {
-    ESP_LOGI(TAG, "room sensor raw %d avg %.0f -> %d%% (%s) | learned lit %.0f, manual dark %d lit %d | room %d led %d auto backup %d | LED %u %u %u",
+    ESP_LOGI(TAG, "room sensor raw %d avg %.0f -> %d%% (%s) | learned lit %.0f, manual dark %d lit %d | room %d led %d auto backup %d | LED %u %u %u | scene %s | light gain %.1f%%",
              ambient_ldr_raw(), s_raw_avg, ambient_room_pct(), s_dark ? "DARK" : "lit", s_base, s_dark_raw, s_lit_raw,
-             s_room, s_led, s_auto_backup, s_led_rgb[0], s_led_rgb[1], s_led_rgb[2]);
+             s_room, s_led, s_auto_backup, s_led_rgb[0], s_led_rgb[1], s_led_rgb[2],
+             s_scene_detail == SCENE_SIMPLE ? "SIMPLE" : s_scene_detail == SCENE_ENHANCED ? "ENHANCED" : "BALANCED",
+             room_light_gain() * 100);
 }

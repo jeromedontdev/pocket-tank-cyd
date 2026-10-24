@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102c35">
+  <title>Play Pocket Tank · Browser simulator</title>
+  <link rel="stylesheet" href="play.css">
+</head>
+<body>
+  <main>
+    <header><a href="./">← Pocket Tank CYD</a><h1>Play Pocket Tank</h1>
+      <p>The real game and pixel renderer, running locally in your browser. Choose Normal, Hard or Creative on your first visit.</p>
+      <p id="build-info"></p>
+    </header>
+    <div id="status" role="status" aria-live="polite">Loading the game…</div>
+    <section aria-label="Game" class="game">
+      <canvas id="screen" width="320" height="240" tabindex="0" aria-label="Pocket Tank touchscreen. Click, tap, drag or hold to play."></canvas>
+      <div id="actions" class="buttons" aria-label="Game shortcuts">
+        <button data-action="0" disabled>Tank</button>
+        <button data-action="1" disabled>Keeper</button>
+        <button data-action="7" disabled>Life</button>
+        <button data-action="2" disabled>Settings</button>
+        <button data-action="3" disabled>Shop</button>
+        <button data-action="4" disabled>Feed</button>
+        <button data-action="6" disabled>Light</button>
+      </div>
+    </section>
+    <p>Mouse or touchscreen: tap, drag and hold directly on the screen. Use Keeper → Games to play the mini-games. Shortcuts unlock after choosing a first-run profile. The page can scroll normally outside the game screen.</p>
+    <section aria-labelledby="saves-title">
+      <h2 id="saves-title">Your browser save</h2>
+      <p>All profiles, Bank, aquariums and preferences stay in this browser on this site. Autosaved every 5 seconds, after actions, when hidden and on exit. Keep an export: clearing site data, private browsing or browser eviction can remove saves. Only one tab can play at a time.</p>
+      <div class="buttons">
+        <button id="save" disabled>Save / retry</button>
+        <button id="export">Export browser save</button>
+        <button id="import">Import browser save</button>
+        <button id="reset">Reset browser game</button>
+        <button id="reload">Reload / retry startup</button>
+        <input id="file" type="file" accept=".json,application/json" hidden>
+      </div>
+      <p id="save-detail">Checking local storage…</p>
+    </section>
+    <aside><strong>Browser simulation, not a device connection.</strong>
+      No Wi-Fi, live weather, sensor, LED, touch calibration, SD card, USB or firmware flashing. Hardware-only actions are unavailable. No credentials are requested and no saves are sent to a server. This does not synchronize with your CYD. Browser save exports are complete browser archives, not device backup files. The “+25 dollars” desktop debug shortcut is intentionally omitted.</aside>
+    <noscript>This playable simulator requires JavaScript and WebAssembly.</noscript>
+  </main>
+  <script type="module" src="play.mjs"></script>
+</body>
+</html>

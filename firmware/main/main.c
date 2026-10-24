@@ -329,6 +329,13 @@ static void tank_task(void *arg) {
               device_wifi_setup();
           }
           else if (w == SET_TAP_BACKUP || w == SET_TAP_RESTORE) sd_port_backup_action(&tank, w == SET_TAP_RESTORE, v != 0);
+          else if (w == SET_TAP_DETAIL) {
+              int detail = (ambient_scene_detail() + 1) % SCENE_DETAIL_COUNT;
+              render_backup_status(ambient_set_scene_detail(detail) ?
+                  (detail == SCENE_SIMPLE ? "SIMPLE SAVED - STATIC DECOR" :
+                   detail == SCENE_ENHANCED ? "ENHANCED SAVED - SMOOTH EFFECTS" : "BALANCED SAVED - LIGHTER EFFECTS") :
+                  "SCENE SAVE FAILED - UNCHANGED", false);
+          }
           else if (w == SET_TAP_ROOM) {
               int m = (ambient_room_mode() + 1) % ROOM_LIGHT_MODES;
               static const char *const names[] = {"ROOM LIGHT OFF", "ROOM LIGHT DIMS THE SCREEN", "DARK ROOM: SCREEN DIMS, TANK SLEEPS"};
@@ -389,7 +396,7 @@ static void tank_task(void *arg) {
         ambient_tick(&tank, dt);
         sd_port_auto_backup_tick(&tank, dt);
         { render_device_t d = { (uint8_t)ambient_room_mode(), (uint8_t)ambient_led_mode(), ambient_auto_backup(),
-                                ambient_ldr_raw() < 0 ? -1 : ambient_room_pct() };
+                                ambient_ldr_raw() < 0 ? -1 : ambient_room_pct(), (uint8_t)ambient_scene_detail() };
           render_set_device(&d); }
         brightness_apply(tank.night && !render_clock_active(&tank) && !touch_port_games());
         render_work_caches(!weather_network_needed_after(dt));
@@ -422,10 +429,9 @@ static void tank_task(void *arg) {
             int64_t t0 = esp_timer_get_time();
             wait_us += t0 - pf_wait;
             touch_port_poll(&tank);
-            int tile_height = tank.companion.display_compact ? 80 : TANK_H;
+            int tile_height = 80;
             size_t tile_bytes = (size_t)TANK_W * tile_height * sizeof(uint16_t);
-            render_set_backdrop_cache(tank.companion.display_compact ? (uint8_t *)fb[cur] + tile_bytes : NULL,
-                                      tank.companion.display_compact ? PLAN_FB_BYTES - tile_bytes : 0);
+            render_set_backdrop_cache((uint8_t *)fb[cur] + tile_bytes, PLAN_FB_BYTES - tile_bytes);
             bool page = touch_port_milestones() || touch_port_settings() || touch_port_updates() || touch_port_shop();
             bool photo = false; int photo_rows = 0;
             if (s_photo_delay >= 0 && (s_photo_delay -= dt) < 0) {
@@ -433,15 +439,14 @@ static void tank_task(void *arg) {
                 photo = !page && sd_port_photo_begin(TANK_W, TANK_H);
                 if (!photo) render_backup_status(page ? "PHOTO CANCELED - CLOSE THE PAGE" : "PHOTO FAILED - CHECK SD", false);
             }
-            render_damage_begin(&tank, photo || !tank.companion.display_compact || page ||
+            render_damage_begin(&tank, photo || page ||
                 (touch_port_selected() >= 0 && !render_clock_active(&tank)) || setup_active() || touch_port_confirm_up() ||
                 touch_port_calibrating() || (!render_clock_active(&tank) && notice_current() != NULL));
             int damage_cursor = 0, left = 0, first = 0, width = TANK_W, height = tile_height;
-            while (tank.companion.display_compact ?
-                   render_damage_next(&damage_cursor, &left, &first, &width, &height) : damage_cursor++ == 0) {
+            while (render_damage_next(&damage_cursor, &left, &first, &width, &height)) {
             drawn_rows += height * width / TANK_W;
-            render_region(left, tank.companion.display_compact ? width : 0);
-            render_tile(first, tank.companion.display_compact ? height : 0);
+            render_region(left, width);
+            render_tile(first, height);
             /* a page that covers the glass (KEEPER, SETTINGS, UPDATES, UPGRADES: each fills the whole frame before
                it draws): the tank under it is not rendered - it was every frame, hidden (2026-10-13, on a watch:
                19 fps with SETTINGS up, 25 without the hidden tank). The tank itself ticks on. No buffer holds

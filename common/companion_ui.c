@@ -681,7 +681,7 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
                                id < 6 ? STAMP_LEAF : id < 8 ? STAMP_HEART : STAMP_SHELL,
                                !!(s->discoveries & (1u << id)));
         }
-        button(fb, stride, 12, 286, 424, "NEXT PAGE");
+        button(fb, stride, 12, 286, 424, ">");
         render_text(fb, stride, 14, 326, 1, 0xa7c4ba, "+ = FOUND. TAP A ROW FOR A HINT.");
     } else if (page == COMPANION_SECTION_ADVENTURES) {
         int a = s->adventure ? s->adventure - 1 : story;

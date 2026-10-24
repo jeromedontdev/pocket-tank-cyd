@@ -89,7 +89,20 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.0.0: illustrated interface, modes and shared collection
+### New in 2.1.0: scene detail, themed Jumbo and linked low-light dimming
+
+- Play the actual game on the website with mouse/touch controls, complete browser-local saves, export/import and confirmed reset. Saves survive reload/reopen; browser storage failures are explicit. This is separate from your CYD and does not emulate Wi-Fi, live weather, SD or device hardware.
+- Independent Normal/Enlarged size and Balanced/Simple/Enhanced detail; Normal + Balanced are the defaults, with saved choices preserved.
+- Simple retains real stationary seagrass, all placed decorations and fixed scenery, hiding helpers/bubbles/ambient effects without removing benefits or altering care, money or progression.
+- Balanced reduces grass and secondary animation at either size; Enhanced retains smooth curved vegetation and full bubble/shrimp density. Both sizes use bounded compressed backdrop caching and correct scaled tiled/region flushing.
+- Warmed populated-CYD measurements: Simple about 20 FPS, Balanced about 10 FPS, Enhanced about 8-9 FPS at either size. Goals and samples are not guaranteed minimums or artificial frame caps.
+- Five clock sizes include Tiny and Jumbo, preserving all seven theme designs: Minimal text, Digital segments, Analog hands, Neon glow, Flip tiles, Binary dots and Orbit rings. Primary/secondary colors, seconds/date, weather/activity, UTC/DST and per-tank persistence remain.
+- Clock > Style > Text independently sizes date/AM-PM/seconds and weather/activity as Small/Medium/Large. Wrapping and automatic fitting keep long captions and every theme on screen without overlap at both resolutions.
+- Room-light DIM/DIM+NIGHT uses one aggressive quadratic gain for screen and automatic rear LED: about 27% at 50% room light, 8% at 25%, 2% in darkness, with a small screen floor and existing shadow filtering/night hysteresis.
+- Arrow-only pagination buttons preserve existing hit areas and navigation. Website, illustrated guide, firmware notes and installer copy updated together.
+- Binary saves remain 6008 bytes/schema 16. Tiny and supporting-text sizes use spare clock metadata bits. Back up before upgrading; do not downgrade an upgraded save to firmware that cannot read these settings.
+
+### Previously in 2.0.0: illustrated interface, modes and shared collection
 - Flatter menus: independent Goals/Album, Themes under Tank, Identity under Aquariums, a two-page Fish menu and Stories/RPG Adventures hub.
 - Six additional games (18 total): Lighthouse, Shell Slide, Sonar Sweep, Tide 2048, Harbor Stack and Echo Reef, with records, medals and balanced Normal/Hard coin/XP rewards.
 - First-run Normal / Creative / Hard choice, fixed until a confirmed full wipe. Existing saves migrate to Normal. The aquarium selector switches layouts, not modes; money, progress, unlocks and records follow every tank.
@@ -173,7 +186,7 @@ while adding its own modes, shared progression, genetics, stories and games.
 - Seven idle clocks: Minimal, seven-segment Digital, Analog, Neon, Flip, Binary and Orbit.
 - Independent primary/secondary clock colors; hide seconds, panel/border and date.
 - Clear Orbit caption spacing and an outside-card arrow to cycle selected fish.
-- Per-tank OFF/manual/15-second-to-10-minute activation, three sizes and five positions.
+- Per-tank OFF/manual/15-second-to-10-minute activation, five sizes (including Tiny/Jumbo), separately sized supporting text and five positions.
 - Selectable 1-hour/30-minute/15-minute UTC adjustment and manual DST +1-hour toggle.
 - On-screen Wi-Fi setup, saved-network management and boot/on-demand NTP time.
 - Full single-page QWERTY password keyboard with clear keycaps and separate numbers/symbols.

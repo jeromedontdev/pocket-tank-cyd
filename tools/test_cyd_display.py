@@ -70,10 +70,7 @@ static int xSemaphoreTake(int sem, int delay) {
 """
 
 TEST = r"""
-static void check_frame(uint16_t *frame, int height) {
-    tile_h = height == TANK_H ? 0 : height;
-    for (tile_y = 0; tile_y < TANK_H; tile_y += height)
-        display_port_flush(frame + tile_y * TANK_W);
+static void verify_frame(const uint16_t *frame) {
     assert(!pending);
     for (int y = 0; y < 320; y++) for (int x = 0; x < 240; x++) {
         int lx = y * TANK_W / 320, ly = TANK_H - 1 - x * TANK_H / 240;
@@ -81,12 +78,38 @@ static void check_frame(uint16_t *frame, int height) {
         uint16_t v = frame[ly * TANK_W + lx];
         if (lcd[y * 240 + x] != (uint16_t)((v >> 8) | (v << 8)))
             fprintf(stderr, "Full LCD mismatch %dx%d tile %d inversion %d at %d,%d region %d+%d\n",
-                TANK_W, TANK_H, height, s_inverted, x, y, region_x, region_w);
+                TANK_W, TANK_H, tile_h, s_inverted, x, y, region_x, region_w);
         assert(lcd[y * 240 + x] == (uint16_t)((v >> 8) | (v << 8)));
     }
 }
+static void check_frame(uint16_t *frame, int height) {
+    for (tile_y = 0; tile_y < TANK_H; tile_y += height) {
+        tile_h = height == TANK_H ? 0 : TANK_H - tile_y < height ? TANK_H - tile_y : height;
+        display_port_flush(frame + tile_y * TANK_W);
+    }
+    verify_frame(frame);
+}
 int main(void) {
     uint16_t *frame = malloc(320 * 240 * 2); assert(frame);
+    for (int invert = 0; invert < 2; invert++) {
+        TANK_W = 240; TANK_H = 180; s_inverted = invert != 0;
+        for (int i = 0; i < TANK_W * TANK_H; i++) frame[i] = (uint16_t)(i * 13u);
+        check_frame(frame, 80);
+        unsigned sent_before = s_blocks_sent;
+        check_frame(frame, 80);
+        assert(s_blocks_sent == sent_before);
+        for (int pass = 0; pass < 8; pass++) {
+            region_x = pass * 29; region_w = TANK_W - region_x < 29 ? TANK_W - region_x : 29;
+            tile_y = pass % 5 * 40; tile_h = TANK_H - tile_y < 40 ? TANK_H - tile_y : 40;
+            for (int y = tile_y; y < tile_y + tile_h; y++)
+                for (int x = region_x; x < region_x + region_w; x++) frame[y * TANK_W + x] ^= 0x73ae;
+            display_port_flush(frame + tile_y * TANK_W);
+            verify_frame(frame);
+            region_x = region_w = 0;
+            check_frame(frame, 80);
+        }
+    }
+    memset(s_block_valid, 0, sizeof s_block_valid);
     for (int mode = 0; mode < 4; mode++) {
         TANK_W = mode % 2 ? 320 : 240; TANK_H = mode % 2 ? 240 : 180;
         int height = mode % 2 ? 80 : 180;

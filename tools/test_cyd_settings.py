@@ -38,7 +38,7 @@ int main(void) {
         SET_TAP_BRIGHT, SET_TAP_BRIGHT_PREVIEW, SET_TAP_LIGHT, SET_TAP_IDLE,
         SET_TAP_FEED, SET_TAP_BACKUP, SET_TAP_RESTORE, SET_TAP_SAND,
         SET_TAP_WATER, SET_TAP_WIFI, SET_TAP_ROOM, SET_TAP_LED,
-        SET_TAP_AUTO_BACKUP, SET_TAP_PHOTO
+        SET_TAP_AUTO_BACKUP, SET_TAP_PHOTO, SET_TAP_DETAIL
     };
     for (unsigned i = 0; i < sizeof forwarded / sizeof *forwarded; i++) {
         result = forwarded[i]; result_value = (int)i + 1;

@@ -20,7 +20,8 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.0.0**, with permanent modes, eighteen games, global Bank,
+- Source release: **2.1.0**, adding three scene details, themed Jumbo clocks,
+  linked screen/LED low-light dimming and arrow-only pagination to permanent modes, eighteen games, global Bank,
   illustrated UI and focused code cleanup. This began as a hardware port but
   is now a distinct aquarium game; retain upstream simulation/license credit.
   Verify publication through Actions before claiming deployed downloads.
@@ -88,6 +89,16 @@ or deployment is published. Update this file when its contracts change.
   screenshots or advance the user's story.
 - No known unfinished feature is implied by this handoff. New requests and
   current CI/GitHub state determine the next task.
+- Release 2.1 adds Display > SCENE Balanced/Simple/Enhanced, independently of scale.
+  This is a device-only `tank/simple` NVS preference, not a game mode or save
+  field. Normal size + Balanced detail are defaults; preserve saved choices.
+  Simple hides helpers/bubbles but retains real static grass and all decorations;
+  all simulation, benefits, ownership and care rules remain intact. Keep
+  food/algae feedback visible and hidden helper hit targets disabled.
+  Placement editors always show the complete scene. Enhanced keeps smooth
+  animation; Balanced reduces secondary animation independently of size;
+  simulator preview is session-only. Test both scales and transitions, and
+  never infer FPS gains without actual-unit measurements.
 
 ## Product constraints
 
@@ -120,6 +131,7 @@ or deployment is published. Update this file when its contracts change.
 | Platform ports | `firmware/components/tankcore/` and `firmware/main/*port*`: NVS, time, network, weather, SD |
 | Device diagnostics | `firmware/main/director.c`: serial staging/debug commands, including read-only `rpg` |
 | Simulator | `sim/main.c`, `sim/run.py`, `sim/*port*`: actual core/renderer, staged saves, native ABI |
+| Playable web game | `web/play.html`, `play.mjs`, `play.css`, `sim/browser_port.c`, `tools/build_browser.py`, `test_browser.cjs`: real WASM game, atomic local archives, exclusive-tab locking and recovery |
 | Regressions | `tools/test_*.c`, `tools/test_*.py`, `sim/test_*.py`, `sim/testdata/saves/` |
 | Screenshots | `tools/capture_cyd_gallery.py` -> `docs/media/cyd-features/`: actual renderer, separate demonstration tank |
 | Web | `web/index.html`: features; `flash.html`: USB flashing; `viewer.html`: local backup viewer; `usb-update.mjs`: safety-critical updater |
@@ -325,7 +337,7 @@ For feature work, update the relevant entries in:
 3. [firmware/CYD.md](firmware/CYD.md) and [docs/OTA.md](docs/OTA.md): hardware,
    persistence, backup/update constraints when changed.
 4. `docs/media/cyd-features/`: actual-renderer screenshots, no invented UI.
-5. `web/index.html`, `flash.html`, `viewer.html` and staging tests when relevant.
+5. `web/index.html`, `flash.html`, `viewer.html`, `play.html` and staging tests when relevant.
    Screenshot selection is `FEATURE_IMAGES` in `tools/prepare_web_installer.py`;
    images come from docs during Pages staging, not duplicated web assets.
 6. `tools/package_cyd_release.py`: accurate new-build notes and install safety.
@@ -342,6 +354,27 @@ For feature work, update the relevant entries in:
   For a new release update numeric/string version together, docs, website
   release copy, and release notes. Do not show source-only work as already in
   older downloadable binaries.
+- Before every push/publication, update relevant website and documentation
+  alongside behavior changes. Remove roadmap/coming-soon claims for implemented
+  features, refresh release/version requirements and screenshots where needed,
+  and verify deployed content after Pages completes.
+- Tiny uses layout bit 5 (low size bits zero); detail size uses bits
+  6..7, caption size uses delay bits 3..4. Use the shared packing/validation
+  helpers; preserve unrelated fields and the 6008-byte/schema-16 layout.
+  Test Small/Medium/Large detail and caption preferences at both resolutions,
+  with all five sizes/positions, long captions, sync/no-sync, exact bounds,
+  time/detail non-overlap and live/tiled-cache equality. Auto-fit is intentional.
+- Jumbo is a size, not a replacement numeric theme: preserve all seven clock
+  designs, colors and detail flags. Test identical-color theme distinctness,
+  both scales, weather captions, cache/tile parity and save round trips.
+- Include real browser input and reload persistence whenever the playable
+  website simulator changes. Browser storage errors must be visible; do not
+  claim that a save is durable before its storage write succeeds. Keep browser
+  saves separate from the device and document unsupported hardware features.
+  Build with Emscripten 4.0.18/cJSON 1.7.19; run the pinned Playwright 1.56.1
+  Chromium suite with Node 22.16.0 before deployment. Reject corrupt native
+  archives/preferences before import replaces localStorage; preserve exact
+  stored data on failed startup. Never expose credential/update flows in web play.
 - Run relevant tests, check diff/staging for secrets and generated artifacts,
   commit with the required coauthor trailer, and push main without force.
 - Tag the verified release commit `vMAJOR.MINOR.PATCH` and push that tag.

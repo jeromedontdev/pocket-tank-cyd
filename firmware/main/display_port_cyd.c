@@ -137,20 +137,21 @@ bool display_port_init(void) {
 void display_port_flush(const uint16_t *fb) {
     if (!s_panel) return;
     int tile_start = render_tile_top(), tile_end = render_tile_bottom();
-    if (s_layout_width != TANK_W || s_layout_height != TANK_H || s_layout_tile != tile_end - tile_start) {
+    int tile_layout = tile_end - tile_start == TANK_H ? TANK_H : 80;
+    if (s_layout_width != TANK_W || s_layout_height != TANK_H || s_layout_tile != tile_layout) {
         memset(s_block_valid, 0, sizeof s_block_valid);
-        s_layout_width = TANK_W; s_layout_height = TANK_H; s_layout_tile = tile_end - tile_start;
+        s_layout_width = TANK_W; s_layout_height = TANK_H; s_layout_tile = tile_layout;
     }
-    int panel_start = tile_start * CYD_PANEL_H / TANK_H;
-    int panel_end = tile_end * CYD_PANEL_H / TANK_H;
-#if CYD_LCD_MIRROR_Y
-    int temp = panel_start; panel_start = CYD_PANEL_H - panel_end; panel_end = CYD_PANEL_H - temp;
-#endif
-    if (s_inverted) { int temp = panel_start; panel_start = CYD_PANEL_H - panel_end; panel_end = CYD_PANEL_H - temp; }
+    bool reverse_y = (CYD_LCD_MIRROR_Y != 0) != s_inverted;
+    int source_start = reverse_y ? TANK_H - tile_end : tile_start;
+    int source_end = reverse_y ? TANK_H - tile_start : tile_end;
+    int panel_start = (source_start * CYD_PANEL_H + TANK_H - 1) / TANK_H;
+    int panel_end = (source_end * CYD_PANEL_H + TANK_H - 1) / TANK_H;
     /* Arbitrary CPU-damage slices do not share the canonical tile CRC geometry. */
     int region_left = render_region_left(), region_right = render_region_right();
     bool canonical = region_left == 0 && region_right == TANK_W &&
-        tile_start % 80 == 0 && (tile_end - tile_start == 80 || tile_end - tile_start == TANK_H);
+        tile_start % 80 == 0 && (tile_end - tile_start == TANK_H ||
+        tile_end == (tile_start + 80 < TANK_H ? tile_start + 80 : TANK_H));
     if (!canonical) memset(s_block_valid, 0, sizeof s_block_valid);
 #if CYD_DIAGNOSTIC_PATTERN
     (void)fb;
@@ -169,12 +170,11 @@ void display_port_flush(const uint16_t *fb) {
     int region_width = panel_end - panel_start;
     int rows = CYD_STRIPE_BYTES / 2 / sizeof(uint16_t) / region_width;
     if (rows > CYD_STRIPE_ROWS) rows = CYD_STRIPE_ROWS;
-    int native_start = region_left * CYD_PANEL_W / TANK_W;
-    int native_end = region_right * CYD_PANEL_W / TANK_W;
-#if CYD_LCD_MIRROR_X
-    int temp_x = native_start; native_start = CYD_PANEL_W - native_end; native_end = CYD_PANEL_W - temp_x;
-#endif
-    if (s_inverted) { int temp_x = native_start; native_start = CYD_PANEL_W - native_end; native_end = CYD_PANEL_W - temp_x; }
+    bool reverse_x = (CYD_LCD_MIRROR_X != 0) != s_inverted;
+    int source_left = reverse_x ? TANK_W - region_right : region_left;
+    int source_right = reverse_x ? TANK_W - region_left : region_right;
+    int native_start = (source_left * CYD_PANEL_W + TANK_W - 1) / TANK_W;
+    int native_end = (source_right * CYD_PANEL_W + TANK_W - 1) / TANK_W;
     bool pending = false;
     unsigned stripe = 0;
     for (int native_y = native_start; native_y < native_end; native_y += rows) {
@@ -202,7 +202,7 @@ void display_port_flush(const uint16_t *fb) {
                 target[native_x - panel_start] = (uint16_t)((pixel >> 8) | (pixel << 8));
             }
         }
-        int tile_index = panel_start / 80, block = native_y / (CYD_STRIPE_ROWS / 2);
+        int tile_index = tile_start / 80, block = native_y / (CYD_STRIPE_ROWS / 2);
         uint32_t crc = esp_crc32_le(0, (const uint8_t *)buffer, (size_t)count * region_width * sizeof *buffer);
         if (canonical && s_block_valid[tile_index][block] && s_block_crc[tile_index][block] == crc) {
             s_blocks_skipped++;

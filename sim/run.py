@@ -174,10 +174,38 @@ def main():
                         lib.sim_frame(0.25)
 
                 lib.sim_action(2)
+                tap(100, 100)
+                assert lib.sim_scene_detail() == 0
+                assert lib.sim_width() == 320, "Fresh profiles default to Normal size"
+                before_scene = backup(lib)
+                tap(200, 192)
+                assert lib.sim_simple_scene() == 1
+                assert backup(lib) == before_scene, "Scene detail must not mutate the aquarium save"
+                lib.sim_action(0)
+                pixels = lib.sim_frame(0)
+                simple = ctypes.string_at(pixels, lib.sim_width() * lib.sim_height() * 2)
+                lib.sim_action(2)
+                tap(100, 100)
+                tap(200, 192)
+                assert lib.sim_simple_scene() == 0
+                assert lib.sim_scene_detail() == 2
+                tap(200, 192)  # Enhanced -> Balanced.
+                assert lib.sim_scene_detail() == 0
+                lib.sim_action(0)
+                pixels = lib.sim_frame(0)
+                assert simple != ctypes.string_at(pixels, lib.sim_width() * lib.sim_height() * 2)
+                print("PASS: Normal/Balanced defaults and three scene details through real simulator touch, changed rendering and unchanged aquarium save")
+                lib.sim_action(2)
                 tap(330, 100)  # Clock subpage.
                 tap(220, 69); tap(220, 109); tap(220, 149); tap(120, 189); tap(220, 229); tap(380, 270)
                 options = json.loads(backup(lib))["tank"]
                 assert (options["clock_theme"], options["clock_flags"], options["clock_utc_quarters"], options["clock_layout"], options["clock_delay"]) == (1, 1, 4, 5, 1)
+                tap(220, 109); tap(220, 109)
+                assert json.loads(backup(lib))["tank"]["clock_layout"] == 7, "Jumbo size preserves corner placement"
+                tap(220, 109)
+                assert json.loads(backup(lib))["tank"]["clock_layout"] == 36, "Tiny size preserves corner placement"
+                tap(220, 109); tap(220, 109)
+                assert json.loads(backup(lib))["tank"]["clock_layout"] == 5, "Five sizes wrap without changing saved position"
                 tap(330, 189)
                 assert json.loads(backup(lib))["tank"]["clock_flags"] == 3, "DST must preserve 12-hour format"
                 tap(330, 189)
@@ -200,6 +228,14 @@ def main():
                 tap(220, 163); tap(220, 207); tap(220, 251)
                 assert json.loads(backup(lib))["tank"]["clock_flags"] == 1, "Color wrapping/detail toggles must preserve format and DST"
                 assert json.loads(backup(lib))["tank"]["clock_secondary"] == 0
+                tap(276, 24)  # Text subpage.
+                for step in range(3):
+                    tap(220, 88); tap(220, 186)
+                    text = json.loads(backup(lib))["tank"]
+                    assert text["clock_layout"] == 5 + ((step + 1) % 3) * 64
+                    assert text["clock_delay"] == 1 + ((step + 1) % 3) * 8
+                    assert text["clock_secondary"] == 0
+                tap(380, 20)  # Back to Style.
                 tap(380, 20)
                 options = json.loads(backup(lib))["tank"]
                 tap(120, 318)

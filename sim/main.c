@@ -11,6 +11,7 @@
 #include "companion.h"
 #include "weather.h"
 #include <math.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,43 @@ static int child_parent = 1;
 static float wipe_left;
 static char error[128];
 void net_sim_advance(float dt);
+#ifdef __EMSCRIPTEN__
+static render_device_t browser_device = {0, 1, 1, -1, SCENE_BALANCED};
+static bool browser_preferences_load(void) {
+    unsigned char values[4];
+    FILE *file = fopen("device.bin", "rb");
+    if (!file) return errno == ENOENT;
+    bool ok = fread(values, 1, sizeof values, file) == sizeof values &&
+        fgetc(file) == EOF && !ferror(file) &&
+        values[0] < 3 && values[1] < 3 && values[2] < 2 && values[3] < SCENE_DETAIL_COUNT;
+    if (fclose(file)) ok = false;
+    if (ok) {
+        browser_device.room_mode = values[0]; browser_device.led_mode = values[1];
+        browser_device.auto_backup = values[2]; browser_device.scene_detail = values[3];
+    }
+    render_set_device(&browser_device);
+    return ok;
+}
+static bool browser_brightness_valid(void) {
+    FILE *file = fopen("tank.sav.brightness", "rb");
+    if (!file) return errno == ENOENT;
+    int value = fgetc(file);
+    bool ok = value >= 10 && value <= 100 && fgetc(file) == EOF && !ferror(file);
+    if (fclose(file)) ok = false;
+    return ok;
+}
+static bool browser_preferences_save(void) {
+    unsigned char values[] = {browser_device.room_mode, browser_device.led_mode,
+                             browser_device.auto_backup, browser_device.scene_detail};
+    FILE *file = fopen("device.bin.next", "wb");
+    if (!file) return false;
+    bool ok = fwrite(values, 1, sizeof values, file) == sizeof values;
+    if (fclose(file)) ok = false;
+    if (ok) ok = rename("device.bin.next", "device.bin") == 0;
+    if (!ok) remove("device.bin.next");
+    return ok;
+}
+#endif
 
 static bool brightness_path(char *out, size_t cap) {
     const char *explicit_path = getenv("POCKET_TANK_BRIGHTNESS");
@@ -85,6 +123,13 @@ const icon_t *icons_resolve(const icon_t *icon) {
 }
 
 API int sim_init(const void *icons, size_t size) {
+    error[0] = 0;
+#ifdef __EMSCRIPTEN__
+    if (!browser_preferences_load() || !browser_brightness_valid()) {
+        snprintf(error, sizeof error, "Browser device preferences are corrupt or unreadable");
+        return 0;
+    }
+#endif
     brightness_load();
     weather_init();
     render_clock_synchronized(true);
@@ -92,18 +137,30 @@ API int sim_init(const void *icons, size_t size) {
     void *scratch = calloc(1, render_decor_scratch_size());
     if (!bank || !scratch) {
         fprintf(stderr, "Simulator allocation failed\n");
+        snprintf(error, sizeof error, "Simulator allocation failed");
         free(bank); free(scratch); bank = NULL; return 0;
     }
     memcpy(bank, icons, size); bank_size = size;
     render_set_decor_scratch(scratch);
     tank_init(&tank, 12345);
     progression_boot(&tank);
+    if (!progression_storage_ready()) {
+        snprintf(error, sizeof error, "Profile storage is corrupt or unreadable");
+        render_set_decor_scratch(NULL);
+        free(bank); free(scratch); bank = NULL; bank_size = 0;
+        return 0;
+    }
     notice_sync(&tank);
     if (progression_setup_pending()) setup_begin(&tank);
     return 1;
 }
 
-API int sim_save(void) { return progression_save(&tank); }
+API int sim_save(void) {
+#ifdef __EMSCRIPTEN__
+    if (!browser_preferences_save() || !brightness_save()) return 0;
+#endif
+    return progression_save(&tank);
+}
 API char *sim_backup(void) { return progression_backup_json(&tank); }
 API void sim_free(void *memory) { free(memory); }
 API const char *sim_error(void) { return error; }
@@ -112,6 +169,8 @@ API const char *sim_network_message(void) { return update_message_title(); }
 API int sim_clock_active(void) { return render_clock_active(&tank); }
 API int sim_brightness(void) { return bright; }
 API int sim_brightness_reload(void) { brightness_load(); return bright; }
+API int sim_simple_scene(void) { return render_simple_scene(); }
+API int sim_scene_detail(void) { return render_scene_detail(); }
 API int sim_display_brightness(void) {
     int target = bright * 255 / 100;
     return tank.night && !render_clock_active(&tank) && page != 8 ? target * 6 / 10 : target;
@@ -312,23 +371,47 @@ API void sim_touch(float x, float y, int down) {
             }
         }
         else if (result == SET_TAP_TOUCH) render_backup_status("TOUCH CALIBRATION IS ON THE CYD", false);
-        else if (result == SET_TAP_UPDATES) page = 4;
+        else if (result == SET_TAP_UPDATES) {
+#ifdef __EMSCRIPTEN__
+            snprintf(error, sizeof error, "FIRMWARE UPDATES ARE ON THE CYD");
+            render_backup_status("FIRMWARE UPDATES ARE ON THE CYD", false);
+#else
+            page = 4;
+#endif
+        }
         else if (result == SET_TAP_WIFI) {
+#ifdef __EMSCRIPTEN__
+            render_backup_status("WIFI IS NOT AVAILABLE IN THE BROWSER", false);
+#else
             if (progression_save(&tank)) update_wifi_begin();
             else render_backup_status("SAVE FAILED - WIFI NOT OPENED", false);
+#endif
         }
         else if (result == SET_TAP_SAND || result == SET_TAP_WATER) progression_save(&tank);
-        else if (result == SET_TAP_ROOM || result == SET_TAP_LED || result == SET_TAP_AUTO_BACKUP) {
-            static render_device_t device = {0, 1, 1, -1};
+        else if (result == SET_TAP_ROOM || result == SET_TAP_LED || result == SET_TAP_AUTO_BACKUP || result == SET_TAP_DETAIL) {
+#ifdef __EMSCRIPTEN__
+            render_device_t device = browser_device;
+#else
+            static render_device_t device = {0, 1, 1, -1, SCENE_BALANCED};
+#endif
             if (result == SET_TAP_ROOM) device.room_mode = (uint8_t)((device.room_mode + 1) % 3);
             else if (result == SET_TAP_LED) device.led_mode = (uint8_t)((device.led_mode + 1) % 3);
+            else if (result == SET_TAP_DETAIL) device.scene_detail = (uint8_t)((device.scene_detail + 1) % SCENE_DETAIL_COUNT);
             else device.auto_backup = !device.auto_backup;
             render_set_device(&device);
-            render_backup_status("THE SENSOR AND LED ARE ON THE CYD", false);
+            render_backup_status(result == SET_TAP_DETAIL ? "SCENE CHANGED - NOTHING REMOVED" :
+                                 "THE SENSOR AND LED ARE ON THE CYD", false);
+#ifdef __EMSCRIPTEN__
+            browser_device = device;
+#endif
         }
         else if (result == SET_TAP_PHOTO) render_backup_status("PHOTOS SAVE TO THE CYD'S SD CARD", false);
         else if (result == SET_TAP_BACKUP || result == SET_TAP_RESTORE)
+#ifdef __EMSCRIPTEN__
+            render_backup_status("USE BROWSER SAVE EXPORT / IMPORT BELOW", false);
+#else
             render_backup_status("USE THE WINDOW EXPORT / RESTORE BUTTONS", false);
+#endif
     }
     pressed = down != 0;
 }

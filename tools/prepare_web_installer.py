@@ -15,6 +15,7 @@ SLOT_SIZE = 0x1e0000
 FEATURE_IMAGES = (
     "tank-normal.png", "family-tree.png", "rpg-story.png",
     "game-tide-tactics.png", "game-reef-architect.png", "games-page-two.png",
+    "clock-jumbo-digital.png", "clock-jumbo-flip.png", "clock-jumbo-analog.png",
 )
 
 

@@ -1592,7 +1592,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     t->companion_fraction = 0;
     if (t->aquariums.clock_theme >= CLOCK_THEME_COUNT ||
         t->aquariums.clock_utc_quarters < -48 || t->aquariums.clock_utc_quarters > 56 ||
-        t->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (t->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT || (t->aquariums.clock_delay & CLOCK_DELAY_MASK) >= CLOCK_DELAY_COUNT) {
+        !clock_layout_valid(t->aquariums.clock_layout) || !clock_delay_valid(t->aquariums.clock_delay)) {
         fprintf(stderr, "Invalid saved clock options; clock disabled\n");
         t->aquariums.clock_theme = CLOCK_OFF; t->aquariums.clock_flags = 0; t->aquariums.clock_utc_quarters = 0; t->aquariums.clock_layout = 0;
         t->aquariums.clock_delay = 0;
@@ -2294,7 +2294,7 @@ char *progression_backup_json(const tank_t *t) {
         !cJSON_AddNumberToObject(tank, "clock_flags", sv.aquariums.clock_flags) ||
         !cJSON_AddNumberToObject(tank, "clock_utc_quarters", sv.aquariums.clock_utc_quarters) ||
         !cJSON_AddNumberToObject(tank, "clock_layout", sv.aquariums.clock_layout) ||
-        !cJSON_AddNumberToObject(tank, "clock_delay", sv.aquariums.clock_delay & CLOCK_DELAY_MASK) ||
+        !cJSON_AddNumberToObject(tank, "clock_delay", sv.aquariums.clock_delay & ~CLOCK_SECONDARY_MASK) ||
         !cJSON_AddNumberToObject(tank, "clock_secondary", sv.aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT)) {
         cJSON_Delete(tank); goto fail;
     }
@@ -2499,7 +2499,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     if (stat) cJSON_Delete(cJSON_DetachItemViaPointer(tank_fields, stat));
     int clock_values[6] = {0};
     static const char *const clock_keys[] = {"clock_theme", "clock_flags", "clock_utc_quarters", "clock_layout", "clock_delay", "clock_secondary"};
-    static const int clock_min[] = {0, 0, -48, 0, 0, 0}, clock_max[] = {CLOCK_THEME_COUNT - 1, CLOCK_FLAGS_MASK, 56, CLOCK_LAYOUT_MAX, CLOCK_DELAY_COUNT - 1, 7};
+    static const int clock_min[] = {0, 0, -48, 0, 0, 0}, clock_max[] = {CLOCK_THEME_COUNT - 1, CLOCK_FLAGS_MASK, 56, CLOCK_LAYOUT_MAX, 31, 7};
     for (int i = 0; i < 6; i++) {
         cJSON *option = cJSON_GetObjectItemCaseSensitive(tank_fields, clock_keys[i]);
         if (!option) continue;
@@ -2510,7 +2510,9 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         clock_values[i] = (int)option->valuedouble;
         cJSON_Delete(cJSON_DetachItemViaPointer(tank_fields, option));
     }
-    if ((clock_values[3] & 3) >= CLOCK_SIZE_COUNT) { snprintf(error, error_size, "Invalid clock size"); goto done; }
+    if (!clock_layout_valid((uint8_t)clock_values[3]) || !clock_delay_valid((uint8_t)clock_values[4])) {
+        snprintf(error, error_size, "Invalid clock size or text layout"); goto done;
+    }
     if (schema->valuedouble >= 15 &&
         (!json_read_fields(&sv.creative, cJSON_GetObjectItemCaseSensitive(root, "creative"),
                            CREATIVE_FIELDS, FIELD_COUNT(CREATIVE_FIELDS), error, error_size) ||
@@ -2920,8 +2922,7 @@ static const char *aquarium_move(tank_t *t, int target) {
             (v->aquariums.stat_upgrades & ~STAT_MASK) ||
             v->aquariums.clock_theme >= CLOCK_THEME_COUNT ||
             v->aquariums.clock_utc_quarters < -48 || v->aquariums.clock_utc_quarters > 56 ||
-            v->aquariums.clock_layout > CLOCK_LAYOUT_MAX || (v->aquariums.clock_layout & 3) >= CLOCK_SIZE_COUNT ||
-            (v->aquariums.clock_delay & CLOCK_DELAY_MASK) >= CLOCK_DELAY_COUNT ||
+            !clock_layout_valid(v->aquariums.clock_layout) || !clock_delay_valid(v->aquariums.clock_delay) ||
             memcmp(v->aquariums.id, owned.id, sizeof owned.id) || v->aquariums.active != target) {
             error = "INVALID TANK SAVE"; goto done;
         }

@@ -8,7 +8,13 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.0.0 is now a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.1.0 is a distinct aquarium game, not just a board port.**
+
+You can also [play the actual simulation in a browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html).
+That game uses a separate browser-local save; it is not a device connection,
+firmware flasher or live-weather/hardware emulator. The website offers complete
+browser archive export/import and confirmed reset. Browser archives are not
+device JSON backups and do not automatically synchronize with a CYD.
 It retains and credits the original simulation while adding permanent
 Normal/Creative/Hard profiles, shared aquarium progression, a global Fish Bank,
 genetics, illustrated stories and eighteen games. See the
@@ -161,12 +167,56 @@ Enlarged uses a 240x180 internal-RAM framebuffer, scaled to the 320x240 LCD.
 Normal (formerly Compact) is the default for fresh installations, active-tank
 resets and newly purchased aquariums. Existing saves preserve their scale.
 **Settings > Display > SCALE** switches to native **320x240 Normal** mode,
-with scene objects and clock graphics about 25% smaller on screen. It draws
-three 320x80 horizontal tiles in the same allocation, then sends matching
-rotated LCD regions. Nothing is cropped. It does not allocate a full second
-framebuffer or take RAM away from weather; animation may be slower.
+with scene objects and clock graphics about 25% smaller on screen. Both sizes
+draw at most 80 rows at a time in the same allocation, then send matching
+rotated LCD regions. The unused framebuffer tail stores a bounded compressed
+backdrop cache; complex rows fall back to live drawing. Nothing is cropped.
+This does not allocate a second framebuffer or take RAM away from weather.
 Scale is saved per aquarium; positions and algae are remapped on a toggle,
 and a failed save restores the previous mode. Menu controls stay readable.
+
+**Settings > Display > SCENE** is a separate device-wide
+Balanced/Simple/Enhanced choice. Normal size + Balanced detail are defaults.
+Simple caches real stationary seagrass, all placed decorations and fixed
+floating/purchased scenery against simplified water/sand. Helpers, bubbles,
+the trophy shelf and ambient sparkles are hidden; fish/food and visible algae
+stay active.
+Balanced uses 2 Hz low-amplitude grass, 5 Hz secondary poses and reduced
+bubble/shrimp density at either size. Enhanced retains smooth curved grass and
+full secondary animation/density. Placement editors show the complete scene.
+The goals are approximately 20/10/5 FPS Simple/Balanced/Enhanced, not caps or
+guaranteed minimums for arbitrary scenes. No simulation,
+ownership, care rules or save schema changes; helpers continue working.
+The `tank/simple` NVS byte defaults to zero (Balanced), preserves one as Simple,
+and uses two for Enhanced. It commits before changing
+the active view and survives reboot, tank changes and aquarium restores.
+The simulator previews this preference per session. No framebuffer, PSRAM,
+new assets or expanded profile/NVS save blobs are required.
+Three scene details, themed Jumbo and linked dimming ship in 2.1.0, not the
+historical 2.0.0 downloads. The local 2.1.0 ESP-IDF app is **1,763,840 bytes**, leaving
+**202,240 bytes (10.29%)** per OTA slot (CI builds may differ slightly).
+
+Local COM4 measurements with the same four-fish aquarium, saved theme/helpers/
+decorations and unchanged clock configuration, in warmed 10-second scene
+windows (excluding mixed menu-transition windows):
+
+| Scene detail | Normal | Enlarged |
+|---|---:|---:|
+| Simple | 19.3-20.0 FPS | 19.8-20.9 FPS |
+| Balanced | 10.0-10.1 FPS | 10.2-10.5 FPS |
+| Enhanced | 7.9-8.5 FPS | 8.5-9.0 FPS |
+
+Fish poses and simulation continued; these are scene-specific observations,
+not guaranteed minimums. Enhanced is not artificially slowed to 5 FPS.
+Enlarged uses the same detail policy and compressed-backdrop path, instead of
+implicitly enabling the older smooth animations. Its final short tile keeps
+its own source-band CRCs, preventing needless full-panel retransmission.
+Three-detail transitions at both sizes, Enhanced/Balanced reboot persistence,
+SD restore-validation and original resident/ownership preservation were
+checked on the real unit. Wallet changes matched normal earned income.
+The unit was left on Normal + Balanced. The EMEET camera faced the back of the
+unit during this final run, so these checks do not establish final visual
+appearance; scaled/tiled output was verified pixel-for-pixel in the LCD harness.
 Menus retain their full 448x368 layout and are scaled into that framebuffer,
 rather than cropped. Menu touch coordinates use the inverse scaling.
 The post-1.4 source visual overhaul uses shared, static pixel-art sprites and
@@ -296,8 +346,14 @@ at 115200 baud (for example, `python ..\tools\director.py -p COM4 milestones`).
 
 The light-dependent resistor beside the display and the rear RGB LED are
 driven by `firmware/main/ambient.c`. **Settings > Display** selects
-ROOM LIGHT OFF / DIM / DIM+NIGHT (backlight scaled to 35-100% of the chosen
-brightness; DIM+NIGHT forces night after 30 s of sustained darkness) and BACK LED
+ROOM LIGHT OFF / DIM / DIM+NIGHT (screen and automatic LED share the gain
+`0.02 + 0.98 * room_light_fraction^2`: 100/26.5/8.1/2% at room 100/50/25/0).
+Screen brightness multiplies the chosen level and rounds to an integer percent,
+with a 1% floor before the existing night factor. LED glow and both alert
+patterns multiply the same gain, without a minimum; OFF bypasses sensor
+dimming for both. Manual diagnostic LED overrides remain explicit overrides.
+The eight-second sensor filter is unchanged; DIM+NIGHT forces night after
+30 s of sustained darkness. BACK LED
 OFF / GLOW / ALERTS (water-colored breathing glow; ALERTS adds hunger and
 visitor signals). Choices persist in NVS; the learned lit-room reading is
 saved at most every 30 minutes. **Settings > SD Backups** offers DAILY
@@ -711,8 +767,22 @@ open the same page and use the same hit targets without staging a demo tank.
 Open **Settings > CLOCK/WEATHER** to cycle **OFF / MINIMAL / DIGITAL / ANALOG / NEON /
 FLIP / BINARY / ORBIT**.
 This is an idle display mode rather than a permanent corner widget. The
-default layout is **large and centered**; choose large/medium/small and
-center/top-left/top-right/bottom-left/bottom-right placement. Digital uses
+default layout is **large and centered**; choose large/medium/small/jumbo/tiny and
+center/top-left/top-right/bottom-left/bottom-right placement. Jumbo expands
+the selected theme's actual design: Minimal text, Digital segments, Analog
+hands, Neon glow, Flip tiles, Binary dots and Orbit rings. Date/seconds and
+enabled weather/activity remain below it. Without captions, Minimal time spans
+at least 85% of screen width and 70% of height, at least three times Large's
+numeric glyph height; Analog and Orbit retain circular geometry.
+Tiny reduces the face further; its Analog dial keeps quarter-hour numerals.
+**Clock > Style > Text** independently cycles Small/Medium/Large supporting
+details (date, AM/PM, seconds) and weather/activity captions. These are preferred
+sizes: wrapping, a smaller face and text fitting prevent overlap at either
+resolution, including long city names and activity messages. Default text stays
+Small. Preferences save per tank with rollback on failure, without changing
+save size or schema. Do not downgrade an upgraded save; older firmware cannot
+read the new Tiny/text-size bit combinations.
+Digital uses
 large seven-segment numerals with separate beveled bars, visible gaps and
 dim unlit segments; Analog has 60 ticks, numbered hours and three
 hands; Neon adds cyan/pink accents. Flip uses shaded split-flap tiles, Binary
@@ -760,12 +830,16 @@ Schema 5 adds optional `tank.clock_theme` (0..7),
 `tank.clock_flags` (0..255: bit 0 is 12-hour format, bit 1 is manual DST +1 hour,
 bits 2/3/4 hide seconds/panel/date; bits 5..7 select the primary color, 0 = theme colors),
 `tank.clock_utc_quarters` (-48..56),
-`tank.clock_layout` (size in bits 0..1, position in bits 2..4; size 3 is invalid)
-`tank.clock_delay` (0..6, in the ACTIVATE order above), and
+`tank.clock_layout` (size in bits 0..1: Large=0, Medium=1, Small=2, Jumbo=3;
+position in bits 2..4; bit 5 selects Tiny with bits 0..1 zero; bits 6..7 select
+detail text size 0=Small, 1=Medium, 2=Large),
+`tank.clock_delay` (bits 0..2 hold 0..6 in the ACTIVATE order above;
+bits 3..4 select caption text size 0=Small, 1=Medium, 2=Large), and
 `tank.clock_secondary` (0..7, same color order as PRIMARY). Missing secondary
 color defaults to theme accents. Binary saves pack secondary color into the
-high three bits of the delay byte, leaving its low five bits for the delay.
-Changing either setting preserves the other. Both colors save per tank,
+high three bits of the delay byte, alongside its delay and caption-size bits.
+Changing size, position, text sizes, delay or colors preserves the other fields.
+Both colors save per tank,
 follow SD switches and JSON restores, roll back on write failure and reset
 on active-tank wipe. Do not downgrade to older firmware with a non-default
 secondary color; older builds do not understand the packed delay.
