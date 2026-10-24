@@ -6,6 +6,55 @@ const canvas = $("screen");
 const context = canvas.getContext("2d", {alpha: false});
 let game, initialized = false, paused = false, lastStored = null, ownsLock = false;
 let image, lastTime = 0, pointer = null, lastPoint = [0, 0];
+let placingFood = false;
+let touchHints = false, marker = null;
+const panel = $("game-panel");
+$("touch-hints").addEventListener("click", () => {
+  touchHints = !touchHints;
+  $("touch-hints").setAttribute("aria-pressed", String(touchHints));
+  $("game-message").textContent = touchHints ?
+    "Tap markers are on. Tap the water surface to feed; Place food lets you choose a column anywhere in the tank." : "";
+});
+
+function foodMode(enabled) {
+  placingFood = enabled;
+  $("feed").setAttribute("aria-pressed", String(enabled));
+  $("feed").setAttribute("aria-expanded", String(enabled));
+  $("feed-options").hidden = !enabled;
+  $("game-message").textContent = enabled ? "Tap the tank where food should fall, or choose Left / Middle / Right. Place food again cancels." : "";
+}
+function dropFood(x) {
+  if (game._sim_feed_at(x)) {
+    foodMode(false);
+    $("game-message").textContent = "Food dropped from the surface at your chosen position.";
+  } else $("game-message").textContent = "No food placed: the tank may already have its maximum pellets. Wait for fish to eat, or finish any open tool/setup.";
+  save();
+}
+document.querySelectorAll("[data-feed]").forEach(button => {
+  button.addEventListener("click", () => {
+    if (initialized && !paused && placingFood) dropFood(Number(button.dataset.feed) * game._sim_width());
+  });
+});
+$("feed").addEventListener("click", () => {
+  if (!initialized || paused || !game._sim_mode_chosen()) return;
+  if (!placingFood) game._sim_action(0);
+  foodMode(!placingFood);
+});
+$("fullscreen").addEventListener("click", async () => {
+  try {
+    releasePointer(true);
+    if (document.fullscreenElement === panel) await document.exitFullscreen();
+    else {
+      if (!panel.requestFullscreen) throw Error("Fullscreen is not supported by this browser.");
+      await panel.requestFullscreen();
+    }
+  } catch (error) { $("game-message").textContent = "Could not change fullscreen: " + error.message; }
+});
+document.addEventListener("fullscreenchange", () => {
+  const active = document.fullscreenElement === panel;
+  $("fullscreen").textContent = active ? "Exit fullscreen" : "Fullscreen";
+  $("fullscreen").setAttribute("aria-pressed", String(active));
+});
 let createGame, assetBase, iconBytes;
 
 async function restoreInstance(archive, active = false) {
@@ -108,6 +157,8 @@ function refreshControls() {
   const setup = !game._sim_mode_chosen();
   document.querySelectorAll("[data-action]").forEach(button => { button.disabled = setup || paused; });
   $("save").disabled = paused;
+  $("feed").disabled = setup || paused;
+  document.querySelectorAll("[data-feed]").forEach(button => { button.disabled = setup || paused; });
 }
 function point(event) {
   const rect = canvas.getBoundingClientRect();
@@ -115,35 +166,45 @@ function point(event) {
   const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
   const left = rect.left + (rect.width - canvas.width * scale) / 2;
   const top = rect.top + (rect.height - canvas.height * scale) / 2;
-  return [Math.max(0, Math.min(canvas.width - 1, (event.clientX - left) / scale)),
-    Math.max(0, Math.min(canvas.height - 1, (event.clientY - top) / scale))];
+  const x = (event.clientX - left) / scale, y = (event.clientY - top) / scale;
+  return x < 0 || y < 0 || x >= canvas.width || y >= canvas.height ? null : [x, y];
 }
 function releasePointer(cancelled = false) {
   if (pointer === null || !game) return;
   game._sim_touch(...(cancelled ? [-1000, -1000] : lastPoint), 0);
   pointer = null;
+  if (placingFood && !cancelled) {
+    dropFood(lastPoint[0]);
+  }
   refreshControls();
   save();
 }
 canvas.addEventListener("pointerdown", event => {
   if (!initialized || paused || pointer !== null || (event.pointerType === "mouse" && event.button !== 0)) return;
+  const target = point(event);
+  if (!target) return;
   event.preventDefault();
   pointer = event.pointerId;
   canvas.setPointerCapture(pointer);
-  lastPoint = point(event);
-  game._sim_touch(...lastPoint, 1);
+  lastPoint = target;
+  marker = {x: target[0], y: target[1], until: performance.now() + 800};
+  if (!placingFood) game._sim_touch(...lastPoint, 1);
 });
 canvas.addEventListener("pointermove", event => {
   if (event.pointerId !== pointer) return;
   event.preventDefault();
-  lastPoint = point(event);
-  game._sim_touch(...lastPoint, 1);
+  const target = point(event);
+  if (!target) return;
+  lastPoint = target;
+  marker = {x: target[0], y: target[1], until: performance.now() + 800};
+  if (!placingFood) game._sim_touch(...lastPoint, 1);
 });
 canvas.addEventListener("pointerup", event => {
   if (event.pointerId !== pointer) return;
   event.preventDefault();
-  lastPoint = point(event);
-  releasePointer();
+  const target = point(event);
+  if (target) lastPoint = target;
+  releasePointer(!target);
 });
 canvas.addEventListener("pointercancel", () => releasePointer(true));
 canvas.addEventListener("lostpointercapture", () => releasePointer(true));
@@ -151,6 +212,7 @@ canvas.addEventListener("contextmenu", event => event.preventDefault());
 document.querySelectorAll("[data-action]").forEach(button => {
   button.addEventListener("click", () => {
     if (!initialized || paused) return;
+    foodMode(false);
     game._sim_action(Number(button.dataset.action));
     save();
   });
@@ -175,6 +237,15 @@ function frame(now) {
       image.data[j + 3] = 255;
     }
     context.putImageData(image, 0, 0);
+    if (touchHints && marker && marker.until > now) {
+      context.strokeStyle = "#ffd982";
+      context.lineWidth = 1;
+      context.beginPath();
+      context.arc(marker.x, marker.y, 8, 0, Math.PI * 2);
+      context.moveTo(marker.x - 12, marker.y); context.lineTo(marker.x + 12, marker.y);
+      context.moveTo(marker.x, marker.y - 12); context.lineTo(marker.x, marker.y + 12);
+      context.stroke();
+    }
     refreshControls();
     requestAnimationFrame(frame);
   } catch (error) { paused = true; fail(error); }
@@ -264,7 +335,8 @@ async function start() {
     if (!buildResponse.ok) throw Error("Game build is missing. Please reload or try again after deployment.");
     const build = await buildResponse.json();
     if (!/^game-[a-f0-9]{16}$/.test(build.assets)) throw Error("Invalid game build manifest.");
-    $("build-info").textContent = "Game version " + build.version + " · WebAssembly browser simulation";
+    $("build-info").textContent = (build.release ? "Released game " + build.release : "Development game " + build.version) +
+      " · source " + build.commit.slice(0, 7) + " · WebAssembly browser simulation";
     assetBase = new URL(build.assets + "/", location.href);
     ({default: createGame} = await import(new URL("tank.mjs", assetBase)));
     const response = await fetch(new URL("icons.bin", assetBase));

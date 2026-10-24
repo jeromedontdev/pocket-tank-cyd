@@ -1,5 +1,6 @@
 :root{color-scheme:dark;font:16px/1.55 system-ui,sans-serif;background:#091c24;color:#e1f1eb}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0}
 main{width:min(100% - 2rem,960px);margin:1.5rem auto 3rem}
 h1{font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.15;margin:.8rem 0}
@@ -15,6 +16,12 @@ button{font:inherit;font-weight:600;padding:.65rem .9rem;border:1px solid #50747
 button:hover:not(:disabled){background:#28535b}
 button:focus-visible,canvas:focus-visible{outline:3px solid #ffd982;outline-offset:3px}
 button:disabled{opacity:.45;cursor:default}
+button[aria-pressed="true"]{background:#37624d;border-color:#a7e7bf}
+#game-message{margin:.5rem 0 0;min-height:1.55em}
+#game-panel:fullscreen{width:100%;height:100%;margin:0;border-radius:0;display:flex;flex-direction:column;overflow:auto}
+#game-panel:fullscreen canvas{flex:1 1 0;min-height:0;width:100%;height:0;max-height:none}
+#game-panel:fullscreen .buttons{flex:0 0 auto}
+#game-panel:fullscreen #game-message{flex:0 0 auto}
 section{margin-bottom:1.5rem}
 aside{border-top:1px solid #36535a;padding-top:1rem;color:#b2c8ca;font-size:.9rem}
 #save-detail{font-size:.9rem}

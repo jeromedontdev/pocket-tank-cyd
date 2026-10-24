@@ -54,10 +54,19 @@ async function main() {
       return native(`const p = game._sim_backup(); try {return JSON.parse(game.UTF8ToString(p));} finally {game._sim_free(p);}`);
     }
     async function tap(x, y) {
-      const box = await page.locator("#screen").boundingBox();
-      await page.mouse.click(box.x + x / 448 * box.width, box.y + y / 368 * box.height);
+      await page.locator("#screen").scrollIntoViewIfNeeded();
+      const position = await canvasPoint(x / 448, y / 368);
+      await page.mouse.click(position.x, position.y);
     }
     await page.goto(url); await ready();
+    const build = await page.evaluate(async () => (await fetch("play-build.json", {cache:"no-store"})).json());
+    assert.match(build.commit, /^[0-9a-f]{40}$/);
+    const info = await page.locator("#build-info").textContent();
+    assert.ok(info.includes(build.commit.slice(0, 7)));
+    if (build.release) {
+      assert.equal(build.release, "v" + build.version);
+      assert.ok(info.includes("Released game " + build.release));
+    } else assert.ok(info.includes("Development game " + build.version));
     assert.equal(await native("return game._sim_mode_chosen()"), 0);
     assert.equal(await page.locator('[data-action="0"]').isDisabled(), true);
     await tap(200, 98); await tap(200, 300);
@@ -82,6 +91,83 @@ async function main() {
       return colors.size;
     });
     assert.ok(colors > 50, "Actual colorful renderer must run");
+    async function canvasPoint(fx, fy) {
+      return page.locator("#screen").evaluate((canvas, [fx, fy]) => {
+        const box = canvas.getBoundingClientRect();
+        const scale = Math.min(box.width / canvas.width, box.height / canvas.height);
+        return {x: box.x + (box.width - canvas.width * scale) / 2 + fx * canvas.width * scale,
+          y: box.y + (box.height - canvas.height * scale) / 2 + fy * canvas.height * scale};
+      }, [fx, fy]);
+    }
+    async function feedAt(fraction) {
+      const before = await native("return Array.from({length:256}, (_,i) => game._sim_food_x(i))");
+      await page.locator("#feed").click();
+      await page.locator("#screen").scrollIntoViewIfNeeded();
+      const position = await canvasPoint(fraction, .65);
+      await page.mouse.click(position.x, position.y);
+      const after = await native("return Array.from({length:256}, (_,i) => game._sim_food_x(i))");
+      const width = await native("return game._sim_width()");
+      const dropped = after.filter((x, i) => before[i] < 0 && x >= 0);
+      assert.equal(dropped.length, 3, `Place food must add exactly three pellets at ${JSON.stringify(position)}; ${await page.locator("#game-message").textContent()}; ${JSON.stringify(await page.locator("#screen").boundingBox())}`);
+      for (const x of dropped) assert.ok(Math.abs(x - fraction * width) <= 15, `Food ${x} must drop near chosen column ${fraction * width}`);
+      assert.equal(await page.locator("#feed").getAttribute("aria-pressed"), "false");
+    }
+    await page.locator("#touch-hints").click();
+    assert.equal(await page.locator("#touch-hints").getAttribute("aria-pressed"), "true");
+    await feedAt(.25); await feedAt(.75);
+    await page.reload(); await ready();
+    await page.locator('[data-action="0"]').click();
+    await page.setViewportSize({width: 1100, height: 450});
+    await feedAt(.4); // Normal-page canvas is letterboxed by its height cap.
+    await page.locator("#fullscreen").click();
+    await page.waitForFunction(() => document.fullscreenElement?.id === "game-panel" &&
+      document.querySelector("#fullscreen").textContent === "Exit fullscreen");
+    assert.equal(await page.locator("#fullscreen").textContent(), "Exit fullscreen");
+    await feedAt(.6);
+    await page.locator("#feed").click();
+    const beforeMargin = await native("return Array.from({length:256}, (_,i) => game._sim_food_x(i)).filter(x=>x>=0).length");
+    const margin = await page.locator("#screen").boundingBox();
+    await page.mouse.click(margin.x + 2, margin.y + margin.height / 2);
+    assert.equal(await native("return Array.from({length:256}, (_,i) => game._sim_food_x(i)).filter(x=>x>=0).length"), beforeMargin,
+      "Fullscreen letterbox margins must not feed or select");
+    assert.equal(await page.locator("#feed").getAttribute("aria-pressed"), "true");
+    await page.locator("#feed").click();
+    await page.locator("#fullscreen").click();
+    await page.waitForFunction(() => !document.fullscreenElement &&
+      document.querySelector("#fullscreen").textContent === "Fullscreen");
+    assert.equal(await page.locator("#fullscreen").textContent(), "Fullscreen");
+    await page.reload(); await ready();
+    await page.setViewportSize({width: 1100, height: 1000});
+    await page.locator('[data-action="2"]').click();
+    await tap(100, 100); await tap(200, 138);
+    await page.locator('[data-action="0"]').click();
+    assert.equal(await native("return game._sim_width()"), 240);
+    await feedAt(.3);
+    await page.locator('[data-action="2"]').click();
+    await tap(100, 100); await tap(200, 138);
+    await page.locator('[data-action="0"]').click();
+    for (const fraction of [.2, .5, .8]) {
+      await page.reload(); await ready();
+      const before = await native("return Array.from({length:256}, (_,i) => game._sim_food_x(i))");
+      await page.locator("#feed").click();
+      await page.locator(`[data-feed="${fraction}"]`).click();
+      const after = await native("return Array.from({length:256}, (_,i) => game._sim_food_x(i))");
+      const pellets = after.filter((x, i) => x >= 0 && before[i] < 0);
+      assert.equal(pellets.length, 3);
+      for (const x of pellets) assert.ok(Math.abs(x - fraction * 320) <= 15);
+      assert.equal(await page.locator("#feed-options").isVisible(), false);
+    }
+    assert.equal(await native("return game._sim_feed_at(NaN) + game._sim_feed_at(-1) + game._sim_feed_at(game._sim_width())"), 0);
+    await native("for(let i=0;i<8;i++) game._sim_feed_at(160)");
+    await page.locator("#feed").click();
+    await page.locator('[data-feed="0.5"]').click();
+    assert.ok((await page.locator("#game-message").textContent()).includes("maximum pellets"));
+    assert.equal(await page.locator("#feed-options").isVisible(), true);
+    await page.locator("#feed").click();
+    await page.evaluate(() => { document.querySelector("#game-panel").requestFullscreen = undefined; });
+    await page.locator("#fullscreen").click();
+    assert.ok((await page.locator("#game-message").textContent()).includes("not supported"));
+    await page.evaluate(() => { delete document.querySelector("#game-panel").requestFullscreen; });
     for (const [action, expected] of [[1, 1], [2, 2], [3, 3], [7, 9], [0, 0]]) {
       await page.locator(`[data-action="${action}"]`).click();
       assert.equal(await native("return game._sim_page()"), expected);
@@ -247,6 +333,23 @@ async function main() {
     }), 1, "Creative first-run must be playable through touchscreen");
     assert.equal(await phone.locator("#screen").evaluate(element => getComputedStyle(element).touchAction), "none");
     assert.notEqual(await phone.locator("body").evaluate(element => getComputedStyle(element).touchAction), "none");
+    await phone.locator("#feed").click();
+    await phone.locator("#screen").scrollIntoViewIfNeeded();
+    box = await phone.locator("#screen").boundingBox();
+    await phone.touchscreen.tap(box.x + box.width * .75, box.y + box.height * .6);
+    assert.ok((await phone.locator("#game-message").textContent()).includes("Food dropped"));
+    await phone.locator("#fullscreen").click();
+    await phone.waitForFunction(() => document.fullscreenElement?.id === "game-panel");
+    await phone.locator("#feed").click();
+    const visibleButtons = await phone.locator("#feed-options button").evaluateAll(buttons =>
+      buttons.every(button => {
+        const r = button.getBoundingClientRect();
+        return r.width >= 44 && r.height >= 44 && r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+      }));
+    assert.ok(visibleButtons, "Fullscreen portrait feeding buttons must be usable 44px targets");
+    await phone.locator('[data-feed="0.2"]').click();
+    assert.ok((await phone.locator("#game-message").textContent()).includes("Food dropped"));
+    await phone.locator("#fullscreen").click();
     await mobile.close();
     // A real browser restart with a persistent on-disk test profile.
     const profile = path.resolve(__dirname, "..", ".browser-tools", "test-browser-profile");
@@ -275,7 +378,7 @@ async function main() {
       fs.rmSync(profile, {recursive: true, force: true});
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: real WASM rendering and Bubble Pop, all first-run modes, UI/touch, durable Bank/profile saves, pagehide, refresh/reopen/browser restart, exclusive tabs, quota recovery/export/import/reset and corrupt startup.");
+    console.log("PASS: fullscreen entry/exit, exact food columns at both resolutions and letterboxed sizes, ignored margins, Left/Middle/Right, touch hints/mobile feeding; real WASM gameplay, all modes, durable saves/restart, exclusive tabs and corruption/quota recovery.");
   } finally {
     await browser.close();
   }

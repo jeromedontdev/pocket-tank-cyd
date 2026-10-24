@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.1.0
+# Pocket Tank CYD 2.1.1
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.1.0**; firmware, update
+now versioned independently. This is **release 2.1.1**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,20 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.1.0: scene detail, readable clocks and quieter low-light output
+## New in 2.1.1: fullscreen browser play and food placement
+
+- Fullscreen/Exit fullscreen enlarges the game while keeping its controls.
+- **Place food** lets you tap a column anywhere in the tank, or choose
+  **Left / Middle / Right**. Pellets still enter at the water surface.
+  Plain surface taps also feed; the tank's existing pellet limit still applies.
+- Optional **Touch hints** show where taps/drags land. Letterbox margins do
+  not activate the tank.
+- The public website/game is built from the latest stable **release tag**, not
+  unreleased main. Its displayed tag/source commit and installer version are
+  checked together before deployment. It compiles shared C code to WebAssembly,
+  not the ESP32 binary.
+
+## Previously in 2.1.0: scene detail, readable clocks and quieter low-light output
 
 - **[Play in your browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html)**:
   the actual game simulation, mouse/touch controls and a separate local browser
@@ -324,7 +337,10 @@ input and Normal, Creative or Hard first-run profiles. Local browser storage
 keeps a complete archive of profiles, Bank, aquariums and preferences across
 reloads and browser restarts. Autosaves run every five seconds, after actions,
 when hidden and on exit; failures remain visible with retry/export controls.
-Only one tab can write the save at a time.
+Only one tab can write the save at a time. Fullscreen keeps shortcuts visible;
+Place food offers tap-to-place or Left/Middle/Right choices. Touch hints show
+tap/drag positions. A plain tank tap feeds only near the surface; food falls
+from the surface at the selected horizontal position, not at the tapped depth.
 
 Use **Export browser save** for a backup and **Import browser save** to restore
 that archive. Import validates the native save before replacing your current
@@ -348,6 +364,9 @@ closes it afterward. It checks actual gameplay/input, all first-run modes,
 reload/pagehide/browser-restart persistence, exclusive tabs, save failures,
 export/import/reset and corrupt-save preservation. Pages builds and tests the
 same playable assets before deployment; JS/CSS/WASM use content-hashed paths.
+Public deployments check out the latest stable release tag and require the
+browser build and USB installer to match that tag/version/commit. The game
+shows its release tag and source commit; local builds are labeled Development.
 Run `tools/prepare_web_installer.py` before the browser build when staging a
 combined site with published USB firmware.
 

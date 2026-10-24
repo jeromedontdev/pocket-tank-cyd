@@ -19,7 +19,8 @@ EMSCRIPTEN = "4.0.18"
 EXPORTS = ["sim_init", "sim_save", "sim_backup", "sim_free", "sim_error",
            "sim_frame", "sim_touch", "sim_action", "sim_width", "sim_height",
            "sim_display_brightness", "sim_page", "sim_setup_page", "sim_mode",
-           "sim_mode_chosen", "sim_scene_detail", "sim_brightness", "sim_network_page", "malloc", "free"]
+           "sim_mode_chosen", "sim_scene_detail", "sim_brightness", "sim_network_page",
+           "sim_feed_at", "sim_food_x", "malloc", "free"]
 
 
 def build(output, compiler):
@@ -78,8 +79,10 @@ def build(output, compiler):
         (output / "play.html").write_text(html, encoding="utf-8")
         version = re.search(r'#define PT_RELEASE\s+"([^"]+)"',
                             (ROOT / "common" / "version.h").read_text(encoding="utf-8"))[1]
+        commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
         (output / "play-build.json").write_text(json.dumps({
             "assets": asset_name, "version": version, "emscripten": EMSCRIPTEN,
+            "commit": commit,
         }) + "\n", encoding="utf-8")
         print("Playable browser build:", output / "play.html", "(" + asset_name + ")")
     finally:

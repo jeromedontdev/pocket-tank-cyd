@@ -20,7 +20,8 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.1.0**, adding three scene details, themed Jumbo clocks,
+- Source release: **2.1.1**, adding browser fullscreen/food-placement/touch hints
+  and release-tag-pinned Pages builds after 2.1.0's three scene details, themed Jumbo clocks,
   linked screen/LED low-light dimming and arrow-only pagination to permanent modes, eighteen games, global Bank,
   illustrated UI and focused code cleanup. This began as a hardware port but
   is now a distinct aquarium game; retain upstream simulation/license credit.
@@ -375,6 +376,10 @@ For feature work, update the relevant entries in:
   Chromium suite with Node 22.16.0 before deployment. Reject corrupt native
   archives/preferences before import replaces localStorage; preserve exact
   stored data on failed startup. Never expose credential/update flows in web play.
+  Public Pages must check out latest stable released source, never main; verify
+  its tag/commit and browser version against the staged installer. Display the
+  tag/commit. Test normal/fullscreen/letterboxed and both resolutions, exact
+  pellet columns, mobile touch and ignored margins; preserve the pellet cap.
 - Run relevant tests, check diff/staging for secrets and generated artifacts,
   commit with the required coauthor trailer, and push main without force.
 - Tag the verified release commit `vMAJOR.MINOR.PATCH` and push that tag.

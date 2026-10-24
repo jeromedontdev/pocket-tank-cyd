@@ -89,7 +89,14 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.1.0: scene detail, themed Jumbo and linked low-light dimming
+### New in 2.1.1: fullscreen browser game and precise feeding
+
+- Fullscreen/Exit fullscreen retains game controls. Optional Touch hints show taps/drags.
+- Place food allows tap-to-place feeding at a chosen column or Left/Middle/Right buttons. Food falls from the surface; existing pellet limits remain. Letterbox margins do not activate the tank.
+- Public Pages builds check out the latest stable release tag. Browser version/source commit and USB installer must match before deployment; the game displays the release tag and commit. Browser WebAssembly uses the same source, not the ESP32 binary.
+- No hardware gameplay or save-format changes.
+
+### Previously in 2.1.0: scene detail, themed Jumbo and linked low-light dimming
 
 - Play the actual game on the website with mouse/touch controls, complete browser-local saves, export/import and confirmed reset. Saves survive reload/reopen; browser storage failures are explicit. This is separate from your CYD and does not emulate Wi-Fi, live weather, SD or device hardware.
 - Independent Normal/Enlarged size and Balanced/Simple/Enhanced detail; Normal + Balanced are the defaults, with saved choices preserved.

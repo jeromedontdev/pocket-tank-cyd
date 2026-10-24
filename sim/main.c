@@ -161,6 +161,18 @@ API int sim_save(void) {
 #endif
     return progression_save(&tank);
 }
+API int sim_feed_at(float x) {
+    if (page || setup_active() || update_active() || wipe_left > 0 ||
+        tank.tool != TOOL_HAND || !progression_mode_chosen(&tank) || !isfinite(x) || x < 0 || x >= TANK_W) return 0;
+    int before = 0, after = 0;
+    for (int i = 0; i < MAX_FOOD; i++) before += tank.food[i].alive;
+    tank_feed(&tank, x, 3);
+    for (int i = 0; i < MAX_FOOD; i++) after += tank.food[i].alive;
+    return after > before;
+}
+API float sim_food_x(int index) {
+    return index >= 0 && index < MAX_FOOD && tank.food[index].alive ? tank.food[index].x : -1;
+}
 API char *sim_backup(void) { return progression_backup_json(&tank); }
 API void sim_free(void *memory) { free(memory); }
 API const char *sim_error(void) { return error; }
