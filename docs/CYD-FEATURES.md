@@ -1,6 +1,6 @@
 # Pocket Tank CYD: a more personal little ocean
 
-**An illustrated tour of Pocket Tank CYD 1.0.0**
+**An illustrated tour of Pocket Tank CYD 1.0.1**
 Updated October 23, 2026
 
 This fork keeps Pocket Tank's feeding, growth, personality, trust and
@@ -66,7 +66,7 @@ Packages are verified but unsigned; only install trusted files. See
 
 ## Mini-games: play with your fish, not their care stats
 
-Open **Keeper > GAMES** for **Bubble Pop, Pearl Match, Fish Slalom,
+Open **Home > Games** for **Bubble Pop, Pearl Match, Fish Slalom,
 Treasure Cast, Feed Frenzy and Reef Puzzle**. Tap PLAY AS to choose an active
 fish's appearance. Your actual fish are never put at risk or fed by a game.
 Aquarium care pauses while the games menu, round or result is open.
@@ -145,7 +145,7 @@ Tap a fish, then its card's **MENU** button to open **Home**. The old
 | **Fish** | Care & Bonds, Fish Bank, Wardrobe, Names & Looks |
 | **Tank** | Shop & Decor, Aquariums, Sand & Water, Creature Colors |
 | **Adventures** | Send a fish away, see its return time, claim postcards |
-| **Collections** | Journal (themes/rewards/varieties), Discoveries (sets/frames/shelf), Progress |
+| **Collections** | Journal (themes/rewards/varieties), Discoveries (sets/frames/shelf) |
 | **Games** | Six games, records, relaxed mode |
 | **Settings** | Display, Clock/Weather, Wi-Fi/Sync, SD Backups, Feeding, Device |
 
@@ -172,7 +172,7 @@ trick does not permanently enable a speed boost. Playful darts are now gentler
 than the old 65–95. A requested dart chooses a fresh destination immediately.
 Startle reactions and hungry-food pursuit retain their separate behavior.
 
-**Home > Fish > Wardrobe** opens the fish wardrobe. Care also has a **DRESS UP** shortcut.
+**Home > Fish > Wardrobe** opens the fish wardrobe. This is the single wardrobe entry point.
 Use the arrows to preview an accessory, **NEXT FISH** to choose its owner,
 and **BUY + EQUIP** to purchase it with sand dollars.
 
@@ -191,7 +191,7 @@ do not change the tank. Wearables are cosmetic only, with no XP or stat
 bonus, and follow the fish through the Bank, adventures and backups.
 Postcards retain the traveler's departure accessory; newborns start bare.
 All ten fish varieties support all six accessories.
-**DRESS UP → COLORS** gives the selected fish independent primary and detail
+**Wardrobe > COLORS** gives the selected fish independent primary and detail
 colors for its wearables. Each fish keeps one color pair across its wardrobe,
 including Bank transfers and adventures; the postcard preserves departure colors.
 Colors are free, including before buying an accessory.
@@ -288,7 +288,7 @@ The active aquarium still holds **five fish**. The new bank adds **20
 separate storage slots**, so making room no longer has to mean selling a
 favorite.
 
-Open **Keeper > FISH BANK**:
+Open **Home > Fish > Fish Bank**:
 
 1. Choose **IN TANK**, select a fish and confirm **STORE**.
 2. Choose **STORED > CHOOSE** to inspect a saved fish.
@@ -328,7 +328,7 @@ an empty bank; **Wipe clears the bank along with the aquarium**.
 
 ## Additional aquariums: room for another little ocean
 
-Open **Keeper > UPGRADES > TANKS**. Each additional aquarium costs
+Open **Home > Tank > Aquariums**. Each additional aquarium costs
 **500 sand dollars from your shared wallet**. The original is free,
 with up to **eight total**. Confirming a purchase enters a fresh tank with
 two fry and the normal welcome, naming and customization setup.
@@ -413,7 +413,7 @@ slot; the decorative Jelly Lantern is a different shop item.
 
 ## 3. Give everyday care a sense of progression
 
-Open **Keeper > JOURNAL** for **Goals**, **Album** and **Themes**.
+Open **Home > Collections > Journal** for **Goals**, **Album** and **Themes**.
 
 ### Keeper levels and objectives
 
@@ -766,7 +766,7 @@ This flow never checks or downloads firmware.
 
 | Clock settings | Choose a network |
 |---|---|
-| ![Clock controls and Wi-Fi setup entry](media/cyd-features/clock-settings.png) | ![Simulated Wi-Fi network picker](media/cyd-features/wifi-networks.png) |
+| ![Clock controls; Wi-Fi setup lives in Settings](media/cyd-features/clock-settings.png) | ![Simulated Wi-Fi network picker](media/cyd-features/wifi-networks.png) |
 | Password keyboard | Connected |
 | ![Case-sensitive Wi-Fi password keyboard](media/cyd-features/wifi-password.png) | ![Connected network confirmation](media/cyd-features/wifi-connected.png) |
 

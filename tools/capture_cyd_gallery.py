@@ -166,7 +166,7 @@ def main():
                 tap(220, 20)
                 capture("clock-style")
                 tap(380, 20)
-                tap(330, 318)
+                lib.sim_action(2); tap(100, 180)
                 for _ in range(12):
                     lib.sim_frame(0.25)
                 capture("wifi-networks")
@@ -215,7 +215,7 @@ def main():
                 # Close the customization preview without changing the staged snapshot.
                 restore(demo)
                 lib.sim_action(1)
-                tap(88, 356)
+                tap(375, 356); tap(330, 180); tap(100, 100)
                 if lib.sim_page() != 5:
                     raise RuntimeError("Journal navigation failed")
                 capture("journal-goals")
@@ -231,12 +231,12 @@ def main():
                                        fish_variety=[0] * len(demo["tank"]["fish_variety"]))
                 restore(starter)
                 lib.sim_action(1)
-                tap(88, 356)
+                tap(375, 356); tap(330, 180); tap(100, 100)
                 tap(205, 328)
                 capture("journal-variety-unlocks")
                 restore(demo)
                 lib.sim_action(1)
-                tap(275, 356)
+                tap(375, 356); tap(100, 260)
                 capture("games-menu")
                 for i, name in enumerate(("bubble-pop", "pearl-match", "fish-slalom", "treasure-cast", "feed-frenzy", "reef-puzzle")):
                     tap(110 + i % 2 * 204, 140 + i // 2 * 64)
@@ -405,7 +405,7 @@ def main():
                                              fish=fish))
                 restore(bank)
                 lib.sim_action(1)
-                tap(173, 356)
+                tap(375, 356); tap(100, 100); tap(330, 100)
                 if lib.sim_page() != 6:
                     raise RuntimeError("Bank navigation failed")
                 capture("bank-stored")

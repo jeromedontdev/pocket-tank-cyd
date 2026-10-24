@@ -32,7 +32,7 @@ def exercise(lib, backup, output):
     pause_footer = None
     for game in range(6):
         lib.sim_action(1)
-        tap(275, 356)
+        tap(375, 356); tap(100, 260)
         assert lib.sim_page() == 8
         menu = snapshot()
         frame()
@@ -162,12 +162,12 @@ def exercise(lib, backup, output):
         assert snapshot() == claimed, "Claims must be single-use"
         tap(224, 290)  # Replay.
         assert snapshot() == claimed
-        tap(380, 20)  # Game -> menu -> Keeper.
+        tap(380, 20)  # Game -> menu -> Home.
         tap(380, 20)
-        assert lib.sim_page() == 1
+        assert lib.sim_page() == 9
     assert len(screens) == 6, "Every game needs its own actual-renderer screen"
     lib.sim_action(1)
-    tap(275, 356)
+    tap(375, 356); tap(100, 260)
     tap(110, 140)
     no_score = snapshot()
     for _ in range(120):
@@ -176,12 +176,12 @@ def exercise(lib, backup, output):
     assert snapshot() == no_score, "An unsuccessful round must not pay coins or XP"
     tap(380, 20)
     tap(380, 20)
-    assert lib.sim_page() == 1, "A zero-reward round needs no discard confirmation"
+    assert lib.sim_page() == 9, "A zero-reward round needs no discard confirmation"
     lib.sim_action(0)
     frame(0.25)
     assert snapshot()["tank"]["clock"] > no_score["tank"]["clock"], "Aquarium simulation must resume on exit"
     lib.sim_action(1)
-    tap(275, 356)
+    tap(375, 356); tap(100, 260)
     tap(80, 330)  # Relaxed: timed games now finish explicitly.
     tap(110, 140)
     relaxed_before = snapshot()
@@ -191,9 +191,9 @@ def exercise(lib, backup, output):
     tap(350, 70)  # Finish an untimed round.
     tap(380, 20)
     tap(380, 20)
-    assert lib.sim_page() == 1
+    assert lib.sim_page() == 9
     lib.sim_action(1)
-    tap(275, 356)
+    tap(375, 356); tap(100, 260)
     tap(80, 330)  # Return to challenge mode for subsequent sessions.
     tap(300, 330)
     records = frame()

@@ -227,7 +227,7 @@ def main():
                 assert lib.sim_page() == 2 and not lib.sim_clock_active(), "OFF must disable manual entry too"
                 tap(220, 69)
                 options = json.loads(backup(lib))["tank"]
-                tap(330, 318)  # Enter Wi-Fi through the actual Settings route.
+                lib.sim_action(2); tap(100, 180)  # Enter Wi-Fi through the actual Settings route.
                 advance()
                 assert lib.sim_network_page() == 3, "Wi-Fi setup must scan, not fetch firmware"
                 tap(160, 150)  # Open CoffeeShop Guest network.
@@ -239,7 +239,7 @@ def main():
                 assert json.loads(backup(lib))["tank"] == options, "Wi-Fi mode must not alter aquarium or clock settings"
                 tap(224, 315)  # Back to the clock page.
                 assert lib.sim_network_page() == 0 and lib.sim_page() == 2
-                tap(330, 318)
+                lib.sim_action(2); tap(100, 180)
                 assert lib.sim_network_message() == b"WI-FI SETTINGS"
                 tap(100, 315)  # Forget asks for confirmation.
                 assert lib.sim_network_message() == b"FORGET WI-FI?"
@@ -254,17 +254,17 @@ def main():
                 assert lib.sim_network_message() == b"WI-FI FORGOTTEN" and not (output / "fake-wifi.txt").exists()
                 tap(224, 315)
                 (output / "fake-wifi.txt").write_text("Fishbowl\nwrongpass\n")
-                tap(330, 318); tap(110, 265); advance()
+                lib.sim_action(2); tap(100, 180); tap(110, 265); advance()
                 assert lib.sim_network_message() == b"NOT ACCEPTED"
                 tap(320, 315)  # Error page has three actions, BACK at right.
                 assert lib.sim_network_page() == 0
                 (output / "fake-wifi.txt").unlink()
                 os.environ["POCKET_TANK_WIFI"] = str(output)  # Unwritable credential-file target.
-                tap(330, 318); advance(); tap(160, 150); advance()
+                lib.sim_action(2); tap(100, 180); advance(); tap(160, 150); advance()
                 assert lib.sim_network_message() == b"WI-FI SAVE FAILED"
                 tap(224, 315)
                 os.environ["POCKET_TANK_WIFI"] = str(output / "fake-wifi.txt")
-                tap(330, 318); advance(); tap(160, 74)
+                lib.sim_action(2); tap(100, 180); advance(); tap(160, 74)
                 assert lib.sim_network_page() == 4
                 tap(380, 315)
                 assert lib.sim_network_page() == 4, "An empty secured password must not connect"
@@ -287,7 +287,7 @@ def main():
                 expected = (letters + letters.upper() + " " + symbols)[:63]
                 assert (output / "fake-wifi.txt").read_text() == "Fishbowl\n" + expected + "\n", "QWERTY must enter every letter without paging and enforce the 63-character limit"
                 tap(224, 315)
-                tap(330, 318); tap(320, 265); advance(); tap(160, 74)
+                lib.sim_action(2); tap(100, 180); tap(320, 265); advance(); tap(160, 74)
                 for _ in range(63):
                     tap(400, 247)
                 tap(132, 315)
@@ -340,8 +340,8 @@ def main():
                 exercise_life(lib, backup)
                 lib.sim_action(5)
                 lib.sim_action(1)
-                tap(88, 356)
-                assert lib.sim_page() == 5, "Keeper Journal entry must open the Journal"
+                tap(375, 356); tap(330, 180); tap(100, 100)
+                assert lib.sim_page() == 5, "Collections Journal entry must open the Journal"
                 journal_frames = set()
                 for x in (70, 200, 340):
                     tap(x, 328)
@@ -351,7 +351,7 @@ def main():
                 locked["tank"].update(journal_xp=0, journal_theme=0)
                 encoded = json.dumps(locked).encode()
                 assert lib.sim_restore(encoded, len(encoded))
-                lib.sim_action(1); tap(88, 356); tap(340, 328)
+                lib.sim_action(1); tap(375, 356); tap(330, 180); tap(100, 100); tap(340, 328)
                 first_themes = ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
                 tap(400, 86)
                 more_themes = ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
@@ -362,7 +362,7 @@ def main():
                 unlocked["tank"]["journal_xp"] = 4200
                 encoded = json.dumps(unlocked).encode()
                 assert lib.sim_restore(encoded, len(encoded))
-                lib.sim_action(1); tap(88, 356); tap(340, 328); tap(400, 86)
+                lib.sim_action(1); tap(375, 356); tap(330, 180); tap(100, 100); tap(340, 328); tap(400, 86)
                 for row, theme in enumerate(range(4, 8)):
                     tap(100, 124 + row * 42)
                     assert json.loads(backup(lib))["tank"]["journal_theme"] == theme, "All new backdrops must be selectable on page two"
@@ -371,7 +371,7 @@ def main():
                 assert json.loads(backup(lib))["tank"]["journal_theme"] == 0, "Original must remain selectable"
                 print("PASS: paginated Journal themes, locked new themes and all four new theme selections")
                 tap(380, 20)
-                assert lib.sim_page() == 1
+                assert lib.sim_page() == 9
                 # Exercise real shop routing, especially IDs above the old MOVE boundary.
                 shop_original = json.loads(backup(lib))
                 shop_demo = json.loads(backup(lib))
@@ -408,8 +408,8 @@ def main():
                 assert lib.sim_restore(data, len(data))
                 print("PASS: fourteen new shop purchases through price-sorted UI, including all four stat upgrades")
                 lib.sim_action(1)
-                tap(173, 356)
-                assert lib.sim_page() == 6, "Keeper must open the fish bank"
+                tap(375, 356); tap(100, 100); tap(330, 100)
+                assert lib.sim_page() == 6, "Fish category must open the fish bank"
                 lib.sim_frame(0.04)
                 bank_before = json.loads(backup(lib))
                 tap(300, 330)
@@ -417,7 +417,7 @@ def main():
                 assert json.loads(backup(lib))["bank"] == bank_before["bank"]
                 assert json.loads(backup(lib))["tank"]["n_fish"] == bank_before["tank"]["n_fish"]
                 tap(380, 20)
-                assert lib.sim_page() == 1
+                assert lib.sim_page() == 9
                 lib.sim_action(3)
                 tap(250, 326)
                 assert lib.sim_page() == 7, "Shop TANKS entry must open aquarium selection"

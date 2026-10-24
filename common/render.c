@@ -3465,7 +3465,7 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
             return mix(water, x / 54 % 2 ? 0xef77b8 : 0xff9c74, 0.85f);
     } else if (g_journal_theme == 3) {
         uint32_t hash = (uint32_t)(x * 73856093u) ^ (uint32_t)(y * 19349663u);
-        if (y > 22 && y < floor && hash % 277u < 3) return mix(water, hash & 1 ? 0x6eefff : 0xe18cff, 0.9f);
+        if (y < floor && hash % 277u < 3) return mix(water, hash & 1 ? 0x6eefff : 0xe18cff, 0.9f);
         int dx = x % 43 - 21, rise = floor - y;
         if (rise > 0 && rise < 22 + x / 43 % 3 * 7 && abs(dx) < (28 - rise) / 4)
             return mix(water, 0xa275ef, 0.8f);
@@ -3510,7 +3510,7 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
             return mix(water, facet < 0 ? 0x75b5ed : 0xd0f6ff, 0.85f);
         }
         uint32_t hash = (uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u;
-        if (hash % 811 == 0 && y > 40 && y < floor) return 0xb5e9ff;
+        if (hash % 811 == 0 && y < floor) return 0xb5e9ff;
     } else if (g_journal_theme == 7) {
         int dx = x - 47, dy = y - 29;
         if (dx * dx + dy * dy < 17 * 17 && (dx - 8) * (dx - 8) + (dy + 4) * (dy + 4) >= 16 * 16)
@@ -5165,9 +5165,6 @@ void render_milestones(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
     for (int y = render_tile_top(); y < render_tile_bottom(); y++)
         for (int x = 0; x < TANK_W; x++) fb[(y - g_tile_y) * stride + x] = rgb565(MSP_INK, 1);
-    button(&c, 24, JOURNAL_ENTRY_Y, 94, 18, 0x1c2f36, MSP_TEAL, "JOURNAL", 2);
-    button(&c, 126, JOURNAL_ENTRY_Y, 94, 18, 0x1c2f36, MSP_TEAL, "BANK", 2);
-    button(&c, 228, JOURNAL_ENTRY_Y, 94, 18, 0x1c2f36, MSP_TEAL, "GAMES", 2);
     button(&c, 330, JOURNAL_ENTRY_Y, 94, 18, 0x1c2f36, MSP_TEAL, "HOME", 2);
     for (int i = 0; i < t->n_fish; i++) {
         const fish_t *f = &t->fish[i];
@@ -5242,8 +5239,6 @@ void render_milestones(const tank_t *t, uint16_t *fb, int stride) {
     /* the way out: a CLOSE button in the prompt's calm dress (a tap anywhere
        else never drops the page - too much to tap for that) */
     button(&c, MSP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "CLOSE", 2);
-    button(&c, MSP_SET_X, MSP_SET_Y, MSP_SET_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "SETTINGS", 2);   /* bottom left (2026-09-15) */
-    button(&c, MSP_UPG_X, MSP_CLOSE_Y, MSP_UPG_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "UPGRADES", 2);   /* the shop, between them */
     /* a modal up: the page under it is out of reach (any tap only closes the
        modal), so it LOOKS out of reach - every pixel at half (Strato: with
        CLOSE lit it looked like you could still tap it). One shift per
@@ -5363,14 +5358,10 @@ int render_milestones_tap(const tank_t *t, float x, float y) {
         ms_close(); return MS_TAP_KEPT;                  /* any other tap: back to the page */
     }
     if (y >= JOURNAL_ENTRY_Y && y < JOURNAL_ENTRY_Y + 18) {
-        if (x >= 24 && x < 118) return MS_TAP_JOURNAL;
-        if (x >= 126 && x < 220) return MS_TAP_BANK;
-        if (x >= 228 && x < 322) return MS_TAP_GAMES;
         if (x >= 330 && x < 424) return MS_TAP_LIFE;
     }
     if (x >= MSP_CLOSE_X - 8 && y >= MSP_CLOSE_Y - 4) return MS_TAP_CLOSE;      /* slop out to the glass edge */
-    if (x < MSP_SET_X + MSP_SET_W + 8 && y >= MSP_CLOSE_Y - 4) return MS_TAP_SETTINGS;   /* the settings page */
-    if (y >= MSP_CLOSE_Y - 4) return MS_TAP_SHOP;                                        /* UPGRADES: the rest of the strip is the shop */
+    if (y >= MSP_CLOSE_Y - 4) return MS_TAP_KEPT;
     int row = -1; bool tank_row = false, fry_row = false;
     fry_req_t req[FRY_REQ_MAX]; bool staged;
     int nreq = progression_next_fry(t, req, &staged);
@@ -6261,7 +6252,6 @@ static void clock_settings_draw(ctx_t *c, const tank_t *t) {
     snprintf(label, sizeof label, "+%s", CLOCK_STEP_NAMES[g_clock_step]);
     button(c, 352, 252, 76, 36, 0x1c2f36, MSP_TEAL, label, 2);
     button(c, 32, 300, 190, 36, 0x1c2f36, MSP_TEAL, "SHOW CLOCK", 2);
-    button(c, 238, 300, 190, 36, 0x1c2f36, MSP_TEAL, "WI-FI / SYNC", 2);
     draw_text_wrap(c, 32, 344, 396, MSP_TEAL, s_backup_message);
 }
 static void set_row(ctx_t *c, int row_y, const char *label, const char *const names[], int n, int chosen) {
@@ -6715,7 +6705,6 @@ int render_life_tap(tank_t *t, float x, float y) {
     } else {
         if (choice == 0) return HOME_JOURNAL;
         if (choice == 1) home_companion(COMPANION_SECTION_COLLECTIONS);
-        if (choice == 2) return HOME_KEEPER;
     }
     return HOME_NONE;
 }
@@ -6728,7 +6717,7 @@ void render_life(const tank_t *t, uint16_t *fb, int stride) {
         {"FISH", "TANK", "ADVENTURES", "COLLECTIONS", "GAMES", "SETTINGS"},
         {"CARE & BONDS", "FISH BANK", "WARDROBE", "NAMES & LOOKS", NULL, NULL},
         {"SHOP & DECOR", "AQUARIUMS", "SAND & WATER", "CREATURE COLORS", NULL, NULL},
-        {"JOURNAL", "DISCOVERIES", "PROGRESS", NULL, NULL, NULL}
+        {"JOURNAL", "DISCOVERIES", NULL, NULL, NULL, NULL}
     };
     draw_text(&c, 24, 18, 3, 0xffffff, titles[g_home_category]);
     button(&c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, g_home_category ? "BACK" : "TANK", 2);
@@ -7093,7 +7082,6 @@ int render_settings_tap(float x, float y, int *value) {
         if (x >= 140 && x < 224 && y >= 8 && y < 44) return CLOCK_HIT_STYLE;
         if (x >= 230 && x < 318 && y >= 8 && y < 44) return CLOCK_HIT_WEATHER;
         if (x >= 32 && x < 222 && y >= 300 && y < 336) return SET_TAP_CLOCK_SHOW;
-        if (x >= 238 && x < 428 && y >= 300 && y < 336) return SET_TAP_WIFI;
         if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_PAGE;
         if (x >= 32 && x < 428) {
             if (y >= 52 && y < 86) return CLOCK_HIT_THEME;

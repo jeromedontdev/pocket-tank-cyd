@@ -52,7 +52,6 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
             text(fb, stride, 14, 194, 0xe7f4dc, line);
             button(fb, stride, 12, 220, 126, "NEXT FISH");
             button(fb, stride, 152, 220, 132, "SAY HELLO");
-            button(fb, stride, 304, 220, 132, "DRESS UP");
             companion_favorite_label(t, i, line, sizeof line);
             render_text(fb, stride, 14, 250, 1, 0xffd998, line);
             render_text(fb, stride, 14, 268, 1, 0xa7c4ba, "Hello: +5 bond every 30 seconds.");
@@ -209,11 +208,6 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
             if (t->companion.active[i].next_greet_s > t->companion.powered_s)
                 snprintf(notice, sizeof notice, "Hello ready in %lus.", (unsigned long)(t->companion.active[i].next_greet_s - t->companion.powered_s));
             else snprintf(notice, sizeof notice, "%s", companion_greet(t, i) ? "Hello! +5 bond. Trust unchanged." : "Save failed. Hello not recorded.");
-        }
-        else if (y >= 220 && y < 250 && x >= 304 && x < 436 && t->n_fish) {
-            page = 4; notice[0] = 0;
-            int i = selected < t->n_fish ? selected : 0;
-            wardrobe = t->companion.active[i].wearable ? t->companion.active[i].wearable : WEAR_TOP_HAT;
         }
         else if (y >= 284 && y < 314) for (int j = 0; j < 3; j++)
             if (x >= 12 + 146 * j && x < 144 + 146 * j) {

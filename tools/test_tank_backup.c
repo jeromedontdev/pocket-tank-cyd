@@ -802,7 +802,7 @@ static void test_clock(void) {
     clock_tap(&t, 380, 20);
     clock_tap(&t, 220, 229);
     assert(t.aquariums.clock_delay == ((4 << CLOCK_SECONDARY_SHIFT) | CLOCK_DELAY_30_SEC));
-    assert(clock_tap(&t, 330, 318) == SET_TAP_WIFI);
+    assert(clock_tap(&t, 330, 318) != SET_TAP_WIFI);
     clock_tap(&t, 380, 20);
     tank_init(&loaded, 3); boot_enlarged(&loaded);
     assert(loaded.aquariums.clock_theme == CLOCK_ORBIT && loaded.aquariums.clock_flags == CLOCK_FLAGS_MASK && loaded.aquariums.clock_utc_quarters == 1);
@@ -1676,6 +1676,34 @@ static void compact_draw(tank_t *t, uint16_t *fb, int stride, int kind) {
     else if (kind == 17) { render_tank(t, fb, stride); render_confirm_reset(fb, stride, 1); }
     else render_tank(t, fb, stride);
 }
+static void test_theme_edges(void) {
+#if CYD_FLAT_EDGES
+    tank_t t;
+    for (int mode = 0; mode < 2; mode++) {
+        tank_resolution(mode != 0);
+        tank_init(&t, 123);
+        t.night = false;
+        t.journal.xp = journal_level_xp(15);
+        t.n_fish = 0;
+        for (int i = 0; i < MAX_BUBBLE; i++) t.bubble[i].y = TANK_H / 2;
+        memset(t.algae, 0, sizeof t.algae);
+        uint16_t *fb = calloc((size_t)TANK_W * TANK_H, sizeof *fb);
+        assert(fb);
+        for (int theme = 3; theme <= 6; theme += 3) {
+            t.journal.theme = theme;
+            render_tank(&t, fb, TANK_W);
+            unsigned star = (fb[0] >> 11) + ((fb[0] >> 5) & 63) + (fb[0] & 31);
+            unsigned water = (fb[1] >> 11) + ((fb[1] >> 5) & 63) + (fb[1] & 31);
+            if (star <= water + 15)
+                fprintf(stderr, "Theme edge: mode %d theme %d star %04x water %04x\n", mode, theme, fb[0], fb[1]);
+            assert(star > water + 15);
+        }
+        free(fb);
+    }
+    tank_resolution(false);
+#endif
+}
+
 static void test_compact(void) {
     tank_resolution(false);
     tank_t t; tank_init(&t, 43); saved_size = 0; boot_enlarged(&t); setup_cancel(&t);
@@ -2719,6 +2747,7 @@ int main(int argc, char **argv) {
     test_wearables();
     test_cosmetic_colors();
     test_compact();
+    test_theme_edges();
     assert(word_guard[0] == 0xa5a5a5a5u && word_guard[word_count + 1] == 0xa5a5a5a5u);
     render_set_mask_scratch(NULL); free(word_guard);
     puts("PASS: supplied word-only renderer masks/palette stay within guarded allocation in cached and live rendering");

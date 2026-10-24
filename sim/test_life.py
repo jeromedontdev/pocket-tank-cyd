@@ -185,12 +185,23 @@ def exercise(lib, backup):
                 assert frame() == parent, "Back must return to the category actually used"
         home(); tap(100, 100); tap(330, 180)
         assert lib.sim_page() == 1
-        tap(70, 356)
-        assert lib.sim_page() == 5
-        tap(392, 19)
-        assert lib.sim_page() == 1, "Keeper shortcut must return to Keeper, not skip a parent"
+        for point in ((70, 356), (170, 356), (275, 356), (70, 326), (220, 326)):
+            tap(*point)
+            assert lib.sim_page() == 1, "Removed Keeper shortcuts must not remain invisible hit targets"
         tap(392, 326)
         assert lib.sim_page() == 9, "Keeper opened from Fish must return to Fish"
+        home(); tap(330, 180)
+        collections = frame()
+        tap(100, 260)
+        assert lib.sim_page() == 9 and frame() == collections, "Duplicate Progress entry must be removed"
+        care()
+        care_frame = frame()
+        tap(360, 235)
+        assert frame() == care_frame, "Removed Dress Up shortcut must not open Wardrobe"
+        lib.sim_action(2); tap(330, 100)
+        clock_frame = frame()
+        tap(330, 318)
+        assert lib.sim_network_page() == 0 and frame() == clock_frame, "Wi-Fi belongs only in Settings"
         lib.sim_action(2); tap(100, 100)
     encoded = json.dumps(original).encode()
     assert lib.sim_restore(encoded, len(encoded))

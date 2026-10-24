@@ -77,7 +77,15 @@ https://github.com/jeromedontdev/pocket-tank-cyd
     (output / "INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""## Pocket Tank CYD {version}
 
-Version 1.0 release for **ESP32-2432S028 CYD only**.
+Release for **ESP32-2432S028 CYD only**.
+
+### 1.0.1 fixes
+- Deep Glow particles and Ice Cavern sparkles extend to the top edge without a plain cutoff strip.
+- Consolidated navigation: Home owns feature entry points; Keeper no longer repeats Bank, Games, Journal, Settings or Shop.
+- Removed duplicate Collections > Progress, Care > Dress Up and Clock > Wi-Fi entries.
+- Corrected CYD no-vignette screenshot captures and omitted obsolete SD icon downloads.
+
+### Features
 
 - Normal (320x240, formerly Compact) is the default for fresh tanks; Enlarged is 240x180.
 - Existing saved scale choices are preserved; no save reset is required.

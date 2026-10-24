@@ -1,7 +1,7 @@
-# Pocket Tank CYD 1.0
+# Pocket Tank CYD 1.0.1
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently as **1.0.0**. Originally based on upstream v0.3.8.
+now versioned independently as **1.0.1**. Originally based on upstream v0.3.8.
 Targets the **ESP32-2432S028 Cheap Yellow Display**:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
@@ -177,7 +177,7 @@ update-channel message and rejection of upstream update manifests.
 
 ## Shop expansion
 
-**Keeper > UPGRADES** lists unlocks from cheapest to most expensive, with
+**Home > Tank > Shop & Decor** lists unlocks from cheapest to most expensive, with
 stable ordering for equal prices. The nursery's FRY row, when available, stays
 separate at the top. Existing item IDs, prices, placements and ownership are
 unchanged.
@@ -245,7 +245,7 @@ build information is on Updates; Settings > Device keeps a readable version foot
 
 ## Aquarium Journal
 
-Open **Keeper > JOURNAL** for Goals, Album and Themes. Earn permanent XP
+Open **Home > Collections > Journal** for Goals, Album and Themes. Earn permanent XP
 from eaten meals (8), cleaned algae colonies (2), each 10 cm trimmed (2),
 and successful calm-hold approaches (10). Mini-game claims also grant three XP
 per sand dollar earned. Spending sand dollars never lowers your
@@ -312,7 +312,7 @@ changes report save failures instead of applying unsaved rewards.
 
 ## Mini-games
 
-Open **Keeper > GAMES**. Tap **PLAY AS** to cycle through your active fish;
+Open **Home > Games**. Tap **PLAY AS** to cycle through your active fish;
 Slalom uses that fish's real appearance, Feed Frenzy visits the tank's fish,
 and Treasure Cast shows existing fish among the hazards. These are portraits,
 not fish transfers: games cannot injure, feed, train or change the actual fish.
@@ -355,7 +355,7 @@ Tap a fish and its **MENU** button for **Home**: **Fish**, **Tank**,
 **Adventures**, **Collections**, **Games**, and **Settings**. The existing
 Keeper page also has a **HOME** shortcut. Fish holds care, Bank, wardrobe and
 names/looks; Tank holds the shop, aquariums, palettes and creature colors.
-Collections holds the Journal, discoveries/frames and progress. Adventures
+Collections holds the Journal and discoveries/frames. Adventures
 is its own destination, not a container for unrelated features. Back returns
 to the category you used. There are no daily streaks or missed-visit penalties.
 
@@ -449,7 +449,7 @@ Weather data: Open-Meteo; city search: GeoNames via Open-Meteo.
 
 ## Fish bank
 
-Open **Keeper > FISH BANK** to keep up to **20 fish** outside the five-fish
+Open **Home > Fish > Fish Bank** to keep up to **20 fish** outside the five-fish
 active tank limit. **In Tank > STORE** deposits a fish; **Stored > CHOOSE**
 shows a banked fish's age, trust and appearance. Use **RETURN** if there is
 room, or **SWAP** to choose the active fish that trades places with it.
@@ -470,7 +470,7 @@ starts with an empty bank. **Wipe clears the bank too**, but not SD files.
 
 ## Additional aquariums
 
-Open **Keeper > UPGRADES > TANKS**. The original tank is free; each additional
+Open **Home > Tank > Aquariums**. The original tank is free; each additional
 tank costs **500 sand dollars**, paid from your shared wallet.
 There are **eight tanks total**. Buying enters a new aquarium with two fry
 and first-time setup; it does not copy your fish. Both purchases and free

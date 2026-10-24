@@ -432,14 +432,14 @@ and all stored fish. Schema 1 through 9 backups
 still restore, defaulting absent additions to unowned decorations and
 Classic/Stripes fish (schema 1 also defaults the palettes to original).
 Older backups start with an empty Journal; existing care totals and current
-fish appearances qualify as you play. Open **Keeper > JOURNAL** to claim
+fish appearances qualify as you play. Open **Home > Collections > Journal** to claim
 objectives, view the appearance album and select level-unlocked backdrops.
 See the README's Aquarium Journal section for XP rates and unlock levels.
-Pre-bank snapshots restore with an empty fish bank. Open **Keeper > FISH BANK**
+Pre-bank snapshots restore with an empty fish bank. Open **Home > Fish > Fish Bank**
 to deposit, return or swap fish; the bank pauses care and growth and keeps
 20 fish independently of the five active slots. Two fish must remain active;
 a full tank can still swap with the bank. Wipe clears both the tank and bank.
-**Keeper > UPGRADES > TANKS** offers up to eight independent aquariums.
+**Home > Tank > Aquariums** offers up to eight independent aquariums.
 Each additional tank costs 500 sand dollars from the global wallet and begins
 with two fry. Switching is free and requires SD. Inactive tanks are fully
 paused in alternating CRC-checked binary snapshots in `pocket-tank/tanks`.
@@ -556,7 +556,7 @@ Console purchase keys: `current`, `shelter`, `play`, `training`.
 
 ### Mini-games and stronger Journal backdrops
 
-**Keeper > GAMES** offers Bubble Pop, Pearl Match, Fish Slalom, Treasure Cast,
+**Home > Games** offers Bubble Pop, Pearl Match, Fish Slalom, Treasure Cast,
 Feed Frenzy and Reef Puzzle. The games menu, rounds and results pause aquarium
 simulation and care progression. Slalom and feeding games reuse active fish
 portraits without changing fish state. Gameplay uses a separate random stream.
