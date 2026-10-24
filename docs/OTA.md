@@ -1,5 +1,26 @@
 # CYD fork updates
 
+## Save-preserving browser USB updates
+
+Open the [USB installer](https://jeromedontdev.github.io/pocket-tank-cyd/) in
+desktop Chrome or Edge and choose **save-preserving USB update**. Make an SD backup first
+and close serial monitors. The updater normally resets the board, checks its
+CYD boot identity and exact `ota` partition report, and refuses unknown layouts
+or a pending different boot slot. It validates the application checksum and
+board marker before flashing only the detected running application slot.
+NVS, Wi-Fi credentials, calibration, partition table and SD files are not erased.
+
+Unlike SD updates, this overwrites the running application slot in the ROM
+bootloader rather than installing to the inactive slot. Keep power and USB
+connected; an interrupted write may require retrying that same application
+address. Do not use factory reset as recovery unless deliberately erasing
+saved state. The updater reports the detected recovery address on failure.
+It preserves the last committed save; unsaved changes cannot be recovered.
+Old or unrecognized firmware that cannot provide a valid report must use the
+documented SD/manual upgrade path instead.
+
+**Factory Reset is a separate destructive flow**, never a normal upgrade.
+
 ## Offline SD updates
 
 Prebuilt packages are available from

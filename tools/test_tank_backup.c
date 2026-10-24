@@ -283,6 +283,13 @@ static void test_aquariums(void) {
     double age = progression_age_s(&t, 0);
     assert(!progression_aquarium_move(&t, 1));
     assert(t.aquariums.count == 2 && t.aquariums.active == 1 && t.n_fish == 2);
+    aquarium_summary_t summary;
+    assert(progression_aquarium_summary(&t, 0, &summary));
+    assert(summary.fish == original.n_fish && summary.bank == original.bank_count);
+    assert(summary.theme == original.journal.theme && summary.last_visit == test_unix);
+    reject_slot_read = true;
+    assert(!progression_aquarium_summary(&t, 0, &summary));
+    reject_slot_read = false;
     assert(progression_setup_pending() && t.sd_balance == 250 && t.sd_earned == 1000 && !t.sd_unlocks && !t.bank_count && !t.journal.xp);
     assert(!strcmp(t.aquariums.name, "TANK 2"));
     assert(t.aquariums.clock_theme == CLOCK_OFF && !t.aquariums.clock_flags && !t.aquariums.clock_utc_quarters);
@@ -2161,7 +2168,109 @@ static void test_solid_clock(void) {
     free(reference); free(actual); free(retained); free(tile); tank_resolution(false);
     puts("PASS: opaque clock occlusion is pixel-exact across themes/layouts, retained transitions skip hidden blocks, and panel visibility persists with rollback");
 }
+static void test_social_and_preview(void) {
+    for (int compact = 0; compact < 2; compact++) {
+        tank_resolution(compact != 0);
+        tank_t t; tank_init(&t, 54); tank_new_population(&t);
+        t.companion.display_compact = (uint8_t)compact;
+        t.fish[0].stress = t.fish[1].stress = 0;
+        t.fish[0].x = t.fish[1].x = TANK_W / 2;
+        t.fish[0].y = t.fish[1].y = TANK_H / 2;
+        for (int second = 0; second < 32; second++) {
+            t.fish[0].x = t.fish[1].x = TANK_W / 2;
+            t.fish[0].y = t.fish[1].y = TANK_H / 2;
+            tank_tick(&t, 1, NULL);
+        }
+        assert(tank_familiar_friend(&t, 0) == 1 && tank_familiar_friend(&t, 1) == 0);
+        t.fish[0].goal.id = GOAL_FOLLOW_FRIEND; t.fish[0].goal_age = 15;
+        t.fish[0].hunger = 2; t.fish[0].energy = 8; t.fish[0].lazy = 0;
+        assert(advisor_rules(&t, 0, true).id == GOAL_EXPLORE);
+        t.fish[0].energy = 1;
+        assert(advisor_rules(&t, 0, true).id == GOAL_REST);
+        t.sd_unlocks = UINT32_MAX;
+        int favorite = tank_favorite_decor(&t, 0);
+        assert(favorite >= 0 && tank_decor_owned(&t, favorite));
+        tank_set_name(&t, 0, "renamed"); t.fish[0].color ^= 0xffffff;
+        assert(tank_favorite_decor(&t, 0) == favorite);
+        for (int item = 0; item < SD_ITEM_COUNT; item++) {
+            if (!tank_decor_placeable(item)) continue;
+            char *original = progression_backup_json(&t); assert(original);
+            setup_begin_place(&t, item); assert(setup_is_place());
+            tank_decor_set(&t, item, TANK_W * .7f, DECOR_Z_BACK);
+            tank_decor_shift(&t, item, 1);
+            if (item == 3) tank_coral_set_rgb(&t, 0xff0000);
+            if (item == 4) tank_cluster_set_scheme(&t, 2);
+            char *preview = progression_backup_json(&t); assert(preview && !strcmp(preview, original)); free(preview);
+            assert(progression_save(&t));
+            setup_cancel(&t);
+            char *cancelled = progression_backup_json(&t); assert(cancelled && !strcmp(cancelled, original)); free(cancelled);
+            setup_begin_place(&t, item);
+            tank_decor_set(&t, item, TANK_W * .65f, DECOR_Z_BACK);
+            reject_write = true; setup_activate(&t, SETUP_HIT_NEXT);
+            assert(setup_is_place());
+            preview = progression_backup_json(&t); assert(preview && !strcmp(preview, original)); free(preview);
+            reject_write = false; setup_activate(&t, SETUP_HIT_NEXT); assert(!setup_active());
+            preview = progression_backup_json(&t); assert(preview && strcmp(preview, original)); free(preview);
+            free(original);
+        }
+        int item = 9; t.sd_unlocks |= SD_ITEM_CHEST; t.sd_balance = 100;
+        tank_t before = t;
+        reject_write = true; assert(!progression_sell(&t, item)); reject_write = false;
+        assert(!memcmp(&before, &t, sizeof t));
+        aquarium_summary_t s;
+        t.aquariums.count = 1; t.aquariums.active = 0;
+        t.aquariums.stat_upgrades = STAT_CURRENT | STAT_TRAINING;
+        t.journal.theme = 3;
+        assert(progression_aquarium_summary(&t, 0, &s));
+        assert(s.fish == t.n_fish && s.upgrades == 2 && s.theme == 3 && s.helpers == 3 && s.last_visit == test_unix);
+        assert(!progression_aquarium_summary(&t, 1, &s));
+        const int cards[] = {RENDER_CARD_SHRIMP, RENDER_CARD_SNAIL, RENDER_CARD_URCHIN, RENDER_CARD_SEAHORSE};
+        for (int kind = 0; kind < 4; kind++) {
+            float x = 224.0f * TANK_W / PAGE_W, y = 300.0f * TANK_H / PAGE_H;
+            assert(render_creature_colors_hit(&t, cards[kind], x, y) == kind);
+            assert(render_creature_colors_hit(&t, cards[kind], 0, 0) == -1);
+        }
+        assert(render_creature_colors_hit(&t, 0, 224, 300) == -1);
+    }
+    tank_resolution(false);
+    puts("PASS: calm friendships, bounded pair leisure, stable favorite decor, transactional placement/autosaves/cancel/retry/sale and creature shortcuts at both scales");
+}
+
+static void test_theme_detail_damage(void) {
+    for (int compact = 0; compact < 2; compact++) {
+        tank_resolution(compact != 0);
+        tank_t t; tank_init(&t, 54); t.n_fish = 0; t.companion.lively = 0;
+        t.companion.display_compact = (uint8_t)compact; t.journal.xp = journal_level_xp(15);
+        t.sd_unlocks = SD_ITEM_CHEST | SD_ITEM_CRYSTAL;
+        size_t pixels = (size_t)TANK_W * TANK_H;
+        uint16_t *full = malloc(pixels * 2), *retained = calloc(pixels, 2), *tile = malloc((size_t)TANK_W * 80 * 2);
+        assert(full && retained && tile);
+        render_work_caches(true);
+        const float times[] = {0, .1f, .25f, .75f, 1, 5.75f, 6, 19.75f, 20, 20.25f, 21.75f, 22, 47.75f, 48, 54, 80, 82};
+        for (int clock = 0; clock < 2; clock++) for (int theme = 3; theme <= 7; theme += 4)
+            for (int i = 0; i < (int)(sizeof times / sizeof times[0]); i++) {
+                t.journal.theme = (uint8_t)theme; t.clock = times[i];
+                t.clock_requested = clock != 0; t.aquariums.clock_theme = clock ? CLOCK_ANALOG : CLOCK_OFF;
+                render_tile(0, 0); render_region(0, 0); render_tank(&t, full, TANK_W);
+                render_damage_begin(&t, i == 0);
+                int cursor = 0, x, y, w, h;
+                while (render_damage_next(&cursor, &x, &y, &w, &h)) {
+                    render_tile(y, h); render_region(x, w); render_tank(&t, tile, TANK_W);
+                    for (int row = 0; row < h; row++)
+                        memcpy(retained + (y + row) * TANK_W + x, tile + row * TANK_W + x, (size_t)w * 2);
+                }
+                render_tile(0, 0); render_region(0, 0);
+                assert(!memcmp(full, retained, pixels * 2));
+            }
+        render_work_caches(false); free(full); free(retained); free(tile);
+    }
+    tank_resolution(false);
+    puts("PASS: sparse silhouette/star/glint appearance, movement and removal replay pixel-exactly at both scales with and without opaque clock");
+}
+
 int main(int argc, char **argv) {
+    test_social_and_preview();
+    test_theme_detail_damage();
     if (argc == 2 && !strcmp(argv[1], "--clock-only")) {
         test_clock();
         { extern void test_clock_weather(void); test_clock_weather(); }

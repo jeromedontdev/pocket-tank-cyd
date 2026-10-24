@@ -1,6 +1,6 @@
 # Pocket Tank CYD: a more personal little ocean
 
-**An illustrated tour of Pocket Tank CYD 1.0.1**
+**An illustrated tour of Pocket Tank CYD 1.1.0**
 Updated October 23, 2026
 
 This fork keeps Pocket Tank's feeding, growth, personality, trust and
@@ -48,9 +48,11 @@ Read the included `INSTALL.txt` and check `SHA256SUMS.txt`.
 
 **New-board browser flashing:** the
 [USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/) works in
-desktop Chrome or Edge with a USB data cable. It is a **factory installer**:
-it overwrites saved tanks, Wi-Fi, calibration and collection identity.
-Use SD updates instead when keeping an existing aquarium.
+desktop Chrome or Edge with a USB data cable. Choose **save-preserving USB update** for
+an existing CYD installation: the updater validates the live board and active OTA
+slot, then writes only the application. The **factory installer** remains separate and
+overwrites saved tanks, Wi-Fi, calibration and collection identity.
+Back up first; SD updates remain available.
 
 - **Already using this CYD fork:** back up your active aquarium, power off
   before moving SD, copy `update.ptu` to `pocket-tank/update.ptu`, then install
@@ -63,6 +65,48 @@ Use SD updates instead when keeping an existing aquarium.
 
 Packages are verified but unsigned; only install trusted files. See
 [installation and release details](../firmware/CYD.md#downloadable-releases).
+
+## Small behaviors, useful inspection
+
+Calm fish get acquainted while swimming near one another. After about half a
+minute together, a fish can favor a familiar swim buddy. Short paired swims keep
+a steady trailing lane, then take a break; hunger, stress and rest still come
+first. Familiarity is session-only and reforms after restarting. Favorite
+decoration choices are stable for a fish's original identity, not changed by
+renaming or recoloring it. They guide resting and inspecting the reef.
+**Home > Fish > Care** names the current buddy and favorite spot.
+
+Tap any helper creature for a card that retains its lifetime progress while
+explaining food and activity. Shrimp show both their actual school population
+and the representatives currently drawn. **COLORS** jumps straight to the
+selected creature's free color preview; SAVE is still required.
+
+| Snail and algae care | Representative shrimp school |
+|---|---|
+| ![Snail inspection with diet and color shortcut](media/cyd-features/snail-card.png) | ![Shrimp actual population and drawn representatives](media/cyd-features/shrimp-card.png) |
+
+| Grass-trimming urchin | Trust-sharing seahorse |
+|---|---|
+| ![Urchin activity and food](media/cyd-features/urchin-card.png) | ![Seahorse progress and color shortcut](media/cyd-features/seahorse-card.png) |
+
+Decoration placement is now a reversible **PREVIEW**. Drag, select depth,
+change stacking or preview coral colors; **DONE** saves the layout, and
+**CANCEL** restores it. A failed save keeps the preview open for retry.
+Autosaves and JSON backups do not accidentally commit a draft. Cancelling
+placement after a purchase keeps the owned item at its original default spot;
+it does not undo the purchase.
+
+The aquarium picker offers a **SUMMARY** for the active tank and a summary
+before switching to any other tank: fish, away traveler, Bank, actual shrimp,
+other helpers, stat upgrades, theme and last visit. Inactive tanks remain paused.
+Last visit needs a synchronized clock; otherwise it is explicitly unknown.
+
+![Active tank summary](media/cyd-features/aquarium-summary.png)
+
+Deep Glow occasionally gains a distant silhouette, Moonlit a short shooting
+star, and owned treasure chests/crystals a brief glint. Effects use 4 Hz pose
+steps and bounded old/new dirty regions, never a new full-screen background
+animation. The opaque clock still occludes aquarium drawing.
 
 ## Mini-games: play with your fish, not their care stats
 

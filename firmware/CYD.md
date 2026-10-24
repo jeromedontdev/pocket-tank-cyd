@@ -24,10 +24,13 @@ for existing configured build directories.
 
 For a new board or deliberate reset, the
 [USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/) works in
-desktop Chrome/Edge without ESP-IDF. It writes the factory image at `0x0`
-and overwrites saved tanks/settings; use SD updates for save-preserving upgrades.
+desktop Chrome/Edge without ESP-IDF. **Save-preserving USB update** validates a running CYD
+firmware's boot identity and `ota` response, detects its active slot and writes
+only the application, preserving NVS and the partition table. Back up first.
+The **factory installer** writes the factory image at `0x0` and overwrites saved
+tanks/settings; it is only for new boards or deliberate resets.
 Close serial monitors before connecting. The `CYD web installer` workflow checks
-the latest stable release's factory checksum and board marker before deploying
+the latest stable release's application/factory checksums and board markers before deploying
 the static site through GitHub Pages (Actions source). New releases dispatch
 this workflow automatically; maintainers can also run it manually.
 

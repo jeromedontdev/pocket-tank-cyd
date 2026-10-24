@@ -247,6 +247,9 @@ typedef struct {
                              * to move, clamp or not (saved; the CHANGE gate reads the
                              * youngest's, so a fish born on a clamp can still earn it) */
     float  rest_dx, rest_dy;/* this fish's own spot by the reef (individuation) */
+    uint16_t familiar[N_FISH_MAX]; /* nearby calm seconds; session-only */
+    uint32_t familiar_id[N_FISH_MAX], social_id;
+    float social_cooldown;
     uint32_t sig;           /* coarse state signature at the last advisor ask */
     uint32_t ms_bits;       /* MS_* milestones reached */
     uint32_t ms_seen;       /* MS_* the keeper has looked at on the milestones page (new = bits & ~seen) */
@@ -878,6 +881,8 @@ void  tank_grow_algae(tank_t *t, int steps);
 float tank_dist(float ax, float ay, float bx, float by);
 int   tank_nearest_food(const tank_t *t, const fish_t *f, float *dist_out);
 int   tank_nearest_friend(const tank_t *t, int fish_idx, float *dist_out);
+int   tank_familiar_friend(const tank_t *t, int fish_idx);
+int   tank_favorite_decor(const tank_t *t, int fish_idx);
 float tank_randf(tank_t *t, float lo, float hi);
 /* roster preset count (6) and a preset's display name, for UI */
 int   tank_roster_count(void);

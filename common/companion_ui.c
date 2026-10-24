@@ -26,6 +26,10 @@ static unsigned bits(unsigned value) {
 static void result(bool ok) { snprintf(notice, sizeof notice, "%s", ok ? "Saved. No hurry, ever." : "Not ready or save failed. Retry."); }
 void companion_open(void) { page = section = selected = leaf = story = creature = 0; wardrobe = WEAR_TOP_HAT; color_draft = 0; draft_pending = false; confirm_departure = false; notice[0] = 0; }
 void companion_open_section(int target) { companion_open(); page = section = target; draft_pending = target == 5; }
+void companion_open_creature(int kind) {
+    companion_open_section(5);
+    if (kind >= 0 && kind < 4) creature = kind;
+}
 static void prepare_draft(const tank_t *t) { if (draft_pending) { color_draft = t->companion.creature_colors[creature]; draft_pending = false; } }
 void companion_render(const tank_t *t, uint16_t *fb, int stride) {
     prepare_draft(t);
@@ -57,6 +61,11 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
             render_text(fb, stride, 14, 268, 1, 0xa7c4ba, "Hello: +5 bond every 30 seconds.");
             static const char *const tricks[] = {"DART 10", "BUBBLE 25", "FOLLOW 50"};
             for (int j = 0; j < 3; j++) button(fb, stride, 12 + 146 * j, 284, 132, tricks[j]);
+            int friend = tank_familiar_friend(t, i), spot = tank_favorite_decor(t, i);
+            snprintf(line, sizeof line, "SWIM BUDDY: %s", friend < 0 ? "GETTING ACQUAINTED" : t->fish[friend].name);
+            render_text(fb, stride, 14, 326, 1, 0xa7c4ba, line);
+            snprintf(line, sizeof line, "FAVORITE SPOT: %s", spot < 0 ? "THE REEF" : SD_ITEMS[spot].name);
+            render_text(fb, stride, 14, 342, 1, 0xa7c4ba, line);
         }
     } else if (page == 7) {
         snprintf(line, sizeof line, "SAND: %s", render_palette_name(true, t->sand_style));

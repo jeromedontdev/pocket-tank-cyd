@@ -579,6 +579,12 @@ void touch_port_poll(tank_t *t) {
                 }
                 goto released;
             }
+            int creature_color = render_creature_colors_hit(t, s_sel, s_px, s_py);
+            if (creature_color >= 0) {
+                render_life_creature_open(creature_color);
+                s_ms = s_life = true; s_from_home = false; s_sel = -1;
+                goto released;
+            }
             if (s_sel >= 0 && s_sel < t->n_fish && render_tools_hit(s_px, s_py) >= 0) {   /* the toolbox under the card (2026-10-01):
                                                                                      pick a tool up, or put the one in hand back */
                 int tl = render_tools_hit(s_px, s_py);

@@ -139,6 +139,17 @@ API int sim_page(void) { return page; }
 API int sim_width(void) { return TANK_W; }
 API int sim_height(void) { return TANK_H; }
 API int sim_selected(void) { return selected; }
+/* Read-only touch target for automation: do not feed/startle the tank by probing empty glass. */
+API int sim_creature_target(int card) {
+    for (int y = 0; y < TANK_H; y += 2) for (int x = 0; x < TANK_W; x += 2) {
+        if (render_creature_card_hit(&tank, x, y) != card) continue;
+        bool fish = false;
+        for (int i = 0; i < tank.n_fish; i++)
+            if (tank_dist(x, y, tank.fish[i].x, tank.fish[i].y) < 38) { fish = true; break; }
+        if (!fish) return y * TANK_W + x;
+    }
+    return -1;
+}
 
 static void shop_action(int result) {
     if (result == SHOP_TAP_TANKS) { render_aquariums_open(&tank); page = 7; }
@@ -240,7 +251,10 @@ API void sim_touch(float x, float y, int down) {
             if (!notice_dismiss()) {
                 if (render_stats_next_hit(&tank, selected, px, py)) {
                     if (render_stats_next_hit(&tank, selected, x, y)) selected = (selected + 1) % tank.n_fish;
-                } else if (selected >= 0 && RENDER_CARD_HIT(px, py)) { render_life_open(); from_home = false; page = 9; }
+                } else if (render_creature_colors_hit(&tank, selected, px, py) >= 0) {
+                    render_life_creature_open(render_creature_colors_hit(&tank, selected, px, py));
+                    from_home = false; page = 9; selected = -1;
+                } else if (selected >= 0 && selected < tank.n_fish && RENDER_CARD_HIT(px, py)) { render_life_open(); from_home = false; page = 9; }
                 else {
                     int best = -1; float distance = 38;
                     for (int i = 0; i < tank.n_fish; i++) {
@@ -248,6 +262,14 @@ API void sim_touch(float x, float y, int down) {
                         if (d < distance) { best = i; distance = d; }
                     }
                     if (best >= 0) selected = selected == best ? -1 : best;
+                    else if (render_creature_card_hit(&tank, px, py) >= 0) {
+                        int card = render_creature_card_hit(&tank, px, py);
+                        if (card == RENDER_CARD_SHRIMP) {
+                            int taps = tank_shrimp_tap(&tank, px, py);
+                            if (taps == 1) selected = selected == card ? -1 : card;
+                            else if (taps >= 3) selected = -1;
+                        } else selected = selected == card ? -1 : card;
+                    }
                     else if (selected >= 0) selected = -1;
                     else tank_touch_tap(&tank, px, py);
                 }

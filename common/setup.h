@@ -67,6 +67,13 @@ int  setup_poll_birth(tank_t *t);
  * director dropped is not due - it returns at the next boot. */
 bool setup_birth_due(void);
 void setup_begin_place(tank_t *t, int item);   /* the placement page for SD item `item` (placeable ones only) */
+typedef struct {
+    int item;
+    float x;
+    uint8_t z, scheme, rank[DECOR_SLOTS];
+    uint32_t rgb;
+} setup_place_snapshot_t;
+const setup_place_snapshot_t *setup_place_original(void);
 /* RENAME A FISH (2026-10-01, Strato: "when you tap a fish and see its card
  * there should be a change name button"): the letter wheel again, one page
  * over the live tank with the fish ringed on its stage - the name page of

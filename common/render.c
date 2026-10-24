@@ -3723,6 +3723,44 @@ static int text_w(const char *s, int scale);
 static uint16_t g_damage[TANK_MAX_H], g_damage_previous[TANK_MAX_H];
 static uint16_t g_damage_blocks[6];
 static bool g_damage_full_previous = true;
+typedef struct { int x, y, w, h, kind, pose; } theme_detail_t;
+static void theme_details(const tank_t *t, theme_detail_t out[3]) {
+    memset(out, 0, sizeof(theme_detail_t) * 3);
+    int tick = (int)(fmaxf(0, t->clock) * 4), phase = tick % 192;
+    if (t->journal.theme == 3 && journal_theme_unlocked(t, 3) && phase < 24) {
+        out[0] = (theme_detail_t){12 + phase * (TANK_W - 44) / 24,
+            46 + (tick / 192 % 3) * 18, 18, 7, 1, 0};
+    } else if (t->journal.theme == 7 && journal_theme_unlocked(t, 7) &&
+               tick % 240 >= 80 && tick % 240 < 88) {
+        int p = tick % 240 - 80;
+        out[0] = (theme_detail_t){TANK_W / 3 + p * 8, 10 + p * 3, 22, 10, 2, 0};
+    }
+    const int items[] = {9, 18};
+    for (int i = 0; i < 2; i++) {
+        int p = (tick + i * 23) % 64;
+        if (tank_decor_owned(t, items[i]) && p < 4)
+            out[i + 1] = (theme_detail_t){(int)tank_decor_x(t, items[i]) - 3,
+                TANK_BOT - (i ? 34 : 16), 7, 7, 3, p & 1};
+    }
+}
+static void theme_detail_draw(ctx_t *c, const theme_detail_t *d) {
+    if (d->kind == 1) {
+        src_t ink = src_color(0x324b68, c->dim);
+        for (int y = 0; y < 7; y++) {
+            int inset = abs(y - 3);
+            span(c, d->x + inset + 3, d->x + 14 - inset, d->y + y, &ink, 210);
+            if (y > 0 && y < 6) span(c, d->x, d->x + 2 - abs(y - 3) / 2, d->y + y, &ink, 210);
+        }
+    } else if (d->kind == 2) {
+        for (int i = 0; i < 22; i++) px_blend(c, d->x + i, d->y + i * 9 / 22, 0xaeddec, 40 + i * 9);
+    } else if (d->kind == 3) {
+        int r = d->pose ? 2 : 3;
+        for (int i = -r; i <= r; i++) {
+            px_blend(c, d->x + 3 + i, d->y + 3, 0xffe8ab, 220);
+            px_blend(c, d->x + 3, d->y + 3 + i, 0xffe8ab, 220);
+        }
+    }
+}
 static void damage_rect(int left, int top, int right, int bottom) {
     if (right < 0 || left >= TANK_W) return;
     if (left < 0) left = 0;
@@ -3822,6 +3860,17 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     for (int y = 0; y < TANK_H; y++)
         g_damage[y] |= g_damage_previous[y] | ((full || g_damage_full_previous) ? (1u << ((TANK_W + 31) / 32)) - 1 : 0);
     memcpy(g_damage_previous, current, sizeof current);
+    static theme_detail_t old_details[3];
+    theme_detail_t details[3]; theme_details(t, details);
+    for (int i = 0; i < 3; i++) {
+        if (memcmp(&old_details[i], &details[i], sizeof details[i])) {
+            if (old_details[i].kind) damage_rect(old_details[i].x, old_details[i].y,
+                old_details[i].x + old_details[i].w - 1, old_details[i].y + old_details[i].h - 1);
+            if (details[i].kind) damage_rect(details[i].x, details[i].y,
+                details[i].x + details[i].w - 1, details[i].y + details[i].h - 1);
+        }
+    }
+    memcpy(old_details, details, sizeof details);
     /* Grass retains its pixels between pose ticks. Invalidate its old and new
        silhouettes only once, including trims and moved/removed sword plants. */
     static struct { int x, top; bool active; } fronds[VEG_BEDS_MAX][VEG_FRONDS_MAX];
@@ -3910,7 +3959,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     bool cached = !g_tile_h && g_scene && g_dirty && stride == TANK_W;
     g_dirty_hold = g_tile_h != 0;                          /* the tank draws in the frame's coordinates: its marks count */
     if (cached) clear_words(g_dirty, TANK_H * DIRTY_WORDS_PER_ROW);
-    struct { short x0, y0, x1, y1; } rects[9 + MAX_FOOD + MAX_BUBBLE + N_FISH_MAX + VEG_BEDS_MAX + SHRIMP_MAX];
+    struct { short x0, y0, x1, y1; } rects[12 + MAX_FOOD + MAX_BUBBLE + N_FISH_MAX + VEG_BEDS_MAX + SHRIMP_MAX];
     int nr = 0;
 #define DYN_RECT(cx0, cy0, cx1, cy1) do { if (cached && nr < (int)(sizeof rects / sizeof rects[0])) { \
         rects[nr].x0 = (short)(cx0); rects[nr].y0 = (short)(cy0); \
@@ -3955,6 +4004,11 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
         for (int k = 0; k < g_npc; k++)
             if (!g_pc[k].baked && (g_pc[k].z == DECOR_Z_BACK || g_pc[k].item == 2)) pc_draw(&c, t, k, true, false);
     } else draw_scene(t, fb, stride, dim);
+    theme_detail_t details[3]; theme_details(t, details);
+    if (details[0].kind) {
+        theme_detail_draw(&c, &details[0]);
+        DYN_RECT(details[0].x, details[0].y, details[0].x + details[0].w - 1, details[0].y + details[0].h - 1);
+    }
     {
         static const int items[] = {28, 24, 29};
         for (int i = 0; i < 3; i++) if (t->sd_unlocks & (UINT32_C(1) << items[i])) {
@@ -4173,6 +4227,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
      * cells for free) */
     PROF_ADD(5, p0);
     draw_algae(&c, t);
+    for (int i = 1; i < 3; i++) if (details[i].kind) theme_detail_draw(&c, &details[i]);
     draw_snail(&c, t, false);                    /* on the glass, over the film */
     companion_render_decor(t, fb, stride);
     g_pk_lx = -1; g_pk_under_castle = false; g_pk_shadows = false;   /* the light is this frame's: no page is ever lit by it */
@@ -4477,6 +4532,11 @@ static void shrimp_card_draw(ctx_t *c, const tank_t *t) {
         snprintf(line, sizeof line, "%d MORE PELLET%s", more, more == 1 ? "" : "S");
     }
     draw_text(c, X + (W - text_w(line, 2)) / 2, Y + 158, 2, 0xffffff, line);
+    bool eating = false, fleeing = false;
+    for (int i = 0; i < n; i++) { eating |= t->shrimp[i].pecking != 0; fleeing |= t->shrimp[i].dart > 0; }
+    const char *activity = fleeing ? "SCATTERING" : eating ? "EATING PELLETS" :
+                           tank_shrimp_refusing(t) ? "RESTING IN ALGAE" : "FORAGING";
+    draw_text(c, X + (W - text_w(activity, 1)) / 2, Y + 184, 1, 0x9fd8e2, activity);
 }
 
 /* the seahorse's card (0.3.6): a ring on it and a centred card - the
@@ -4522,6 +4582,43 @@ static void seahorse_card_draw(ctx_t *c, const tank_t *t) {
 }
 
 static void tools_draw(ctx_t *c, const tank_t *t);   /* the toolbox, below */
+static int creature_for_card(int selected) {
+    return selected == RENDER_CARD_SHRIMP ? CREATURE_SHRIMP :
+           selected == RENDER_CARD_SNAIL ? CREATURE_SNAIL :
+           selected == RENDER_CARD_URCHIN ? CREATURE_URCHIN :
+           selected == RENDER_CARD_SEAHORSE ? CREATURE_SEAHORSE : -1;
+}
+int render_creature_card_hit(const tank_t *t, float x, float y) {
+    if (tank_snail_hit(t, x, y)) return RENDER_CARD_SNAIL;
+    if (tank_urchin_hit(t, x, y)) return RENDER_CARD_URCHIN;
+    if (tank_seahorse_hit(t, x, y)) return RENDER_CARD_SEAHORSE;
+    if (tank_shrimp_hit(t, x, y)) return RENDER_CARD_SHRIMP;
+    return -1;
+}
+int render_creature_colors_hit(const tank_t *t, int selected, float x, float y) {
+    int kind = creature_for_card(selected);
+    static const uint32_t owned[] = {SD_ITEM_SHRIMP, SD_ITEM_SNAIL, SD_ITEM_URCHIN, SD_ITEM_SEAHORSE};
+    if (kind < 0 || !(t->sd_unlocks & owned[kind])) return -1;
+    x = render_page_x(x); y = render_page_y(y);
+    return x >= 126 && x < 322 && y >= (PAGE_H + SNAIL_CARD_H) / 2 - 34 &&
+           y < (PAGE_H + SNAIL_CARD_H) / 2 - 8 ? kind : -1;
+}
+static void creature_card_details(ctx_t *c, const tank_t *t, int selected) {
+    int kind = creature_for_card(selected), y = (c->h + SNAIL_CARD_H) / 2 - 82;
+    static const char *const food[] = {"FOOD: FALLEN PELLETS", "FOOD: ALGAE ON GLASS",
+                                     "FOOD: TALL SEAGRASS", "FOOD: FALLING PELLETS"};
+    draw_text(c, (c->w - text_w(food[kind], 2)) / 2, y, 2, 0x9fd8e2, food[kind]);
+    char line[48];
+    if (kind == CREATURE_SHRIMP)
+        snprintf(line, sizeof line, "%d ACTUAL / %d SHOWN", t->shrimp_n, tank_shrimp_display_count(t));
+    else if (kind == CREATURE_SNAIL)
+        snprintf(line, sizeof line, "1 SNAIL / %s", t->snail_cell >= 0 ? "SEEKING ALGAE" : "ROAMING");
+    else if (kind == CREATURE_URCHIN)
+        snprintf(line, sizeof line, "1 URCHIN - TRIMS YOUR GRASS");
+    else snprintf(line, sizeof line, "1 SEAHORSE - SHARES TRUST");
+    draw_text(c, (c->w - text_w(line, 1)) / 2, y + 24, 1, 0xffffff, line);
+    button(c, 126, (c->h + SNAIL_CARD_H) / 2 - 34, 196, 26, 0x1c2f36, 0x9fd8e2, "COLORS", 2);
+}
 bool render_stats_next_hit(const tank_t *t, int fish_idx, float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
     return t->n_fish > 1 && fish_idx >= 0 && fish_idx < t->n_fish &&
@@ -4533,24 +4630,28 @@ void render_stats_card(const tank_t *t, int fish_idx, uint16_t *fb, int stride) 
         if (!(t->sd_unlocks & SD_ITEM_SHRIMP) || t->shrimp_n <= 0) return;
         ctx_t sc = ctx_overlay(fb, stride);
         shrimp_card_draw(&sc, t);
+        creature_card_details(&sc, t, fish_idx);
         return;
     }
     if (fish_idx == RENDER_CARD_URCHIN) {
         if (!(t->sd_unlocks & SD_ITEM_URCHIN) || t->urchin_x < 0) return;
         ctx_t sc = ctx_overlay(fb, stride);
         urchin_card_draw(&sc, t);
+        creature_card_details(&sc, t, fish_idx);
         return;
     }
     if (fish_idx == RENDER_CARD_SEAHORSE) {
         if (!(t->sd_unlocks & SD_ITEM_SEAHORSE) || t->sh_x < 0) return;
         ctx_t sc = ctx_overlay(fb, stride);
         seahorse_card_draw(&sc, t);
+        creature_card_details(&sc, t, fish_idx);
         return;
     }
     if (fish_idx == RENDER_CARD_SNAIL) {
         if (!(t->sd_unlocks & SD_ITEM_SNAIL) || t->snail_x < 0) return;
         ctx_t sc = ctx_overlay(fb, stride);
         snail_card_draw(&sc, t);
+        creature_card_details(&sc, t, fish_idx);
         return;
     }
     if (fish_idx < 0 || fish_idx >= t->n_fish) return;
@@ -6311,16 +6412,22 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     button(&c, SET_LABEL_X, SET_SEG_Y(SET_ROW2_Y), 170, SET_SEG_H, 0x1c2f36, MSP_TEAL, "BACKUP TO SD", 2);
     button(&c, 218, SET_SEG_Y(SET_ROW2_Y), 198, SET_SEG_H, 0x1c2f36, MSP_TEAL, s_restore_until > 0 ? "CONFIRM RESTORE" : "RESTORE FROM SD", 2);
     draw_text_wrap(&c, SET_LABEL_X, SET_NOTE_Y, SET_COLOR_W, MSP_TEAL, s_backup_message);
+    draw_text(&c, 32, 278, 2, MSP_TEAL, "BACKUP: ACTIVE TANK + WALLET");
+    draw_text(&c, 32, 302, 2, MSP_TEAL, "INCLUDES ITS BANK / TRAVELER.");
+    draw_text(&c, 32, 326, 2, MSP_TEAL, "OTHER SD TANKS NOT INCLUDED.");
 }
 static int g_aquarium_page, g_aquarium_pick = -1;
 static char g_aquarium_message[80];
 static char g_aquarium_names[AQUARIUM_CAP][16], g_aquarium_draft[16];
 static bool g_aquarium_naming;
+static aquarium_summary_t g_aquarium_summaries[AQUARIUM_CAP];
+static bool g_aquarium_summary_ok[AQUARIUM_CAP];
 static int g_aquarium_letter;
 void render_aquariums_open(const tank_t *t) {
     g_aquarium_page = 0; g_aquarium_pick = -1; g_aquarium_message[0] = 0;
     g_aquarium_naming = false; g_aquarium_letter = 0;
     for (int i = 0; i < t->aquariums.count; i++) {
+        g_aquarium_summary_ok[i] = progression_aquarium_summary(t, i, &g_aquarium_summaries[i]);
         if (!progression_aquarium_label(t, i, g_aquarium_names[i])) {
             snprintf(g_aquarium_names[i], sizeof g_aquarium_names[i], "TANK %d ?", i + 1);
             snprintf(g_aquarium_message, sizeof g_aquarium_message, "SD TANK NAMES UNAVAILABLE");
@@ -6348,14 +6455,32 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
         button(&c, 300, 236, 124, 38, 0x1c2f36, MSP_TEAL, "SAVE", 2);
     } else if (g_aquarium_pick >= 0) {
         bool buy = g_aquarium_pick == t->aquariums.count;
-        draw_text(&c, 24, 96, 3, 0xffffff, buy ? "BUY NEW TANK?" : "SWITCH TANK?");
+        bool active = g_aquarium_pick == t->aquariums.active;
+        draw_text(&c, 24, 96, 3, 0xffffff, buy ? "BUY NEW TANK?" : active ? "TANK SUMMARY" : "SWITCH TANK?");
         snprintf(line, sizeof line, "%s", buy ? "500 SAND DOLLARS" : g_aquarium_names[g_aquarium_pick]);
         draw_text(&c, 24, 138, 2, MSP_TEAL, line);
-        draw_text(&c, 24, 170, 2, MSP_TEAL, buy ? "TWO NEW FRY." : "CURRENT TANK SAVES TO SD.");
-        draw_text(&c, 24, 194, 2, MSP_TEAL, buy ? "SAND DOLLARS ARE GLOBAL." : "OTHER TANKS STAY PAUSED.");
-        if (buy) draw_text(&c, 24, 218, 2, MSP_TEAL, "OWN ITEMS, JOURNAL AND BANK.");
+        if (buy) {
+            draw_text(&c, 24, 170, 2, MSP_TEAL, "TWO NEW FRY.");
+            draw_text(&c, 24, 194, 2, MSP_TEAL, "SAND DOLLARS ARE GLOBAL.");
+            draw_text(&c, 24, 218, 2, MSP_TEAL, "OWN ITEMS, JOURNAL AND BANK.");
+        } else if (!g_aquarium_summary_ok[g_aquarium_pick])
+            draw_text(&c, 24, 170, 2, 0xff7070, "SD SUMMARY UNAVAILABLE");
+        else {
+            const aquarium_summary_t *s = &g_aquarium_summaries[g_aquarium_pick];
+            snprintf(line, sizeof line, "%u FISH / %u AWAY / %u IN BANK", s->fish, s->away, s->bank);
+            draw_text(&c, 24, 164, 2, MSP_TEAL, line);
+            snprintf(line, sizeof line, "%u SHRIMP / %u OTHER HELPERS", s->shrimp, s->helpers);
+            draw_text(&c, 24, 184, 2, MSP_TEAL, line);
+            snprintf(line, sizeof line, "%u UPGRADES / %s", s->upgrades, JOURNAL_THEME_NAMES[s->theme]);
+            draw_text(&c, 24, 204, 1, MSP_TEAL, line);
+            int64_t now = clock_port_now_unix(), hours = now > s->last_visit ? (now - s->last_visit) / 3600 : 0;
+            if (active) snprintf(line, sizeof line, "LAST VISIT: NOW");
+            else if (!now || !s->last_visit) snprintf(line, sizeof line, "LAST VISIT: CLOCK UNKNOWN");
+            else snprintf(line, sizeof line, "LAST VISIT: %lld HOURS AGO", (long long)hours);
+            draw_text(&c, 24, 220, 1, MSP_TEAL, line);
+        }
         button(&c, 40, 236, 168, 38, 0x1c2f36, MSP_TEAL, "CANCEL", 2);
-        button(&c, 240, 236, 168, 38, 0x1c2f36, MSP_TEAL, "CONFIRM", 2);
+        if (!active) button(&c, 240, 236, 168, 38, 0x1c2f36, MSP_TEAL, "CONFIRM", 2);
     } else {
         int rows = t->aquariums.count < AQUARIUM_CAP ? t->aquariums.count + 1 : AQUARIUM_CAP;
         int pages = (rows + 3) / 4;
@@ -6368,7 +6493,7 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
             if (slot >= rows) break;
             snprintf(line, sizeof line, "%s", slot == t->aquariums.count ? "NEW TANK" : g_aquarium_names[slot]);
             draw_text(&c, 24, y + 8, 2, 0xffffff, line);
-            const char *label = slot == t->aquariums.count ? "BUY" : slot == t->aquariums.active ? "ACTIVE" : "OPEN";
+            const char *label = slot == t->aquariums.count ? "BUY" : slot == t->aquariums.active ? "SUMMARY" : "OPEN";
             button(&c, 300, y, 124, 34, 0x1c2f36, MSP_TEAL, label, 2);
         }
     }
@@ -6412,7 +6537,7 @@ int render_aquariums_tap(tank_t *t, float x, float y) {
     if (g_aquarium_pick >= 0) {
         if (y >= 236 && y < 274) {
             if (x >= 40 && x < 208) { g_aquarium_pick = -1; g_aquarium_message[0] = 0; }
-            else if (x >= 240 && x < 408) {
+            else if (x >= 240 && x < 408 && g_aquarium_pick != t->aquariums.active) {
                 const char *error = progression_aquarium_move(t, g_aquarium_pick);
                 if (!error) { render_aquariums_open(t); return 2; }
                 snprintf(g_aquarium_message, sizeof g_aquarium_message, "%s", error);
@@ -6434,8 +6559,9 @@ int render_aquariums_tap(tank_t *t, float x, float y) {
     } else if (x >= 24 && x < 424 && y >= 108 && y < 280) {
         int row = (int)((y - 108) / 43), slot = g_aquarium_page * 4 + row;
         if (slot < rows && y < 108 + row * 43 + 34) {
-            if (slot == t->aquariums.active) snprintf(g_aquarium_message, sizeof g_aquarium_message, "THIS TANK IS ALREADY ACTIVE");
-            else { g_aquarium_pick = slot; g_aquarium_message[0] = 0; }
+            g_aquarium_pick = slot;
+            snprintf(g_aquarium_message, sizeof g_aquarium_message, "%s",
+                slot == t->aquariums.count ? "" : "SWITCH SAVES THIS TANK. OTHERS PAUSE.");
         }
     }
     return 0;
@@ -6671,6 +6797,10 @@ int render_journal_tap(tank_t *t, float x, float y) {
 static int g_life_page, g_home_category;
 void render_life_open(void) { g_life_page = g_home_category = 0; }
 static void home_companion(int section) { companion_open_section(section); g_life_page = 1; }
+void render_life_creature_open(int creature) {
+    render_life_open(); g_home_category = 2; g_life_page = 1;
+    companion_open_creature(creature);
+}
 int render_life_tap(tank_t *t, float x, float y) {
     if (g_life_page) {
         if (companion_tap(t, x, y)) g_life_page = 0;

@@ -27,7 +27,12 @@ goal_t advisor_rules(const tank_t *t, int fish_idx, bool request) {
         g.id = GOAL_REST; g.urgency = f->energy < 1.5f ? 7 : 4;
     } else if (f->hunger > 6.3f && food_i >= 0) {
         g.id = GOAL_SEEK_FOOD; g.urgency = f->hunger > 8.5f ? 9 : 6;
-    } else if (f->sociable > 0.62f && friend_d > 60 && r < 0.36f) {
+    } else if (f->goal.id == GOAL_FOLLOW_FRIEND && f->goal_age > 12) {
+        g.id = GOAL_EXPLORE; g.urgency = 3;
+    } else if (f->sociable > 0.45f && tank_familiar_friend(t, fish_idx) >= 0 &&
+               f->social_cooldown <= 0 && f->goal_age > 6 && r < .3f && !t->night) {
+        g.id = GOAL_FOLLOW_FRIEND; g.urgency = 3;
+    } else if (f->sociable > 0.62f && f->social_cooldown <= 0 && friend_d > 60 && r < 0.36f) {
         g.id = GOAL_FOLLOW_FRIEND; g.urgency = 4;
     } else if (f->curiosity > 6 && r < 0.32f) {
         g.id = (r < 0.16f) ? GOAL_VISIT_BUBBLES : GOAL_INSPECT_REEF; g.urgency = 3;

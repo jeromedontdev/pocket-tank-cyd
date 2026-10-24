@@ -196,6 +196,28 @@ def main():
                 capture("fish-card")
                 tap(176, 28)
                 capture("fish-card-next")
+                for kind, card, name in ((1, 99, "snail-card"), (5, 98, "shrimp-card"),
+                                         (6, 97, "urchin-card"), (7, 96, "seahorse-card")):
+                    creature = copy.deepcopy(demo)
+                    creature["tank"]["sd_unlocks"] = 1 << kind
+                    creature["tank"].update(shrimp_n=10, snail_x=190, snail_y=160, urchin_x=190,
+                                            clock_theme=0, setup_pending=0, newborn_p1=0, tank_ms_bits=0xffff)
+                    restore(creature)
+                    for _ in range(200):
+                        lib.sim_frame(.1)
+                    for _ in range(120):
+                        point = lib.sim_creature_target(card)
+                        if point >= 0:
+                            break
+                        lib.sim_frame(.1)
+                    if point < 0:
+                        raise RuntimeError(f"Could not find a touch target for {name}")
+                    width = lib.sim_width()
+                    lib.sim_touch(point % width, point // width, 1)
+                    lib.sim_touch(point % width, point // width, 0)
+                    if lib.sim_selected() != card:
+                        raise RuntimeError(f"Selection not reproducible for {name}")
+                    capture(name)
                 scenery = copy.deepcopy(demo)
                 scenery["tank"].update(sd_unlocks=sum(1 << i for i in range(22, 30)),
                                        journal_theme=0, sand_style=0, water_style=0)
@@ -437,6 +459,9 @@ def main():
                 lib.sim_action(3)
                 tap(250, 326)
                 capture("aquariums-owned")
+                tap(350, 160)
+                capture("aquarium-summary")
+                tap(380, 24)
                 tap(80, 338)
                 letters = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
                 current = "TANK 2".ljust(15)

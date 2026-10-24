@@ -1,7 +1,7 @@
-# Pocket Tank CYD 1.0.1
+# Pocket Tank CYD 1.1.0
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently as **1.0.1**. Originally based on upstream v0.3.8.
+now versioned independently as **1.1.0**. Originally based on upstream v0.3.8.
 Targets the **ESP32-2432S028 Cheap Yellow Display**:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
@@ -14,6 +14,17 @@ themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
 ## What remains
+
+- Calm fish form session swim buddies and follow in short, spaced pairs.
+  Stable favorite decorations guide resting and exploration; see **Home > Fish > Care**.
+- Tap shrimp, snail, urchin or seahorse for diet, activity and progress.
+  The shrimp card distinguishes actual population from drawn representatives;
+  **COLORS** opens that creature's free color editor.
+- Decoration placement is a live **PREVIEW**: **DONE** commits, **CANCEL**
+  restores position, depth, stacking and color. Autosaves retain the committed layout.
+- Aquarium summaries show residents, Bank, traveler, upgrades, theme and last visit.
+- Sparse Deep Glow silhouettes, Moonlit shooting stars and treasure/crystal glints
+  use small, infrequent dirty regions rather than animated whole-screen backdrops.
 
 - Personality-aware **rules-based** fish goals, reflexes, feeding, growth,
   trust, milestones, breeding, tank maintenance and the shop.
@@ -96,14 +107,18 @@ replace the working RAM needed by the original model.
 in desktop Chrome or Edge. Connect an ESP32-2432S028 CYD with a USB data cable;
 no ESP-IDF installation is needed.
 
-**Factory installation only: this overwrites saved tanks, Wi-Fi, calibration
-and collection identity.** Back up first. Existing users should use the SD
-update instead to preserve their aquarium. The page requires an explicit
-acknowledgment before connecting. All artwork is embedded; no SD icons are needed.
+Choose **save-preserving USB update** for an existing CYD tank. It validates
+the running firmware, board identity, partition layout and active slot before
+writing only the application. Back up first and keep USB power connected.
+The separate **factory installer overwrites saved tanks, Wi-Fi, calibration
+and collection identity** and is only for new boards or deliberate resets.
+Both flows require an explicit acknowledgment; refusal never falls back to
+factory flashing. All artwork is embedded; no SD icons are needed.
 
-The site uses ESP Web Tools and the latest stable release's factory image,
-verified against its published SHA-256 checksums before deployment. The chip
-family is checked, but users must confirm the correct CYD board model.
+The site uses pinned ESP Web Tools/esptool-js and the latest stable release's
+application/factory images, checked against published SHA-256 checksums and board
+markers before deployment. The factory flow checks only the chip family:
+users must confirm the correct CYD display model.
 
 Prebuilt CYD firmware, SD update packages, matching artwork and installation
 instructions are available under

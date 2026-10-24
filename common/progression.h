@@ -63,6 +63,11 @@ bool progression_adventure_return(tank_t *t);
 const char *progression_aquarium_move(tank_t *t, int target);
 const char *progression_aquarium_rename(tank_t *t, const char *name);
 bool progression_aquarium_label(const tank_t *t, int slot, char name[16]);
+typedef struct {
+    uint8_t fish, away, bank, shrimp, helpers, upgrades, theme;
+    int64_t last_visit;
+} aquarium_summary_t;
+bool progression_aquarium_summary(const tank_t *t, int slot, aquarium_summary_t *summary);
 bool aquarium_port_ready(void);
 void aquarium_port_id(uint32_t id[2]);
 bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size);

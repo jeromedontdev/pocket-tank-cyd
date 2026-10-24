@@ -132,6 +132,9 @@ void render_fb_primed(const uint16_t *fb, unsigned epoch);
  * hitches, the trust it passed on and what it is doing. */
 #define RENDER_CARD_SEAHORSE 96
 void render_stats_card(const tank_t *t, int fish_idx, uint16_t *fb, int stride);
+int render_creature_colors_hit(const tank_t *t, int selected, float x, float y);
+int render_creature_card_hit(const tank_t *t, float x, float y);
+void render_life_creature_open(int creature);
 #define RENDER_CARD_NEXT_X 154
 #define RENDER_CARD_NEXT_Y 8
 #define RENDER_CARD_NEXT_W 44
@@ -381,13 +384,13 @@ void render_creature_portrait(uint16_t *fb, int stride, float x, float y, int cr
  * frame's; render.c has the words that go with each page. ---- */
 /* the snail's and the shrimp school's cards: centered on the glass (the frame's coordinates) */
 #define SNAIL_CARD_W 336
-#define SNAIL_CARD_H 176
+#define SNAIL_CARD_H 286
 #define SHRIMP_CARD_W 336
-#define SHRIMP_CARD_H 190
+#define SHRIMP_CARD_H 286
 #define URCHIN_CARD_W 336
-#define URCHIN_CARD_H 194
+#define URCHIN_CARD_H 286
 #define SEAHORSE_CARD_W 336
-#define SEAHORSE_CARD_H 188
+#define SEAHORSE_CARD_H 286
 /* the milestones page (the bowl has its own rows and buttons: render.c) */
 #define MSP_ROW_Y0    4
 #define MSP_ROW_H     40

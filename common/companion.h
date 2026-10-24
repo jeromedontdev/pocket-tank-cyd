@@ -13,6 +13,7 @@ bool companion_wearable(tank_t *t, int fish, int wearable);
 bool companion_colors(tank_t *t, bool wearable, int target, uint8_t colors);
 bool companion_compact(tank_t *t, bool compact);
 void companion_open_section(int section);
+void companion_open_creature(int kind);
 enum { COMPANION_SECTION_CARE, COMPANION_SECTION_COLLECTIONS, COMPANION_SECTION_ADVENTURES, COMPANION_SECTION_APPEARANCE = 7 };
 extern const char *const COMPANION_DISCOVERIES[COMPANION_DISCOVERY_COUNT];
 extern const char *const COMPANION_COLLECTIONS[COMPANION_COLLECTION_COUNT];

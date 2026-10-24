@@ -368,6 +368,11 @@ void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold,
     f->eaten = 0; f->eaten_player = 0; f->at_bubbles = false;
     /* its own spot by the reef: bolder fish rest a little further out */
     f->rest_dx = 8 + slot * 24 + bold * 14; f->rest_dy = -slot * 9 - tank_randf(t, 0, 10);   /* a body apart (was 9 px per slot) */
+    memset(f->familiar, 0, sizeof f->familiar);
+    memset(f->familiar_id, 0, sizeof f->familiar_id);
+    static uint32_t next_social_id;
+    f->social_id = ++next_social_id;
+    f->social_cooldown = 0;
     f->sig = 0xffffffffu; f->ms_bits = 0; f->ms_seen = 0;
     f->color = p->color; f->fin = p->fin; f->accent = p->accent;
     f->variety = FISH_CLASSIC; f->pattern = PATTERN_STRIPES; f->wearable = WEAR_NONE; f->wear_colors = 0;
@@ -543,6 +548,7 @@ void tank_init(tank_t *t, uint32_t seed) {
     t->snail_x = -1; t->snail_y = -1; t->snail_heading = 0; t->snail_cell = -1; t->snail_graze = 0;
     t->snail_grazed = 0; t->snail_sleep_acc = 0;
     t->shrimp_n = 0; t->shrimp_food = 0; t->shrimp_cool = 0; t->shrimp_eaten = 0;
+    t->shrimp_taps = 0; t->shrimp_tap_t = 99;
     t->urchin_x = -1; t->urchin_bed = t->urchin_frond = -1; t->urchin_appetite = 0; t->urchin_chew = 0;
     t->urchin_to = -1; t->urchin_rest = 0; t->urchin_grazed_px = 0;
     t->sh_x = -1; t->sh_y = 0; t->sh_bed = t->sh_frond = -1; t->sh_mode = SH_DRIFT; t->sh_facing = 1;
@@ -2335,6 +2341,31 @@ static int zone_of(float x, float y) {
     return row * 3 + col;
 }
 
+int tank_familiar_friend(const tank_t *t, int idx) {
+    if (idx < 0 || idx >= t->n_fish) return -1;
+    const fish_t *f = &t->fish[idx];
+    int best = -1; unsigned score = 29;
+    for (int i = 0; i < t->n_fish; i++) {
+        if (i != idx && f->familiar_id[i] == t->fish[i].social_id && f->familiar[i] > score) {
+            best = i; score = f->familiar[i];
+        }
+    }
+    return best;
+}
+
+int tank_favorite_decor(const tank_t *t, int idx) {
+    if (idx < 0 || idx >= t->n_fish) return -1;
+    uint32_t best = UINT32_MAX;
+    int item = -1;
+    for (int i = 0; i < SD_ITEM_COUNT; i++) {
+        if (!tank_decor_placeable(i) || !tank_decor_owned(t, i)) continue;
+        uint32_t score = (uint32_t)(t->fish[idx].preset + 1) * 2654435761u ^ (uint32_t)(i + 1) * 2246822519u;
+        score ^= score >> 16; score *= 3266489917u; score ^= score >> 13;
+        if (score < best) { best = score; item = i; }
+    }
+    return item;
+}
+
 /* ---- goal → target point + cruise speed (prototype targetForGoal, x0.55) ---- */
 typedef struct { float x, y, speed; bool valid; } target_t;
 
@@ -2382,18 +2413,26 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
         tg.speed = 23;
         break;
     case GOAL_FOLLOW_FRIEND: {
-        float d; int i = tank_nearest_friend(t, idx, &d);
+        float d; int i = tank_familiar_friend(t, idx);
+        if (i < 0) i = tank_nearest_friend(t, idx, &d);
+        else d = tank_dist(f->x, f->y, t->fish[i].x, t->fish[i].y);
         if (i >= 0) {
             const fish_t *fr = &t->fish[i];
-            float ang = atan2f(f->y - fr->y, f->x - fr->x) + sinf(tm + f->wander) * 0.35f;
-            tg.x = fr->x + cosf(ang) * 54; tg.y = fr->y + sinf(ang) * 34;   /* a body length off, not on top */
-            tg.speed = clampf(d - 40, 10, 42);
+            if (fr->goal.id == GOAL_SEEK_FOOD || fr->goal.id == GOAL_REST || fr->goal.id == GOAL_FLEE_SHADOW) break;
+            /* One leader per pair, with a steady trailing lane rather than mutual orbiting. */
+            if (fr->goal.id == GOAL_FOLLOW_FRIEND && idx < i) break;
+            float spacing = tank_fish_half_width(f) + tank_fish_half_width(fr) + 12;
+            tg.x = fr->x - cosf(fr->heading) * spacing;
+            tg.y = fr->y + (idx < i ? -12 : 12);
+            tg.speed = clampf(fr->speed + (d - spacing) * .3f, 8, 30);
         } else tg.valid = false;
         break;
     }
     case GOAL_REST:
         tg.x = t->reef_x + 13 + f->rest_dx;
         tg.y = TANK_BOT - 50 + f->rest_dy;
+        { int item = tank_favorite_decor(t, idx);
+          if (item >= 0) tg.x = tank_decor_x(t, item) + (f->bold - .5f) * 24; }
         tg.speed = 6 + f->bold * 4;
         break;
     case GOAL_DART_PLAY:
@@ -2406,9 +2445,11 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
         break;
     case GOAL_INSPECT_REEF: {
         float rx, ry; tank_reef_spot(t, &rx, &ry);   /* the reef cluster, once there is one */
+        int item = tank_favorite_decor(t, idx);
+        if (item >= 0) { rx = tank_decor_x(t, item); ry = TANK_BOT - 42; }
         tg.x = rx + sinf(tm * 0.65f + f->wander + idx * 1.7f) * (39 + idx * 4);
         tg.y = ry - REEF_ORBIT_UP + cosf(tm * 0.8f + f->wander + idx * 1.1f) * (15 + idx * 4);
-        tg.speed = 15 + f->curiosity * 1.7f;
+        tg.speed = (10 + f->curiosity * 1.2f) * (.65f + f->bold * .35f);
         break;
     }
     case GOAL_EXPLORE: {
@@ -2579,6 +2620,7 @@ static void update_fish(tank_t *t, int idx, float dt) {
     f->wander += dt * (0.65f + f->curiosity * 0.04f) + sinf(t->clock + f->x * 0.01f) * dt * 0.12f;
     if (f->dart_timer > 0) f->dart_timer -= dt;
     f->goal_age += dt; f->ask_age += dt;
+    if (f->social_cooldown > 0) f->social_cooldown = fmaxf(0, f->social_cooldown - dt);
     /* boredom: the same pastime goes stale (a minute to the top); a meal or a
      * night's rest is never boring. A zone the fish has not seen for a while
      * is a small relief - so a real explore across the tank roughly pays for
@@ -2884,6 +2926,19 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
     urchin_tick(t, dt);
     seahorse_tick(t, dt);
     shrimp_tick(t, dt);
+    if ((int)t->clock != (int)(t->clock - dt)) {
+        for (int i = 0; i < t->n_fish; i++)
+            for (int j = 0; j < t->n_fish; j++) {
+                fish_t *a = &t->fish[i], *b = &t->fish[j];
+                if (i == j) continue;
+                if (a->familiar_id[j] != b->social_id) {
+                    a->familiar_id[j] = b->social_id; a->familiar[j] = 0;
+                }
+                if (a->stress < 5 && b->stress < 5 && tank_dist(a->x, a->y, b->x, b->y) < 90 &&
+                    a->familiar[j] < UINT16_MAX)
+                    a->familiar[j]++;
+            }
+    }
 
     /* bubbles rise */
     for (int i = 0; i < MAX_BUBBLE; i++) {
@@ -2923,6 +2978,7 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
                 t->ask_rr = (i + 1) % t->n_fish;
             }
             if (g.id < GOAL_COUNT && g.id != f->goal.id) {
+                if (f->goal.id == GOAL_FOLLOW_FRIEND) f->social_cooldown = 12;
                 /* a genuinely new pastime relieves boredom; bouncing back to
                  * the one just left (bubbles -> friend -> bubbles) does not */
                 if (g.id != f->goal_prev) f->bored = clampf(f->bored - BORED_NEW_GOAL, 0, 10);

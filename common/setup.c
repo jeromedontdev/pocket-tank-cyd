@@ -28,6 +28,18 @@ static uint32_t s_old_body, s_old_fin, s_old_accent;
 static uint8_t s_old_variety, s_old_pattern;
 static fish_t s_custom_draft;
 static bool s_save_error;
+static setup_place_snapshot_t s_place_original;
+const setup_place_snapshot_t *setup_place_original(void) {
+    return s_active && s_place ? &s_place_original : NULL;
+}
+static float *place_x(tank_t *t, int item) {
+    switch (item) {
+    case 0: return &t->plant_x; case 2: return &t->castle_x;
+    case 3: return &t->coral_x; case 4: return &t->cluster_x;
+    case 8: return &t->pumpkin_x; case 9: return &t->chest_x;
+    default: return &t->ornament_x[tank_ornament_index(item)];
+    }
+}
 static int  s_renamed;         /* a rename page just closed: the fish's slot + 1, until the platform takes it */
 static int  s_item;            /* placement: the SD item being placed */
 static int  s_fish;            /* birth flow: the newborn's slot */
@@ -83,7 +95,12 @@ void setup_begin_customize(tank_t *t, int fish) {
 bool setup_is_rename(void) { return s_active && s_rename; }
 int  setup_take_renamed(void) { int f = s_renamed - 1; s_renamed = 0; return f; }
 void setup_begin_place(tank_t *t, int item) {
-    if (!tank_decor_placeable(item)) return;
+    if (!tank_decor_placeable(item) || s_active) return;
+    s_place_original.item = item; s_place_original.x = *place_x(t, item);
+    s_place_original.z = (uint8_t)tank_decor_z(t, item);
+    s_place_original.rgb = t->coral_rgb; s_place_original.scheme = t->cluster_scheme;
+    memcpy(s_place_original.rank, t->decor_rank, sizeof t->decor_rank);
+    s_save_error = false;
     s_active = true; s_birth = false; s_place = true; s_rename = false; s_item = item; s_fish = -1; s_page = SETUP_PG_PLACE; s_slot = 0; s_down = false;
     s_sell_armed = false;
     stage(t);
@@ -143,7 +160,12 @@ static void stage(tank_t *t) {                          /* who is on stage, and 
 }
 void setup_cancel(tank_t *t) {
     if (s_active && s_rename) { rename_end(t, false); s_renamed = 0; return; }   /* the old name back, no card to return to */
-    if (s_active && s_place) progression_save(t);       /* the piece stays where it was dragged */
+    if (s_active && s_place) {
+        tank_decor_set(t, s_item, tank_decor_x(t, s_item), s_place_original.z);
+        *place_x(t, s_item) = s_place_original.x;
+        t->coral_rgb = s_place_original.rgb; t->cluster_scheme = s_place_original.scheme;
+        memcpy(t->decor_rank, s_place_original.rank, sizeof t->decor_rank);
+    }
     s_active = false; stage(t);
 }
 int  setup_page(void)   { return s_page; }
@@ -295,6 +317,7 @@ int setup_hit(float x, float y) {
     if (page_one_button())
         return in_box(x, y, SETUP_MID_X, SETUP_BTN_Y, SETUP_BTN_W, SETUP_BTN_H, m) ? SETUP_HIT_NEXT : 0;
     if (nav_on_top()) {
+        if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, 0)) return SETUP_HIT_BACK;
         if (in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_NEXT;
         if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_SELL;
         if (s_place && in_box(x, y, SETUP_ORD_X0, SETUP_TOP_BTN_Y, SETUP_ORD_W, SETUP_BTN_H, 6)) return SETUP_HIT_BCK;
@@ -381,14 +404,21 @@ void setup_activate(tank_t *t, int id) {
         return;
     }
     if (s_place) {                                      /* DONE saves the spot; a layer button sets the depth; SELL twice sells */
+        if (id == SETUP_HIT_BACK) { setup_cancel(t); return; }
         if (id == SETUP_HIT_SELL) {
             if (!s_sell_armed) { s_sell_armed = true; return; }
             s_sell_armed = false;
+            s_place = false;
             if (progression_sell(t, s_item)) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
+            else { s_place = true; s_save_error = true; }
             return;
         }
         s_sell_armed = false;                           /* any other tap stands SELL down */
-        if (id == SETUP_HIT_NEXT) { s_active = false; tank_emit(TEV_CONFIRM, -1); progression_save(t); }
+        if (id == SETUP_HIT_NEXT) {
+            s_place = false;
+            if (progression_save(t)) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
+            else { s_place = true; s_save_error = true; }
+        }
         else if (id == SETUP_HIT_BCK || id == SETUP_HIT_FWD) tank_decor_shift(t, s_item, id == SETUP_HIT_FWD ? 1 : -1);   /* the stack: a step; DONE saves it */
         else if (id >= SETUP_HIT_Z0 && id < SETUP_HIT_Z0 + DECOR_Z_N)
             tank_decor_set(t, s_item, tank_decor_x(t, s_item), id - SETUP_HIT_Z0);
@@ -703,7 +733,9 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         /* the live tank with a stripe over the piece's footprint: drag it
            anywhere on the water; the layer row picks its depth (the tank
            under the page redraws with it, so the fish and grass show the choice) */
-        char title[40]; snprintf(title, sizeof title, "PLACE THE %s", SD_ITEMS[s_item].name);
+        char title[40];
+        if (s_save_error) snprintf(title, sizeof title, "SAVE FAILED - RETRY");
+        else snprintf(title, sizeof title, "PREVIEW: %s", SD_ITEMS[s_item].name);
         text_c(fb, stride, CX, SETUP_Y + 7, 2, C_CAPT, title);
         render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, "DONE", 2);
         /* SELL, top left (2026-09-24): a tap arms it and names the refund, a
@@ -711,6 +743,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         if (s_sell_armed) { char ok[16]; snprintf(ok, sizeof ok, "+%d OK?", progression_sell_value(s_item));
                             render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, ok, 2); }
         else render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_INNER, C_DIM, "SELL", 2);
+        render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, C_INNER, C_DIM, "CANCEL", 1);
         /* the ORDER arrows (2026-10-17): a step back / forward in the stack of
            pieces at this depth, lit when there is a piece to pass; the relation
            is named on the hint line ("UNDER THE CORAL") */

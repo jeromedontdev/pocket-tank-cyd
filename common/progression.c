@@ -2,6 +2,7 @@
 #include "companion.h"
 #include "tank_events.h"
 #include "version.h"
+#include "setup.h"
 #include <stddef.h>
 #include <string.h>
 #include <math.h>
@@ -610,18 +611,27 @@ bool progression_sell(tank_t *t, int item) {
     if (item < 0 || item >= SD_ITEM_COUNT || (!tank_decor_placeable(item) && !(item >= 22 && item <= 29))) return false;   /* residents and functional upgrades stay */
     const sd_item_t *it = &SD_ITEMS[item];
     if (!(t->sd_unlocks & it->bit)) return false;
+    tank_t *before = NULL;
+    if (tank_decor_placeable(item)) {
+        before = malloc(sizeof *before);
+        if (!before) { fprintf(stderr, "Shop sale needs more memory; no change\n"); return false; }
+        *before = *t;
+    }
     t->sd_unlocks &= ~it->bit;
     int back = progression_sell_value(item);
     t->sd_balance += back; s_sd_pending += back;
     if (item >= 22) {
-        if (progression_save(t)) return true;
+        if (progression_save(t)) { free(before); return true; }
         t->sd_unlocks |= it->bit; t->sd_balance -= back; s_sd_pending -= back;
+        free(before);
         fprintf(stderr, "Shop sale save failed for %s; sale rolled back\n", it->name);
         return false;
     }
     tank_decor_reset(t, item);
-    mark_dirty(); progression_save(t);
-    return true;
+    if (progression_save(t)) { free(before); return true; }
+    *t = *before; free(before); s_sd_pending -= back;
+    fprintf(stderr, "Shop sale save failed for %s; sale rolled back\n", it->name);
+    return false;
 }
 /* ---- a fish sold (2026-10-01) ---- */
 int progression_fish_value(const tank_t *t, int fish) {
@@ -1637,11 +1647,34 @@ static void capture_save(const tank_t *t, save_t *sv) {
     }
     sv->sand_style = t->sand_style; sv->water_style = t->water_style;
     sv->journal = t->journal;
+    const setup_place_snapshot_t *layout = setup_place_original();
+    if (layout) {
+        /* Autosaves and JSON backups see the committed layout, never the live preview. */
+        memcpy(sv->decor_rank, layout->rank, sizeof sv->decor_rank);
+        sv->chest_rank = layout->rank[5];
+        for (int i = 0; i < 4; i++) sv->ornament_rank[i] = layout->rank[6 + i];
+        switch (layout->item) {
+        case 0: sv->plant_x = layout->x; sv->plant_z1 = layout->z + 1; break;
+        case 2: sv->castle_x = layout->x; sv->castle_z1 = layout->z + 1; break;
+        case 3: sv->coral_x = layout->x; sv->coral_z1 = layout->z + 1; sv->coral_rgb = layout->rgb; break;
+        case 4: sv->cluster_x = layout->x; sv->cluster_z1 = layout->z + 1; sv->cluster_scheme = layout->scheme; break;
+        case 8: sv->pumpkin_x = layout->x; sv->pumpkin_z1 = layout->z + 1; break;
+        case 9: sv->chest_x = layout->x; sv->chest_z1 = layout->z + 1; break;
+        default: {
+            int i = tank_ornament_index(layout->item);
+            if (i >= 0 && i < 4) { sv->ornament_x[i] = layout->x; sv->ornament_z1[i] = layout->z + 1; }
+            break;
+        }
+        }
+    }
     sv->bank_count = t->bank_count;
     memcpy(sv->bank, t->bank, sizeof sv->bank);
     for (int i = 0; i < 6; i++) {
         sv->extra_x[i] = t->ornament_x[4 + i]; sv->extra_z1[i] = (uint8_t)(t->ornament_z[4 + i] + 1);
-        sv->extra_rank[i] = t->decor_rank[10 + i];
+        sv->extra_rank[i] = layout ? layout->rank[10 + i] : t->decor_rank[10 + i];
+        if (layout && tank_ornament_index(layout->item) == i + 4) {
+            sv->extra_x[i] = layout->x; sv->extra_z1[i] = layout->z + 1;
+        }
     }
     for (int i = 0; i < N_FISH_MAX; i++) {
         if (i < t->n_fish) { sv->fish_variety[i] = t->fish[i].variety; sv->fish_pattern[i] = t->fish[i].pattern; }
@@ -2303,4 +2336,36 @@ bool progression_aquarium_label(const tank_t *t, int slot, char name[16]) {
         if (!name[0]) snprintf(name, 16, "TANK %d", slot + 1);
     }
     free(sv); return ok;
+}
+
+bool progression_aquarium_summary(const tank_t *t, int slot, aquarium_summary_t *out) {
+    if (!out || slot < 0 || slot >= t->aquariums.count) return false;
+    save_t *sv = NULL;
+    uint32_t unlocks;
+    uint8_t upgrades;
+    if (slot == t->aquariums.active) {
+        if (t->journal.theme >= JOURNAL_THEME_COUNT) return false;
+        *out = (aquarium_summary_t){.fish = (uint8_t)t->n_fish, .away = t->companion.away,
+            .bank = t->bank_count, .shrimp = (uint8_t)t->shrimp_n, .theme = t->journal.theme,
+            .last_visit = clock_port_now_unix()};
+        unlocks = t->sd_unlocks; upgrades = t->aquariums.stat_upgrades;
+    } else {
+        sv = malloc(sizeof *sv);
+        if (!sv) return false;
+        bool ok = aquarium_port_read(t->aquariums.id, slot, sv, sizeof *sv) &&
+            sv->magic == SAVE_MAGIC && sv->aquariums.active == slot &&
+            !memcmp(sv->aquariums.id, t->aquariums.id, sizeof sv->aquariums.id) &&
+            sv->n_fish <= N_FISH_MAX && sv->bank_count <= FISH_BANK_CAP &&
+            sv->journal.theme < JOURNAL_THEME_COUNT && !(sv->aquariums.stat_upgrades & ~STAT_MASK);
+        if (!ok) { free(sv); return false; }
+        *out = (aquarium_summary_t){.fish = sv->n_fish, .away = sv->companion.away,
+            .bank = sv->bank_count, .shrimp = sv->shrimp_n, .theme = sv->journal.theme,
+            .last_visit = sv->saved_unix};
+        unlocks = sv->sd_unlocks; upgrades = sv->aquariums.stat_upgrades;
+        free(sv);
+    }
+    out->helpers = !!(unlocks & SD_ITEM_SNAIL) + !!(unlocks & SD_ITEM_URCHIN) + !!(unlocks & SD_ITEM_SEAHORSE);
+    if (!(unlocks & SD_ITEM_SHRIMP)) out->shrimp = 0;
+    out->upgrades = (uint8_t)__builtin_popcount(upgrades);
+    return true;
 }

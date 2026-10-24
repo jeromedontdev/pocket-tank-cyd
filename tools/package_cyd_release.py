@@ -57,6 +57,10 @@ only install files from a source you trust.
 
 USB APP-ONLY UPGRADE
 pocket-tank-cyd-app.bin is NOT a factory image.
+Browser option: https://jeromedontdev.github.io/pocket-tank-cyd/
+Choose save-preserving USB update, NOT the factory installer. It validates
+the live board/OTA layout and writes only the detected running application.
+Back up first, close serial monitors and keep USB power connected.
 Use the source checkout's tools\\build_cyd.ps1 -Flash, which detects the
 active app slot, or query `ota` over serial and write the app at the reported
 active slot (ota_0: 0x20000; ota_1: 0x200000).
@@ -79,11 +83,14 @@ https://github.com/jeromedontdev/pocket-tank-cyd
 
 Release for **ESP32-2432S028 CYD only**.
 
-### 1.0.1 fixes
-- Deep Glow particles and Ice Cavern sparkles extend to the top edge without a plain cutoff strip.
-- Consolidated navigation: Home owns feature entry points; Keeper no longer repeats Bank, Games, Journal, Settings or Shop.
-- Removed duplicate Collections > Progress, Care > Dress Up and Clock > Wi-Fi entries.
-- Corrected CYD no-vignette screenshot captures and omitted obsolete SD icon downloads.
+### New in 1.1.0
+- Fish get acquainted during calm nearby swimming, form short spaced paired swims and favor stable decoration spots. Care names their buddy and favorite spot; session familiarity reforms after restart.
+- Tap every helper creature for food/activity/progress, actual versus drawn shrimp counts and a direct free color-editor shortcut.
+- Reversible decoration previews: DONE commits, CANCEL restores position/depth/stack/color, save failures stay open for retry, and autosaves/backups exclude drafts.
+- Aquarium summaries show residents, Bank/traveler, helpers, stat upgrades, theme and clock-aware last visit. Backup scope is explicit.
+- Sparse Deep Glow silhouettes, Moonlit shooting stars and treasure/crystal glints use localized 4 Hz dirty regions and preserve clock occlusion.
+- Save-preserving browser USB updater: verified CYD identity/layout, app checksum/marker and detected active-slot writes, with separate acknowledged factory installation.
+- Updated no-vignette CYD screenshots. Existing binary/JSON saves remain compatible; no reset or SD artwork download is needed.
 
 ### Features
 

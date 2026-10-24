@@ -202,6 +202,34 @@ def exercise(lib, backup):
         clock_frame = frame()
         tap(330, 318)
         assert lib.sim_network_page() == 0 and frame() == clock_frame, "Wi-Fi belongs only in Settings"
+        for kind, card in enumerate((98, 99, 97, 96)):
+            fixture = copy.deepcopy(scaled)
+            fixture["tank"]["sd_unlocks"] = 1 << (5, 1, 6, 7)[kind]
+            fixture["tank"].update(shrimp_n=10, snail_x=190, snail_y=160, urchin_x=190)
+            fixture["tank"].update(clock_theme=0, setup_pending=0, newborn_p1=0)
+            fixture["tank"]["tank_ms_bits"] = 0xffff
+            data = json.dumps(fixture).encode()
+            assert lib.sim_restore(data, len(data))
+            for _ in range(120):
+                point = lib.sim_creature_target(card)
+                if point >= 0:
+                    lib.sim_touch(point % width, point // width, 1)
+                    lib.sim_touch(point % width, point // width, 0)
+                    if lib.sim_selected() == card:
+                        break
+                lib.sim_frame(.1)
+            assert point >= 0, (width, kind, "Creature must be reachable without fish overlap")
+            assert lib.sim_selected() == card, (width, kind, "Pending milestone notices must dismiss before inspection")
+            frame()
+            tap(224, 300)
+            assert lib.sim_page() == 9, (width, kind, lib.sim_selected(), "Creature COLORS shortcut must open the correct editor")
+            colors_before = json.loads(backup(lib))["companion"]["creature_colors"]
+            tap(220, 234); tap(100, 309)
+            colors_after = json.loads(backup(lib))["companion"]["creature_colors"]
+            assert colors_before[kind] != colors_after[kind]
+            assert all(colors_before[i] == colors_after[i] for i in range(4) if i != kind)
+            tap(380, 24)
+            assert lib.sim_page() == 9, "Colors Back must return to Tank category"
         lib.sim_action(2); tap(100, 100)
     encoded = json.dumps(original).encode()
     assert lib.sim_restore(encoded, len(encoded))
