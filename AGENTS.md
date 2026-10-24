@@ -20,9 +20,62 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **1.4.0**, with The Lost Current RPG, twelve games, consistent
+- Source release: **2.0.0**, with permanent modes, eighteen games, global Bank,
+  illustrated UI and focused code cleanup. This began as a hardware port but
+  is now a distinct aquarium game; retain upstream simulation/license credit.
+  Verify publication through Actions before claiming deployed downloads.
+- Historical **1.4.0** introduced The Lost Current RPG, twelve games, consistent
   BACK navigation, reorganized care/collections, visible clock effects,
   room-light/LED controls, and a feature-focused website.
+- Release 2.0 includes a visual overhaul: compact shared static story
+  sprites/scenery, guide/destination portraits, illustrated keepsakes/info,
+  game and hub/goal cues. This is not in the historical 1.4.0 downloads.
+  Story artwork lives in `common/companion_ui.c`; hub/game art lives in
+  `common/render.c`. Keep the artwork static, bounded and shared, and measure
+  app size rather than adding large full-screen images or new asset buffers.
+- Post-1.4 source also flattens menus: Goals/Album are separate Collections
+  entries; Themes lives under Tank; Identity under Aquariums; Fish has two
+  pages and independent Life/Family/Genes/Firsts/Keepsakes; Adventures is a
+  Stories/RPG hub. Keep simulator and hardware Home action dispatch in sync.
+- Source has eighteen games with records/medals and transactional Normal/Hard
+  rewards, including Lighthouse, Shell Slide, Sonar Sweep, Tide 2048, Harbor
+  Stack and Echo Reef. Preserve the original twelve records on migration.
+- **Game mode is chosen on first run only**, for the whole profile: Normal,
+  Creative or Hard. It is NOT switchable in Settings and NOT a special tank.
+  Only a confirmed full wipe permits another choice. Existing saves migrate
+  safely to Normal; JSON cannot bypass a chosen mode.
+- Aquariums are decorative/resident expansions of one profile, sharing money,
+  XP, objectives, discoveries, unlocks, campaign, game records and a GLOBAL
+  20-slot Fish Bank. Store in one tank and withdraw/swap into another.
+  Residents/layouts stay local; identities, family, genes and bonds follow fish.
+  Profile reserved bit 3 (`PROFILE_SHARED_BANK`) marks migrated snapshots.
+  Never import a stale migrated SD Bank or identity counter over the active
+  profile. Old local Banks merge once, blocking safely if capacity is exceeded;
+  all identity references are remapped together to avoid aliases. Multi-tank
+  JSON restores allocate safe new identities without resetting the high-water
+  counter. Keep the 6008-byte/schema-16 layout; no additional NVS/PSRAM is needed.
+  Creative unlocks choices without fabricated XP/wallet, permits free fish
+  additions (five including travelers) and confirmed removals (keep two).
+  Hard permits online starvation deaths only: never offline or old-age deaths.
+  Surface risks, death/save errors and recovery explicitly; keep death and
+  recovery transactional and do not reward removals.
+- A full wipe resets money, progression, records, aquarium collection identity,
+  fish and mode choice; disconnected old SD snapshots must not resurrect
+  wiped progress. Preserve unrelated SD files and explicit user backups.
+- Director `stash`/`restore` and destructive hardware demos are disabled: their
+  NVS-only backup cannot protect expanded internal saves. Use simulator staging
+  and SD JSON snapshots. Never re-enable them by copying a stale NVS blob.
+  The blocked demo bodies and filming-only grid/paged name keyboards have
+  been removed. Keep explicit legacy command refusals; fish naming uses the
+  letter wheel, while Wi-Fi has a separate QWERTY keyboard. Do not remove
+  save migrations or rename the frozen save fields as part of dead-code cleanup.
+- Obsolete upstream board imagery, battery/touch logs and model-era design/
+  benchmark notes are removed. Current behavior lives in README, the CYD feature
+  guide and firmware/CYD.md. `firmware/partitions.cyd.csv` is the single active
+  partition source. Preserve `assets/icons`, `docs/media/cyd-features` and
+  `sim/testdata/saves`: they are source artwork, current screenshots and
+  compatibility fixtures, not disposable legacy files. Leave build/cache/
+  dependency directories alone unless cleanup of those is explicitly requested.
 - Prior implementation commits: `551e771` (RPG/games/UI/docs) and `44cf7f0`
   (feature home, separate flasher, GCC signedness fix). Treat these as landmarks,
   not a substitute for current HEAD. Release publication is verified in Actions.
@@ -58,7 +111,9 @@ or deployment is published. Update this file when its contracts change.
 | Progression and saves | `common/progression.c`, `.h`: locked binary layout, JSON migrations, bank/tank switching, save policy |
 | Companion systems | `common/companion.c`, `.h`: life, bonds, family, visitors, adventures, RPG and records |
 | Companion UI | `common/companion_ui.c`: Home and its subpages, shared page coordinates and navigation |
-| Rendering/input | `common/render.c`, `.h`: aquarium, clock, menus, games, hit testing, retained damage |
+| Home routing | `common/home_navigation.h`: common page initialization; platform ports retain overlay/BACK state |
+| Rendering/input | `common/render.c`, `.h`: aquarium, clock, menus, hit testing, retained damage |
+| Games | `common/games.c`: eighteen games, pages, help/pause/results and reward dispatch; `render_internal.h` is the narrow private page-drawing bridge |
 | Settings/services | `common/setup.c`, `update.c`, `weather.c`, `notice.c`, `advisor.c` and their headers |
 | Firmware loop | `firmware/main/main.c`: boot, frame lifecycle, sleep/wake, display/service coordination |
 | CYD hardware | `firmware/main/board_pins.h`, `display_port_cyd.c`, `touch_port_xpt2046.c`, `ambient.c`, `brightness.c`, `memory_plan.h` |
@@ -70,16 +125,36 @@ or deployment is published. Update this file when its contracts change.
 | Web | `web/index.html`: features; `flash.html`: USB flashing; `viewer.html`: local backup viewer; `usb-update.mjs`: safety-critical updater |
 | Release | `common/version.h`, `tools/package_cyd_release.py`, `make_sd_update.py`, `prepare_web_installer.py`, `.github/workflows/` |
 
-Follow existing helpers and naming. Do not split large rendering files or add
-generic frameworks just to make an unrelated task easier.
+Follow existing helpers and naming. Companion page IDs have named constants
+in `companion.h`; preserve their selector values. Keep page-family membership
+explicit rather than relying on numeric ranges. Do not add generic frameworks
+or further split modules without a concrete maintenance benefit.
 
 ## Persistence and memory: hard constraints
 
-- Current binary save **5912 bytes**, JSON **schema 14**; imports schemas 1-13.
-  Previous tails: 5848 before new game records, 5888 before RPG.
+- Current binary save **6008 bytes**, JSON **schema 16**; imports schemas 1-15.
+  Previous tails: 5848 before game records, 5888 before RPG, 5912 before Creative.
+  Creative is an 8-byte append-only marker/version/enabled/reserved tail; every
+  frozen prior save offset is unchanged. Append 40 bytes `games_extra` plus
+  48 bytes `profile` (fixed mode, starvation timers, global unlock mask and
+  LOCAL paid/refundable mask). Never share refund eligibility across tanks.
 - The practical NVS save ceiling is **5920 bytes**. Worst-case space needs
   three copies plus 64 reserved entries: 628 of 630 entries at this ceiling.
-  Do not add fields without checking this budget and all layout assertions.
+  Expanded saves MUST NOT be written there. They use the existing **128 KiB
+  SPIFFS `storage` partition**, mounted at `/profiles`, through aquarium_store's
+  CRC/readback dual copies. NVS `tank`/`save` is read-only migration input.
+  No repartition, no PSRAM, no SD dependency for the active profile.
+- Only format a byte-for-byte erased partition or the verified exact empty
+  legacy 64 KiB SPIFFS template inside the 128 KiB partition (16 metadata-only
+  blocks, zero erase counts, all lookup/data bytes and remainder erased).
+  Real hardware revealed that older empty template; any payload/damage must
+  block formatting. `tools/test_profile_storage.py` pins the guard.
+  Mount/copy corruption blocks
+  saving and stale NVS fallback, never creates a success-shaped fresh tank.
+  A durable wipe tombstone overrides old copies/NVS before cleanup; a failed
+  post-wipe fresh write reports pending retry, not a false failed wipe.
+  A blocked load is visibly reported and must not acknowledge a pending OTA
+  image as valid. Never silently present it as a successfully loaded empty tank.
 - Existing binary fields and offsets are frozen. Append-only tails, explicit
   migration, validators, frozen old-save fixtures, and `_Static_assert` locks
   are required. Never reorder fields or rename NVS namespace `tank`, key `save`.
@@ -89,10 +164,10 @@ generic frameworks just to make an unrelated task easier.
   RPG participant is uint32; chapter contributors are uint16 lineage IDs.
   IDs above 65535 must become unknown, never alias an unrelated ancestor.
 - Older-schema JSON fixtures must remove later fields: `<11` polish,
-  `<12` story, `<13` games, `<14` rpg.
+  `<12` story, `<13` games, `<14` rpg, `<15` creative, `<16` profile/games_extra.
 - Update every relevant import/export, active/Bank/away/tank-switch path,
   rollback snapshot, simulator fixture, viewer, and documentation together.
-- NVS writes are event-driven/coalesced (30 seconds; 10-minute heartbeat).
+- Active-save writes are event-driven/coalesced (30 seconds; 10-minute heartbeat).
   Do not add per-frame flash writes. Failed loads must not overwrite saves.
 - Rendering uses internal RAM, cached/tiled backgrounds and DMA stripe buffers.
   Check `memory_plan.h`, heap and application-slot headroom after changes.
@@ -149,6 +224,13 @@ generic frameworks just to make an unrelated task easier.
   RAM, NVS save entries and SD capacity are separate limits. Report app bytes
   and free slot space from each release build. A smaller file or more SD
   space does not establish runtime heap or NVS safety.
+- Local 2.0.0 refactor build measured **1,760,944 app bytes**, leaving
+  **205,136 bytes (10.43%)** per slot; static DRAM **71,331 bytes**.
+  Hardware checks retained four original residents/wallet, exercised all
+  eighteen game entries at both scales and verified SD/Bank/save paths.
+  Populated Normal samples were 9.4-9.6 FPS and Enlarged 7.1-7.2 FPS;
+  these are scene-specific, not a controlled speedup. See firmware/CYD.md.
+  Rebuild and measure after changes; verify release publication separately.
 - Relevant read-only diagnostics include `state`, `clock`, `sd status`, `ota`
   and the periodic logs (`help` lists current commands). For serial watching,
   use `python tools\director.py -p COM4 --watch` after confirming the port.
@@ -187,6 +269,9 @@ python -m unittest discover -s tools -p "test_*.py"
 python tools\test_tank_backup.py --cc gcc
 python tools\test_tank_backup.py --cc gcc --flat-edges
 python tools\test_rpg.py --cc gcc
+python tools\test_page_art.py --cc gcc
+python tools\test_creative.py --cc gcc
+python tools\test_profiles.py --cc gcc
 python tools\test_cyd_display.py --cc gcc
 python tools\test_cyd_settings.py --cc gcc
 python tools\test_ambient.py --cc gcc
@@ -201,6 +286,12 @@ git diff --check
   sufficient evidence of GCC compatibility (watch signed/unsigned comparisons).
 - Core tests cover migrations, transactional saves, layout guards, retained
   rendering, games and optional RPG isolation. Keep these protections.
+- Profile tests cover immutable first-run mode selection, wipe boundaries,
+  global progression across local aquariums, Hard starvation/recovery and
+  extended-save migration/failure safety. Never replace these with UI-only tests.
+- `test_page_art.py` also checks distinct game thumbnails, goal/header label
+  fit, and visitor/decor preview determinism, reserved bounds and row/tile
+  equivalence at both resolutions. Keep it in checks and release workflows.
 - Screenshot command:
   `python tools\capture_cyd_gallery.py --cc gcc --out <separate-output-directory>`.
   Never capture against the user's live save. Refresh relevant named images,

@@ -14,11 +14,33 @@ bool companion_colors(tank_t *t, bool wearable, int target, uint8_t colors);
 bool companion_compact(tank_t *t, bool compact);
 void companion_open_section(int section);
 void companion_open_creature(int kind);
-enum { COMPANION_SECTION_CARE, COMPANION_SECTION_COLLECTIONS, COMPANION_SECTION_ADVENTURES,
-       COMPANION_SECTION_APPEARANCE = 7, COMPANION_SECTION_LIFE = 8,
-       COMPANION_SECTION_RECAP = 9, COMPANION_SECTION_IDENTITY = 10,
-       COMPANION_SECTION_OBJECTS = 11, COMPANION_SECTION_FAMILY = 15,
-       COMPANION_SECTION_VISITORS = 16, COMPANION_SECTION_REWARDS = 18 };
+/* Values are also used by simulator/director page selectors; preserve them.
+ * These are UI identifiers, not fields in the frozen save layout. */
+typedef enum {
+    COMPANION_SECTION_CARE = 0,
+    COMPANION_SECTION_COLLECTIONS = 1,
+    COMPANION_SECTION_ADVENTURES = 2,
+    COMPANION_SECTION_TRICKS = 3,
+    COMPANION_SECTION_WARDROBE = 4,
+    COMPANION_SECTION_CREATURE_COLORS = 5,
+    COMPANION_SECTION_GEAR_COLORS = 6,
+    COMPANION_SECTION_APPEARANCE = 7,
+    COMPANION_SECTION_LIFE = 8,
+    COMPANION_SECTION_RECAP = 9,
+    COMPANION_SECTION_IDENTITY = 10,
+    COMPANION_SECTION_OBJECTS = 11,
+    COMPANION_SECTION_KEEPSAKES = 12,
+    COMPANION_SECTION_HINTS = 13,
+    COMPANION_SECTION_FIRSTS = 14,
+    COMPANION_SECTION_FAMILY = 15,
+    COMPANION_SECTION_VISITORS = 16,
+    COMPANION_SECTION_REWARDS = 18,
+    COMPANION_SECTION_GENES = 19,
+    COMPANION_SECTION_RPG = 20,
+    COMPANION_SECTION_RPG_JOURNAL = 21,
+    COMPANION_SECTION_RPG_HELP = 22,
+    COMPANION_SECTION_RPG_EVENT = 23
+} companion_page_t;
 extern const char *const COMPANION_DISCOVERIES[COMPANION_DISCOVERY_COUNT];
 extern const char *const COMPANION_COLLECTIONS[COMPANION_COLLECTION_COUNT];
 extern const char *const COMPANION_ADVENTURES[COMPANION_ADVENTURE_COUNT];
@@ -27,6 +49,8 @@ extern const uint16_t COMPANION_ADVENTURE_SECONDS[COMPANION_ADVENTURE_COUNT];
 void companion_init(tank_t *t);
 /* Zero/missing tails migrate to Classic with captions OFF. */
 bool companion_valid(const companion_state_t *s);
+/* Creative cosmetics/tricks do not require fabricated discoveries or bond. */
+bool companion_valid_mode(const companion_state_t *s, bool creative);
 void companion_tick(tank_t *t, float dt);
 bool companion_set_options(tank_t *t, bool cozy, bool captions, bool lively);
 bool companion_greet(tank_t *t, int fish);
@@ -43,6 +67,9 @@ bool companion_adventure_start(tank_t *t, int adventure, int fish);
 bool companion_adventure_choice(tank_t *t, int choice); /* 0 arch, 1 bubbles; before departure */
 bool companion_adventure_claim(tank_t *t);
 bool companion_game_claim(tank_t *t, int game, int score, int moves, int dollars, bool relaxed);
+/* Games 13-18: puzzles pay only when solved; other games require real progress.
+ * A zero-dollar result can still save a completed round without awarding XP. */
+int companion_game_reward(int game, int score, int moves);
 bool companion_games_valid(const game_records_t *s);
 bool companion_captions(const tank_t *t);
 bool companion_lively(const tank_t *t);
@@ -55,7 +82,7 @@ void companion_favorite_label(const tank_t *t, int fish, char *text, size_t size
 /* Read-only short event/need caption. Empty during ordinary calm swimming. */
 void companion_status(const tank_t *t, char *text, size_t size);
 enum { MEMORY_ARRIVAL = 1, MEMORY_GROWTH, MEMORY_BUDDY, MEMORY_DISCOVERY,
-       MEMORY_ADVENTURE, MEMORY_HELPERS, MEMORY_VISITOR, MEMORY_RPG };
+       MEMORY_ADVENTURE, MEMORY_HELPERS, MEMORY_VISITOR, MEMORY_RPG, MEMORY_DEATH };
 bool companion_rpg_valid(const tank_rpg_t *s, uint32_t next_id);
 const char *companion_rpg_chapter_name(const tank_t *t);
 const char *companion_rpg_chapter_title(int chapter);

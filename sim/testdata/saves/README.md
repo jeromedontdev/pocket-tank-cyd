@@ -1,20 +1,24 @@
 # Golden saves
 
-Real tank saves, frozen. `./fishsim --selftest-saves` (run from `sim/`) loads
+Historical upstream tank saves, frozen compatibility fixtures retained by
+Pocket Tank CYD 2.0.0. The CYD native regression runner
+`python tools\test_tank_backup.py --cc <compiler>` loads
 every `*.sav` here, whole and cut to every older build's length, and checks
 the tank that comes back against the file's own bytes (fish, names, badges,
 sand dollars, unlocks, decorations). It is the test behind the installer's
 promise: updating never loses your tank.
 
-**Before every release, run the tank a bit and add its save here as
-`<date>-<size>.sav`.** Never edit or delete a file here: a save that stops
+Never edit or delete a file here: a save that stops
 loading is a bug in the code, not in the fixture.
 
-- From the sim (the same bytes the board writes): play a while, quit, then
-  `cp ~/.cache/pocket-tank/tank.sav sim/testdata/saves/$(date +%F)-$(wc -c < ~/.cache/pocket-tank/tank.sav | tr -d ' ').sav`
-- From the board: run `tools/preflight.py` first (reading the flash resets the
-  chip), then `python -m esptool --chip esp32s3 read_flash 0x9000 0x6000 nvs.bin`
-  and pull out NVS `tank`/`save` with ESP-IDF's parser:
+The following extraction describes **historical NVS fixtures only**, not the
+current CYD save location. Current 6008-byte saves use CRC-checked dual copies
+in internal SPIFFS; use SD JSON backups for supported portable exports, and
+the profile regression runner for corruption/wipe/migration coverage.
+
+- For a deliberately authorized legacy CYD capture, reading flash resets the
+  board. Use `python -m esptool --chip esp32 --port COM4 read-flash 0x9000 0x6000 nvs.bin`
+  and extract legacy NVS `tank`/`save` with ESP-IDF's parser:
 
       import sys; sys.path.insert(0, "<esp-idf>/components/nvs_flash/nvs_partition_tool")
       from nvs_parser import NVS_Partition

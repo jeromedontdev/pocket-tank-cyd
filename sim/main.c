@@ -2,6 +2,7 @@
 #include "tank.h"
 #include "advisor.h"
 #include "render.h"
+#include "home_navigation.h"
 #include "progression.h"
 #include "setup.h"
 #include "notice.h"
@@ -143,6 +144,9 @@ API void sim_action(int action) {
     }
 }
 API int sim_page(void) { return page; }
+API int sim_setup_page(void) { return setup_active() ? setup_page() : -1; }
+API int sim_mode(void) { return progression_mode(&tank); }
+API int sim_mode_chosen(void) { return progression_mode_chosen(&tank); }
 API int sim_width(void) { return TANK_W; }
 API int sim_height(void) { return TANK_H; }
 API void sim_visit(int species) { companion_debug_visit(&tank, species); }
@@ -221,13 +225,16 @@ API void sim_touch(float x, float y, int down) {
                 if (action == HOME_CLOSE) { page = 0; from_home = false; }
                 else if (action) {
                     from_home = true; child_parent = 9;
-                    if (action == HOME_BANK) { render_bank_open(); page = 6; }
-                    if (action == HOME_JOURNAL) { render_journal_open(); page = 5; }
-                    if (action == HOME_GAMES) { render_games_open(); page = 8; }
-                    if (action == HOME_SETTINGS) { render_settings_open(); page = 2; }
-                    if (action == HOME_KEEPER) page = 1;
-                    if (action == HOME_SHOP) page = 3;
-                    if (action == HOME_TANKS) { render_aquariums_open(&tank); home_tanks = true; page = 7; }
+                    switch (home_open(&tank, action)) {
+                    case HOME_DEST_BANK: page = 6; break;
+                    case HOME_DEST_JOURNAL: page = 5; break;
+                    case HOME_DEST_GAMES: page = 8; break;
+                    case HOME_DEST_SETTINGS: page = 2; break;
+                    case HOME_DEST_KEEPER: page = 1; break;
+                    case HOME_DEST_SHOP: page = 3; break;
+                    case HOME_DEST_TANKS: home_tanks = true; page = 7; break;
+                    case HOME_DEST_NONE: break;
+                    }
                 }
             }
         } else if (page == 8) {
@@ -290,6 +297,10 @@ API void sim_touch(float x, float y, int down) {
     if (page == 2) {
         int value, result = render_settings_touch(&tank, x, y, down != 0, &value);
         if (result == SET_TAP_CLOSE) page = child_parent;
+        else if (result == SET_TAP_RECOVERED) {
+            page = 0; selected = -1; setup_cancel(&tank); notice_sync(&tank); render_fb_primed(NULL, 0);
+            if (progression_setup_pending()) setup_begin(&tank);
+        }
         else if (result == SET_TAP_CLOCK_SHOW) { page = 0; selected = -1; tank.ui_cover = false; tank.clock_requested = true; }
         else if (result == SET_TAP_WIPE) wipe_left = 20;
         else if (result == SET_TAP_BRIGHT_PREVIEW) bright = value;

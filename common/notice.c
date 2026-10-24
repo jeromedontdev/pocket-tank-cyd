@@ -1,5 +1,7 @@
 /* notice.c - the announcement queue. See notice.h. */
 #include "notice.h"
+#include "progression.h"
+#include <stdio.h>
 #include <string.h>
 
 static uint32_t s_ms[N_FISH_MAX], s_tms;
@@ -11,6 +13,7 @@ static int      s_qn;
 static notice_t s_cur;
 static bool     s_up;
 static float    s_gap;                       /* seconds until the next may come up */
+static char     s_care_status[80];
 
 /* never announced: they belong to the birth of a tank or a fish */
 #define MS_SILENT   (MS_ARRIVED | MS_INSPECTED | MS_RETIRED_6 | MS_RETIRED_7)   /* (MS_INSPECTED: no badge since 0.3.0) */
@@ -26,10 +29,33 @@ void notice_sync(const tank_t *t) {
     for (int i = 0; i < N_FISH_MAX; i++) { s_ms[i] = t->fish[i].ms_bits; s_stage[i] = t->fish[i].stage; }
     s_tms = t->tank_ms_bits; s_n_fish = t->n_fish; s_tip = t->light_tip_seen;
     s_qn = 0; s_up = false; s_gap = 0;
+    s_care_status[0] = 0;
 }
 
 void notice_tick(const tank_t *t, float dt, bool blocked) {
     if (s_n_fish < 0) { notice_sync(t); return; }
+    const char *status = progression_hard_status(t);
+    if (!status) {
+        s_care_status[0] = 0;
+        for (int i = 0; i < s_qn; ) {
+            if (s_q[i].kind != NOTICE_CARE_STATUS) { i++; continue; }
+            memmove(&s_q[i], &s_q[i + 1], (size_t)(s_qn - i - 1) * sizeof s_q[0]); s_qn--;
+        }
+        if (s_up && s_cur.kind == NOTICE_CARE_STATUS) s_up = false;
+    } else if (strcmp(status, s_care_status)) {
+        snprintf(s_care_status, sizeof s_care_status, "%s", status);
+        if (s_up && s_cur.kind == NOTICE_CARE_STATUS) s_cur.age = 0;
+        else {
+            /* Care/storage warnings take precedence over cosmetic milestones. */
+            for (int i = s_qn - 1; i >= 0; i--)
+                if (s_q[i].kind == NOTICE_CARE_STATUS) {
+                    memmove(&s_q[i], &s_q[i + 1], (size_t)(s_qn - i - 1) * sizeof s_q[0]); s_qn--;
+                }
+            if (s_qn == NOTICE_QUEUE) s_qn--;
+            memmove(&s_q[1], &s_q[0], (size_t)s_qn * sizeof s_q[0]);
+            s_q[0] = (notice_t){NOTICE_CARE_STATUS, -1, 0, 0}; s_qn++;
+        }
+    }
     if (t->n_fish < s_n_fish) {
         if ((t->tank_ms_bits & s_tms) != s_tms) { notice_sync(t); return; }   /* a reset: nothing to say */
         for (int i = 0; i < N_FISH_MAX; i++) { s_ms[i] = t->fish[i].ms_bits; s_stage[i] = t->fish[i].stage; }

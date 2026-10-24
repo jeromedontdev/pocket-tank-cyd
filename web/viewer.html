@@ -210,9 +210,13 @@ function show(save) {
   const tankName = cstr(hex(pol.tank_name), 0, 16);
   $("title").textContent = tankName || "Your tank";
   const ov = $("overview"); ov.replaceChildren();
+  const gameMode = save.profile
+    ? save.profile.chosen ? ["Normal", "Creative (no progression rewards)", "Hard (running-time starvation deaths)"][save.profile.mode] || "Unknown mode" : "Not chosen - first run"
+    : save.creative && save.creative.enabled === 1 ? "Creative (no progression rewards)" : "Normal";
   const facts = [
     ["Fish", `${t.n_fish} at home, ${bank.length} in the Bank${traveler ? ", 1 on an adventure" : ""}`],
     ["Journal XP", t.journal_xp], ["Sand dollars", t.sd_balance],
+    ["Mode", gameMode],
     ["Born in this tank", story ? story.births : "-"],
     ["Seasons", !story ? "-" : story.flags & 1 ? "off" : story.flags & 2 ? "southern hemisphere" : "northern hemisphere"],
     ["Founded", pol.founded_unix ? new Date(pol.founded_unix * 1000).toLocaleDateString() : "unknown"],

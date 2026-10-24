@@ -29,7 +29,7 @@
     (4 MB flash, 2.8-inch display). Not for other ESP32 boards.
     The factory installer checks the ESP32 chip family, but cannot identify your display model.
     The save-preserving updater additionally verifies Pocket Tank's CYD identity and layout.</p>
-  <p id="release-status" role="status">This flasher installs the latest published stable release. The Lost Current and twelve games require 1.4.0 or newer.</p>
+  <p id="release-status" role="status">This flasher installs the latest published stable release. Illustrated menus, eighteen games, permanent modes and the global Bank require 2.0.0 or newer.</p>
   <p>Use desktop <strong>Chrome or Edge over HTTPS</strong> with a USB data cable.
     Close all serial monitors first. Choose one of these separate operations;
     a refused update never falls back to a factory install.</p>
@@ -124,7 +124,7 @@
     if (!response.ok) throw new Error(`Firmware manifest unavailable (${response.status}).`);
     const manifest = await response.json();
     document.querySelector("#release-status").textContent =
-      `Published firmware: ${manifest.version}. The Lost Current and twelve games require 1.4.0 or newer.`;
+      `Published firmware: ${manifest.version}. Illustrated menus, eighteen games, permanent modes and the global Bank require 2.0.0 or newer.`;
     await import("https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module");
     await customElements.whenDefined("esp-web-install-button");
     status.textContent = `Ready to install Pocket Tank CYD ${manifest.version}.`;

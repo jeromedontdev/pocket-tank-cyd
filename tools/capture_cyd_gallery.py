@@ -86,13 +86,16 @@ def main():
 
                 def restore(snapshot, preserve_life=False):
                     snapshot = copy.deepcopy(snapshot)
-                    if snapshot.get("schema") in (11, 12, 13, 14) and not preserve_life:
+                    if snapshot.get("schema") in (11, 12, 13, 14, 15, 16) and not preserve_life:
                         # Staged rosters replace identities; migrate their life records honestly.
                         snapshot["schema"] = 10
                         snapshot.pop("polish")
                         snapshot.pop("story", None)
                         snapshot.pop("games", None)
                         snapshot.pop("rpg", None)
+                        snapshot.pop("creative", None)
+                        snapshot.pop("profile", None)
+                        snapshot.pop("games_extra", None)
                     data = json.dumps(snapshot, separators=(",", ":")).encode()
                     if not lib.sim_restore(data, len(data)):
                         raise RuntimeError(lib.sim_error().decode())
@@ -106,6 +109,8 @@ def main():
                         lib.sim_frame(0.04)
                     capture(name)
 
+                capture("first-run-mode")
+                tap(200, 98); tap(200, 300); lib.sim_action(0)
                 demo = json.loads(sim.backup(lib))
                 tank = demo["tank"]
                 tank.update(setup_pending=0, newborn_p1=0, n_fish=5, sd_balance=1250, sd_earned=1250,
@@ -153,11 +158,11 @@ def main():
                 restore(polish, preserve_life=True)
                 home(); tap(100, 100); tap(100, 260)
                 capture("fish-life")
-                tap(100, 272); capture("fish-life-firsts")
-                tap(60, 320); tap(330, 272); capture("fish-keepsakes")
+                home(); tap(100, 100); tap(360, 336); tap(330, 100); capture("fish-life-firsts")
+                home(); tap(100, 100); tap(360, 336); tap(100, 180); capture("fish-keepsakes")
                 home(); tap(330, 100); tap(330, 260); capture("tank-recap")
-                home(); tap(330, 100); tap(100, 260); capture("tank-identity")
-                home(); tap(330, 100); tap(330, 260); tap(330, 320); capture("object-stories")
+                home(); tap(330, 100); tap(330, 100); tap(300, 338); capture("tank-identity")
+                home(); tap(330, 180); tap(330, 260); capture("object-stories")
                 # A staged three-generation family with inherited genes and a departed ancestor.
                 family = json.loads(sim.backup(lib))
                 pol, story = family["polish"], family["story"]
@@ -183,7 +188,7 @@ def main():
                 restore(family, preserve_life=True)
                 home(); tap(100, 100); tap(330, 260)
                 capture("family-tree")
-                tap(370, 320); capture("fish-genes")
+                home(); tap(100, 100); tap(360, 336); tap(100, 100); capture("fish-genes")
                 home(); tap(330, 180); tap(330, 180)
                 capture("visitor-log")
                 restore(demo)
@@ -306,9 +311,9 @@ def main():
                 if lib.sim_page() != 5:
                     raise RuntimeError("Journal navigation failed")
                 capture("journal-goals")
-                tap(205, 328)
+                home(); tap(330, 180); tap(100, 260)
                 capture("journal-album")
-                tap(345, 328)
+                home(); tap(330, 100); tap(100, 260)
                 capture("journal-themes")
                 tap(400, 86)
                 capture("journal-themes-more")
@@ -318,8 +323,7 @@ def main():
                                        fish_variety=[0] * len(demo["tank"]["fish_variety"]))
                 restore(starter)
                 lib.sim_action(1)
-                lib.sim_action(7); tap(330, 180); tap(100, 100)
-                tap(205, 328)
+                lib.sim_action(7); tap(330, 180); tap(100, 260)
                 capture("journal-variety-unlocks")
                 restore(demo)
                 lib.sim_action(1)
@@ -357,11 +361,21 @@ def main():
                     tap(220, 324)
                     capture("game-" + name)
                     tap(380, 20)
+                tap(350, 80)
+                capture("games-page-three")
+                for i, name in enumerate(("lighthouse", "shell-slide", "sonar-sweep",
+                                          "tide-2048", "harbor-stack", "echo-reef")):
+                    tap(100 + i % 2 * 204, 140 + i // 2 * 64)
+                    capture("game-" + name + "-help")
+                    tap(220, 324)
+                    capture("game-" + name)
+                    tap(380, 20)
                 lib.sim_action(1)
                 lib.sim_action(7)
                 capture("desk-companion")
                 tap(100, 100)
                 capture("home-fish")
+                tap(360, 336); capture("home-fish-page-two"); tap(360, 336)
                 tap(100, 100)
                 capture("companion-home")
                 tap(380, 24); tap(100, 180)
@@ -389,10 +403,15 @@ def main():
                 capture("home-collections")
                 tap(330, 100)
                 capture("companion-album")
-                tap(100, 300); tap(330, 256)
+                tap(380, 24); tap(100, 180); tap(330, 256)
                 capture("companion-frame-locked")
-                home(); tap(100, 180)
+                home(); tap(100, 180); capture("home-adventures"); tap(100, 100)
                 capture("adventure-menu")
+                tap(70, 258); capture("adventure-pearl-library")
+                tap(70, 258); capture("adventure-starlight-cove")
+                tap(70, 258)
+                tap(370, 300); capture("adventure-bubble-route")
+                tap(370, 300)
                 tap(230, 258)
                 tap(230, 258)
                 capture("adventure-going")
@@ -403,6 +422,7 @@ def main():
                 lib.sim_action(1)
                 lib.sim_action(7)
                 tap(100, 180)
+                tap(100, 100)
                 capture("adventure-ready")
                 tap(230, 258)
                 capture("adventure-postcard")
@@ -417,7 +437,7 @@ def main():
                 capture("companion-collection")
                 tap(380, 24)
                 before_story = json.loads(sim.backup(lib))
-                home(); tap(100, 180); tap(200, 340)
+                home(); tap(100, 180); tap(330, 100)
                 capture("rpg-story")
                 tap(70, 132); capture("rpg-journal")
                 tap(100, 324); capture("rpg-help")
@@ -436,8 +456,13 @@ def main():
                 restore(before_story, preserve_life=True)
                 if lib.sim_width() == 320:
                     lib.sim_action(2); tap(100, 100); tap(200, 140)
-                home(); tap(100, 180); tap(200, 340)
+                home(); tap(100, 180); tap(330, 100)
                 capture("rpg-enlarged")
+                for encounter in range(18):
+                    if encounter % 3 == 0:
+                        capture("rpg-chapter-" + str(encounter // 3 + 1) + "-enlarged")
+                    tap(200, 246 + encounter % 3 * 36)
+                    tap(200, 320)
                 restore(before_story, preserve_life=True)
                 lib.sim_action(2)
                 tap(330, 100)
@@ -583,6 +608,44 @@ def main():
                 tap(350, 120)
                 capture("aquarium-switch")
                 tap(120, 250)
+                lib.sim_action(2); tap(330, 260); tap(100, 260); tap(302, 216)
+                tap(200, 154); capture("first-run-creative")
+                tap(200, 300); lib.sim_action(0)
+                if lib.sim_mode() != 1:
+                    raise RuntimeError("First-run Creative selection failed")
+                for width, suffix in ((320, ""), (240, "-enlarged")):
+                    if lib.sim_width() != width:
+                        lib.sim_action(2); tap(100, 100); tap(200, 140)
+                    home(); tap(330, 100); tap(330, 100); tap(200, 308)
+                    if width == 320:
+                        for _ in range(3):
+                            tap(135, 240); tap(310, 240)
+                    capture("creative-fish" + suffix)
+                    lib.sim_action(0); scene("creative-tank" + suffix)
+                lib.sim_action(2); capture("settings-creative-mode")
+                tap(330, 260); tap(100, 260); tap(302, 216)
+                tap(200, 210); capture("first-run-hard")
+                tap(200, 300); lib.sim_action(0)
+                lib.sim_action(2); tap(100, 260); capture("hard-care")
+                hard = json.loads(sim.backup(lib))
+                hard["tank"]["setup_pending"] = 0
+                hard["fish"][0]["hunger"] = 10
+                hard["profile"]["starvation_s"][0] = 5 * 3600
+                restore(hard, preserve_life=True)
+                capture("hard-starvation-warning")
+                for i in range(hard["tank"]["n_fish"]):
+                    hard["fish"][i]["hunger"] = 10
+                    hard["profile"]["starvation_s"][i] = 6 * 3600
+                restore(hard, preserve_life=True)
+                lib.sim_frame(0.04)
+                if json.loads(sim.backup(lib))["tank"]["n_fish"] != 0:
+                    raise RuntimeError("Hard extinction demonstration did not reach recovery")
+                home(); capture("hard-recovery-home")
+                tap(100, 100); capture("hard-recovery")
+                tap(200, 308)
+                if json.loads(sim.backup(lib))["tank"]["n_fish"] != 2:
+                    raise RuntimeError("Hard free recovery did not add the rescue pair")
+                scene("hard-rescued")
             finally:
                 if os.name == "nt":
                     import _ctypes

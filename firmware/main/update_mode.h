@@ -9,7 +9,7 @@
  * returns when the outcome is "back to the tank" (the radio is already
  * off) and never returns on an install (it restarts into the new slot).
  *
- * The request rides in RTC memory (RTC_NOINIT, the batlog's pattern: a
+ * The request rides in RTC memory (RTC_NOINIT: a
  * magic word and its complement), so it survives the software restart and
  * nothing else - a power-off clears it, and it can never get stuck. */
 #pragma once

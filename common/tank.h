@@ -3,9 +3,9 @@
  * CYD geometry is 240x180. Personality-aware rules choose goals; the reflex
  * layer handles swimming, hunger, stress and interactions.
  *
- * Population (docs/progression-next.md): the tank holds up to N_FISH_MAX fish
- * but only fish[0..n_fish-1] are alive/active. A new tank starts with two
- * adults of contrasting personality; the rest arrive later as fry (the
+ * Population: storage holds up to N_FISH_MAX fish; POP_CAP limits residents.
+ * Only fish[0..n_fish-1] are alive/active. A new tank starts with two
+ * fry of contrasting personality; the rest arrive later as fry (the
  * progression layer decides when). Every loop in this file, the renderer and
  * the advisors iterates n_fish, never N_FISH_MAX.
  *
@@ -399,6 +399,24 @@ typedef struct {
 } tank_rpg_t;
 _Static_assert(sizeof(tank_rpg_t) == 24, "Lost Current save budget");
 
+/* Append-only save tail. All-zero is a normal aquarium, including old saves. */
+typedef struct {
+    uint32_t marker;
+    uint8_t version, enabled;
+    uint16_t reserved;
+} creative_state_t;
+_Static_assert(sizeof(creative_state_t) == 8, "Creative save budget");
+
+typedef enum { GAME_MODE_NORMAL = 0, GAME_MODE_CREATIVE = 1, GAME_MODE_HARD = 2 } game_mode_t;
+enum { PROFILE_SHARED_BANK = 8 };
+typedef struct {
+    uint32_t marker;
+    uint8_t version, mode, chosen, reserved; /* mode bits 0..2; shared Bank/identity migration bit 3 */
+    float starvation_s[N_FISH_MAX];
+    uint64_t owned_items, paid_items;
+} profile_state_t;
+_Static_assert(sizeof(profile_state_t) == 48, "profile save layout");
+
 /* a pellet: it sinks FOOD_SINK_PX_S from the surface to the floor (~43 s on
  * the 1.8, ~60 on the watch), then RESTS there FOOD_FLOOR_S before it
  * dissolves (2026-09-29, for the shrimp school - every tank alike; measured:
@@ -508,7 +526,7 @@ typedef struct tank {
                                     * Not saved (a saved override once froze a tank in
                                     * permanent day and starved a milestone). */
     bool     light_on;
-    /* touch / tap interaction (docs/progression.md). Reflex-layer only: the
+    /* Touch / tap interaction. Reflex-layer only: the
      * advisor never sees taps directly, only their effect on stress. */
     bool     hold_active;          /* finger held on the glass this frame */
     float    hold_x, hold_y;
@@ -782,6 +800,9 @@ typedef struct tank {
     tank_polish_t polish;
     tank_story_t story;
     tank_rpg_t rpg;
+    creative_state_t creative;
+    game_records_t games_extra;
+    profile_state_t profile;
     float visitor_left;
     float companion_fraction;      /* powered-on fractional second; not saved */
     bool  room_dark;               /* 1.3: the platform's room-light sensor says the room is dark

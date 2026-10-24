@@ -1,8 +1,8 @@
-/* progression.h — the "shaped by attention, never ruined by absence" layer
- * (docs/progression.md + docs/progression-next.md). Platform-agnostic;
+/* progression.h — care, growth, rewards and profile persistence.
+ * Current CYD behavior is documented in docs/CYD-FEATURES.md. Platform-agnostic;
  * persistence and wall-clock come in through two tiny port functions.
  *
- *  - Population: a new tank is two contrasting adults; the 3rd..POP_CAP-th
+ *  - Population: a new tank is two contrasting fry; the 3rd..POP_CAP-th
  *    fish ARRIVE as fry when care milestones are met (trust, feedings, a
  *    calm hold, a raised fry, drift). An arrival is staged when earned; a
  *    few seconds later the parents court down in the nursery grass and the
@@ -14,11 +14,12 @@
  *    SLEEP_GROWTH_FRAC of its length; stage changes are silent surprises.
  *  - Trait drift: bold and social creep with experience (hours of pressure).
  *  - Milestones: firsts are DETECTED from what the fish actually did (the
- *    model's own choices), per fish and per tank; render shows them.
+ *    rules-driven behavior), per fish and per tank; render shows them.
  *  - Habits: the tank remembers where you feed and greets you at light-on.
  *  - Ravenous boot: powered off >= 1 h -> fish are starving on return and wait
  *    near the surface (at your usual feeding spot) until the first feeding.
- *    Nothing else is simulated for time away; nothing ever dies.
+ *    Hard starvation deaths accrue only while running, never offline or from
+ *    old age. Normal and Creative do not kill fish.
  *  - Saves: on events (arrival, stage, milestone, light change), coalesced to
  *    >= 30 s apart, plus a 10-minute heartbeat - NVS-friendly. */
 #ifndef PROGRESSION_H
@@ -28,10 +29,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* ---- platform ports (sim: file + time(); device: NVS + RTC) ---- */
-/* where the device keeps the tank: NVS namespace + blob key. Part of the
- * SAVE LAYOUT LOCK (progression.c): every keeper's tank is stored under
- * these two names, so renaming either loses it at the next update.
+/* ---- platform ports (sim: file + time(); device: internal store + RTC) ---- */
+/* Legacy NVS migration namespace + blob key. Expanded CYD saves use the
+ * existing SPIFFS partition through the persistence port. Preserve these
+ * names so older saves remain discoverable during upgrades.
  * --selftest-saves pins the spelling. */
 #define SAVE_NVS_NS  "tank"
 #define SAVE_NVS_KEY "save"
@@ -55,7 +56,27 @@ bool journal_claim(tank_t *t, int goal);
 const char *progression_bank_move(tank_t *t, int bank, int active);
 #define AQUARIUM_CAP 8
 #define AQUARIUM_PRICE 500
-#define AQUARIUM_SAVE_BYTES (4520 + sizeof(tank_polish_t) + sizeof(tank_story_t) + sizeof(game_records_t) + sizeof(tank_rpg_t))
+#define AQUARIUM_SAVE_BYTES (5920 + sizeof(game_records_t) + sizeof(profile_state_t))
+game_mode_t progression_mode(const tank_t *t);
+bool progression_mode_chosen(const tank_t *t);
+/* False after blocked/corrupt load; never treat that as an empty new profile. */
+bool progression_storage_ready(void);
+bool progression_hard(const tank_t *t);
+bool progression_item_unlocked(const tank_t *t, int item);
+const char *progression_mode_select(tank_t *t, int mode);
+/* Six running hours at hunger >=9.5; feeding below 8.5 resets the timer.
+ * Recovery is a free founding pair only when this Hard aquarium is empty. */
+#define HARD_STARVATION_S (6.0f * 60.0f * 60.0f)
+const char *progression_hard_rescue(tank_t *t);
+const char *progression_hard_status(const tank_t *t);
+bool persist_port_blocked(void);
+bool progression_creative(const tank_t *t);
+#define CREATIVE_FISH_CAP 5
+/* Compatibility entry point: first-run selection only. */
+const char *progression_creative_enter(tank_t *t);
+const char *progression_creative_add_fish(tank_t *t, int variety);
+/* Keeps two residents, matching the normal save/Bank population invariant. */
+const char *progression_creative_remove_fish(tank_t *t, int fish);
 bool progression_adventure_depart(tank_t *t, int adventure, int fish);
 bool progression_adventure_return(tank_t *t);
 /* target == count buys and enters a new tank; otherwise switches to an owned tank.
@@ -66,6 +87,7 @@ bool progression_aquarium_label(const tank_t *t, int slot, char name[16]);
 typedef struct {
     uint8_t fish, away, bank, shrimp, helpers, upgrades, theme;
     uint8_t subtitle, emblem;
+    bool creative;
     int64_t last_visit;
 } aquarium_summary_t;
 bool progression_aquarium_summary(const tank_t *t, int slot, aquarium_summary_t *summary);
@@ -162,6 +184,8 @@ void progression_fresh(tank_t *t);
  * pair is saved at once, so a reboot lands on them. Two fry, clean glass,
  * the default garden, nothing tended yet. False reports an erase/save failure;
  * an erase failure leaves the live tank unchanged. SD files are not erased. */
+/* True means the durable wipe committed. A failed first fresh-save write is
+ * retried and reported by progression_hard_status, not a failed/rolled-back wipe. */
 bool progression_reset(tank_t *t, uint32_t seed);
 /* first-run setup (setup.c, 2026-09-13): a tank born through
  * progression_fresh - a fresh install, a reset - is PENDING setup until the
@@ -291,6 +315,8 @@ bool progression_pumpkin_offered(const tank_t *t);
  * The refund is balance, not earnings; the toast shows it. */
 #define SD_SELL_PCT 20
 int  progression_sell_value(int item);
+/* Refund eligibility is local: free unlocked placements always return zero. */
+int  progression_sell_value_for(const tank_t *t, int item);
 bool progression_sell(tank_t *t, int item);
 /* a fish sold (2026-10-01, Strato: a SELL button on the milestones page's
  * fish card - "the more mature a fish is, the more sand dollars it is
@@ -350,9 +376,9 @@ bool progression_game_reward(tank_t *t, int dollars);
 #define SD_EARN_LINES 7
 const char *const *progression_sd_earn_lines(void);
 
-/* population ceiling. Compile-time so the device can ship lower until its
- * advisor latency is measured (docs/progression-next.md): firmware passes
- * -DPOP_CAP=5, the sim shows all 6. Never above N_FISH_MAX. */
+/* Active population ceiling. CYD firmware and its smoke simulator use
+ * -DPOP_CAP=5; generic native tests may use all six storage slots.
+ * Never exceed N_FISH_MAX or enlarge the frozen save arrays. */
 #ifndef POP_CAP
 #define POP_CAP N_FISH_MAX
 #endif

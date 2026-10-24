@@ -52,56 +52,13 @@ static int shop_item(const char *name) {
     return -1;
 }
 
-/* the real tank's save, parked while a staged tank (fresh / stages) lives in
- * its place: NVS blob "bk" beside progression's "save" in namespace "tank".
- * The staged tank autosaves over "save" like any other; `restore` copies "bk"
- * back and reboots progression from it. */
-static bool nvs_copy(const char *from, const char *to) {
-    nvs_handle_t h; if (nvs_open("tank", NVS_READWRITE, &h) != ESP_OK) return false;
-    size_t len = 0; bool ok = false;
-    if (nvs_get_blob(h, from, NULL, &len) == ESP_OK && len > 0) {
-        void *buf = malloc(len);
-        if (buf && nvs_get_blob(h, from, buf, &len) == ESP_OK &&
-            nvs_set_blob(h, to, buf, len) == ESP_OK && nvs_commit(h) == ESP_OK) ok = true;
-        free(buf);
-    }
-    nvs_close(h); return ok;
-}
 static bool nvs_has(const char *key) {
     nvs_handle_t h; if (nvs_open("tank", NVS_READONLY, &h) != ESP_OK) return false;
     size_t len = 0; bool ok = nvs_get_blob(h, key, NULL, &len) == ESP_OK && len > 0;
     nvs_close(h); return ok;
 }
-static void nvs_drop(const char *key) {
-    nvs_handle_t h; esp_err_t e = nvs_open("tank", NVS_READWRITE, &h);
-    if (e == ESP_OK) { e = nvs_erase_key(h, key); if (e == ESP_OK) e = nvs_commit(h); nvs_close(h); }
-    if (e != ESP_OK) ESP_LOGW(TAG, "drop %s failed: %s", key, esp_err_to_name(e));
-    else if (nvs_has(key)) ESP_LOGW(TAG, "drop %s: still there after the erase", key);
-}
-static bool stash(tank_t *t) {
-    if (!progression_save(t)) { ESP_LOGE(TAG, "STASH FAILED - current tank could not be saved"); return false; }
-    bool ok = nvs_copy("save", "bk");
-    ESP_LOGI(TAG, "%s", ok ? "real tank stashed (restore brings it back)" : "STASH FAILED - not touching the tank");
-    return ok;
-}
-/* a staged tank replaces the live one: park the real save first unless a
- * stash is already parked (a second staging must not overwrite it) */
-static bool stage_guard(tank_t *t) {
-    if (nvs_has("bk")) { ESP_LOGI(TAG, "stash already parked; staging over the current tank"); return true; }
-    return stash(t);
-}
-/* a courtship / arrival scene needs room under the cap: the newest fish steps
- * out of the STAGED tank (the parked one keeps it) */
-static void make_room(tank_t *t) {
-    if (t->n_fish < POP_CAP && t->n_fish < N_FISH_MAX) return;
-    t->n_fish--;
-    ESP_LOGI(TAG, "tank at the cap: %s steps out for the scene (the parked tank keeps it)", t->fish[t->n_fish].name);
-}
-static const float STAGE_AGE[4] = { 0, STAGE_JUV_AGE + 60, STAGE_ADULT_AGE + 60, STAGE_ELDER_AGE + 60 };
-static int stage_of(const char *s) {
-    for (int i = 0; i < 4; i++) if (!strcasecmp(s, STAGE_NAMES[i])) return i;
-    if (!strcasecmp(s, "juvenile")) return STAGE_JUV;
-    return -1;
+static void staging_disabled(void) {
+    ESP_LOGE(TAG, "Hardware staging disabled: NVS stash cannot protect expanded saves. Use the simulator for demos and 'sd backup' for real backups.");
 }
 static bool s_ok;
 static char s_line[192];
@@ -198,8 +155,8 @@ static void show_state(const tank_t *t) {
         ESP_LOGI(TAG, "reef cluster placed: centre x %.0f (%s), %s, look %s, growth %.2f of %.0f (%s)", tank_decor_x(t, 4), t->cluster_x > 0 ? "the keeper's" : "the default",
                  t->cluster_z == DECOR_Z_BACK ? "BEHIND" : t->cluster_z == DECOR_Z_FRONT ? "IN FRONT" : "AMONG the grass", CLUSTER_SCHEMES[tank_cluster_scheme(t)].name,
                  tank_cluster_growth(t), CLUSTER_FULL, tank_cluster_growth(t) >= CLUSTER_FULL ? "in full bloom" : tank_cluster_growth(t) >= 1 ? "full size, blooming" : "filling out");
-    ESP_LOGI(TAG, "nursery bed %d (a bed >= %.2f) | parked real tank: %s", tank_nursery_bed(t), (double)VEG_NURSERY,
-             nvs_has("bk") ? "YES (restore)" : "no (this IS the real tank)");
+    ESP_LOGI(TAG, "nursery bed %d (a bed >= %.2f) | legacy NVS stash: %s", tank_nursery_bed(t), (double)VEG_NURSERY,
+             nvs_has("bk") ? "PRESENT (not the active save; do not erase)" : "none");
 
 }
 
@@ -208,21 +165,20 @@ static void help(void) {
     ESP_LOGI(TAG, "fed [level=1] (everyone full, trickle back on) | set <hunger|energy|stress|curiosity|trust> <0-10> [fish name|idx]");
     ESP_LOGI(TAG, "feed [n=3] [x] (keeper drops pellets; trickle back on) | trickle on|off | pellets clear");
     ESP_LOGI(TAG, "algae <steps|clear> | veg <bed 0-2|all> <0.03-1> | light (toggle) | auto | sleep <hours> | save");
-    ESP_LOGI(TAG, "STAGED TANKS (the real one is parked first): fresh (new tank, two fry) | stages (fry juv adult elder) | stage <fish|all> <fry|juv|adult|elder>");
-    ESP_LOGI(TAG, "stash (park the real tank now) | restore (bring it back) | age <fish> <hours>");
+    ESP_LOGI(TAG, "STAGED TANKS: fresh / stages / stage are disabled on hardware; use simulator demos");
+    ESP_LOGI(TAG, "stash / restore / staging / age: disabled for expanded saves; use simulator demos");
     ESP_LOGI(TAG, "milestones [off] (the page, on cue; on the device: tap the open stats card)");
-    ESP_LOGI(TAG, "journal | journal tap <x> <y> | journal demo (parks the real tank, unlocks temporary theme previews; restore when finished)");
+    ESP_LOGI(TAG, "journal | journal tap <x> <y> | journal demo (disabled on hardware; use simulator)");
     ESP_LOGI(TAG, "games | games tap <x> <y> (framebuffer coordinates; real aquarium care pauses)");
     ESP_LOGI(TAG, "home | home tap <x> <y> (main menu; life remains an alias; framebuffer coordinates)");
     ESP_LOGI(TAG, "rpg (read-only Lost Current progress and chapter contributors)");
     ESP_LOGI(TAG, "settings | settings tap <x> <y> | settings off (clock, weather and brightness; framebuffer coordinates)");
-    ESP_LOGI(TAG, "bank | bank tap <x> <y> | bank verify (JSON validation) | bank demo (parks real tank; restore afterwards)");
-    ESP_LOGI(TAG, "tanks | tanks tap <x> <y> | tanks demo (parks real tank, grants test coins; restore afterwards)");
+    ESP_LOGI(TAG, "bank | bank tap <x> <y> | bank verify (JSON validation) | bank demo (disabled on hardware; use simulator)");
+    ESP_LOGI(TAG, "tanks | tanks tap <x> <y> | tanks demo (disabled on hardware; use simulator)");
     ESP_LOGI(TAG, "fry [open|roll|buy <0-2>] (the shop's fry: open = as if a fish was sold; roll = a fresh three now)");
     ESP_LOGI(TAG, "shop [off] (the sand dollar page) | dollars [n] (grant n; the balance and the chore counts) | buy plant|snail|castle|coral|cluster|shrimp|urchin|seahorse (at the price) | seahorse on|off (drawn or not: the fps A/B) | place [plant|castle|coral] [x [behind|among|front]] (the piece's spot; no x = the page; the castle has no among) | coral <0-7|rrggbb> (its colour) | coral grow <g> (its growth, 1 = the fan, 1.25 = the crown) | cluster look <0-2> | cluster grow <g> (1 = full size, 2 = every tentacle) | sell plant|castle|coral|cluster (20%% back)");
-    ESP_LOGI(TAG, "reset (the keeper's confirm prompt, as BOOT + tap opens it) | reset yes|no (answer it here) - YES WIPES EVERY SAVE, a parked tank too");
-    ESP_LOGI(TAG, "setup [off] (the first-run flow: welcome, names, colours; off drops the panel - the birth flow too) | name <fish|idx> <newname> (up to %d letters, saved)", FISH_NAME_MAX);
-    ESP_LOGI(TAG, "kbd [wheel|grid|pages] (the name page's design: the wheel, or one of the two rejected keyboards of 09-13 - not saved, a boot is the wheel)");
+    ESP_LOGI(TAG, "reset (the keeper's confirm prompt, as BOOT + tap opens it) | reset yes|no - YES WIPES ALL PROGRESS AND AQUARIUMS; explicit SD backups are kept");
+    ESP_LOGI(TAG, "setup [off] (first-run mode, welcome, names, colours; off drops the panel) | name <fish|idx> <newname> (up to %d letters, saved)", FISH_NAME_MAX);
     ESP_LOGI(TAG, "touch [bias <px>] [log on|off] [calibrate] (finger-landing correction: reported touches move up by px; not saved; also the raw span seen since boot)");
     ESP_LOGI(TAG, "bright <0-255> (panel now; not saved) | level <10-100> (the keeper's setting, saved)");
     ESP_LOGI(TAG, "shop: chest (%d), shell (%d), starfish (%d), anchor (%d), buoy (%d), sand (%d), lights (%d) | style sand <0..7> | style water <0..7>",
@@ -357,11 +313,7 @@ static void run(tank_t *t, char *line) {
     } else if (!strcmp(c, "tanks")) {
         if (argc == 1) touch_port_show_aquariums(t);
         else if (argc == 2 && !strcmp(argv[1], "demo")) {
-            if (!stage_guard(t)) return;
-            setup_cancel(t); progression_setup_done(t); progression_newborn_done(t);
-            t->sd_balance = 4000;
-            if (!progression_save(t)) { ESP_LOGE(TAG, "tank demo save failed"); return; }
-            touch_port_show_aquariums(t);
+            staging_disabled(); return;
         } else if (argc == 4 && !strcmp(argv[1], "tap")) {
             float x, y; char extra;
             if (sscanf(argv[2], "%f%c", &x, &extra) != 1 || sscanf(argv[3], "%f%c", &y, &extra) != 1 ||
@@ -382,30 +334,7 @@ static void run(tank_t *t, char *line) {
     } else if (!strcmp(c, "bank")) {
         if (argc == 1) touch_port_show_bank();
         else if (argc == 2 && !strcmp(argv[1], "demo")) {
-            if (!stage_guard(t)) return;
-            if (setup_active()) setup_cancel(t);
-            progression_setup_done(t); progression_newborn_done(t);
-            while (t->bank_count < FISH_BANK_CAP) {
-                int slot = t->n_fish;
-                if (slot >= POP_CAP) slot--;
-                else { tank_make_fish(t, slot, t->bank_count % tank_roster_count(), 0.6f, 0.5f, STAGE_ADULT); t->n_fish++; }
-                int n = t->bank_count;
-                char name[8]; snprintf(name, sizeof name, "bank%02d", n);
-                tank_set_name(t, slot, name);
-                t->fish[slot].variety = (uint8_t)(n % FISH_VARIETY_COUNT);
-                t->fish[slot].pattern = (uint8_t)(n % FISH_PATTERN_COUNT);
-                tank_set_look(t, slot, FISH_BODY_COLORS[n % FISH_COLOR_N], FISH_MARKING_COLORS[n % FISH_COLOR_N]);
-                progression_set_age(t, slot, (24.0f + n) * 3600);
-                const char *error = progression_bank_move(t, -1, slot);
-                if (error) { ESP_LOGE(TAG, "bank demo: %s - restore real tank when done", error); return; }
-            }
-            while (t->n_fish < POP_CAP) {
-                int slot = t->n_fish++;
-                tank_make_fish(t, slot, slot % tank_roster_count(), 0.6f, 0.5f, STAGE_ADULT);
-                progression_set_age(t, slot, 24 * 3600);
-            }
-            if (!progression_save(t)) { ESP_LOGE(TAG, "bank demo final save failed"); return; }
-            touch_port_show_bank();
+            staging_disabled(); return;
         } else if (argc == 2 && !strcmp(argv[1], "verify")) {
             render_work_caches(false);
             char error[96]; char *json = progression_backup_json(t);
@@ -457,11 +386,7 @@ static void run(tank_t *t, char *line) {
         ESP_LOGI(TAG, "desk companion page %s", touch_port_life() ? "open" : "closed");
     } else if (!strcmp(c, "journal")) {
         if (argc == 2 && !strcmp(argv[1], "demo")) {
-            if (!stage_guard(t)) return;
-            uint32_t old_xp = t->journal.xp;
-            t->journal.xp = journal_level_xp(JOURNAL_LEVEL_MAX);
-            if (!progression_save(t)) { t->journal.xp = old_xp; ESP_LOGE(TAG, "journal demo save failed"); return; }
-            touch_port_show_journal();
+            staging_disabled(); return;
         } else if (argc == 4 && !strcmp(argv[1], "tap")) {
             float x, y; char extra;
             if (sscanf(argv[2], "%f%c", &x, &extra) != 1 || sscanf(argv[3], "%f%c", &y, &extra) != 1 ||
@@ -670,10 +595,8 @@ static void run(tank_t *t, char *line) {
             setup_activate(t, hit); ESP_LOGI(TAG, "setup tap %.1f,%.1f -> control %d (page %d)", x, y, hit, setup_page());
         } else if (argc > 1 && !strcmp(argv[1], "off")) { setup_cancel(t); ESP_LOGI(TAG, "setup panel dropped%s", progression_setup_pending() || progression_newborn() >= 0 ? " (still owed: it returns at the next boot)" : ""); }
         else { setup_begin(t); ESP_LOGI(TAG, "setup: welcome page up (tap through on the glass)"); }
-    } else if (!strcmp(c, "kbd")) {                  /* the name page's rejected designs, to be shown: kbd wheel|grid|pages */
-        if (argc > 1) setup_set_keyboard(!strcmp(argv[1], "grid") ? SETUP_KBD_GRID : !strcmp(argv[1], "pages") ? SETUP_KBD_PAGES : SETUP_KBD_WHEEL);
-        ESP_LOGI(TAG, "name page: %s", setup_keyboard() == SETUP_KBD_GRID ? "GRID (the first cut: 7 x 4 keys on a panel)" :
-                 setup_keyboard() == SETUP_KBD_PAGES ? "PAGES (the second: half the alphabet, big keys)" : "the letter wheel");
+    } else if (!strcmp(c, "kbd")) {
+        ESP_LOGW(TAG, "Prototype name keyboards removed; fish names use the letter wheel.");
     } else if (!strcmp(c, "touch")) {
         if (argc > 1 && !strcmp(argv[1], "calibrate")) { touch_port_calibrate(); return; }
         if (argc > 2 && !strcmp(argv[1], "bias")) touch_port_set_bias(atoi(argv[2]));
@@ -688,66 +611,13 @@ static void run(tank_t *t, char *line) {
     } else if (!strcmp(c, "save")) {
         progression_save(t); ESP_LOGI(TAG, "saved");
     } else if (!strcmp(c, "stash")) {
-        stash(t);
+        staging_disabled();
     } else if (!strcmp(c, "restore")) {
-        if (!nvs_has("bk")) { ESP_LOGW(TAG, "nothing stashed"); return; }
-        if (setup_active()) setup_cancel(t);         /* a page left up (the placement page) would outlive the tank it was about */
-        touch_port_show_shop(false); touch_port_show_milestones(false); touch_port_show_settings(false);
-        if (!nvs_copy("bk", "save")) { ESP_LOGW(TAG, "restore copy failed"); return; }
-        nvs_drop("bk");
-        tank_init(t, (uint32_t)esp_timer_get_time() ^ 0xC0FFEEu);
-        progression_boot(t);
-        ESP_LOGI(TAG, "real tank restored (%d fish)%s", t->n_fish,
-                 t->ravenous ? " - parked over an hour, so it woke ravenous: `fed` if unwanted" : "");
-        show_state(t);
-    } else if (!strcmp(c, "fresh")) {
-        if (!stage_guard(t)) return;
-        tank_init(t, (uint32_t)esp_timer_get_time() ^ 0xC0FFEEu);
-        progression_fresh(t);
-        progression_setup_done(t);       /* a staged scene, not a keeper's new tank: no welcome (`setup` cues it) */
-        ESP_LOGI(TAG, "fresh tank: %s + %s, both fry", t->fish[0].name, t->fish[1].name);
-        show_state(t);
-    } else if (!strcmp(c, "stages")) {
-        if (!stage_guard(t)) return;
-        int n = t->n_fish < 4 ? t->n_fish : 4;
-        for (int i = 0; i < n; i++) progression_set_age(t, i, STAGE_AGE[4 - n + i]);
-        ESP_LOGI(TAG, "one fish per stage");
-        show_state(t);
-    } else if (!strcmp(c, "stage") && argc > 2) {
-        int st = stage_of(argv[2]);
-        if (st < 0) { ESP_LOGW(TAG, "stage is fry|juv|adult|elder"); return; }
-        if (!stage_guard(t)) return;
-        if (!strcmp(argv[1], "all")) for (int i = 0; i < t->n_fish; i++) progression_set_age(t, i, STAGE_AGE[st]);
-        else { int who = find_fish(t, argv[1]); if (who < 0) { ESP_LOGW(TAG, "no fish '%s'", argv[1]); return; }
-               progression_set_age(t, who, STAGE_AGE[st]); }
-        show_state(t);
-    } else if (!strcmp(c, "overgrown")) {
-        if (!stage_guard(t)) return;
-        for (int b = 0; b < VEG_BEDS; b++) tank_veg_set(t, b, 0.95f);
-        tank_grow_algae(t, 600);
-        ESP_LOGI(TAG, "overgrown: grass at the ceiling, glass fouled - stress settles toward ~6.7 over the next minute; swipe to trim, wipe to clean");
-        show_state(t);
-    } else if (!strcmp(c, "court")) {
-        if (!stage_guard(t)) return;
-        make_room(t);
-        if (tank_nursery_bed(t) < 0) { tank_veg_set(t, 0, 0.3f); ESP_LOGI(TAG, "no nursery: reef bed set to 0.30"); }
-        progression_stage_arrival(t);
-        ESP_LOGI(TAG, "arrival staged: in %.0f-%.0f s the parents swim down into the nursery grass and court; the fry is born after %.0f s of circling there together (a page up pauses it; `arrive` = now)",
-                 SPAWN_WAIT_MIN_S, SPAWN_WAIT_MAX_S, SPAWN_DANCE_S);
-    } else if (!strcmp(c, "arrive")) {
-        if (!stage_guard(t)) return;
-        make_room(t);
-        if (tank_nursery_bed(t) < 0) { tank_veg_set(t, 0, 0.3f); ESP_LOGI(TAG, "no nursery: reef bed set to 0.30"); }
-        int before = t->n_fish;
-        progression_force_arrival(t);
-        if (t->n_fish > before) ESP_LOGI(TAG, "a fry: %s, by the reef - the birth flow opens (announce, name, family; `setup off` drops it)", t->fish[t->n_fish - 1].name);
-        else ESP_LOGW(TAG, "no arrival: tank at the cap (%d)", t->n_fish);
-        show_state(t);
-    } else if (!strcmp(c, "age") && argc > 2) {
-        int who = find_fish(t, argv[1]); if (who < 0) { ESP_LOGW(TAG, "no fish '%s'", argv[1]); return; }
-        if (!stage_guard(t)) return;
-        progression_set_age(t, who, atof(argv[2]) * 3600.0f);
-        show_state(t);
+        ESP_LOGE(TAG, "NVS restore disabled: it cannot restore expanded saves. Use 'sd restore'; any legacy 'bk' is left untouched.");
+    } else if (!strcmp(c, "fresh") || !strcmp(c, "stages") || !strcmp(c, "stage") ||
+               !strcmp(c, "overgrown") || !strcmp(c, "court") || !strcmp(c, "arrive") ||
+               !strcmp(c, "age")) {
+        staging_disabled();
     } else {
         ESP_LOGW(TAG, "unknown: '%s' (help)", c);
     }
@@ -769,7 +639,7 @@ static void run(tank_t *t, char *line) {
  * and pulled back out of the command line when they complete. */
 #define IMPROV_URL "https://pocketank.com/updates/"
 /* The handshake's flight recorder (2026-10-04): what the page asked and what the tank answered,
- * across resets (RTC memory, the batlog's pattern), read back with the director's `improv`. The
+ * across resets in RTC memory, read back with the director's `improv`. The
  * page's connect could not be reproduced from a script - this is the tank's own account of it. */
 typedef struct { uint32_t ms; uint8_t kind, a, b, c; } imp_ev_t;   /* kind: 'B' boot (a = reset reason), 'R' ask (a = rpc cmd),
                                                                      'X' dropped (a: 1 stale, 2 checksum, 3 restarted by a header),
@@ -960,7 +830,7 @@ void director_init(void) {
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     s_ok = usb_serial_jtag_driver_install(&cfg) == ESP_OK;
     ESP_LOGI(TAG, "%s", s_ok ? "console ready (type help)" : "USB serial driver failed: console off");
-    if (nvs_has("bk")) ESP_LOGW(TAG, "a STAGED tank is up: the real tank is parked (restore brings it back)");
+    if (nvs_has("bk")) ESP_LOGW(TAG, "Legacy NVS 'bk' is present. It is not the expanded active save; automatic NVS stash/restore is disabled.");
     improv_state();                                          /* the installer page listens for this after a flash */
 #else
     if (s_ok) return;

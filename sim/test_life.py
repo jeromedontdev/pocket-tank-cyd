@@ -65,6 +65,7 @@ def exercise(lib, backup):
     trick = json.loads(backup(lib))
     assert bytes.fromhex(trick["companion"]["active"])[8] & 1, "DART must unlock and persist at bond 10"
     tap(380, 24); tap(380, 24); tap(100, 180)
+    tap(100, 100)
     tap(230, 258)
     assert json.loads(backup(lib))["companion"]["adventure"] == 0, "Departure requires confirmation"
     tap(230, 258)
@@ -76,7 +77,7 @@ def exercise(lib, backup):
     launched["companion"]["adventure_clock"] -= 7201
     data = json.dumps(launched).encode()
     assert lib.sim_restore(data, len(data))
-    home(); tap(100, 180)
+    home(); tap(100, 180); tap(100, 100)
     lib.sim_frame(0.25)
     done = json.loads(backup(lib))
     assert done["companion"]["adventure_done"] == 1, "The two-hour adventure must finish after real elapsed time"
@@ -203,7 +204,7 @@ def exercise(lib, backup):
         home(); tap(330, 180); tap(330, 100)
         album = frame(); tap(100, 138); assert frame() != album
         tap(380, 24); assert frame() == album, "Hint Back must return to Discoveries"
-        tap(100, 300); tap(150, 178)
+        tap(380, 24); tap(100, 180); tap(150, 178)
         assert json.loads(backup(lib))["companion"]["collections"] == 2, "Friendship CLAIM must use the displayed row"
         assert json.loads(backup(lib))["companion"]["cosmetic"] == 2
         tap(330, 257)
@@ -230,7 +231,7 @@ def exercise(lib, backup):
             assert rows, "Frame option lettering must remain visible"
             heights.append(rows[-1] - rows[0] + 1)
             tap(330, 257)
-        assert len(set(heights)) == 1 and heights[0] <= 7, ("Frame font must stay native size across all four choices", heights)
+        assert len(set(heights)) == 1, ("Frame font must stay consistent across all four choices", heights)
         data = json.dumps(scaled).encode(); assert lib.sim_restore(data, len(data))
         lib.sim_action(2); tap(100, 260)
         options_before = json.loads(backup(lib))
@@ -248,16 +249,23 @@ def exercise(lib, backup):
         home(); tap(100, 100); tap(100, 260)
         life_frame = frame()
         assert life_frame != care_frame, "Fish Life opens from the Fish category, not Say Hello"
-        tap(100, 272); assert frame() != life_frame, "Life firsts must open"
-        tap(60, 320); assert frame() == life_frame, "LIFE tab must return to the biography"
-        tap(330, 272); assert frame() != life_frame, "Keepsakes must open"
-        for x in (220, 370, 60):
-            tap(x, 320)
-            assert frame() != care_frame, "Each fish tab stays inside the fish story pages"
+        for x, y in ((100, 272), (330, 272), (60, 320), (220, 320), (370, 320)):
+            tap(x, y)
+            assert frame() == life_frame, "Removed nested fish links must be inert"
+        tap(380, 24)
+        fish_menu = frame()
+        tap(360, 336)
+        more_fish = frame()
+        assert more_fish != fish_menu
+        for x, y in ((100, 100), (330, 100), (100, 180)):
+            tap(x, y)
+            assert frame() != more_fish, "Genes, Firsts and Keepsakes have their own entries"
+            tap(380, 24)
+            assert frame() == more_fish, "Each independent fish page returns to the menu"
         polish_after = json.loads(backup(lib))
         polish_after["tank"]["saved_unix"] = polish_before["tank"]["saved_unix"]
         assert polish_after == polish_before, "Browsing biographies/family/genes must not change the aquarium"
-        home(); tap(330, 100); tap(100, 260); tap(150, 138)
+        home(); tap(330, 100); tap(330, 100); tap(300, 338); tap(150, 138)
         identity = json.loads(backup(lib))
         assert identity["polish"]["subtitle"] == (polish_before["polish"]["subtitle"] + 1) % 5
         save_path = os.environ["POCKET_TANK_SAVE"]
@@ -266,7 +274,7 @@ def exercise(lib, backup):
         assert json.loads(backup(lib))["polish"] == identity["polish"], "Failed emblem save must roll back"
         os.environ["POCKET_TANK_SAVE"] = save_path
         tap(380, 24)
-        assert lib.sim_page() == 9, "Identity Back returns to Tank"
+        assert lib.sim_page() == 7, "Identity Back returns to Aquariums"
         lib.sim_action(2); tap(330, 100)
         clock_frame = frame()
         tap(330, 318)

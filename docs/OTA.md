@@ -10,7 +10,9 @@ and close serial monitors. The updater normally resets the board, checks its
 CYD boot identity and exact `ota` partition report, and refuses unknown layouts
 or a pending different boot slot. It validates the application checksum and
 board marker before flashing only the detected running application slot.
-NVS, Wi-Fi credentials, calibration, partition table and SD files are not erased.
+Internal profile storage, NVS, Wi-Fi credentials, calibration, partition table
+and SD files are not erased. Pocket Tank CYD 2.0.0 is a distinct game with
+expanded saves: legacy saves migrate, but do not downgrade an upgraded profile.
 
 Unlike SD updates, this overwrites the running application slot in the ROM
 bootloader rather than installing to the inactive slot. Keep power and USB
@@ -35,7 +37,7 @@ The application-only binary and factory image are not SD update packages.
 **Do not factory-flash an existing tank: it overwrites NVS and loses saved
 state, credentials, calibration and collection identity.**
 
-**Settings > Updates** now installs a trusted local package from
+**Settings > Device > SD Updates** installs a trusted local package from
 `pocket-tank/update.ptu` on the SD card. Wi-Fi is not used.
 
 1. Build the CYD application, then package the application binary (not a
@@ -50,7 +52,7 @@ state, credentials, calibration and collection identity.**
    console without removing the card. USB copying requires pyserial and
    refuses to overwrite an existing package or interrupted `.upload` file.
    Remove those specific files from the card before another USB copy.
-3. Open **Settings > Updates > Check SD Card**. The device validates the
+3. Open **Settings > Device > SD Updates > Check SD Card**. The device validates the
    package and displays its release label.
 4. Tap **Install and Restart** within 60 seconds to confirm. If the offer
    expired or the file changed, the device asks for confirmation again.
@@ -64,7 +66,8 @@ Missing, truncated, corrupt and wrong-board packages leave it selected.
 The package stays on the card after installation; it is never auto-installed
 at boot. Reinstallation/downgrades require the same explicit confirmation.
 
-Before installation, the current tank is saved to NVS and a verified
+Before installation, the current tank is committed to internal profile storage
+(legacy firmware used NVS) and a verified
 `before-update-NNNN.json` safety snapshot is created on SD. Installation
 stops if either fails. NVS, calibration, SD files and normal tank backups
 are not erased. Older firmware may not understand newer saves; use a

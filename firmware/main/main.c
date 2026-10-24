@@ -260,9 +260,9 @@ static void sleep_button_poll(int64_t now) {
     }
 }
 
-/* the keeper said YES: every saved tank goes - the live one and a director-
- * parked copy alike - and a fresh pair of fry takes the glass, saved at once
- * so a reboot lands on them (progression_reset) */
+/* A confirmed wipe invalidates the entire profile/SD collection and clears
+ * its fixed mode. Explicit user backups remain. progression_reset commits
+ * the durable wipe marker before staging a new first-run pair. */
 static void reset_tank(void) {
     ESP_LOGW(TAG, "RESET: wiping the tank (%d fish) for a fresh one", tank.n_fish);
     if (!progression_reset(&tank, (uint32_t)esp_timer_get_time() ^ 0xC0FFEEu)) {
@@ -302,9 +302,8 @@ static void tank_task(void *arg) {
     int64_t last_log = last;
     int64_t render_us = 0, flush_us = 0, card_us = 0; uint32_t frames = 0, card_frames = 0;
     uint32_t drawn_rows = 0;
-    /* the rest of the frame (2026-10-03: render + flush were ~36 ms of a ~50 ms frame, the other ~14 untimed):
-       the polls (keys, IMU, touch, the console), the tank's tick, the wait for the scene prefetch, what
-       follows the flush (the next prefetch, this log), and the frame's sleep */
+    /* Time the whole frame, not only rendering: keys/touch/console, simulation,
+     * scene prefetch wait, post-flush work and the frame limiter. */
     int64_t polls_us = 0, tick_us = 0, wait_us = 0, tail_us = 0, sleep_us = 0, slept_from = 0;
     ESP_LOGI(TAG, "tank task up | heap int %u KB", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
     for (;;) {
@@ -683,6 +682,10 @@ void app_main(void) {
         net_clock_rebase();
         if (clock_port_now_unix() == 0) clock_port_seed(progression_loaded_unix());   /* a clockless board after a power cut: time resumes at the save */
     }
+    if (!progression_storage_ready()) {
+        ESP_LOGE(TAG, "Profile unavailable; saves blocked. Existing data retained; check storage before retrying");
+        render_backup_status("SAVE UNAVAILABLE - CHECK STORAGE", false);
+    }
     notice_sync(&tank);                      /* what is already earned stays unannounced */
     { uint32_t r = progression_loaded_release();   /* which release wrote the tank we just loaded */
       if (r) ESP_LOGI(TAG, "the save was written by v%d.%d.%d", (int)(r >> 16), (int)(r >> 8 & 255), (int)(r & 255));
@@ -693,7 +696,7 @@ void app_main(void) {
        first save write, so an older build never meets a newer save it
        cannot read (it reads its prefix anyway: persist_port_esp.c) */
     { esp_ota_img_states_t st; const esp_partition_t *run = esp_ota_get_running_partition();
-      if (run && esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY) {
+      if (progression_storage_ready() && run && esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY) {
           esp_ota_mark_app_valid_cancel_rollback();
           ESP_LOGI(TAG, "first boot of this image from %s: marked valid, rollback cancelled", run->label); } }
     ESP_LOGI(TAG, "population %d (cap %d): %s + %s ...", tank.n_fish, POP_CAP,

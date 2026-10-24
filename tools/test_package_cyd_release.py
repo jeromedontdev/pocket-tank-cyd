@@ -52,6 +52,9 @@ class ReleaseTests(unittest.TestCase):
                 self.assertIn("The Lost Current", notes)
                 self.assertIn("Twelve games", notes)
                 self.assertIn("schema-14 JSON", notes)
+                self.assertIn("distinct aquarium game", notes)
+                self.assertIn("JSON schema 16", notes)
+                self.assertIn("global 20-slot Fish Bank", notes)
             for line in (output / "SHA256SUMS.txt").read_text().splitlines():
                 digest, filename = line.split("  ", 1)
                 self.assertEqual(digest, hashlib.sha256((output / filename).read_bytes()).hexdigest())

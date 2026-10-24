@@ -43,6 +43,7 @@ void nvs_close(nvs_handle_t);
             command.append("cc")
         command += ["-std=c11", "-O1", "-Wall", "-Wextra", "-Werror",
                     "-I" + str(work), "-I" + str(root / "firmware" / "main"),
+                    "-I" + str(root / "common"),
                     str(root / "tools" / "test_brightness.c"),
                     str(root / "firmware" / "main" / "brightness.c"), "-o", str(executable)]
         subprocess.run(command, check=True)

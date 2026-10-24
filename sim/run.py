@@ -27,7 +27,7 @@ def build(compiler, output, *, defines=()):
     command += ["-D" + define for define in defines]
     sources = [ROOT / "sim" / name for name in ("main.c", "persist_port_sim.c", "net_port_sim.c", "weather_port_sim.c")]
     sources += [ROOT / "common" / name for name in
-                ("tank.c", "advisor.c", "render.c", "progression.c", "setup.c", "notice.c", "update.c", "aquarium_store.c",
+                ("tank.c", "advisor.c", "render.c", "games.c", "progression.c", "setup.c", "notice.c", "update.c", "aquarium_store.c",
                  "companion.c", "companion_ui.c", "weather.c")]
     command += [*(str(path) for path in sources), str(cjson / "cJSON.c"),
                 str(output / "icons_sd.c"), "-o", str(library)]
@@ -148,6 +148,8 @@ def main():
         lib = load(build(args.cc, output), (output / "icons.bin").read_bytes())
         try:
             if args.smoke:
+                from test_creative import choose_first_run
+                choose_first_run(lib)
                 frames = set()
                 for action in range(7):
                     lib.sim_action(action)
@@ -343,17 +345,19 @@ def main():
                 lib.sim_action(5)
                 lib.sim_action(1)
                 lib.sim_action(7); tap(330, 180); tap(100, 100)
-                assert lib.sim_page() == 5, "Collections Journal entry must open the Journal"
+                assert lib.sim_page() == 5, "Collections Goals entry must open Goals"
                 journal_frames = set()
-                for x in (70, 200, 340):
-                    tap(x, 328)
+                for category, x, y in ((330, 100, 100), (330, 100, 260), (100, 100, 260)):
+                    lib.sim_action(7)
+                    tap(330, 180) if category == 330 else tap(330, 100)
+                    tap(x, y)
                     journal_frames.add(ctypes.string_at(lib.sim_frame(0.04), lib.sim_width() * lib.sim_height() * 2))
                 assert len(journal_frames) == 3, "Goals, album and themes must differ"
                 locked = json.loads(backup(lib))
                 locked["tank"].update(journal_xp=0, journal_theme=0)
                 encoded = json.dumps(locked).encode()
                 assert lib.sim_restore(encoded, len(encoded))
-                lib.sim_action(7); tap(330, 180); tap(100, 100); tap(340, 328)
+                lib.sim_action(7); tap(330, 100); tap(100, 260)
                 first_themes = ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
                 tap(400, 86)
                 more_themes = ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
@@ -364,14 +368,14 @@ def main():
                 unlocked["tank"]["journal_xp"] = 4200
                 encoded = json.dumps(unlocked).encode()
                 assert lib.sim_restore(encoded, len(encoded))
-                lib.sim_action(7); tap(330, 180); tap(100, 100); tap(340, 328); tap(400, 86)
+                lib.sim_action(7); tap(330, 100); tap(100, 260); tap(400, 86)
                 for row, theme in enumerate(range(4, 8)):
                     tap(100, 124 + row * 42)
                     assert json.loads(backup(lib))["tank"]["journal_theme"] == theme, "All new backdrops must be selectable on page two"
                 tap(350, 86)
                 tap(100, 124)
                 assert json.loads(backup(lib))["tank"]["journal_theme"] == 0, "Original must remain selectable"
-                print("PASS: paginated Journal themes, locked new themes and all four new theme selections")
+                print("PASS: independent Goals/Album/Themes, paginated themes, locked themes and all four new selections")
                 tap(380, 20)
                 assert lib.sim_page() == 9
                 # Exercise real shop routing, especially IDs above the old MOVE boundary.
@@ -486,8 +490,11 @@ def main():
                 wipe_balance = json.loads(backup(lib))["tank"]["sd_balance"]
                 tap(302, 216)
                 fresh = json.loads(backup(lib))["tank"]
-                assert fresh["sd_balance"] == wipe_balance and fresh["sd_unlocks"] == 0
+                assert fresh["sd_balance"] == 0 and fresh["sd_unlocks"] == 0
                 assert lib.sim_page() == 0 and lib.sim_save()
+                choose_first_run(lib)
+                from test_creative import exercise as exercise_creative
+                exercise_creative(lib, backup)
                 print("PASS: CYD simulator pages, JSON, wipe cancel/timeout/drag/confirm and fresh setup")
             else:
                 args.save.parent.mkdir(parents=True, exist_ok=True)

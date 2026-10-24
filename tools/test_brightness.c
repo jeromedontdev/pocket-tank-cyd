@@ -1,4 +1,5 @@
 #include "brightness.h"
+#include "ambient.h"
 #include "nvs.h"
 #undef NDEBUG
 #include <assert.h>
@@ -25,6 +26,8 @@ esp_err_t nvs_commit(nvs_handle_t handle) {
 }
 void nvs_close(nvs_handle_t handle) { assert(handle == 1); }
 void display_port_set_brightness(uint8_t level) { applied = level; applications++; }
+/* Isolate brightness policy; ambient filtering has its own real-code harness. */
+int ambient_brightness_pct(int requested) { return requested; }
 
 int main(void) {
     brightness_init(); assert(brightness_level() == 100);

@@ -14,6 +14,14 @@ def exercise(lib, backup):
     def frame():
         return ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
 
+    def illustration():
+        pixels = frame()
+        width, height = lib.sim_width(), lib.sim_height()
+        left, right = int(154 * width / 448), int(436 * width / 448)
+        top, bottom = int(116 * height / 368), int(162 * height / 368)
+        return b"".join(pixels[(row * width + left) * 2:(row * width + right) * 2]
+                        for row in range(top, bottom))
+
     def snapshot():
         data = json.loads(backup(lib))
         data["tank"].pop("saved_unix", None)
@@ -26,7 +34,7 @@ def exercise(lib, backup):
     def open_story():
         lib.sim_action(7)
         tap(100, 180)
-        tap(200, 340)
+        tap(330, 100)
 
     original = json.loads(backup(lib))
     save_path = os.environ["POCKET_TANK_SAVE"]
@@ -44,10 +52,14 @@ def exercise(lib, backup):
             open_story()
             assert lib.sim_width() == width
             opening = frame()
+            initial_art = illustration()
+            assert len(set(initial_art[index:index + 2] for index in range(0, len(initial_art), 2))) >= 8, \
+                "Story vignette must contain palette artwork, not an empty panel"
+            assert illustration() == initial_art, "Static artwork does not animate or need background ticks"
             tap(380, 24)
             expeditions = frame()
             assert expeditions != opening, "Story BACK returns to its Adventures parent"
-            tap(200, 340)
+            tap(330, 100)
             assert frame() == opening, "Reopening a story does not advance it"
             browsed = snapshot()
             differences = {key: (baseline[key], browsed[key]) for key in baseline if baseline[key] != browsed[key]}
@@ -65,6 +77,8 @@ def exercise(lib, backup):
                 continue
             tap(370, 96)
             participant = frame()
+            if fixture["tank"]["n_fish"] > 1:
+                assert illustration() != initial_art, "The chosen real fish appears in the scene"
             assert snapshot() == baseline, "Choosing a guide must not change the actual fish"
             os.environ["POCKET_TANK_SAVE"] = str(Path(save_path).parent / "missing-rpg" / "save.sav")
             tap(180, 246)
@@ -72,14 +86,18 @@ def exercise(lib, backup):
             assert frame() != participant, "Save failure must be visible"
             os.environ["POCKET_TANK_SAVE"] = save_path
             screens = set()
+            chapters = set()
             for encounter in range(18):
                 screens.add(frame())
+                if encounter % 3 == 0:
+                    chapters.add(illustration())
                 tap(180, 246 + encounter % 3 * 36)
                 event = frame()
                 tap(200, 320)
                 assert frame() != event, "Saved encounters show a result before continuing"
             completed = snapshot()
             assert len(screens) >= 12, "Campaign must have distinct encounters, not a repeating choice screen"
+            assert len(chapters) == 6, "Every chapter has its own illustrated landmark"
             assert completed["rpg"] != baseline["rpg"], "The campaign must persist real progress"
             for field in ("fish", "bank", "story"):
                 assert completed[field] == baseline[field], ("Story actions must not alter fish care/genetics", field)

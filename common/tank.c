@@ -405,7 +405,7 @@ void tank_new_population(tank_t *t) {
     int a = (int)tank_randf(t, 0, ROSTER_N - 0.001f);
     int b = (int)tank_randf(t, 0, ROSTER_N - 1.001f); if (b >= a) b++;
     /* personalities rolled with a guaranteed contrast so the pair reads as
-     * two characters at a glance (docs/progression-next.md, Act 1) */
+     * two characters at a glance */
     float ba, bb, sa, sb;
     do { ba = tank_randf(t, 0.1f, 0.9f); bb = tank_randf(t, 0.1f, 0.9f); } while (fabsf(ba - bb) < 0.45f);
     do { sa = tank_randf(t, 0.1f, 0.9f); sb = tank_randf(t, 0.1f, 0.9f); } while (fabsf(sa - sb) < 0.3f);
@@ -614,12 +614,14 @@ bool tank_remove_fish(tank_t *t, int idx) {
         t->companion.active[i] = t->companion.active[i + 1];
         t->polish.active[i] = t->polish.active[i + 1];
         t->story.active[i] = t->story.active[i + 1];
+        t->profile.starvation_s[i] = t->profile.starvation_s[i + 1];
         /* its spot by the reef is its slot's (tank_make_fish): a slot nearer,
            so the next arrival's spot is free again */
         t->fish[i].rest_dx -= 24; t->fish[i].rest_dy += 9;
     }
     t->n_fish--;
     t->sd_paid_fish[t->n_fish] = 0;
+    t->profile.starvation_s[t->n_fish] = 0;
     memset(&t->companion.active[t->n_fish], 0, sizeof t->companion.active[0]);
     memset(&t->polish.active[t->n_fish], 0, sizeof t->polish.active[0]);
     memset(&t->story.active[t->n_fish], 0, sizeof t->story.active[0]);
@@ -641,6 +643,9 @@ void tank_init(tank_t *t, uint32_t seed) {
     memset(&t->polish, 0, sizeof t->polish);
     memset(&t->story, 0, sizeof t->story);
     memset(&t->rpg, 0, sizeof t->rpg);
+    memset(&t->creative, 0, sizeof t->creative);
+    memset(&t->games_extra, 0, sizeof t->games_extra);
+    memset(&t->profile, 0, sizeof t->profile);
     t->season = SEASON_NONE;
     t->visitor_left = 0;
     t->room_dark = false; t->visitor_species = 0;

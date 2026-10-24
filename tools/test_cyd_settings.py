@@ -14,7 +14,13 @@ HARNESS = r"""
 static bool s_set, s_ms, s_life, s_from_home, s_child_from_keeper, s_back;
 static bool s_shop, s_upd;
 static int s_sel, s_set_what, s_set_val, result, result_value;
-static int calibrated, confirmed, update_reset;
+static int calibrated, confirmed, update_reset, dismissed, synced, primed;
+static void touch_port_dismiss(void) { dismissed++; }
+static void setup_cancel(tank_t *t) { (void)t; }
+static void notice_sync(tank_t *t) { (void)t; synced++; }
+void render_fb_primed(const uint16_t *fb, unsigned epoch) { (void)fb; (void)epoch; primed++; }
+static bool progression_setup_pending(void) { return false; }
+static void setup_begin(tank_t *t) { (void)t; }
 int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
     (void)t; (void)x; (void)y;
     *value = result_value;
@@ -45,7 +51,7 @@ int main(void) {
         assert(touch_port_take_setting(&value) == SET_TAP_NONE);
     }
     const int local[] = {SET_TAP_NONE, SET_TAP_CLOSE, SET_TAP_CLOCK_SHOW,
-                         SET_TAP_TOUCH, SET_TAP_WIPE, SET_TAP_UPDATES};
+                         SET_TAP_TOUCH, SET_TAP_WIPE, SET_TAP_UPDATES, SET_TAP_RECOVERED};
     for (unsigned i = 0; i < sizeof local / sizeof *local; i++) {
         result = local[i];
         settings_touch(&tank, 100, 100, false);
@@ -53,6 +59,7 @@ int main(void) {
         assert(touch_port_take_setting(&value) == SET_TAP_NONE);
     }
     assert(calibrated == 1 && confirmed == 1 && update_reset == 1);
+    assert(dismissed == 1 && synced == 1 && primed == 1);
     puts("PASS: CYD settings forwards every device action once and retains local actions");
 }
 """

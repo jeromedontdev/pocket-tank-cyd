@@ -6,6 +6,7 @@
 #include "board_pins.h"
 #include "tank.h"
 #include "render.h"
+#include "home_navigation.h"
 #include "setup.h"
 #include "notice.h"
 #include "progression.h"
@@ -29,7 +30,7 @@ static float s_lx, s_ly;                          /* LAST touched position (rele
 static float s_fx[N_FISH_MAX], s_fy[N_FISH_MAX];  /* fish positions at press time */
 static int s_sel = -1; static int64_t s_sel_us;   /* tapped fish -> stats card */
 static bool s_ms;                                 /* milestones page up (its CLOSE button ends it) */
-static bool s_from_home, s_home_tanks, s_child_from_keeper;                                 /* milestones page up (its CLOSE button ends it) */
+static bool s_from_home, s_home_tanks, s_child_from_keeper; /* BACK route, separate from active overlays */
 static bool s_journal, s_bank, s_games, s_life;
 static bool s_aquariums;
 static bool s_cf; static int64_t s_cf_us; static int s_cf_ans;   /* reset confirm prompt */
@@ -374,6 +375,10 @@ static void settings_touch(tank_t *t, float x, float y, bool down) {
     int v = 0, r = render_settings_touch(t, x, y, down, &v);
     if (r) ESP_LOGI(TAG, "settings action %d value %d", r, v);
     if (r == SET_TAP_CLOSE) { s_set = false; s_ms = true; s_life = s_from_home && !s_child_from_keeper; s_back = true; }
+    else if (r == SET_TAP_RECOVERED) {
+        touch_port_dismiss(); setup_cancel(t); notice_sync(t); render_fb_primed(NULL, 0); s_back = true;
+        if (progression_setup_pending()) setup_begin(t);
+    }
     else if (r == SET_TAP_CLOCK_SHOW) {
         s_set = s_ms = s_shop = s_upd = false; s_sel = -1; s_back = true;
         t->ui_cover = false; t->clock_requested = true;
@@ -390,13 +395,20 @@ void touch_port_life_tap(tank_t *t, float x, float y) {
     if (action == HOME_CLOSE) { s_ms = s_life = s_from_home = false; s_sel = -1; }
     else if (action) {
         s_life = false; s_from_home = true; s_child_from_keeper = false; s_sel = -1;
-        if (action == HOME_BANK) { s_bank = true; render_bank_open(); }
-        if (action == HOME_JOURNAL) { s_journal = true; render_journal_open(); }
-        if (action == HOME_GAMES) { s_games = true; render_games_open(); }
-        if (action == HOME_SETTINGS) { s_ms = false; s_set = true; render_settings_open(); }
-        if (action == HOME_SHOP || action == HOME_TANKS) {
-            s_ms = false; s_shop = true; s_aquariums = s_home_tanks = action == HOME_TANKS;
-            if (s_aquariums) render_aquariums_open(t);
+        switch (home_open(t, action)) {
+        case HOME_DEST_BANK: s_bank = true; break;
+        case HOME_DEST_JOURNAL: s_journal = true; break;
+        case HOME_DEST_GAMES: s_games = true; break;
+        case HOME_DEST_SETTINGS: s_ms = false; s_set = true; break;
+        case HOME_DEST_SHOP:
+        case HOME_DEST_TANKS:
+            s_ms = false;
+            s_shop = true;
+            s_aquariums = s_home_tanks = action == HOME_TANKS;
+            break;
+        case HOME_DEST_KEEPER:
+        case HOME_DEST_NONE:
+            break;
         }
     }
 }

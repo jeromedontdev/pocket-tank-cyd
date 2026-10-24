@@ -29,6 +29,7 @@ int render_tile_top(void);
 int render_tile_bottom(void);
 const char *render_palette_name(bool sand, int index);
 void render_settings_open(void);
+void render_settings_open_care(void);
 static inline float render_page_x(float x) {
     return x * PAGE_W / TANK_W;
 }
@@ -242,12 +243,14 @@ int render_bank_tap(tank_t *t, float x, float y);
 #define BANK_ROW_DY 46
 #define BANK_PER_PAGE 4                   /* + the fish's index */
 void render_journal_open(void);
+void render_journal_open_section(int section);
 void render_journal(const tank_t *t, uint16_t *fb, int stride);
 int render_journal_tap(tank_t *t, float x, float y); /* 1 closes; 0 keeps page */
 #define JOURNAL_ENTRY_Y 348
 void render_life_open(void);
 void render_life(const tank_t *t, uint16_t *fb, int stride);
-enum { HOME_NONE, HOME_CLOSE, HOME_BANK, HOME_SHOP, HOME_JOURNAL, HOME_GAMES, HOME_SETTINGS, HOME_TANKS, HOME_KEEPER };
+enum { HOME_NONE, HOME_CLOSE, HOME_BANK, HOME_SHOP, HOME_JOURNAL, HOME_GAMES, HOME_SETTINGS, HOME_TANKS, HOME_KEEPER,
+       HOME_ALBUM, HOME_THEMES, HOME_RECOVERY };
 int render_life_tap(tank_t *t, float x, float y);
 #define JOURNAL_TAB_Y 312
 #define JOURNAL_GOAL_Y 94
@@ -347,7 +350,8 @@ int  render_confirm_hit(float x, float y);
 enum { SET_TAP_NONE = 0, SET_TAP_CLOSE = 1, SET_TAP_BRIGHT = 2, SET_TAP_LIGHT = 4, SET_TAP_IDLE = 5,
        SET_TAP_UPDATES = 6, SET_TAP_FEED = 8,
        SET_TAP_BACKUP = 10, SET_TAP_RESTORE = 11, SET_TAP_SAND = 12, SET_TAP_WATER = 13, SET_TAP_TOUCH = 14, SET_TAP_WIPE = 15, SET_TAP_WIFI = 16, SET_TAP_CLOCK_SHOW = 17, SET_TAP_BRIGHT_PREVIEW = 18,
-       SET_TAP_ROOM = 19, SET_TAP_LED = 20, SET_TAP_AUTO_BACKUP = 21, SET_TAP_PHOTO = 22 };
+       SET_TAP_ROOM = 19, SET_TAP_LED = 20, SET_TAP_AUTO_BACKUP = 21, SET_TAP_PHOTO = 22,
+       SET_TAP_RECOVERED = 23 };
 /* 1.3: the board's own options, kept by the platform (NVS on the CYD) and
  * shown on the settings page. room_pct < 0 = no sensor reading. */
 typedef struct { uint8_t room_mode, led_mode, auto_backup; int room_pct; } render_device_t;
@@ -384,6 +388,9 @@ void render_fish_preview(uint16_t *fb, int stride, float x, float y, float size,
  * an elder its long tail), calm and fed - the birth flow's portrait */
 void render_fish_portrait(uint16_t *fb, int stride, float x, float y, float size, const fish_t *who, float clock);
 void render_creature_portrait(uint16_t *fb, int stride, float x, float y, int creature, uint8_t colors, float clock);
+/* Static PAGE-space previews: visitors are 40x24, decor is size x size (1..64). */
+void render_visitor_portrait(uint16_t *fb, int stride, int x, int y, int species, bool seen);
+void render_decor_thumbnail(uint16_t *fb, int stride, int x, int y, int size, int item, bool lit);
 
 /* ---- the pages' layouts (2026-10-01). These lived in render.c; they are here
  * so the sim's selftests tap where the layout says on every board instead of

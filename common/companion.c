@@ -44,7 +44,9 @@ void companion_story_init(tank_t *t) {
         const fish_t *f = &t->fish[i];
         int pa = f->parent_a, pb = f->parent_b;
         if (pa < 0 || pa >= t->n_fish || pa == i) continue;
-        uint32_t id_a = t->polish.active[pa].id, id_b = pb >= 0 && pb < t->n_fish && pb != i && pb != pa ? t->polish.active[pb].id : 0;
+        uint32_t id_a = t->polish.active[pa].id;
+        uint32_t id_b = pb >= 0 && pb < t->n_fish && pb != i && pb != pa ?
+            t->polish.active[pb].id : 0;
         s->active[i].parent[0] = id_a <= 0xffff ? (uint16_t)id_a : 0;
         s->active[i].parent[1] = id_b <= 0xffff ? (uint16_t)id_b : 0;
         s->active[i].generation = 1;
@@ -177,6 +179,7 @@ void companion_memory_text(const tank_memory_t *m, char *text, size_t size) {
         case MEMORY_HELPERS: snprintf(text, size, "Helpers quietly tended the tank."); break;
         case MEMORY_VISITOR: snprintf(text, size, "%s visited the reef.", m->detail ? COMPANION_VISITORS[m->detail % VISITOR_SPECIES].memory : "An unknown drifter"); break;
         case MEMORY_RPG: snprintf(text, size, "%s helped restore current %u.", who, (unsigned)m->detail + 1); break;
+        case MEMORY_DEATH: snprintf(text, size, "%s died after prolonged starvation.", who); break;
         default: snprintf(text, size, "No observations yet."); break;
     }
 }
@@ -257,7 +260,7 @@ bool companion_polish_valid(const tank_polish_t *p, int fish, int bank, bool awa
     for (int i = 0; i < TANK_RECAP_CAP; i++) {
         const tank_memory_t *m = &p->recap[i];
         if (m->pad || !memchr(m->name, 0, sizeof m->name) ||
-            (i < p->recap_count && (m->kind < MEMORY_ARRIVAL || m->kind > MEMORY_RPG ||
+            (i < p->recap_count && (m->kind < MEMORY_ARRIVAL || m->kind > MEMORY_DEATH ||
              (m->kind == MEMORY_DISCOVERY && m->detail >= COMPANION_DISCOVERY_COUNT) ||
              (m->kind == MEMORY_VISITOR && m->detail >= VISITOR_SPECIES) ||
              (m->kind == MEMORY_RPG && m->detail >= 6)))) return false;
@@ -356,6 +359,9 @@ void companion_init(tank_t *t) {
     memset(&t->polish, 0, sizeof t->polish);
     memset(&t->story, 0, sizeof t->story);
     memset(&t->rpg, 0, sizeof t->rpg);
+    memset(&t->creative, 0, sizeof t->creative);
+    memset(&t->games_extra, 0, sizeof t->games_extra);
+    memset(&t->profile, 0, sizeof t->profile);
     t->visitor_left = 0;
     t->companion.version = COMPANION_VERSION;
     t->companion.cozy = t->companion.captions = 1;
@@ -375,7 +381,7 @@ static const rpg_encounter_t rpg_encounters[18] = {
     {"A shell hums with a current nobody remembers. How will your fish answer?",
      {"COURAGE: Answer with a finbeat", "CURIOSITY: Study the shell", "KINDNESS: Listen to its worry"}},
     {"Sand hides the first waymark. A tiny crab guards a loose stone.",
-     {"COURAGE: Lift the stone", "CURIOSITY: Trace the sand lines", "KINDNESS: Help the little crab"}},
+     {"COURAGE: Lift the stone", "CURIOSITY: Trace sand lines", "KINDNESS: Help the little crab"}},
     {"The shell offers a map or a promise. Choose what your journey will carry.",
      {"COURAGE: Carry a beacon", "CURIOSITY: Keep the old map", "KINDNESS: Promise to return"}},
     {"Kelp knots the crossing. A small opening bends away from the marked path.",
@@ -385,27 +391,27 @@ static const rpg_encounter_t rpg_encounters[18] = {
     {"Two currents meet at the kelp gate. Decide what the crossing should become.",
      {"COURAGE: Open a clear channel", "CURIOSITY: Map a winding path", "KINDNESS: Make a sheltered way"}},
     {"Glass flowers reflect unfamiliar colours. One reflection moves on its own.",
-     {"COURAGE: Greet the reflection", "CURIOSITY: Compare its markings", "KINDNESS: Offer it some shade"}},
+     {"COURAGE: Greet the reflection", "CURIOSITY: Compare markings", "KINDNESS: Offer it some shade"}},
     {"An old garden wheel has stopped. Its keeper remembers only half a song.",
-     {"COURAGE: Turn the wheel", "CURIOSITY: Find the missing notes", "KINDNESS: Sing along softly"}},
+     {"COURAGE: Turn the wheel", "CURIOSITY: Find missing notes", "KINDNESS: Sing along softly"}},
     {"The garden can shine as a landmark or shelter small travellers.",
-     {"COURAGE: Raise a bright marker", "CURIOSITY: Align the glass petals", "KINDNESS: Grow a quiet refuge"}},
+     {"COURAGE: Raise a bright marker", "CURIOSITY: Align glass petals", "KINDNESS: Grow a quiet refuge"}},
     {"The lantern shoal has lost its rhythm. Distant visitors leave faint lights.",
-     {"COURAGE: Lead a new rhythm", "CURIOSITY: Follow visitor lights", "KINDNESS: Match the slowest fish"}},
+     {"COURAGE: Lead a new rhythm", "CURIOSITY: Follow the lights", "KINDNESS: Match the slow fish"}},
     {"A young lantern drifts behind. The safe path is longer than the bright one.",
-     {"COURAGE: Guide from the front", "CURIOSITY: Test both light trails", "KINDNESS: Stay beside the lantern"}},
+     {"COURAGE: Guide from the front", "CURIOSITY: Test light trails", "KINDNESS: Stay by the lantern"}},
     {"The shoal asks who its lights should guide when the current returns.",
-     {"COURAGE: Light the open sea", "CURIOSITY: Chart distant reefs", "KINDNESS: Welcome lost wanderers"}},
+     {"COURAGE: Light the open sea", "CURIOSITY: Chart distant reefs", "KINDNESS: Welcome wanderers"}},
     {"Names echo beneath the ancestors' arch. Familiar family marks catch the light.",
-     {"COURAGE: Add your own story", "CURIOSITY: Read the family marks", "KINDNESS: Honour earlier helpers"}},
+     {"COURAGE: Add your own story", "CURIOSITY: Read family marks", "KINDNESS: Honour past helpers"}},
     {"An unfinished bridge waits beneath the arch. No ancestor left every answer.",
-     {"COURAGE: Place the first stone", "CURIOSITY: Study old journeys", "KINDNESS: Build a resting ledge"}},
+     {"COURAGE: Place the first stone", "CURIOSITY: Study old journeys", "KINDNESS: Build a rest ledge"}},
     {"The arch offers a legacy: a route for explorers or a homeward welcome.",
-     {"COURAGE: Leave a trail banner", "CURIOSITY: Preserve the waymarks", "KINDNESS: Keep a welcome light"}},
+     {"COURAGE: Leave a trail banner", "CURIOSITY: Keep the waymarks", "KINDNESS: Keep a welcome light"}},
     {"At the heart, the lost current waits. It needs a direction, not a battle.",
-     {"COURAGE: Give it momentum", "CURIOSITY: Listen for its source", "KINDNESS: Ask where it belongs"}},
+     {"COURAGE: Give it momentum", "CURIOSITY: Find its source", "KINDNESS: Ask where it belongs"}},
     {"Old waymarks join into one circle. Every small contribution has brought you here.",
-     {"COURAGE: Join the channels", "CURIOSITY: Balance the flow", "KINDNESS: Gather the travellers"}},
+     {"COURAGE: Join the channels", "CURIOSITY: Balance the flow", "KINDNESS: Gather travellers"}},
     {"The current wakes. What kind of ocean will your companions leave behind?",
      {"COURAGE: An ocean of journeys", "CURIOSITY: An ocean of wonders", "KINDNESS: An ocean of welcome"}}
 };
@@ -419,7 +425,9 @@ bool companion_rpg_valid(const tank_rpg_t *s, uint32_t next_id) {
         if (s->skills[i] > 18) return false;
         total += s->skills[i];
     }
-    if (total != actions || (!!s->outcome != !!actions) || (!!s->participant != !!actions)) return false;
+    /* A profile's story survives moving to a different physical family. Its
+     * unavailable participant is explicitly unknown, never a reused slot ID. */
+    if (total != actions || (!!s->outcome != !!actions) || (!actions && s->participant)) return false;
     for (int i = 0; i < 6; i++) {
         if (s->contributors[i] >= next_id || (i >= s->chapter && s->contributors[i])) return false;
     }
@@ -556,11 +564,11 @@ bool companion_rpg_choose(tank_t *t, int fish, int choice) {
     t->polish.recap_count = count;
     return false;
 }
-bool companion_valid(const companion_state_t *s) {
+bool companion_valid_mode(const companion_state_t *s, bool creative) {
     if (s->version > COMPANION_VERSION || s->cozy > 1 || s->captions > 1 || s->lively > 1 || s->decor > 1 ||
         (s->discoveries & ~0xfffu) || (s->collections & ~7u) || s->adventure > 3 ||
         (s->adventure_done & ~7u) || (s->adventure_claimed & ~s->adventure_done) ||
-        s->cosmetic > 3 || (s->cosmetic && !(s->collections & (1u << (s->cosmetic - 1)))) ||
+        s->cosmetic > 3 || (!creative && s->cosmetic && !(s->collections & (1u << (s->cosmetic - 1)))) ||
         s->last_discovery > COMPANION_DISCOVERY_COUNT || s->adventure_choice > 1 ||
         (s->adventure_routes & ~s->adventure_done) || (s->game_challenges & ~63u) || s->featured >= 6 ||
         !memchr(s->portrait_name, 0, sizeof s->portrait_name) || s->portrait_body > 0xffffff ||
@@ -579,8 +587,9 @@ bool companion_valid(const companion_state_t *s) {
     if (s->adventure) {
         unsigned total = companion_adventure_total(s, s->adventure - 1);
         bool done = (s->adventure_done & (1u << (s->adventure - 1))) != 0;
-        if (s->adventure_s > total || (s->adventure_claimed & (1u << (s->adventure - 1))) ||
-            done != (!s->away && s->adventure_s == total)) return false;
+        if (s->adventure_s > total ||
+            (!s->away && ((s->adventure_claimed & (1u << (s->adventure - 1))) ||
+                          done != (s->adventure_s == total)))) return false;
     }
     if (!s->away) {
         bank_fish_t empty_fish = {0}; companion_bond_t empty_bond = {0};
@@ -588,7 +597,7 @@ bool companion_valid(const companion_state_t *s) {
             memcmp(&s->traveler_bond, &empty_bond, sizeof empty_bond)) return false;
     }
     for (int i = 0; i < 3; i++) {
-        if ((s->collections & (1u << i)) && (s->discoveries & collection_masks[i]) != collection_masks[i]) return false;
+        if (!creative && (s->collections & (1u << i)) && (s->discoveries & collection_masks[i]) != collection_masks[i]) return false;
         if ((s->adventure_done & (1u << i)) && !(s->discoveries & (1u << (8 + i)))) return false;
     }
     for (int i = 0; i < N_FISH_MAX + FISH_BANK_CAP + 1; i++) {
@@ -599,12 +608,13 @@ bool companion_valid(const companion_state_t *s) {
             (b->wearable && !(b->wearables & (1u << (b->wearable - 1)))) ||
             (s->version < 3 && (b->wearable || b->wearables)) ||
             (b->next_greet_s > s->powered_s && b->next_greet_s - s->powered_s > 30)) return false;
-        for (int j = 0; j < 3; j++) if ((b->tricks & (1u << j)) && b->bond < trick_bonds[j]) return false;
+        for (int j = 0; j < 3; j++) if (!creative && (b->tricks & (1u << j)) && b->bond < trick_bonds[j]) return false;
     }
     for (int i = 0; i < 6; i++)
         if (s->game_medals[i] > 3 || ((s->game_challenges & (1u << i)) && s->game_medals[i] != 3)) return false;
     return true;
 }
+bool companion_valid(const companion_state_t *s) { return companion_valid_mode(s, false); }
 static void discover(tank_t *t, int id) {
     uint32_t bit = 1u << id;
     if (!(t->companion.discoveries & bit)) {
@@ -679,8 +689,8 @@ bool companion_wearable(tank_t *t, int fish, int wearable) {
     }
     unsigned bit = wearable ? 1u << (wearable - 1) : 0;
     bool buy = wearable && !(b->wearables & bit);
-    int price = buy ? WEAR_PRICES[wearable] : 0;
-    if (buy && (journal_level(t) < WEAR_LEVELS[wearable] || t->sd_balance < price)) {
+    int price = buy && !progression_creative(t) ? WEAR_PRICES[wearable] : 0;
+    if (buy && !progression_creative(t) && (journal_level(t) < WEAR_LEVELS[wearable] || t->sd_balance < price)) {
         fprintf(stderr, "Wearable locked or insufficient sand dollars\n"); return false;
     }
     companion_state_t old = t->companion;
@@ -719,15 +729,22 @@ bool companion_compact(tank_t *t, bool compact) {
     *next = *t;
     int old_w = TANK_W;
     tank_reframe(next, compact);
-    next->companion.version = COMPANION_VERSION; next->companion.display_compact = compact;
+    next->companion.version = COMPANION_VERSION;
+    next->companion.display_compact = compact;
     bool ok = progression_save(next);
     if (ok) *t = *next;
-    else { tank_resolution(old_w == 320); fprintf(stderr, "Display scale save failed; change rolled back\n"); }
-    free(next); return ok;
+    else {
+        tank_resolution(old_w == 320);
+        fprintf(stderr, "Display scale save failed; change rolled back\n");
+    }
+    free(next);
+    return ok;
 }
 bool companion_set_options(tank_t *t, bool cozy, bool captions, bool lively) {
     companion_state_t old = t->companion;
-    t->companion.cozy = cozy; t->companion.captions = captions; t->companion.lively = lively;
+    t->companion.cozy = cozy;
+    t->companion.captions = captions;
+    t->companion.lively = lively;
     if (!t->companion.adventure) t->companion.version = COMPANION_VERSION;
     return commit(t, &old);
 }
@@ -746,34 +763,39 @@ bool companion_greet(tank_t *t, int fish) {
 }
 bool companion_trick(tank_t *t, int fish, int trick) {
     if (fish < 0 || fish >= t->n_fish || trick < 0 || trick > 2 || (trick == 2 && t->n_fish < 2) ||
-        t->companion.active[fish].bond < trick_bonds[trick]) return false;
+        (!progression_creative(t) && t->companion.active[fish].bond < trick_bonds[trick])) return false;
     companion_state_t old = t->companion;
     t->companion.active[fish].tricks |= (uint8_t)(1u << trick);
     discover(t, 7);
     if (!commit(t, &old)) return false;
     static const goal_id_t goals[] = {GOAL_DART_PLAY, GOAL_VISIT_BUBBLES, GOAL_FOLLOW_FRIEND};
-    t->fish[fish].goal.id = goals[trick]; t->fish[fish].goal.urgency = 4;
-    t->fish[fish].goal_age = 0; t->fish[fish].ask_age = 0;
+    t->fish[fish].goal.id = goals[trick];
+    t->fish[fish].goal.urgency = 4;
+    t->fish[fish].goal_age = 0;
+    t->fish[fish].ask_age = 0;
     t->fish[fish].dart_timer = 0;
     return true;
 }
 bool companion_collection_ready(const tank_t *t, int collection) {
     return collection >= 0 && collection < 3 &&
-        (t->companion.discoveries & collection_masks[collection]) == collection_masks[collection];
+        (progression_creative(t) || (t->companion.discoveries & collection_masks[collection]) == collection_masks[collection]);
 }
 bool companion_collection_claim(tank_t *t, int collection) {
     if (!companion_collection_ready(t, collection) || (t->companion.collections & (1u << collection))) return false;
     companion_state_t old = t->companion;
-    t->companion.collections |= 1u << collection; t->companion.cosmetic = (uint8_t)(collection + 1);
+    t->companion.collections |= 1u << collection;
+    t->companion.cosmetic = (uint8_t)(collection + 1);
     return commit(t, &old);
 }
 bool companion_cosmetic(tank_t *t, int cosmetic) {
-    if (cosmetic < 0 || cosmetic > 3 || (cosmetic && !(t->companion.collections & (1u << (cosmetic - 1))))) return false;
-    companion_state_t old = t->companion; t->companion.cosmetic = (uint8_t)cosmetic;
+    if (cosmetic < 0 || cosmetic > 3 || (!progression_creative(t) && cosmetic && !(t->companion.collections & (1u << (cosmetic - 1))))) return false;
+    companion_state_t old = t->companion;
+    t->companion.cosmetic = (uint8_t)cosmetic;
     return commit(t, &old);
 }
 bool companion_set_decor(tank_t *t, bool show) {
-    companion_state_t old = t->companion; t->companion.decor = show;
+    companion_state_t old = t->companion;
+    t->companion.decor = show;
     return commit(t, &old);
 }
 bool companion_adventure_start(tank_t *t, int adventure, int fish) {
@@ -783,22 +805,29 @@ bool companion_adventure_start(tank_t *t, int adventure, int fish) {
 }
 bool companion_adventure_choice(tank_t *t, int choice) {
     if (t->companion.adventure || choice < 0 || choice > 1) return false;
-    companion_state_t old = t->companion; t->companion.adventure_choice = (uint8_t)choice;
+    companion_state_t old = t->companion;
+    t->companion.adventure_choice = (uint8_t)choice;
     return commit(t, &old);
 }
 bool companion_adventure_claim(tank_t *t) {
     int a = t->companion.adventure - 1;
     if (a < 0 || a >= 3 || t->companion.away || !(t->companion.adventure_done & (1u << a)) ||
         (t->companion.adventure_claimed & (1u << a))) return false;
-    int coins = 10 * (a + 1);
+    int coins = progression_creative(t) ? 0 : 10 * (a + 1);
     if (t->sd_balance > INT_MAX - coins || t->sd_earned > INT_MAX - coins) return false;
-    companion_state_t old = t->companion; uint32_t xp = t->journal.xp;
+    companion_state_t old = t->companion;
+    uint32_t xp = t->journal.xp;
     t->companion.adventure_claimed |= (uint8_t)(1u << a);
-    t->companion.adventure = 0; t->companion.adventure_s = 0;
-    t->sd_balance += coins; t->sd_earned += coins;
+    t->companion.adventure = 0;
+    t->companion.adventure_s = 0;
+    t->sd_balance += coins;
+    t->sd_earned += coins;
     t->journal.xp = xp > JOURNAL_XP_MAX - (unsigned)(coins * 3) ? JOURNAL_XP_MAX : xp + coins * 3;
     if (commit(t, &old)) return true;
-    t->sd_balance -= coins; t->sd_earned -= coins; t->journal.xp = xp; return false;
+    t->sd_balance -= coins;
+    t->sd_earned -= coins;
+    t->journal.xp = xp;
+    return false;
 }
 bool companion_games_valid(const game_records_t *s) {
     if (s->version > 1) return false;
@@ -807,11 +836,45 @@ bool companion_games_valid(const game_records_t *s) {
         if (s->medals[i] > 3 || (!s->version && (s->best[i] || s->rounds[i] || s->medals[i]))) return false;
     return true;
 }
+int companion_game_reward(int game, int score, int moves) {
+    if (score < 0 || moves < 0) return 0;
+    int dollars = 0;
+    switch (game) {
+    case 12: if (score == 16 && moves) dollars = moves <= 8 ? 10 : moves <= 16 ? 8 : 6; break;
+    case 13: if (score == 8 && moves) dollars = moves <= 20 ? 10 : moves <= 40 ? 8 : 6; break;
+    case 14: if (score >= 10) dollars = score / 5 + (score == 25 ? 3 : 0); break;
+    case 15: if (score >= 128) dollars = score / 128; break;
+    case 16: if (score >= 30) dollars = score / 14; break;
+    case 17: if (score >= 3) dollars = score - 2; break;
+    default: break;
+    }
+    return dollars > 10 ? 10 : dollars;
+}
 bool companion_game_claim(tank_t *t, int game, int score, int moves, int dollars, bool relaxed) {
-    if (game < 0 || game >= 12 || score < 0 || moves < 0 || dollars < 1 || dollars > 10) return false;
+    if (progression_creative(t) || game < 0 || game >= 18 || score < 0 || moves < 0 ||
+        dollars < (game >= 12 ? 0 : 1) || dollars > 10 ||
+        (game >= 12 && dollars != companion_game_reward(game, score, moves))) return false;
     companion_state_t old = t->companion;
     game_records_t old_games = t->games;
-    if (!relaxed && game >= 6) {
+    game_records_t old_extra = t->games_extra;
+    if (!relaxed && game >= 12) {
+        int index = game - 12;
+        bool lower = index < 2;
+        unsigned metric = lower ? (unsigned)(dollars ? moves : 0) : (unsigned)score;
+        if (metric > UINT16_MAX) metric = UINT16_MAX;
+        game_records_t *records = &t->games_extra;
+        records->version = 1;
+        if ((!lower && metric > records->best[index]) ||
+            (lower && metric && (!records->best[index] || metric < records->best[index])))
+            records->best[index] = (uint16_t)metric;
+        if (records->rounds[index] < UINT16_MAX) records->rounds[index]++;
+        static const uint16_t thresholds[6][3] = {
+            {24,16,8}, {80,40,24}, {10,20,25}, {128,512,2048}, {30,80,120}, {3,7,12}
+        };
+        for (int i = 0; i < 3; i++)
+            if ((lower ? (metric && metric <= thresholds[index][i]) : metric >= thresholds[index][i]) &&
+                records->medals[index] < i + 1) records->medals[index] = (uint8_t)(i + 1);
+    } else if (!relaxed && game >= 6) {
         int index = game - 6;
         unsigned metric = (unsigned)score;
         if (metric > UINT16_MAX) metric = UINT16_MAX;
@@ -834,8 +897,11 @@ bool companion_game_claim(tank_t *t, int game, int score, int moves, int dollars
         if (t->companion.game_medals[game] == 3) t->companion.game_challenges |= (uint8_t)(1u << game);
         if (t->companion.featured == game) t->companion.featured = (uint8_t)((game + 1) % 6);
     }
-    if (progression_game_reward(t, dollars)) return true;
-    t->companion = old; t->games = old_games; return false;
+    if (dollars ? progression_game_reward(t, dollars) : progression_save(t)) return true;
+    t->companion = old;
+    t->games = old_games;
+    t->games_extra = old_extra;
+    return false;
 }
 bool companion_captions(const tank_t *t) { return t->companion.captions != 0; }
 bool companion_lively(const tank_t *t) { return t->companion.lively != 0; }

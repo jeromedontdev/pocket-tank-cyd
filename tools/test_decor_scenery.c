@@ -38,6 +38,8 @@ static void test_decor_scenery_catalog(void) {
 static void test_decor_scenery_buy_sell(void) {
     tank_t t, before;
     tank_init(&t, 4242);
+    assert(progression_reset(&t, 4242) && !progression_mode_select(&t, GAME_MODE_NORMAL));
+    progression_setup_done(&t);
     t.polish.scenery_unlocks = 0;
     uint32_t sd = t.sd_unlocks;
     uint8_t stat = t.aquariums.stat_upgrades;
@@ -71,8 +73,9 @@ static void test_decor_scenery_buy_sell(void) {
     assert(t.polish.scenery_unlocks == SD_SCENERY_MASK && t.sd_unlocks == sd && t.aquariums.stat_upgrades == stat);
     for (int item = SD_SCENERY_FIRST; item < SD_SCENERY_END; item++) assert(!tank_decor_owned(&t, item));
     t.sd_balance = INT32_MAX;
-    before = t;
-    assert(!progression_sell(&t, SD_SCENERY_FIRST) && !memcmp(&before, &t, sizeof t)); /* Wallet overflow guard. */
+    assert(!progression_sell_value_for(&t, SD_SCENERY_FIRST));
+    assert(progression_sell(&t, SD_SCENERY_FIRST) && t.sd_balance == INT32_MAX);
+    assert(progression_buy(&t, SD_SCENERY_FIRST) && t.sd_balance == INT32_MAX);
     char *json = progression_backup_json(&t); assert(json);
     cJSON *root = cJSON_Parse(json); free(json); assert(root);
     cJSON *polish = cJSON_GetObjectItemCaseSensitive(root, "polish");
@@ -84,6 +87,8 @@ static void test_decor_scenery_reload_paths(void) {
     tank_t t, loaded;
     /* The binary save keeps a partial mask through a real reboot. */
     test_decor_scenery_reload(&t, 31);
+    assert(progression_reset(&t, 31) && !progression_mode_select(&t, GAME_MODE_NORMAL));
+    progression_setup_done(&t);
     t.polish.scenery_unlocks = 0;
     t.sd_balance = SD_ITEMS[SD_SCENERY_GLASS].price + SD_ITEMS[SD_SCENERY_TEAPOT].price;
     assert(progression_buy(&t, SD_SCENERY_GLASS) && progression_buy(&t, SD_SCENERY_TEAPOT) && t.sd_balance == 0);

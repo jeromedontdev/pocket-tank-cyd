@@ -85,6 +85,27 @@ https://github.com/jeromedontdev/pocket-tank-cyd
 
 Release for **ESP32-2432S028 CYD only**.
 
+Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
+now **a distinct aquarium game**, retaining and crediting that simulation
+while adding its own modes, shared progression, genetics, stories and games.
+
+### New in 2.0.0: illustrated interface, modes and shared collection
+- Flatter menus: independent Goals/Album, Themes under Tank, Identity under Aquariums, a two-page Fish menu and Stories/RPG Adventures hub.
+- Six additional games (18 total): Lighthouse, Shell Slide, Sonar Sweep, Tide 2048, Harbor Stack and Echo Reef, with records, medals and balanced Normal/Hard coin/XP rewards.
+- First-run Normal / Creative / Hard choice, fixed until a confirmed full wipe. Existing saves migrate to Normal. The aquarium selector switches layouts, not modes; money, progress, unlocks and records follow every tank.
+- One global 20-slot Fish Bank: store a fish in one aquarium and return or swap it into another, preserving appearance, genes, family and bonds. Older local Banks merge safely on first visit; tanks keep their own residents and decorations.
+- Creative has free fish and appearance/shop choices; Hard adds running-time starvation deaths without offline or old-age deaths. Creative progression rewards cannot leak into Normal/Hard.
+- Extended verified storage avoids growing the full NVS blob; append-only migrations preserve existing saves and fixed-mode restore checks protect progression.
+- Shared pixel-art chapter scenes, actual fish guides, choice icons and saved-result illustrations for The Lost Current; no changes to campaign rules or rewards.
+- Three illustrated adventure destinations with route cues and traveler portraits, colored keepsakes or unfound silhouettes, and illustrated discovery hints.
+- Portrait-led fish information, family/genes and milestone cues; actual visitor/decor previews in logs and object stories.
+- Illustrated Home navigation, distinct thumbnails for eighteen games, visual rules/records, and clearer Goals, Album and theme previews.
+- Compact static assets and existing renderers: no required PSRAM, second framebuffer, SD artwork pack or background aquarium work. Art adds no save fields.
+- Focused maintenance: separate game module, named companion pages, shared hardware/simulator Home initialization, clearer transactional code and updated persistence/mode comments. Frozen save offsets, migration fixtures, licenses and upstream credits remain.
+- Obsolete upstream board imagery, battery/touch logs, model-era notes, duplicate partition data and rejected naming prototypes removed; active CYD art and compatibility saves retained.
+- Current binary saves are 6008 bytes; JSON schema 16 imports schemas 1-15. The profile uses existing internal SPIFFS storage, not an enlarged NVS blob. Back up before upgrading and do not downgrade an upgraded save.
+- Hardware migration fix: recognize the exact empty legacy 64 KiB SPIFFS template inside the existing storage partition without permitting files, corruption or unknown nonblank content to be formatted. Blocked loads report an error and do not mark a pending OTA image valid.
+
 ### New in 1.4.0: story, games and menu polish
 - The Lost Current: an optional six-chapter, 18-encounter fish-story RPG with courage, curiosity, kindness, three endings, family-linked chapter guides, and saved choices. Open Home > Adventures > The Lost Current. No real fish leave or get hurt; no care-stat changes, deadlines, or extra aquarium AI.
 - Twelve games across two pages, adding Reef Defender, Current Runner, Pearl Breaker, Tide Tactics, Reef Architect and Deep Expedition, with help, pause, permanent records/medals and transactional rewards.

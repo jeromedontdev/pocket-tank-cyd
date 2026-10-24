@@ -8,6 +8,40 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
+**Pocket Tank CYD 2.0.0 is now a distinct aquarium game, not just a board port.**
+It retains and credits the original simulation while adding permanent
+Normal/Creative/Hard profiles, shared aquarium progression, a global Fish Bank,
+genetics, illustrated stories and eighteen games. See the
+[illustrated guide](../docs/CYD-FEATURES.md) for current controls and behavior.
+The refactor separates games from aquarium rendering and shares Home routing
+between device and simulator without adding a framebuffer or requiring PSRAM.
+
+### 2.0.0 verification and budgets
+
+- Local ESP-IDF app: **1,760,944 bytes**, leaving **205,136 (10.43%)** per
+  1,966,080-byte OTA slot; static DRAM **71,331 bytes**. No PSRAM.
+- Real COM4 unit: original four residents, wallet, shop ownership and settings
+  retained through migration. Both scales, all eighteen game entries and
+  live aquarium rendering checked through actual firmware input/render paths
+  with EMEET webcam inspection. This is serial-driven testing, not a claim
+  that every resistive-touch target was manually pressed.
+- Real SD backup, temporary backup/restore memory-I/O verification, Bank JSON
+  validation and durable internal save checked without replacing the aquarium.
+- Populated local scene (four residents plus purchased helpers/decorations):
+  warmed-up 10-second Normal samples **9.4-9.6 FPS**, render **53.5-53.6 ms**,
+  flush **39.0-41.6 ms**; Enlarged **7.1-7.2 FPS**, render **88.0-88.2 ms**,
+  flush **40.0-40.1 ms**. Original clock configuration retained. These are
+  scene-specific observations, not a controlled before/after or a speedup claim.
+  Mixed transition/menu windows are excluded. The 10 FPS goal remains a goal.
+- Legacy hardware revealed an exact empty 64 KiB SPIFFS format in the first
+  half of the existing 128 KiB storage partition. Only that verified
+  metadata-only template or fully erased bytes may be initialized; files,
+  corruption and unknown nonblank data never authorize formatting.
+- Native suites cover frozen saves, modes/global Bank, rollback, game rewards,
+  both render scales/tiles, storage guards, display DMA, settings, ambient,
+  brightness and weather. The simulator plays all eighteen games through
+  real touch/frame APIs and checks first-run/wipe boundaries separately.
+
 From an ESP-IDF PowerShell terminal in `firmware`:
 
 ```powershell
@@ -135,6 +169,22 @@ Scale is saved per aquarium; positions and algae are remapped on a toggle,
 and a failed save restores the previous mode. Menu controls stay readable.
 Menus retain their full 448x368 layout and are scaled into that framebuffer,
 rather than cropped. Menu touch coordinates use the inverse scaling.
+The post-1.4 source visual overhaul uses shared, static pixel-art sprites and
+existing fish, visitor and decoration renderers for story/game/information
+pages. It adds no framebuffer, required PSRAM, SD artwork pack or save fields.
+The native page-art regression checks thumbnail bounds, distinct game art,
+and visitor/decor preview tile equivalence at both scales:
+`python tools\test_page_art.py --cc gcc` from the repository root.
+Continue checking the actual application size against each `0x1e0000` OTA slot;
+artwork belongs in bounded flash-resident data, not new heap caches.
+The October 24 source build measured **1,723,168 bytes**, versus the published
+1.4.0 image's 1,708,848 bytes: **14,320 bytes added** for the visual overhaul.
+It leaves **242,912 bytes (12.36%)** in each 1,966,080-byte app slot. These are
+the visual-only measurements. The subsequent menu/18-game/Creative source build
+measures **1,737,888 bytes**, leaving **228,192 bytes (11.61%)** per app slot.
+This expansion adds no PSRAM requirement or background aquarium work; hardware
+FPS has not been re-benchmarked for it. These are
+build-specific flash figures, not new hardware FPS or heap measurements.
 The display sends RGB565 pixels most-significant byte first. For panel color
 checks, `CYD_DIAGNOSTIC_PATTERN` in [main/display_port_cyd.c](main/display_port_cyd.c)
 temporarily replaces the image with red, green, blue, white, black, yellow,
@@ -345,8 +395,13 @@ append-only 1.2 polish tail brings the save to 5416 bytes, and the 432-byte 1.3
 story tail (lineage, genes, ancestor names, visitor log, seasons) to 5848. The polish tail holds stable
 fish identities/life records, a bounded recap, tank identity, visitor/backup
 records and six fixed-scenery ownership bits. The 24 KiB NVS partition remains
-unchanged; the 5920-byte save ceiling budgets three copies and 64 settings
-entries within the 630 usable entries, retaining the dedicated GC page.
+unchanged; the practical 5920-byte NVS ceiling budgets three copies and 64
+settings entries within the 630 usable entries, retaining the GC page.
+Source saves are 6008 bytes/schema 16: the existing 128 KiB SPIFFS partition
+holds alternating CRC/readback-verified active copies and a durable wipe
+marker. NVS is migration input only; never put the expanded blob back there.
+Only a byte-for-byte erased filesystem may be formatted automatically.
+Corruption blocks stale-save fallback, rather than overwriting the user's tank.
 The four care flags reuse one reserved byte;
 they do not shift older fields.
 Reconcile extensions explicitly when changing saves.
@@ -410,16 +465,15 @@ binary save size have not changed.
 
 ## Starting over
 
-Open **Settings > Device** and tap the red **WIPE AQUARIUM** button. The separate
-**WIPE TANK?** prompt explains what is erased. Tap **CANCEL**, or wait 20 seconds,
+Open **Settings > Device** and tap the red **WIPE ALL PROGRESS** button. The separate
+confirmation explains what is erased. Tap **CANCEL**, or wait 20 seconds,
 to keep the tank; only a new tap on **WIPE** in the prompt starts over.
 
-Wiping erases the active tank and any console-parked copy: fish, bank, purchases
-(including care/upkeep upgrades), milestones, Journal, palette selections and
-gameplay settings. **With multiple tanks, the shared wallet is preserved;
-with only the original tank, its sand dollars reset.** Purchased aquarium
-slots, their names and the other tanks remain. Wipe creates and
-saves a fresh pair of fry and opens first-time setup, just like a new tank.
+Wiping resets the **entire profile**: all aquarium slots, fish, Bank, money,
+upgrades, milestones, XP, records, campaign and mode choice. Old inactive
+snapshots cannot reappear under the new collection identity. It creates two
+fry and reopens Normal/Creative/Hard selection before first-time setup.
+Explicit SD backups and touch calibration remain untouched.
 It does not erase touch calibration, Wi-Fi credentials, SD assets, SD JSON
 backups or firmware packages. Brightness is retained. Back up to SD first if
 you might want your old tank back; restoring an SD backup can bring it back.
@@ -460,28 +514,40 @@ Console examples: `buy shell`, `buy starfish`, `buy anchor`, `buy buoy`,
 Open **Settings > SD Backups** and tap **BACKUP TO SD**. Each successful backup creates a
 new file in the card's `pocket-tank` directory: `backup-0001.json`,
 `backup-0002.json`, and so on. Existing backups are not overwritten.
-New exports use JSON schema 14, including Lost Current progress, twelve-game records, family lineage, genes, the visitor log, persistent fish stories/buddies, recaps,
+New exports use JSON schema 16, including fixed mode, starvation/global unlock/
+local refund state, eighteen-game records, Lost Current progress, family
+lineage, genes, the visitor log, persistent fish stories/buddies, recaps,
 tank identity, rare sightings, fixed scenery, backup status, Enlarged/Normal scale, creature/wardrobe colors, per-fish wearables, the traveling fish, companion progress, item ownership, placement,
 stacking, palette selections, fish appearance, Aquarium Journal progress
-and all stored fish. Schema 1 through 13 backups
+and all stored fish. Schema 1 through 15 backups
 still restore, defaulting absent additions to unowned decorations and
 Classic/Stripes fish (schema 1 also defaults the palettes to original).
 Older backups start with an empty Journal; existing care totals and current
-fish appearances qualify as you play. Open **Home > Collections > Journal** to claim
+fish appearances qualify as you play. Open **Home > Collections > Goals** to claim
 objectives, view the appearance album and select level-unlocked backdrops.
 See the README's Aquarium Journal section for XP rates and unlock levels.
 Pre-bank snapshots restore with an empty fish bank. Open **Home > Fish > Fish Bank**
-to deposit, return or swap fish; the bank pauses care and growth and keeps
-20 fish independently of the five active slots. Two fish must remain active;
+to deposit, return or swap fish; the global bank pauses care and growth and keeps
+20 fish independently of the five active slots, shared across all aquariums.
+Store in one aquarium and return or swap into another. Two fish must remain active;
 a full tank can still swap with the bank. Wipe clears both the tank and bank.
 **Home > Tank > Aquariums** offers up to eight independent aquariums.
 Each additional tank costs 500 sand dollars from the global wallet and begins
 with two fry. Switching is free and requires SD. Inactive tanks are fully
 paused in alternating CRC-checked binary snapshots in `pocket-tank/tanks`.
-Only one tank is in RAM/NVS. Purchase/switch commits select the tank in
-the same NVS blob as the save, so failed writes do not charge or switch.
+Only one tank is active in RAM/internal storage. Purchase/switch commits select
+the tank in the same verified save, so failed writes do not charge or switch.
 Sand dollars and lifetime earnings are global; switching cannot restore a
-stale balance. Each tank has its own Journal, decorations, fish and Fish Bank.
+stale balance. XP, objectives, unlocks, discoveries, campaign progress and game
+records and the Fish Bank follow every tank. Residents and decoration placement
+stay local; fish identities, family, genes and bonds travel through the Bank.
+The existing 6008-byte/schema-16 layout is unchanged: profile reserved bit 3
+marks migrated shared-Bank snapshots. A single profile-wide identity counter
+prevents new fish colliding with residents in inactive tanks. Old local
+identity references are rebased together and old Banks merge once on first
+visit; insufficient capacity blocks switching instead of dropping fish.
+Portable multi-tank restores remap imported identities outside the live
+profile's allocated range, preserving internal family/buddy/guide references.
 NAME TANK edits the active tank's persistent name (15 characters, `<` / `>` editor).
 The shop has 42 stable item IDs, presented in ascending price order (ties keep
 their item order); the optional nursery row stays first. The scenery/upkeep
@@ -498,25 +564,34 @@ New fixed scenery: Zen Pebbles (40), Duck Float (60), Pearl Clam
 and Dive Helmet (140), all in sand dollars. The log, lily pads and duck occupy
 separate bobbing surface positions and can coexist. Fixed scenery is behind
 fish, with floor scenery behind movable pieces. There is no MOVE control;
-SELL requires two taps and refunds the usual 20 percent. Failed saves roll
+SELL requires two taps and refunds 20 percent for an eligible paid copy only.
+Permanent unlocks follow all tanks; free replacement/removal never earns coins.
+Failed saves roll
 back both purchases and sales of the new scenery.
 Slow Garden (160) halves grass growth and Bio Filter (180) halves new algae
 growth in both awake and offline simulation. Neither clears existing growth,
-generates chore rewards or changes other care rates; both are per tank.
+generates chore rewards or changes other care rates. Installations are local;
+their purchase unlocks follow every tank and permit free installation elsewhere.
 New purchases roll back their balance/ownership if the internal save fails.
 Menu actions share the dark fill and pale teal outline; selected tabs and
 letters use a white outline. Aquarium and bank pagination use `<` / `>`.
 All original and added shop icons are muted gray while unowned and full color
 after purchase, both in rows and detail dialogs. This indicates ownership,
 not affordability; the price and UNLOCK button show whether you can buy.
-JSON backup/restore and Wipe affect the active tank only; purchased slots
-and inactive tanks remain. Multi-tank Wipe preserves the shared wallet; JSON
-restore replaces it with the backup's balance. Names remain tied to slots.
+JSON replaces the active tank plus shared wallet/progression while preserving
+purchased-slot identity. Full Wipe resets the entire collection and progression,
+then permits a new first-run mode choice. Explicit SD backups remain untouched.
 Archive individual JSON exports and the tanks directory; there is no automatic
 collection recovery after erasing NVS. Do not downgrade to older firmware.
-The console `tanks` opens the page, `tanks tap <x> <y>` uses framebuffer
-coordinates, and `tanks demo` parks the real tank before granting temporary
-test sand dollars. Use `restore` after staging; never Wipe while a real tank is parked.
+The console `tanks` opens the page and `tanks tap <x> <y>` uses framebuffer
+coordinates. Hardware `stash`, `restore` and destructive staging/demos are
+disabled: their old NVS-only stash cannot protect expanded saves.
+Their unreachable demo implementations have been removed; legacy commands
+still report the refusal explicitly. The filming-only `kbd` grid/paged
+prototype name keyboards are also removed. Naming always uses the shipped
+letter wheel; the Wi-Fi QWERTY keyboard is independent and unchanged.
+Use simulator demos and `sd backup`/`sd restore` for real snapshots instead.
+Any legacy NVS `bk` remains untouched and is explicitly reported.
 Schema 5 files require this firmware or newer; old firmware will refuse them.
 The serial `sd verify` diagnostic exercises SD write/readback and restore
 validation (including safety-backup memory usage), removes its temporary
@@ -528,7 +603,7 @@ their temporary name to `.json`.
 
 Tap **RESTORE FROM SD**, then **CONFIRM RESTORE** within 10 seconds to restore
 the highest-numbered backup. Restore replaces the active tank and restarts
-the board. Before committing NVS, it creates a separate
+the board. Before committing internal profile storage, it creates a separate
 `before-restore-0001.json` snapshot of the current tank; if that safety backup
 fails, restore is refused. A failed or malformed restore is reported on
 screen and in serial logs, without intentionally replacing the active tank.
@@ -575,7 +650,7 @@ This is the same durable state as a normal tank save, not a frame-exact
 memory dump: fish positions and transient animations are rebuilt at boot.
 Restore resumes the snapshot without simulating the time spent in the
 archive. Wi-Fi credentials, device brightness, and touch calibration are
-not exported or overwritten. Routine saves still use NVS and do not require
+not exported or overwritten. Routine saves use internal SPIFFS and do not require
 SD. Backups contain no embedded icons or firmware.
 
 Fish-care shop upgrades: Calm Current (160) gives 25% faster resting/sleep
@@ -583,8 +658,9 @@ energy recovery; Cozy Shelter (180) gives 25% faster base stress decay awake
 and asleep; Play Kit (200) gives 25% faster exploring curiosity gains;
 Training Ring (240) adds 25% of the base calm-hold trust rate, for 225% total
 with a hitched seahorse. Food rewards and negative drives are unchanged.
-They are permanent per-tank purchases, clear on active-tank wipe, and persist
-in NVS, SD tank snapshots and portable JSON. Older backups default to none.
+Their unlocks follow the profile, while refund eligibility remains local.
+They clear on full-profile wipe and persist in internal saves, SD tank snapshots
+and portable JSON. Older backups default to none.
 The four upgrades preserve the 4000-byte binary prefix; JSON has optional
 `tank.stat_upgrades` (integer 0..15), binary saves use a reserved metadata byte.
 Schemas 6 through 8 also include the companion extension; schema 7 appends a reserved traveler.
@@ -624,7 +700,7 @@ Jellyfish 15. Customization and shop previews/purchases use the same unlock
 predicate. Existing active fish, banked fish and Journal-seen varieties stay
 available below their required level, without changing fish or granting XP.
 Journal-seen bits preserve acquired appearances after customization or sale.
-Levels/unlocks are tank-local; new tanks still begin with Classic fry.
+Levels/unlocks follow all tanks; new tanks still begin with Classic fry.
 Patterns/colors and inherited breeding appearances are unchanged.
 See the [game rules and reward table](../README.md#mini-games).
 The serial director's `games` and `games tap <framebuffer x> <y>` commands
@@ -698,9 +774,10 @@ secondary color; older builds do not understand the packed delay.
 
 Tap a fish, then its card's **MENU**, to open **Home**. Keeper also has a
 **HOME** shortcut. Home groups **Fish** (Say Hello, Bank, wardrobe, names/looks,
-life, family/genes), **Tank** (shop/decor, aquariums, palettes, creature colors,
-identity, tank journal), **Adventures**,
-**Collections** (Journal, discoveries, display rewards, visitor log), **Games**, and
+life, family, plus page 2 for genes/firsts/keepsakes), **Tank** (shop/decor,
+aquariums with identity/Creative, palettes, creature colors, themes, tank recap),
+**Adventures** (Stories and The Lost Current),
+**Collections** (Goals, Album, discoveries, display rewards, visitor log, object stories), **Games**, and
 **Settings**. Back returns to the category actually used to enter a page.
 Settings groups Display, Clock/Weather, Wi-Fi/Sync, SD Backups, Aquarium Care, and Device.
 New tanks start in **COZY** care: hunger and exhaustion stay comfortable,
@@ -716,12 +793,34 @@ All can be changed without resetting a tank; new tanks start without sparkles.
 
 **Home > Adventures > The Lost Current** is an optional six-chapter, 18-encounter
 story RPG. It saves three shared adventure skills, chapter resolutions, and
-family-linked contributors in a 24-byte append-only tail (5912-byte total save).
+family-linked contributors in a 24-byte append-only tail (5912 bytes through 1.4).
 It adds no aquarium AI or timed background activity and does not transfer or
 change real fish. Memories and an optional trophy map are its rewards; it
 does not issue coins or care upgrades. BACK leaves safely; each choice saves
 atomically and save failures leave the story unchanged.
 The serial `rpg` command reports campaign progress without advancing it.
+
+Source navigation separates Goals/Album, puts Themes under Tank and Identity
+under Aquariums, and uses a two-entry Adventures hub and two-page Fish menu.
+Six additional games add a third page (18 total), including persistent records,
+medals and balanced coin/XP rewards in Normal/Hard.
+
+Choose **Normal / Creative / Hard** on first run. This whole-profile choice is
+fixed until a confirmed full wipe: fish, money, progression, records and the
+aquarium collection are reset before another mode can be selected. Settings
+only displays the mode; the tank selector changes layouts, not game modes.
+Existing saves migrate to Normal without losing progress. Progression and
+unlocks follow all tanks. Residents/layouts stay local; Bank transfers carry
+fish identities, families, genes and bonds between tanks.
+
+Creative makes fish and every appearance/shop choice free; add up to five
+active fish including travelers and remove with confirmation while retaining
+two residents. It does not grant spendable progression rewards. Hard disables
+Comfort Assist and permits prolonged running-time starvation deaths, never
+offline or old-age deaths. A fishless Hard tank offers recovery from Home.
+Cross-mode JSON restores are rejected. Extended active saves use verified
+internal storage rather than exceeding the 5920-byte NVS ceiling.
+Keep simulator and firmware navigation, rollback and mode boundaries consistent.
 
 Say hello to the selected fish to grow its permanent bond (once per 30
 seconds of powered-on tank time). At bonds 10/25/50, invite it to dart,
@@ -831,7 +930,7 @@ The selected card and selection ring update together, and the normal
 Tapping the card itself still opens Keeper. Single-fish tanks and special
 snail/shrimp/urchin/seahorse cards do not show this arrow.
 
-Tap **WI-FI / SYNC** on that page (or enter `wifi setup` on the console). The tank first saves to NVS,
+Tap **WI-FI / SYNC** on that page (or enter `wifi setup` on the console). The tank first commits its internal save,
 then restarts into a memory-isolated setup so the Wi-Fi driver does not
 compete with aquarium rendering for SRAM. Choose a visible **2.4 GHz** network,
 enter its password using the case-sensitive keyboard, and join. All 26 letters

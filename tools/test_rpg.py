@@ -16,7 +16,7 @@ def main():
     common = root / "common"
     cjson = root / "firmware" / "managed_components" / "espressif__cjson" / "cJSON"
     sources = [common / name for name in (
-        "tank.c", "progression.c", "advisor.c", "render.c", "setup.c", "notice.c",
+        "tank.c", "progression.c", "advisor.c", "render.c", "games.c", "setup.c", "notice.c",
         "update.c", "aquarium_store.c", "companion.c", "weather.c"
     )]
     try:

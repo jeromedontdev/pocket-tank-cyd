@@ -19,7 +19,7 @@ def main():
         parser.error("Configure the ESP-IDF firmware first to provide its existing cJSON dependency")
     common = root / "common"
     sources = [common / name for name in (
-        "tank.c", "progression.c", "advisor.c", "render.c", "setup.c", "notice.c", "update.c", "aquarium_store.c",
+        "tank.c", "progression.c", "advisor.c", "render.c", "games.c", "setup.c", "notice.c", "update.c", "aquarium_store.c",
         "companion.c", "companion_ui.c", "weather.c"
     )]
     # Metadata is generated deterministically by the same packer as the firmware.

@@ -27,7 +27,7 @@
 #include <stdint.h>
 #include "tank.h"
 
-enum { NOTICE_MILESTONE, NOTICE_TANK_MILESTONE, NOTICE_STAGE, NOTICE_UPDATED = 4, NOTICE_LIGHTS_OUT };
+enum { NOTICE_MILESTONE, NOTICE_TANK_MILESTONE, NOTICE_STAGE, NOTICE_UPDATED = 4, NOTICE_LIGHTS_OUT, NOTICE_CARE_STATUS };
 typedef struct { int kind; int fish; uint32_t bit; float age; } notice_t;
 
 #define NOTICE_UP_S   6.0f
