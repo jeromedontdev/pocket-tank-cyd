@@ -83,6 +83,15 @@ https://github.com/jeromedontdev/pocket-tank-cyd
 
 Release for **ESP32-2432S028 CYD only**.
 
+### New in 1.2.0
+- Stable per-fish identities, biographies, life firsts and remembered swim buddies across reboot, Bank moves and adventures.
+- Expressive Care text, eight recent real observations, helper reports and gentle discovery hints; no streaks or extra care meters.
+- Tank subtitles/emblems, known founding dates, object provenance and per-fish adventure keepsake descriptions.
+- Very rare harmless unknown drifter: a 24-second localized encounter after hours of lit, uncovered aquarium simulation, with a persistent sighting record.
+- Six cached fixed sand decorations: Sea Glass, Brain Coral, Tiki Statue, Bottle Note, Anemone and Old Teapot; movable placement limits stay unchanged.
+- Last verified SD-backup status and tank-name/version restore previews.
+- Append-only 5416-byte binary saves and schema-11 JSON, importing all prior schemas without resetting tanks. Keep a pre-upgrade backup; older builds do not retain the new tail.
+
 ### New in 1.1.0
 - Fish get acquainted during calm nearby swimming, form short spaced paired swims and favor stable decoration spots. Care names their buddy and favorite spot; session familiarity reforms after restart.
 - Tap every helper creature for food/activity/progress, actual versus drawn shrimp counts and a direct free color-editor shortcut.

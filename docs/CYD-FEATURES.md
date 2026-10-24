@@ -1,6 +1,6 @@
 # Pocket Tank CYD: a more personal little ocean
 
-**An illustrated tour of Pocket Tank CYD 1.1.0**
+**An illustrated tour of Pocket Tank CYD (release 1.2.0)**
 Updated October 23, 2026
 
 This fork keeps Pocket Tank's feeding, growth, personality, trust and
@@ -22,7 +22,7 @@ The headline additions:
 - **Game records and medals**, permanent challenges and relaxed play without
   countdowns in Bubble Pop or Feed Frenzy.
 - **Optional real weather** beside the idle clock, with on-device city setup.
-- **Nineteen added decorations**, including three simultaneous surface floats.
+- **Twenty-five added decorations**, including three simultaneous surface floats.
 - **Two upkeep and four fish-care upgrades**, purchased separately for each tank.
 - **A price-sorted shop:** gray icons before purchase, full color afterward.
 - **Readable menus**, reorganized Settings, SD backups and offline updates.
@@ -71,7 +71,8 @@ Packages are verified but unsigned; only install trusted files. See
 Calm fish get acquainted while swimming near one another. After about half a
 minute together, a fish can favor a familiar swim buddy. Short paired swims keep
 a steady trailing lane, then take a break; hunger, stress and rest still come
-first. Familiarity is session-only and reforms after restarting. Favorite
+first. Familiar buddies now survive restarting, Bank moves and adventures.
+Friendships use stable per-fish identities, not shared names or appearances. Favorite
 decoration choices are stable for a fish's original identity, not changed by
 renaming or recoloring it. They guide resting and inspecting the reef.
 **Home > Fish > Care** names the current buddy and favorite spot.
@@ -107,6 +108,66 @@ Deep Glow occasionally gains a distant silhouette, Moonlit a short shooting
 star, and owned treasure chests/crystals a brief glint. Effects use 4 Hz pose
 steps and bounded old/new dirty regions, never a new full-screen background
 animation. The opaque clock still occludes aquarium drawing.
+
+### Quiet depth (new in 1.2)
+
+Open **Home > Fish > Care > LIFE / TANK**. The four tabs offer:
+
+- **LIFE:** an individual biography, recorded arrival in powered tank hours,
+  life firsts, current needs/activity, remembered buddy and favorite spot.
+  Close companions have spent at least ten calm nearby minutes together.
+  Older fish keep their existing milestones; their original arrival date
+  is explicitly unknown rather than invented.
+- **RECAP:** the eight latest real observations, newest first, with an older
+  page and a quiet helper-contribution report. There are no interrupting
+  recap pop-ups, offline stories, streaks or missed-day penalties.
+- **TANK:** optional preset subtitles and emblem labels, founding date when
+  known, last verified SD backup and total unknown-visitor sightings.
+  Subtitles/emblems also appear in the aquarium picker/summary.
+- **OBJECTS:** shop descriptions, ownership/source, recorded acquisition
+  hour where available, and a fish that favors that placeable decoration.
+
+Life firsts and adventure keepsakes have their own detail pages. The lantern
+shell, pearl bookmark and star stone include short descriptions; newly
+completed adventures attach them to the actual returning fish. Existing
+postcards remain in Adventures, but older rewards are not retroactively
+attributed to an unknown fish. Tap any name in **Discoveries** for a gentle
+hint about the missing discovery.
+
+A small unknown drifter may cross the upper reef for 24 seconds. The first
+window is **6-12 hours of lit, uncovered aquarium simulation**, with later
+windows 8-24 hours apart. Menus, darkness, power-off and inactive tanks do
+not advance this counter; the board cannot detect whether someone is
+physically watching. Sightings persist even if you miss the encounter.
+The visitor is harmless: no feeding, care meter, reward or population slot.
+Its small silhouette changes only once per second and uses local dirty
+regions, including the existing opaque-clock occlusion handling.
+
+Six new **fixed sand scenery** choices are available in the Shop: Sea Glass
+(50), Brain Coral (110), Tiki Statue (130), Bottle Note (70), Anemone (90)
+and Old Teapot (80 sand dollars). They use the cached backdrop, do not add
+placement slots, and have no continuous animation. Static scenery can still
+cost drawing time when the cache is rebuilt; this is not a promise that all
+decorations are literally free.
+
+SD restore confirmation previews the source tank name and firmware version.
+Successful verified backups record their date; clockless backups explicitly
+show an unknown date. Old backups have no source name and are labeled as
+older backups. Backup scope remains **active aquarium + shared wallet**,
+including its Bank and traveler, not all purchased SD tanks.
+
+| Individual fish life | Quiet recent observations |
+|---|---|
+| ![Fish biography with remembered buddy and life firsts](media/cyd-features/fish-life.png) | ![Recent observations including a staged visitor sighting](media/cyd-features/tank-recap.png) |
+
+| Tank identity | New fixed scenery |
+|---|---|
+| ![Tank subtitle, emblem and recorded dates](media/cyd-features/tank-identity.png) | ![Six fixed scenery choices in the actual renderer](media/cyd-features/tank-fixed-scenery.png) |
+
+The visitor capture uses an accelerated demonstration schedule, not a changed
+hardware encounter rate:
+
+![A rare unknown drifter crossing the demonstration aquarium](media/cyd-features/tank-rare-visitor.png)
 
 ## Mini-games: play with your fish, not their care stats
 
@@ -539,10 +600,16 @@ Prices are in sand dollars.
 | Tube sponges | 100 |
 | Lost barrel | 110 |
 | Dive helmet | 140 |
+| Sea glass | 50 |
+| Brain coral | 110 |
+| Tiki statue | 130 |
+| Bottle note | 70 |
+| Anemone | 90 |
+| Old teapot | 80 |
 
 The shop now sorts unlocks **cheapest first**, keeping equal-price choices
 in a stable order. The optional nursery FRY row remains a separate first row.
-There are **36 stable unlock IDs** in the catalog (the seasonal pumpkin can
+There are **42 stable unlock IDs** in the catalog (the seasonal pumpkin can
 be unavailable), plus the separate nursery offers. All original and added
 item icons follow the same ownership rule in both the list and detail dialog:
 **muted gray before purchase, full color after purchase**. Gray does not mean
@@ -550,7 +617,8 @@ you cannot afford an item; the price/button indicates affordability.
 
 ### More scenery, including the surface
 
-The eight new scenic unlocks have **fixed positions** and stay in their tank;
+The eight original scenic unlocks and six new sand ornaments have **fixed
+positions** and stay in their tank;
 they have no MOVE control, but SELL refunds the usual 20 percent after two
 taps. The shop describes
 this before purchase. The **lily pads, floating log and duck float** gently
@@ -682,6 +750,11 @@ vignette profile is now 0 ms. The following Normal pass measured about
 These are measured samples, not a minimum-FPS guarantee; boot, weather
 refreshes, different populations and fish positions can still cause dips.
 This meets the tested 10 FPS goal, not the original 15 FPS aspiration.
+Release 1.2.0 measured 10.6-11.8 FPS after warm-up with the user's
+existing one-resident-fish tank and Neon clock/weather visible. Its recent
+1.1 baseline was about 10.3 FPS. This sample showed no steady-state slowdown,
+but it is not a controlled benchmark or a guarantee for other populations;
+the new scenery was exercised separately in renderer tests and demo captures.
 A later hard-edged vignette trial used integer RGB565 shifts, a dark perimeter
 and wider corners. The shading stage cost about 3 ms/frame, but the complete
 trial build measured only 8.0-8.4 FPS after warm-up; that overall regression
@@ -859,10 +932,11 @@ palettes, Journal and bank.
 Backups are written and read back for validation. A restore first creates
 a safety snapshot of the current aquarium.
 
-New backups use **schema 10**, including the display scale, traveling fish, creature colors, per-fish wearables/colors,
+New backups use **schema 11**, including fish identities/stories, remembered buddies,
+recaps, tank identity, fixed scenery, backup status, display scale, traveling fish, creature colors, per-fish wearables/colors,
 companion progression and the optional `tank.stat_upgrades` field for the four
-fish-care purchases. Schemas 1 through 9 remain importable; older firmware
-cannot restore schema 10 files. Keep a matching backup
+fish-care purchases. Schemas 1 through 10 remain importable; older firmware
+cannot restore schema 11 files. Keep a matching backup
 when deliberately downgrading.
 
 Backup export processes sections and stored fish one record at a time to

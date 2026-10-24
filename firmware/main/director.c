@@ -43,7 +43,8 @@ static int shop_item(const char *name) {
         "pumpkin", "chest", "shell", "starfish", "anchor", "buoy", "sand", "lights",
         "wreck", "urn", "crystal", "fan", "ruins", "jelly",
         "pebbles", "pearl", "log", "sponges", "barrel", "helmet", "lilies", "duck", "filter", "garden",
-        "current", "shelter", "play", "training"
+        "current", "shelter", "play", "training",
+        "seaglass", "braincoral", "tiki", "bottle", "anemone", "teapot"
     };
     for (int i = 0; i < SD_ITEM_COUNT; i++) if (!strcmp(name, keys[i])) return i;
     return -1;

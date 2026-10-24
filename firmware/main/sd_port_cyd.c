@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "sdmmc_cmd.h"
 #include "progression.h"
+#include "companion.h"
 #include "aquarium_store.h"
 #include "esp_random.h"
 #include "render.h"
@@ -190,7 +191,10 @@ static void backup_action(tank_t *tank, bool restore, bool confirmed, const char
     if (!restore) {
         char path[96];
         bool ok = backup_write(tank, "backup", path);
-        render_backup_status(ok ? "BACKUP SAVED ON SD" : "BACKUP FAILED - SEE SERIAL", false);
+        if (ok && !companion_backup_record(tank)) {
+            ESP_LOGE(TAG, "Backup verified but last-backup status could not be saved");
+            render_backup_status("SD BACKUP OK; STATUS SAVE FAILED", false);
+        } else render_backup_status(ok ? "BACKUP SAVED ON SD" : "BACKUP FAILED - SEE SERIAL", false);
         return;
     }
     char path[96]; unsigned n;
@@ -205,7 +209,13 @@ static void backup_action(tank_t *tank, bool restore, bool confirmed, const char
         free(text); render_backup_status("INVALID BACKUP - NOT RESTORED", false); return;
     }
     if (!confirmed) {
-        free(text); render_backup_status("TAP RESTORE AGAIN TO CONFIRM", true); return;
+        char name[16], preview[64]; uint32_t release;
+        if (!progression_backup_preview(text, len, name, &release)) {
+            free(text); render_backup_status("PREVIEW FAILED - NOT RESTORED", false); return;
+        }
+        snprintf(preview, sizeof preview, "RESTORE %.15s v%u.%u.%u? TAP AGAIN",
+                 name, (unsigned)(release >> 16), (unsigned)((release >> 8) & 255), (unsigned)(release & 255));
+        free(text); render_backup_status(preview, true); return;
     }
     uint32_t crc = esp_crc32_le(0, (const uint8_t *)text, len);
     size_t original_len = len;

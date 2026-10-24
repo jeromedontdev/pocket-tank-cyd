@@ -84,7 +84,12 @@ def main():
                         lib.sim_frame(0.04)
                         time.sleep(0.002)
 
-                def restore(snapshot):
+                def restore(snapshot, preserve_life=False):
+                    snapshot = copy.deepcopy(snapshot)
+                    if snapshot.get("schema") == 11 and not preserve_life:
+                        # Staged rosters replace identities; migrate their life records honestly.
+                        snapshot["schema"] = 10
+                        snapshot.pop("polish")
                     data = json.dumps(snapshot, separators=(",", ":")).encode()
                     if not lib.sim_restore(data, len(data)):
                         raise RuntimeError(lib.sim_error().decode())
@@ -122,6 +127,22 @@ def main():
                 tank["extra_z1"] = [1, 2, 2, 1, 1, 2]
                 restore(demo)
                 scene("tank-kelp")
+                polish = json.loads(sim.backup(lib))
+                polish["polish"].update(scenery_unlocks=63, subtitle=3, emblem=3)
+                restore(polish, preserve_life=True)
+                scene("tank-fixed-scenery")
+                polish = json.loads(sim.backup(lib))
+                polish["polish"]["next_visit_s"] = polish["polish"]["viewed_s"] + 1
+                restore(polish, preserve_life=True)
+                scene("tank-rare-visitor")
+                home(); tap(100, 100); tap(100, 100); tap(360, 235)
+                capture("fish-life")
+                tap(100, 272); capture("fish-life-firsts")
+                tap(60, 320); tap(330, 272); capture("fish-keepsakes")
+                tap(170, 320); capture("tank-recap")
+                tap(280, 320); capture("tank-identity")
+                tap(390, 320); capture("object-stories")
+                restore(demo)
                 for theme, name in ((2, "tank-coral"), (3, "tank-deep-glow"),
                                     (4, "tank-ruins"), (5, "tank-sunset"),
                                     (6, "tank-ice"), (7, "tank-moonlit")):
@@ -290,7 +311,7 @@ def main():
                 capture("home-fish")
                 tap(100, 100)
                 capture("companion-home")
-                tap(365, 234)
+                tap(380, 24); tap(100, 180)
                 capture("fish-wardrobe")
                 tap(60, 180)
                 for _ in range(3):

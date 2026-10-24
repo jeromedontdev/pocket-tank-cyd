@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 const char *const COMPANION_DISCOVERIES[] = {
     "Bubble watcher", "Little explorer", "Seagrass nap", "Swimming together",
@@ -24,8 +25,205 @@ const char *const WEAR_NAMES[WEAR_COUNT] = {"NONE", "TOP HAT", "PARTY HAT", "CRO
 const uint8_t WEAR_LEVELS[WEAR_COUNT] = {0, 3, 2, 10, 5, 4, 2};
 const uint8_t WEAR_PRICES[WEAR_COUNT] = {0, 45, 20, 100, 35, 30, 20};
 
+const char *companion_subtitle(unsigned value) {
+    static const char *const names[] = {"", "A little ocean", "A quiet refuge", "A reef of friends", "Small wonders live here"};
+    return names[value < 5 ? value : 0];
+}
+const char *companion_emblem(unsigned value) {
+    static const char *const names[] = {"REEF", "SHELL", "PEARL", "STAR"};
+    return names[value < 4 ? value : 0];
+}
+void companion_memory(tank_t *t, int kind, int fish, int detail) {
+    tank_polish_t *p = &t->polish;
+    memmove(p->recap + 1, p->recap, (TANK_RECAP_CAP - 1) * sizeof p->recap[0]);
+    tank_memory_t *m = &p->recap[0];
+    memset(m, 0, sizeof *m);
+    m->at_s = t->companion.powered_s; m->kind = (uint8_t)kind; m->detail = (uint8_t)detail;
+    if (fish >= 0 && fish < t->n_fish) snprintf(m->name, sizeof m->name, "%s", t->fish[fish].name);
+    if (p->recap_count < TANK_RECAP_CAP) p->recap_count++;
+    progression_settings_changed();
+}
+void companion_memory_text(const tank_memory_t *m, char *text, size_t size) {
+    const char *who = m->name[0] ? m->name : "A fish";
+    switch (m->kind) {
+        case MEMORY_ARRIVAL: snprintf(text, size, "%s joined the aquarium.", who); break;
+        case MEMORY_GROWTH: snprintf(text, size, "%s reached a new life stage.", who); break;
+        case MEMORY_BUDDY: snprintf(text, size, "%s made a familiar friend.", who); break;
+        case MEMORY_DISCOVERY: snprintf(text, size, "Discovered: %s.", COMPANION_DISCOVERIES[m->detail]); break;
+        case MEMORY_ADVENTURE: snprintf(text, size, "%s brought home a keepsake.", who); break;
+        case MEMORY_HELPERS: snprintf(text, size, "Helpers quietly tended the tank."); break;
+        case MEMORY_VISITOR: snprintf(text, size, "An unknown drifter visited the reef."); break;
+        default: snprintf(text, size, "No observations yet."); break;
+    }
+}
+static void life_init(tank_t *t, fish_life_t *life, const fish_t *fish, bool arrived) {
+    if (life->id) return;
+    tank_polish_t *p = &t->polish;
+    if (!p->next_id) p->next_id = 1;
+    life->id = p->next_id++;
+    life->arrived_s = arrived ? t->companion.powered_s : UINT32_MAX;
+    if (fish) { life->stage = (uint8_t)fish->stage; life->milestones = fish->ms_bits; }
+}
+void companion_polish_init(tank_t *t, bool fresh) {
+    tank_polish_t *p = &t->polish;
+    bool migrate = !p->version;
+    if (migrate) {
+        memset(p, 0, sizeof *p);
+        p->version = 1; p->next_id = 1;
+        p->next_visit_s = 21600 + t->rng % 21601;
+        if (fresh) p->founded_unix = clock_port_now_unix();
+        p->decor_owned = t->sd_unlocks;
+        p->helper_meals = t->shrimp_eaten;
+        p->helper_trim = (uint32_t)t->urchin_grazed_px;
+    }
+    for (int i = 0; i < t->n_fish; i++) life_init(t, &p->active[i], &t->fish[i], fresh);
+    for (int i = 0; i < t->bank_count; i++) {
+        life_init(t, &p->bank[i], NULL, false);
+        p->bank[i].stage = t->bank[i].fish.stage;
+        p->bank[i].milestones = t->bank[i].fish.ms_bits;
+    }
+    if (t->companion.away) {
+        life_init(t, &p->traveler, NULL, false);
+        p->traveler.stage = t->companion.traveler.fish.stage;
+        p->traveler.milestones = t->companion.traveler.fish.ms_bits;
+    }
+    for (int i = 0; i < t->n_fish; i++) for (int j = 0; j < t->n_fish; j++) {
+        if (i != j && p->active[i].buddy == p->active[j].id && p->active[i].friend_s >= 30) {
+            t->fish[i].familiar_id[j] = t->fish[j].social_id;
+            t->fish[i].familiar[j] = p->active[i].friend_s;
+        }
+    }
+}
+bool companion_polish_valid(const tank_polish_t *p, int fish, int bank, bool away) {
+    if (!p->version) {
+        tank_polish_t empty = {0};
+        return !memcmp(p, &empty, sizeof empty);
+    }
+    if (p->version != 1 || !p->next_id || p->subtitle >= 5 || p->emblem >= 4 ||
+        p->recap_count > TANK_RECAP_CAP || (p->scenery_unlocks & ~63u) ||
+        p->founded_unix < 0 || p->founded_unix > 4102444800LL ||
+        p->backup_unix < 0 || p->backup_unix > 4102444800LL ||
+        !memchr(p->tank_name, 0, sizeof p->tank_name)) {
+        fprintf(stderr, "Invalid polish header (version %u, next identity %lu)\n", p->version, (unsigned long)p->next_id); return false;
+    }
+    uint32_t ids[N_FISH_MAX + FISH_BANK_CAP + 1]; int count = 0;
+    for (int i = 0; i < N_FISH_MAX + FISH_BANK_CAP + 1; i++) {
+        const fish_life_t *f = i < N_FISH_MAX ? &p->active[i] :
+            i < N_FISH_MAX + FISH_BANK_CAP ? &p->bank[i - N_FISH_MAX] : &p->traveler;
+        bool present = i < N_FISH_MAX ? i < fish :
+            i < N_FISH_MAX + FISH_BANK_CAP ? i - N_FISH_MAX < bank : away;
+        if (!present) {
+            fish_life_t empty = {0};
+            if (memcmp(f, &empty, sizeof empty)) {
+                fprintf(stderr, "Unexpected life record in empty slot %d\n", i); return false;
+            }
+            continue;
+        }
+        if (!f->id || f->id >= p->next_id || f->buddy >= p->next_id || f->buddy == f->id ||
+            f->friend_s > 3600 || f->stage > STAGE_ELDER || (f->adventures & ~7u)) {
+            fprintf(stderr, "Invalid fish life %d (identity %lu, buddy %lu, next %lu, familiarity %u)\n",
+                    i, (unsigned long)f->id, (unsigned long)f->buddy, (unsigned long)p->next_id, f->friend_s); return false;
+        }
+        for (int j = 0; j < count; j++) if (ids[j] == f->id) return false;
+        ids[count++] = f->id;
+    }
+    for (int i = 0; i < TANK_RECAP_CAP; i++) {
+        const tank_memory_t *m = &p->recap[i];
+        if (m->pad || !memchr(m->name, 0, sizeof m->name) ||
+            (i < p->recap_count && (m->kind < MEMORY_ARRIVAL || m->kind > MEMORY_VISITOR ||
+             (m->kind == MEMORY_DISCOVERY && m->detail >= COMPANION_DISCOVERY_COUNT)))) return false;
+    }
+    return true;
+}
+void companion_care_text(const tank_t *t, int i, char *text, size_t size) {
+    if (i < 0 || i >= t->n_fish) { snprintf(text, size, "No fish at home; check Bank or traveler."); return; }
+    const fish_t *f = &t->fish[i];
+    if (f->hunger >= 7) snprintf(text, size, "Hungry: a little food would help.");
+    else if (f->stress >= 6) snprintf(text, size, "Unsettled: quiet viewing helps.");
+    else if (f->energy <= 3) snprintf(text, size, "Tired: taking a quiet breather.");
+    else if (f->goal.id == GOAL_REST) {
+        int spot = tank_favorite_decor(t, i);
+        snprintf(text, size, "Resting near %s.", spot >= 0 ? SD_ITEMS[spot].name : "the reef");
+    } else if (f->goal.id == GOAL_FOLLOW_FRIEND) {
+        int buddy = tank_familiar_friend(t, i);
+        snprintf(text, size, "Keeping close to %s.", buddy >= 0 ? t->fish[buddy].name : "a tankmate");
+    } else if (f->goal.id == GOAL_INSPECT_REEF) snprintf(text, size, "Investigating a favorite reef spot.");
+    else if (f->goal.id == GOAL_VISIT_BUBBLES) snprintf(text, size, "Watching the bubble column.");
+    else if (f->goal.id == GOAL_DART_PLAY) snprintf(text, size, "Playful; enjoying a little dart.");
+    else snprintf(text, size, "Content; exploring at its own pace.");
+}
+bool companion_identity(tank_t *t, bool emblem) {
+    uint8_t old = emblem ? t->polish.emblem : t->polish.subtitle;
+    if (emblem) t->polish.emblem = (old + 1) % 4;
+    else t->polish.subtitle = (old + 1) % 5;
+    if (progression_save(t)) return true;
+    if (emblem) t->polish.emblem = old; else t->polish.subtitle = old;
+    return false;
+}
+bool companion_backup_record(tank_t *t) {
+    int64_t now = clock_port_now_unix(), old = t->polish.backup_unix;
+    uint32_t count = t->polish.backups;
+    t->polish.backup_unix = now > 0 ? now : 0;
+    if (t->polish.backups < UINT32_MAX) t->polish.backups++;
+    if (progression_save(t)) return true;
+    t->polish.backup_unix = old; t->polish.backups = count; return false;
+}
+void companion_date_text(int64_t when, char *text, size_t size) {
+    time_t raw = (time_t)when;
+    const struct tm *date = when > 0 ? gmtime(&raw) : NULL;
+    if (!date) snprintf(text, size, "UNKNOWN");
+    else snprintf(text, size, "%04d-%02d-%02d UTC", date->tm_year + 1900, date->tm_mon + 1, date->tm_mday);
+}
+static void polish_tick(tank_t *t, uint32_t seconds) {
+    tank_polish_t *p = &t->polish;
+    if (!p->version) companion_polish_init(t, false);
+    for (int i = 0; i < t->n_fish; i++) {
+        fish_life_t *life = &p->active[i]; const fish_t *f = &t->fish[i];
+        if (!life->id) { life_init(t, life, f, true); companion_memory(t, MEMORY_ARRIVAL, i, 0); }
+        if (f->stage > life->stage) {
+            life->stage = (uint8_t)f->stage; companion_memory(t, MEMORY_GROWTH, i, f->stage);
+        }
+        life->milestones |= f->ms_bits;
+        int buddy = tank_familiar_friend(t, i);
+        if (buddy >= 0 && p->active[buddy].id) {
+            uint16_t familiarity = f->familiar[buddy] > 3600 ? 3600 : f->familiar[buddy];
+            if (life->buddy != p->active[buddy].id) {
+                life->buddy = p->active[buddy].id; life->friend_s = familiarity;
+                companion_memory(t, MEMORY_BUDDY, i, 0);
+            } else if (familiarity > life->friend_s) {
+                if (familiarity / 60 != life->friend_s / 60) progression_settings_changed();
+                life->friend_s = familiarity;
+            }
+        }
+    }
+    uint32_t added = t->sd_unlocks & ~p->decor_owned;
+    for (int i = 0; i < 32; i++) if (added & (1u << i))
+        p->decor_since[i] = t->companion.powered_s == UINT32_MAX ? UINT32_MAX : t->companion.powered_s + 1;
+    if (added || (p->decor_owned & ~t->sd_unlocks)) {
+        p->decor_owned = t->sd_unlocks; progression_settings_changed();
+    }
+    if (!seconds || t->ui_cover || !t->light_on) return;
+    uint32_t old = p->viewed_s;
+    p->viewed_s = UINT32_MAX - old < seconds ? UINT32_MAX : old + seconds;
+    if (old / 600 != p->viewed_s / 600) {
+        uint32_t trim = (uint32_t)t->urchin_grazed_px;
+        if ((uint32_t)t->shrimp_eaten > p->helper_meals || trim > p->helper_trim)
+            companion_memory(t, MEMORY_HELPERS, -1, 0);
+        p->helper_meals = t->shrimp_eaten; p->helper_trim = trim;
+    }
+    if (p->viewed_s >= p->next_visit_s && !t->visitor_left && p->next_visit_s != UINT32_MAX) {
+        t->visitor_left = 24;
+        if (p->visits < UINT32_MAX) p->visits++;
+        uint32_t wait = 28800 + (t->rng ^ p->visits * 0x9e3779b9u) % 57601;
+        p->next_visit_s = UINT32_MAX - p->viewed_s < wait ? UINT32_MAX : p->viewed_s + wait;
+        companion_memory(t, MEMORY_VISITOR, -1, 0);
+    }
+}
+void companion_polish_observe(tank_t *t) { polish_tick(t, 0); }
 void companion_init(tank_t *t) {
     memset(&t->companion, 0, sizeof t->companion);
+    memset(&t->polish, 0, sizeof t->polish);
+    t->visitor_left = 0;
     t->companion.version = COMPANION_VERSION;
     t->companion.cozy = t->companion.captions = 1;
     t->companion.display_compact = TANK_W == TANK_MAX_W;
@@ -86,6 +284,7 @@ static void discover(tank_t *t, int id) {
     uint32_t bit = 1u << id;
     if (!(t->companion.discoveries & bit)) {
         t->companion.discoveries |= bit; t->companion.last_discovery = (uint8_t)(id + 1);
+        companion_memory(t, MEMORY_DISCOVERY, -1, id);
         progression_settings_changed();
     }
 }
@@ -98,6 +297,8 @@ void companion_tick(tank_t *t, float dt) {
     t->companion_fraction = elapsed >= UINT32_MAX ? 0 : (float)(elapsed - seconds);
     if (UINT32_MAX - s->powered_s < seconds) s->powered_s = UINT32_MAX;
     else s->powered_s += seconds;
+    if (t->visitor_left > 0 && !t->ui_cover) t->visitor_left = fmaxf(0, t->visitor_left - dt);
+    if (seconds) polish_tick(t, seconds);
     if (s->adventure) {
         unsigned total = companion_adventure_total(s, s->adventure - 1);
         uint32_t travel_seconds = seconds;

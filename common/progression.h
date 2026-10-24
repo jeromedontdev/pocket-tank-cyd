@@ -55,7 +55,7 @@ bool journal_claim(tank_t *t, int goal);
 const char *progression_bank_move(tank_t *t, int bank, int active);
 #define AQUARIUM_CAP 8
 #define AQUARIUM_PRICE 500
-#define AQUARIUM_SAVE_BYTES 4520
+#define AQUARIUM_SAVE_BYTES (4520 + sizeof(tank_polish_t))
 bool progression_adventure_depart(tank_t *t, int adventure, int fish);
 bool progression_adventure_return(tank_t *t);
 /* target == count buys and enters a new tank; otherwise switches to an owned tank.
@@ -65,6 +65,7 @@ const char *progression_aquarium_rename(tank_t *t, const char *name);
 bool progression_aquarium_label(const tank_t *t, int slot, char name[16]);
 typedef struct {
     uint8_t fish, away, bank, shrimp, helpers, upgrades, theme;
+    uint8_t subtitle, emblem;
     int64_t last_visit;
 } aquarium_summary_t;
 bool progression_aquarium_summary(const tank_t *t, int slot, aquarium_summary_t *summary);
@@ -125,6 +126,7 @@ bool progression_save(tank_t *t);
  * restart after success so all runtime state is rebuilt through the normal loader. */
 char *progression_backup_json(const tank_t *t);
 bool progression_restore_json(const char *json, size_t len, bool commit, char *error, size_t error_size);
+bool progression_backup_preview(const char *json, size_t len, char name[16], uint32_t *release);
 
 /* sim/debug: multiply time (aging, drift) - `./fishsim --fast 60` */
 extern float progression_time_scale;
@@ -261,6 +263,11 @@ extern const sd_item_t SD_ITEMS[SD_ITEM_COUNT];
 int progression_shop_item(const tank_t *t, int row);
 int progression_shop_count(const tank_t *t);
 bool progression_item_owned(const tank_t *t, int item);
+/* the last shop save failure ("SAVE FAILED - NOT BOUGHT" / "... NOT SOLD"),
+ * after the purchase or sale was rolled back; NULL = none. The shop page
+ * shows it until the next tap clears it. */
+const char *progression_shop_notice(void);
+void progression_shop_notice_clear(void);
 #define SD_PRICE_CHEST 120
 #define SD_PRICE_SHELL 60
 #define SD_PRICE_STARFISH 60

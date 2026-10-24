@@ -40,6 +40,7 @@ def main():
             "-I" + str(common), "-I" + str(cjson),
             str(root / "tools" / "test_tank_backup.c"),
             str(root / "tools" / "test_clock_weather.c"),
+            str(root / "tools" / "test_decor_scenery.c"),
             *(str(path) for path in sources), str(temporary / "icons_sd.c"),
             str(cjson / "cJSON.c"), str(root / "sim" / "net_port_sim.c"),
             str(root / "sim" / "weather_port_sim.c"), "-o", str(executable)

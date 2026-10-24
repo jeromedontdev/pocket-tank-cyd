@@ -196,8 +196,29 @@ def exercise(lib, backup):
         assert lib.sim_page() == 9 and frame() == collections, "Duplicate Progress entry must be removed"
         care()
         care_frame = frame()
+        polish_before = json.loads(backup(lib))
         tap(360, 235)
-        assert frame() == care_frame, "Removed Dress Up shortcut must not open Wardrobe"
+        life_frame = frame()
+        assert life_frame != care_frame, "LIFE / TANK must open the fish biography, not Wardrobe"
+        tap(100, 272); assert frame() != life_frame, "Life firsts must open"
+        tap(60, 320); assert frame() == life_frame, "LIFE tab must return to the biography"
+        tap(330, 272); assert frame() != life_frame, "Keepsakes must open"
+        for x in (170, 280, 390, 60):
+            tap(x, 320)
+            assert frame() != care_frame, "Each polish tab stays inside the Life/Tank hub"
+        polish_after = json.loads(backup(lib))
+        polish_after["tank"]["saved_unix"] = polish_before["tank"]["saved_unix"]
+        assert polish_after == polish_before, "Browsing biographies/recaps/objects must not change the aquarium"
+        tap(280, 320); tap(150, 138)
+        identity = json.loads(backup(lib))
+        assert identity["polish"]["subtitle"] == (polish_before["polish"]["subtitle"] + 1) % 5
+        save_path = os.environ["POCKET_TANK_SAVE"]
+        os.environ["POCKET_TANK_SAVE"] = str(Path(save_path).parent / "missing-identity" / "save.sav")
+        tap(150, 180)
+        assert json.loads(backup(lib))["polish"] == identity["polish"], "Failed emblem save must roll back"
+        os.environ["POCKET_TANK_SAVE"] = save_path
+        tap(380, 24)
+        assert lib.sim_page() == 9, "Biography Back returns to Care"
         lib.sim_action(2); tap(330, 100)
         clock_frame = frame()
         tap(330, 318)

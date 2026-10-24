@@ -50,6 +50,19 @@ void companion_favorite_label(const tank_t *t, int fish, char *text, size_t size
 /* Read-only caption; rotates every 6 powered-on seconds through the latest
  * discovery and each fish's favorite / current activity (followed tankmate). */
 void companion_status(const tank_t *t, char *text, size_t size);
+enum { MEMORY_ARRIVAL = 1, MEMORY_GROWTH, MEMORY_BUDDY, MEMORY_DISCOVERY,
+       MEMORY_ADVENTURE, MEMORY_HELPERS, MEMORY_VISITOR };
+void companion_polish_init(tank_t *t, bool fresh);
+void companion_polish_observe(tank_t *t);
+bool companion_polish_valid(const tank_polish_t *p, int fish, int bank, bool away);
+void companion_memory(tank_t *t, int kind, int fish, int detail);
+void companion_care_text(const tank_t *t, int fish, char *text, size_t size);
+void companion_memory_text(const tank_memory_t *memory, char *text, size_t size);
+const char *companion_subtitle(unsigned value);
+const char *companion_emblem(unsigned value);
+bool companion_identity(tank_t *t, bool emblem);
+bool companion_backup_record(tank_t *t);
+void companion_date_text(int64_t when, char *text, size_t size);
 void companion_open(void);
 void companion_render(const tank_t *t, uint16_t *fb, int stride);
 /* Coordinates are FRAME coordinates, like the other public page APIs. */

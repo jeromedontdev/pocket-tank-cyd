@@ -3038,9 +3038,69 @@ static uint32_t chest_pixel(int x, int y) {
     return y % 7 == 0 ? 0x40271d : 0x976039;
 }
 static int g_buoy_sway, g_buoy_bob;
+/* the fixed sand scenery (1.2, IDs 36..41): 40 x 40, resting on row 37 */
+static uint32_t scenery_pixel(int item, int x, int y) {
+    int dx = x - 20;
+    switch (item) {
+    case SD_SCENERY_GLASS: {
+        static const int cx[3] = {11, 27, 19}, cy[3] = {33, 34, 27};
+        static const uint32_t lit[3] = {0x9ff0c0, 0x9fd8ff, 0xffd98a}, dark[3] = {0x3f9d72, 0x3f78b8, 0xc08a32};
+        for (int i = 2; i >= 0; i--) {
+            int ex = x - cx[i], ey = y - cy[i];
+            if (ex * ex * 16 + ey * ey * 36 <= 576) return ex + ey < -2 ? lit[i] : dark[i];
+        }
+        return 0;
+    }
+    case SD_SCENERY_BRAIN: {
+        int dy = y - 37;
+        if (y > 37 || dx * dx * 256 + dy * dy * 324 > 82944) return 0;
+        if ((x + dy * dy / 9) % 6 < 2) return 0x9c5a44;
+        return x < 18 && y < 30 ? 0xf2bf93 : 0xd9906a;
+    }
+    case SD_SCENERY_TIKI:
+        if (y < 5) return abs(dx) <= 2 + y && (x + y) % 4 < 2 ? 0x5fbf6a : 0;
+        if (x < 12 || x > 27 || y > 37) return 0;
+        if (y >= 11 && y <= 14 && (abs(x - 16) <= 1 || abs(x - 23) <= 1)) return 0x2a1a12;
+        if (y >= 23 && y <= 27 && x >= 15 && x <= 24)
+            return y == 24 && x % 2 ? 0xf3e2b8 : 0x2a1a12;
+        if (y == 9 || y == 19 || y == 31) return 0xc4925a;
+        return x < 20 ? 0x9a6a3c : 0x6f4a2a;
+    case SD_SCENERY_BOTTLE: {
+        int ex = x - 18, ey = y - 31;
+        if (x >= 36 && x <= 38 && y >= 29 && y <= 33) return 0x8a5a32;
+        if (x >= 29 && x < 36 && y >= 29 && y <= 33) return y == 29 ? 0xd8fff0 : 0x5fae90;
+        if (ex * ex * 25 + ey * ey * 144 > 3600) return 0;
+        if (x >= 12 && x <= 22 && y >= 30 && y <= 32) return 0xf3e6c4;
+        return y <= 28 ? 0xd8fff0 : 0x7fc8a9;
+    }
+    case SD_SCENERY_ANEMONE: {
+        int by = y - 35;
+        if (y >= 30 && y <= 38 && dx * dx * 16 + by * by * 196 <= 3136) return x < 20 ? 0xe07aa0 : 0xb24f78;
+        if (y >= 31) return 0;
+        for (int k = 0; k < 7; k++) {
+            int top = 8 + (k * 5) % 11, tx = 8 + k * 4 + ((y / 5 + k) % 2);
+            if (y >= top && abs(x - tx) <= 1) return y < top + 3 ? 0xffc2dc : 0xf07aa8;
+        }
+        return 0;
+    }
+    case SD_SCENERY_TEAPOT: {
+        int ex = x - 19, ey = y - 28;
+        bool body = ex * ex * 81 + ey * ey * 121 <= 9801 && y <= 37;
+        bool lid = (y >= 16 && y <= 18 && abs(ex) <= 6) || (abs(ex) <= 1 && y >= 13 && y < 16);
+        int hx = x - 7, hy = y - 27, ring = hx * hx + hy * hy;
+        bool handle = x < 9 && ring >= 9 && ring <= 25;
+        bool spout = x >= 28 && x <= 37 && y >= 18 && abs(y - (34 - (x - 28) * 3 / 2)) <= 2 - (x > 34);
+        if (!body && !lid && !handle && !spout) return 0;
+        if (body && ((x + y) % 7 == 0 || y == 28)) return 0x3e6fb0;
+        return x < 18 && y < 26 ? 0xffffff : 0xdedbd2;
+    }
+    default: return 0;
+    }
+}
 static uint32_t ornament_pixel(int item, int x, int y) {
     if (x < 0 || y < 0 || x >= tank_ornament_w(item) || y >= tank_ornament_h(item)) return 0;
-    if (item >= 32 && item < SD_ITEM_COUNT) {
+    if (SD_IS_SCENERY(item)) return scenery_pixel(item, x, y);
+    if (item >= 32 && item < SD_SCENERY_FIRST) {
         int dx = x - 20, dy = y - 20;
         if (item == 32) return x > 3 && x < 37 && (y == 10 + x % 9 || y == 22 + x % 9) ? 0x8bdce5 : 0;
         if (item == 33) return y > 7 && y < 37 && abs(dx) < 17 && !(abs(dx) < 8 && y > 18) ? (y < 14 ? 0xa3c89a : 0x789d8b) : 0;
@@ -3526,6 +3586,9 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
     return water;
 }
 static void draw_floor_scenery(ctx_t *c, const tank_t *t, bool final) {
+    /* the 1.2 pieces stand a step further back, between the older five, so a full set overlaps front to back */
+    for (int i = 0; i < SD_SCENERY_N; i++) if (t->polish.scenery_unlocks & (1u << i))
+        draw_ornament(c, SD_SCENERY_FIRST + i, (2 * i + 1) * TANK_W / 12 - 20, TANK_BOT - 52, 1, final, true, 0);
     static const int items[] = {22, 23, 25, 26, 27};
     for (int i = 0; i < 5; i++) if (t->sd_unlocks & (UINT32_C(1) << items[i]))
         draw_ornament(c, items[i], (i + 1) * TANK_W / 6 - 20, TANK_BOT - 48, 1, final, true, 0);
@@ -3568,7 +3631,7 @@ static void backdrop_prepare(const tank_t *t, float dim) {
         prefix++;
     }
     sig.n = prefix;
-    sig.scenery = t->sd_unlocks & (SD_ITEM_PEBBLES | SD_ITEM_PEARL | SD_ITEM_SPONGES | SD_ITEM_BARREL | SD_ITEM_HELMET);
+    sig.scenery = (t->sd_unlocks & (SD_ITEM_PEBBLES | SD_ITEM_PEARL | SD_ITEM_SPONGES | SD_ITEM_BARREL | SD_ITEM_HELMET)) | (t->polish.scenery_unlocks & SD_SCENERY_MASK);
     if (!g_backdrop || (g_backdrop_width == TANK_W && g_backdrop_height == TANK_H &&
         g_backdrop_theme == g_journal_theme && g_backdrop_water == g_water_style &&
         g_backdrop_sand == g_sand_style && g_backdrop_dim == dim &&
@@ -3724,8 +3787,8 @@ static uint16_t g_damage[TANK_MAX_H], g_damage_previous[TANK_MAX_H];
 static uint16_t g_damage_blocks[6];
 static bool g_damage_full_previous = true;
 typedef struct { int x, y, w, h, kind, pose; } theme_detail_t;
-static void theme_details(const tank_t *t, theme_detail_t out[3]) {
-    memset(out, 0, sizeof(theme_detail_t) * 3);
+static void theme_details(const tank_t *t, theme_detail_t out[4]) {
+    memset(out, 0, sizeof(theme_detail_t) * 4);
     int tick = (int)(fmaxf(0, t->clock) * 4), phase = tick % 192;
     if (t->journal.theme == 3 && journal_theme_unlocked(t, 3) && phase < 24) {
         out[0] = (theme_detail_t){12 + phase * (TANK_W - 44) / 24,
@@ -3741,6 +3804,13 @@ static void theme_details(const tank_t *t, theme_detail_t out[3]) {
         if (tank_decor_owned(t, items[i]) && p < 4)
             out[i + 1] = (theme_detail_t){(int)tank_decor_x(t, items[i]) - 3,
                 TANK_BOT - (i ? 34 : 16), 7, 7, 3, p & 1};
+    }
+    if (t->visitor_left > 0 && t->light_on) {
+        int step = 24 - (int)ceilf(t->visitor_left);
+        if (step < 0) step = 0;
+        if (step > 23) step = 23;
+        out[3] = (theme_detail_t){6 + step * (TANK_W - 32) / 23,
+            42 + (step % 6 < 3 ? 0 : 2), 20, 15, 4, step & 1};
     }
 }
 static void theme_detail_draw(ctx_t *c, const theme_detail_t *d) {
@@ -3759,6 +3829,16 @@ static void theme_detail_draw(ctx_t *c, const theme_detail_t *d) {
             px_blend(c, d->x + 3 + i, d->y + 3, 0xffe8ab, 220);
             px_blend(c, d->x + 3, d->y + 3 + i, 0xffe8ab, 220);
         }
+    } else if (d->kind == 4) {
+        src_t ink = src_color(0x809ba7, c->dim);
+        for (int y = 0; y < 8; y++) {
+            int inset = y < 3 ? 5 - y : 2;
+            span(c, d->x + inset, d->x + 17 - inset, d->y + y, &ink, 230);
+        }
+        for (int i = 0; i < 3; i++) for (int y = 8; y < 14; y++)
+            px_blend(c, d->x + 5 + i * 4 + ((y + d->pose) % 3 == 0), d->y + y, 0x809ba7, 190);
+        px_blend(c, d->x + 6, d->y + 4, 0xc4dbd0, 220);
+        px_blend(c, d->x + 11, d->y + 4, 0xc4dbd0, 220);
     }
 }
 static void damage_rect(int left, int top, int right, int bottom) {
@@ -3779,16 +3859,16 @@ static bool clock_solid(const tank_t *t) {
     return render_clock_active(t) && !(t->aquariums.clock_flags & CLOCK_HIDE_PANEL);
 }
 void render_damage_begin(const tank_t *t, bool force_full) {
-    static struct { int w, h, theme, water, sand, night, shelf; uint32_t unlocks, collections, challenges; } previous;
+    static struct { int w, h, theme, water, sand, night, shelf; uint32_t unlocks, collections, challenges; uint8_t scenery; } previous;
     static uint8_t algae[ALGAE_CAP];
     bool full = force_full || previous.w != TANK_W || previous.h != TANK_H ||
         previous.theme != t->journal.theme || previous.water != t->water_style ||
         previous.sand != t->sand_style || previous.night != t->night ||
-        previous.unlocks != t->sd_unlocks || previous.shelf != t->companion.decor ||
+        previous.unlocks != t->sd_unlocks || previous.scenery != t->polish.scenery_unlocks || previous.shelf != t->companion.decor ||
         previous.collections != t->companion.collections || previous.challenges != t->companion.game_challenges;
     previous.w = TANK_W; previous.h = TANK_H; previous.theme = t->journal.theme;
     previous.water = t->water_style; previous.sand = t->sand_style;
-    previous.night = t->night; previous.unlocks = t->sd_unlocks;
+    previous.night = t->night; previous.unlocks = t->sd_unlocks; previous.scenery = t->polish.scenery_unlocks;
     previous.shelf = t->companion.decor; previous.collections = t->companion.collections;
     previous.challenges = t->companion.game_challenges;
     memset(g_damage, 0, sizeof g_damage);
@@ -3860,9 +3940,9 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     for (int y = 0; y < TANK_H; y++)
         g_damage[y] |= g_damage_previous[y] | ((full || g_damage_full_previous) ? (1u << ((TANK_W + 31) / 32)) - 1 : 0);
     memcpy(g_damage_previous, current, sizeof current);
-    static theme_detail_t old_details[3];
-    theme_detail_t details[3]; theme_details(t, details);
-    for (int i = 0; i < 3; i++) {
+    static theme_detail_t old_details[4];
+    theme_detail_t details[4]; theme_details(t, details);
+    for (int i = 0; i < 4; i++) {
         if (memcmp(&old_details[i], &details[i], sizeof details[i])) {
             if (old_details[i].kind) damage_rect(old_details[i].x, old_details[i].y,
                 old_details[i].x + old_details[i].w - 1, old_details[i].y + old_details[i].h - 1);
@@ -3986,7 +4066,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
             if (g_pc[k].item == 4) { float lg = tank_cluster_growth(t); sig.q[n] = (int)((lg > 1 ? 1 : lg) * (CL_Q - 0.01f)); sig.col[n] = (uint32_t)tank_cluster_scheme(t); }
         }
         sig.dim = dim; sig.front = front; sig.lx = g_pk_lx;
-        sig.scenery = t->sd_unlocks & (SD_ITEM_PEBBLES | SD_ITEM_PEARL | SD_ITEM_SPONGES | SD_ITEM_BARREL | SD_ITEM_HELMET);
+        sig.scenery = (t->sd_unlocks & (SD_ITEM_PEBBLES | SD_ITEM_PEARL | SD_ITEM_SPONGES | SD_ITEM_BARREL | SD_ITEM_HELMET)) | (t->polish.scenery_unlocks & SD_SCENERY_MASK);
         if (!g_sig_ok || memcmp(&sig, &g_sig, sizeof sig) || g_scene_dim != dim) {
             g_sig = sig; g_sig_ok = true; g_scene_front = front;
             /* rebuild the static scene with the vignette baked in (the
@@ -4004,10 +4084,10 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
         for (int k = 0; k < g_npc; k++)
             if (!g_pc[k].baked && (g_pc[k].z == DECOR_Z_BACK || g_pc[k].item == 2)) pc_draw(&c, t, k, true, false);
     } else draw_scene(t, fb, stride, dim);
-    theme_detail_t details[3]; theme_details(t, details);
-    if (details[0].kind) {
-        theme_detail_draw(&c, &details[0]);
-        DYN_RECT(details[0].x, details[0].y, details[0].x + details[0].w - 1, details[0].y + details[0].h - 1);
+    theme_detail_t details[4]; theme_details(t, details);
+    for (int i = 0; i < 4; i += 3) if (details[i].kind) {
+        theme_detail_draw(&c, &details[i]);
+        DYN_RECT(details[i].x, details[i].y, details[i].x + details[i].w - 1, details[i].y + details[i].h - 1);
     }
     {
         static const int items[] = {28, 24, 29};
@@ -5775,6 +5855,13 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         else if (can) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "UNLOCK", 2);
         else           button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_DIM, "UNLOCK", 2);
     }
+    const char *notice = progression_shop_notice();
+    if (notice && g_shp_modal < 0 && !g_shp_earn) {             /* a rolled-back purchase or sale: nothing changed */
+        const int nw = text_w(notice, 2) + 32, nx = (PAGE_W - nw) / 2, ny = SHP_ROW_Y0 + SHP_ROW_DY * 2 - 26;
+        rect_fill(&c, nx, ny, nw, 40, 0x04141a);
+        rect_edge(&c, nx, ny, nw, 40, 0xff8a7a);
+        draw_text(&c, nx + 16, ny + 12, 2, 0xffffff, notice);
+    }
     button(&c, SHP_EARN_X, MSP_CLOSE_Y, SHP_EARN_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "HOW TO EARN", 2);
     button(&c, 194, MSP_CLOSE_Y, 116, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "TANKS", 2);
     button(&c, SHP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
@@ -5821,7 +5908,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         if (g_shp_sell_armed) { snprintf(sell, sizeof sell, "+%d OK?", progression_sell_value(g_shp_modal));
                                 button(&c, SHP_TWO_X1, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, 0xffffff, sell, 2); }
         else button(&c, SHP_TWO_X1, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_DIM, "SELL", 2);
-    } else if (owned && g_shp_modal >= 22 && g_shp_modal <= 29) {
+    } else if (owned && SD_IS_FIXED_SCENERY(g_shp_modal)) {
         char sell[32]; snprintf(sell, sizeof sell, "SELLS BACK FOR %d", progression_sell_value(g_shp_modal));
         draw_text(&c, X + (W - text_w("FIXED SCENERY", 2)) / 2, Y + 164, 2, MSP_TEAL, "FIXED SCENERY");
         draw_text(&c, X + (W - text_w(sell, 2)) / 2, Y + 184, 2, MSP_DIM, sell);
@@ -5841,6 +5928,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
 }
 int render_shop_tap(const tank_t *t, float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
+    progression_shop_notice_clear();
     if (g_shp_earn) { g_shp_earn = false; return SHOP_TAP_KEPT; }
     if (g_shp_modal == SHP_MODAL_FRY) {                       /* the fry: a box picks, BUY buys the pick, elsewhere closes */
         if (y >= SHP_FRY_BOX_Y - 8 && y < SHP_FRY_BOX_Y + SHP_FRY_BOX_H + 6)
@@ -5863,7 +5951,7 @@ int render_shop_tap(const tank_t *t, float x, float y) {
         const int bx = SHP_MODAL_X + (SHP_MODAL_W - MSP_HOW_W) / 2, by = SHP_MODAL_Y + SHP_MODAL_H - 12 - MSP_HOW_H;
         bool row = y >= by - MSP_HOW_SLOP_UP && y < by + MSP_HOW_H + MSP_HOW_SLOP_DN;
         bool on_btn = row && x >= bx - MSP_HOW_SLOP_X && x < bx + MSP_HOW_W + MSP_HOW_SLOP_X;
-        if (owned && item >= 22 && item <= 29) {
+        if (owned && SD_IS_FIXED_SCENERY(item)) {
             if (on_btn && !g_shp_sell_armed) { g_shp_sell_armed = true; return SHOP_TAP_KEPT; }
             g_shp_modal = -1; g_shp_sell_armed = false;
             return on_btn ? SHOP_TAP_SELL + item : SHOP_TAP_KEPT;
@@ -6415,6 +6503,10 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     draw_text(&c, 32, 278, 2, MSP_TEAL, "BACKUP: ACTIVE TANK + WALLET");
     draw_text(&c, 32, 302, 2, MSP_TEAL, "INCLUDES ITS BANK / TRAVELER.");
     draw_text(&c, 32, 326, 2, MSP_TEAL, "OTHER SD TANKS NOT INCLUDED.");
+    char backup_date[40], backup_line[64];
+    companion_date_text(t->polish.backup_unix, backup_date, sizeof backup_date);
+    snprintf(backup_line, sizeof backup_line, "LAST BACKUP: %s", t->polish.backups ? backup_date : "NOT RECORDED");
+    draw_text(&c, 32, 352, 1, MSP_TEAL, backup_line);
 }
 static int g_aquarium_page, g_aquarium_pick = -1;
 static char g_aquarium_message[80];
@@ -6478,6 +6570,8 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
             else if (!now || !s->last_visit) snprintf(line, sizeof line, "LAST VISIT: CLOCK UNKNOWN");
             else snprintf(line, sizeof line, "LAST VISIT: %lld HOURS AGO", (long long)hours);
             draw_text(&c, 24, 220, 1, MSP_TEAL, line);
+            snprintf(line, sizeof line, "[%s] %s", companion_emblem(s->emblem), companion_subtitle(s->subtitle));
+            draw_text(&c, 24, 278, 1, MSP_TEAL, line);
         }
         button(&c, 40, 236, 168, 38, 0x1c2f36, MSP_TEAL, "CANCEL", 2);
         if (!active) button(&c, 240, 236, 168, 38, 0x1c2f36, MSP_TEAL, "CONFIRM", 2);
@@ -6492,7 +6586,12 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
             int slot = g_aquarium_page * 4 + row, y = 108 + row * 43;
             if (slot >= rows) break;
             snprintf(line, sizeof line, "%s", slot == t->aquariums.count ? "NEW TANK" : g_aquarium_names[slot]);
-            draw_text(&c, 24, y + 8, 2, 0xffffff, line);
+            draw_text(&c, 24, y + 3, 2, 0xffffff, line);
+            if (slot < t->aquariums.count && g_aquarium_summary_ok[slot]) {
+                const aquarium_summary_t *s = &g_aquarium_summaries[slot];
+                snprintf(line, sizeof line, "[%s] %s", companion_emblem(s->emblem), companion_subtitle(s->subtitle));
+                draw_text(&c, 24, y + 23, 1, MSP_TEAL, line);
+            }
             const char *label = slot == t->aquariums.count ? "BUY" : slot == t->aquariums.active ? "SUMMARY" : "OPEN";
             button(&c, 300, y, 124, 34, 0x1c2f36, MSP_TEAL, label, 2);
         }

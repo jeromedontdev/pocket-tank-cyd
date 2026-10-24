@@ -322,6 +322,31 @@ _Static_assert(offsetof(companion_state_t, traveler) == 392, "legacy companion p
 _Static_assert(offsetof(companion_state_t, creature_colors) == 512, "legacy wardrobe prefix");
 _Static_assert(sizeof(companion_state_t) == 520, "companion save layout");
 
+#define TANK_RECAP_CAP 8
+typedef struct {
+    uint32_t id, buddy, arrived_s, milestones;
+    uint16_t friend_s;
+    uint8_t adventures, stage;
+} fish_life_t;
+typedef struct {
+    uint32_t at_s;
+    char name[FISH_NAME_MAX + 1];
+    uint8_t kind, detail;
+    uint16_t pad;
+} tank_memory_t;
+typedef struct {
+    uint32_t next_id, viewed_s, next_visit_s, visits, backups;
+    int64_t founded_unix, backup_unix;
+    fish_life_t active[N_FISH_MAX], bank[FISH_BANK_CAP], traveler;
+    tank_memory_t recap[TANK_RECAP_CAP];
+    uint32_t decor_owned, decor_since[38];
+    uint32_t helper_meals, helper_trim;
+    uint8_t version, recap_count, subtitle, emblem, scenery_unlocks;
+    char tank_name[16];
+} tank_polish_t;
+_Static_assert(sizeof(fish_life_t) == 20, "fish life save layout");
+_Static_assert(sizeof(tank_memory_t) == 16, "tank memory save layout");
+
 /* a pellet: it sinks FOOD_SINK_PX_S from the surface to the floor (~43 s on
  * the 1.8, ~60 on the watch), then RESTS there FOOD_FLOOR_S before it
  * dissolves (2026-09-29, for the shrimp school - every tank alike; measured:
@@ -701,6 +726,8 @@ typedef struct tank {
     uint32_t advisor_asks;         /* diagnostic: requests issued */
     uint32_t rng;                  /* xorshift state, deterministic */
     companion_state_t companion;
+    tank_polish_t polish;
+    float visitor_left;
     float companion_fraction;      /* powered-on fractional second; not saved */
 } tank_t;
 void tank_reframe(tank_t *t, bool compact);
@@ -917,7 +944,8 @@ uint32_t tank_fin_for(uint32_t body);   /* the fin tank_set_look gives that body
 void  tank_set_bubble_x(tank_t *t, float x);
 
 /* ---- the shop (2026-09-15): sand dollars buy things for the tank ----
- * IDs 0..31 use tank_t.sd_unlocks; IDs 32..35 use aquariums.stat_upgrades.
+ * IDs 0..31 use tank_t.sd_unlocks; IDs 32..35 use aquariums.stat_upgrades;
+ * IDs 36..41 use polish.scenery_unlocks (fixed scenery, below).
  * progression_item_owned handles both without overflowing the legacy mask. */
 enum { SD_ITEM_PLANT = 1u << 0, SD_ITEM_SNAIL = 1u << 1, SD_ITEM_CASTLE = 1u << 2, SD_ITEM_CORAL = 1u << 3, SD_ITEM_CLUSTER = 1u << 4, SD_ITEM_SHRIMP = 1u << 5,
        SD_ITEM_URCHIN = 1u << 6, SD_ITEM_SEAHORSE = 1u << 7, SD_ITEM_PUMPKIN = 1u << 8,
@@ -934,8 +962,18 @@ enum { SD_ITEM_PLANT = 1u << 0, SD_ITEM_SNAIL = 1u << 1, SD_ITEM_CASTLE = 1u << 
        SD_ITEM_LILIES = 1u << 28, SD_ITEM_DUCK = 1u << 29,
        SD_ITEM_FILTER = 1u << 30 };
 #define SD_ITEM_GARDEN (UINT32_C(1) << 31)
-#define SD_ITEM_COUNT 36
+#define SD_ITEM_COUNT 42
 #define SD_ITEM_MASK UINT32_MAX
+/* fixed sand scenery (1.2): IDs 36..41 own one bit each in
+ * tank_polish_t.scenery_unlocks. Not placeable, so no decor slot or rank;
+ * they bake into the cached backdrop beside the 0.3.8 floor pieces. */
+enum { SD_SCENERY_GLASS = 36, SD_SCENERY_BRAIN, SD_SCENERY_TIKI, SD_SCENERY_BOTTLE,
+       SD_SCENERY_ANEMONE, SD_SCENERY_TEAPOT, SD_SCENERY_END };
+#define SD_SCENERY_FIRST SD_SCENERY_GLASS
+#define SD_SCENERY_N (SD_SCENERY_END - SD_SCENERY_FIRST)
+#define SD_SCENERY_MASK ((1u << SD_SCENERY_N) - 1)
+#define SD_IS_SCENERY(item) ((item) >= SD_SCENERY_FIRST && (item) < SD_SCENERY_END)
+#define SD_IS_FIXED_SCENERY(item) (((item) >= 22 && (item) <= 29) || SD_IS_SCENERY(item))
 enum { STAT_CURRENT = 1, STAT_SHELTER = 2, STAT_ENRICHMENT = 4, STAT_TRAINING = 8, STAT_MASK = 15 };
 #define SAND_STYLE_COUNT 8
 #define SAND_STYLE_RAINBOW 4

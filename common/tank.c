@@ -344,6 +344,7 @@ void tank_fish_face(fish_t *f) {
 
 void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold, stage_t stage) {
     memset(&t->companion.active[slot], 0, sizeof t->companion.active[slot]);
+    memset(&t->polish.active[slot], 0, sizeof t->polish.active[slot]);
     fish_t *f = &t->fish[slot];
     const preset_t *p = &ROSTER[preset];
     f->preset = preset; tank_set_name(t, slot, p->name);
@@ -469,6 +470,7 @@ bool tank_remove_fish(tank_t *t, int idx) {
         t->fish[i] = t->fish[i + 1];
         t->sd_paid_fish[i] = t->sd_paid_fish[i + 1];
         t->companion.active[i] = t->companion.active[i + 1];
+        t->polish.active[i] = t->polish.active[i + 1];
         /* its spot by the reef is its slot's (tank_make_fish): a slot nearer,
            so the next arrival's spot is free again */
         t->fish[i].rest_dx -= 24; t->fish[i].rest_dy += 9;
@@ -476,6 +478,7 @@ bool tank_remove_fish(tank_t *t, int idx) {
     t->n_fish--;
     t->sd_paid_fish[t->n_fish] = 0;
     memset(&t->companion.active[t->n_fish], 0, sizeof t->companion.active[0]);
+    memset(&t->polish.active[t->n_fish], 0, sizeof t->polish.active[0]);
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
         if (f->parent_a == idx) f->parent_a = -1; else if (f->parent_a > idx) f->parent_a--;
@@ -490,6 +493,8 @@ bool tank_remove_fish(tank_t *t, int idx) {
 
 void tank_init(tank_t *t, uint32_t seed) {
     memset(&t->companion, 0, sizeof t->companion);
+    memset(&t->polish, 0, sizeof t->polish);
+    t->visitor_left = 0;
     t->companion.version = 2;
     t->companion.cozy = t->companion.captions = 1;
     t->companion.lively = 0;

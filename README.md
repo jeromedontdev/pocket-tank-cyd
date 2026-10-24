@@ -1,7 +1,9 @@
-# Pocket Tank CYD 1.1.0
+# Pocket Tank CYD 1.2.0
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently as **1.1.0**. Originally based on upstream v0.3.8.
+now versioned independently. This is **release 1.2.0**; firmware, update
+packages and the browser installer are published through GitHub Releases.
+Originally based on upstream v0.3.8.
 Targets the **ESP32-2432S028 Cheap Yellow Display**:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
@@ -15,7 +17,11 @@ actual desktop renderer.
 
 ## What remains
 
-- Calm fish form session swim buddies and follow in short, spaced pairs.
+- Fish biographies, remembered swim buddies, life firsts and adventure keepsakes.
+- Quiet bounded recaps, helper reports, tank subtitles/emblems and discovery hints.
+- Rare harmless unknown visitors, plus six cached fixed sand decorations.
+- Verified-backup status and a source-name/version preview before restoring.
+- Calm fish form swim buddies and follow in short, spaced pairs.
   Stable favorite decorations guide resting and exploration; see **Home > Fish > Care**.
 - Tap shrimp, snail, urchin or seahorse for diet, activity and progress.
   The shrimp card distinguishes actual population from drawn representatives;
@@ -527,17 +533,24 @@ after buying aquariums: older builds do not preserve collection metadata.
 This is intentionally no longer a multi-board tree. Upstream gameplay changes
 can still be ported manually, but merges and release compatibility are not
 automatic. Preserve existing binary offsets and append new fields; the save
-is now 4520 bytes, with the first 4512 bytes and the
+is now 5416 bytes, with the previous 4520-byte layout and the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
 aquarium metadata identifies the purchased collection, active slot, its name and
-four care-upgrade flags in a formerly reserved byte. The 36-item shop uses
-the original full 32-bit ownership field plus those four flags.
+four care-upgrade flags in a formerly reserved byte. The 42-item shop uses
+the original full 32-bit ownership field plus those four flags and a separate
+six-bit fixed-scenery mask in the new polish tail.
 The appended companion section holds bonds, discoveries, quests, wearables and game records.
 Wardrobe/color data uses reserved relationship/portrait bytes; four per-creature color
 pairs append eight bytes (including reserved alignment bytes).
-JSON exports use schema 10 for an individual aquarium, including saved Enlarged/Normal scale; schema
-1 through 9 backups remain importable. Older firmware cannot restore schema 10 backups; keep a matching
+The append-only polish tail adds stable fish identities, remembered buddies,
+biographies, eight recent observations, tank subtitles/emblems, rare-visitor
+sightings and backup status. See the [quiet-depth guide](docs/CYD-FEATURES.md#quiet-depth-new-in-12)
+for menu paths, visitor timing and migration limits. The NVS partition is
+unchanged; a 5504-byte ceiling reserves room for three save copies plus settings
+and the garbage-collection page.
+JSON exports use schema 11 for an individual aquarium, including the polish tail and saved Enlarged/Normal scale; schema
+1 through 10 backups remain importable. Older firmware cannot restore schema 11 backups; keep a matching
 pre-upgrade backup before downgrading. The historical progression documents under `docs`
 describe the original game design; this README and the CYD guide are the
 authoritative build/hardware instructions.

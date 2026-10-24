@@ -11,7 +11,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 SHOP_PRICES = [40, 80, 150, 100, 240, 180, 120, 220, 75, 120, 60, 60, 80, 80,
                300, 300, 200, 60, 100, 80, 160, 120, 40, 70, 90, 100, 110, 140,
-               80, 60, 180, 160, 160, 180, 200, 240]
+               80, 60, 180, 160, 160, 180, 200, 240, 50, 110, 130, 70, 90, 80]
 
 
 def build(compiler, output, *, defines=()):
@@ -375,12 +375,14 @@ def main():
                 # Exercise real shop routing, especially IDs above the old MOVE boundary.
                 shop_original = json.loads(backup(lib))
                 shop_demo = json.loads(backup(lib))
-                shop_demo["tank"].update(sd_balance=2000, sd_unlocks=0, sand_style=0, water_style=0, stat_upgrades=0)
+                shop_demo["tank"].update(sd_balance=2530, sd_unlocks=0, sand_style=0, water_style=0, stat_upgrades=0)
+                if "polish" in shop_demo:
+                    shop_demo["polish"]["scenery_unlocks"] = 0
                 data = json.dumps(shop_demo).encode()
                 assert lib.sim_restore(data, len(data))
                 prices = SHOP_PRICES
                 order = sorted(range(len(prices)), key=lambda i: (prices[i], i))
-                for item in range(22, 36):
+                for item in range(22, len(prices)):
                     lib.sim_action(0)  # Reset shop pagination without altering the save.
                     lib.sim_action(3)
                     row = order.index(item)
@@ -391,6 +393,8 @@ def main():
                     current = json.loads(backup(lib))
                     if item < 32:
                         assert current["tank"]["sd_unlocks"] & (1 << item), item
+                    elif item >= 36:
+                        assert current["polish"]["scenery_unlocks"] & (1 << (item - 36)), item
                     else:
                         assert current["tank"]["stat_upgrades"] & (1 << (item - 32)), item
                     assert lib.sim_page() == 3, "Fixed scenery/upkeep must not open placement"
@@ -398,7 +402,7 @@ def main():
                 lib.sim_action(0)
                 lib.sim_action(3)
                 tap(400, 40)
-                tap(150, 170)  # Duck Float: first 60-sand-dollar surface ornament.
+                tap(150, 98 + (order.index(29) % 4) * 56 + 16)  # Duck Float: a 60-sand-dollar surface ornament.
                 tap(224, 260)
                 assert json.loads(backup(lib))["tank"]["sd_balance"] == 190, "First SELL tap only arms"
                 tap(224, 260)
@@ -406,7 +410,7 @@ def main():
                 assert not sold["sd_unlocks"] & (1 << 29) and sold["sd_balance"] == 202
                 data = json.dumps(shop_original).encode()
                 assert lib.sim_restore(data, len(data))
-                print("PASS: fourteen new shop purchases through price-sorted UI, including all four stat upgrades")
+                print("PASS: twenty shop purchases through price-sorted UI, including all four stat upgrades and six fixed scenery pieces")
                 lib.sim_action(1)
                 tap(375, 356); tap(100, 100); tap(330, 100)
                 assert lib.sim_page() == 6, "Fish category must open the fish bank"

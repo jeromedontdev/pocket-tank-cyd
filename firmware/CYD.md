@@ -165,6 +165,10 @@ the large clock/weather visible and caches warmed. The next Normal pass
 measured 10.4-11.1 FPS with the saved Medium Flip clock/weather and
 10.6-11.5 FPS with clock OFF after warm-up in the tested populated aquarium.
 This is not a guaranteed minimum or a 15 FPS result.
+Release 1.2.0 sampled 10.6-11.8 FPS after warm-up with the existing
+one-resident-fish tank and Neon clock/weather, versus a recent 1.1 sample of
+about 10.3 FPS. These are observational samples, not a controlled benchmark;
+new scenery was tested separately with the native renderer and demo gallery.
 
 Clock face and caption panels are always opaque when shown. Normal uses one
 scene traversal with occlusion-aware spans/pixels and whole-object rejection,
@@ -316,7 +320,13 @@ extends it to 1952 bytes; the customization expansion appends another 48 bytes
 to reach 2000; the Journal appends 40 bytes to reach 2040; the 20-slot fish
 bank extends this to 3968; a 32-byte tail for aquarium collection identity,
 active slot, tank name and care-upgrade flags extends the prefix to 4000.
-The companion/traveler/color tail extends the full save to 4520 bytes. The four care flags reuse one reserved byte;
+The companion/traveler/color tail extends the prefix to 4520 bytes; the
+append-only 1.2 polish tail brings the full save to 5416 bytes. It holds stable
+fish identities/life records, a bounded recap, tank identity, visitor/backup
+records and six fixed-scenery ownership bits. The 24 KiB NVS partition remains
+unchanged; the new 5504-byte save ceiling budgets three copies and 64 settings
+entries within the 630 usable entries, retaining the dedicated GC page.
+The four care flags reuse one reserved byte;
 they do not shift older fields.
 Reconcile extensions explicitly when changing saves.
 
@@ -429,9 +439,10 @@ Console examples: `buy shell`, `buy starfish`, `buy anchor`, `buy buoy`,
 Open **Settings > SD Backups** and tap **BACKUP TO SD**. Each successful backup creates a
 new file in the card's `pocket-tank` directory: `backup-0001.json`,
 `backup-0002.json`, and so on. Existing backups are not overwritten.
-New exports use JSON schema 10, including Enlarged/Normal scale, creature/wardrobe colors, per-fish wearables, the traveling fish, companion progress, item ownership, placement,
+New exports use JSON schema 11, including persistent fish stories/buddies, recaps,
+tank identity, rare sightings, fixed scenery, backup status, Enlarged/Normal scale, creature/wardrobe colors, per-fish wearables, the traveling fish, companion progress, item ownership, placement,
 stacking, palette selections, fish appearance, Aquarium Journal progress
-and all stored fish. Schema 1 through 9 backups
+and all stored fish. Schema 1 through 10 backups
 still restore, defaulting absent additions to unowned decorations and
 Classic/Stripes fish (schema 1 also defaults the palettes to original).
 Older backups start with an empty Journal; existing care totals and current
@@ -451,12 +462,13 @@ the same NVS blob as the save, so failed writes do not charge or switch.
 Sand dollars and lifetime earnings are global; switching cannot restore a
 stale balance. Each tank has its own Journal, decorations, fish and Fish Bank.
 NAME TANK edits the active tank's persistent name (15 characters, `<` / `>` editor).
-The shop has 36 stable item IDs, presented in ascending price order (ties keep
+The shop has 42 stable item IDs, presented in ascending price order (ties keep
 their item order); the optional nursery row stays first. The scenery/upkeep
 extension uses ownership bits through bit 31 without changing the 4000-byte save prefix
 or schema 5. IDs 0..31 use the full 32-bit ownership mask; IDs 32..35 use the
-four care flags in the reserved aquarium-metadata byte. Ownership queries
-handle both stores; there are no shifts past bit 31. Do not downgrade after
+four care flags in the reserved aquarium-metadata byte. IDs 36..41 use the
+six-bit scenery mask in the append-only polish tail. Ownership queries
+handle all three stores; there are no shifts past bit 31. Do not downgrade after
 buying these items: older firmware masks
 off ownership bits it does not recognize.
 
@@ -646,7 +658,7 @@ follow SD tank switches and portable JSON restores, and clear on active-tank
 wipe. Old saves/backups default to OFF, large/centered and a 1-minute delay.
 Five reserved metadata bytes hold theme, format/style flags, signed UTC quarter-hours,
 size/position and packed delay/secondary color, keeping the original binary
-prefix at 4000 bytes (the Companion/traveler/color tail now makes a full save 4520 bytes).
+prefix at 4000 bytes (the companion/traveler/color prefix is 4520 bytes; the polish tail makes the full save 5416 bytes).
 Schema 5 adds optional `tank.clock_theme` (0..7),
 `tank.clock_flags` (0..255: bit 0 is 12-hour format, bit 1 is manual DST +1 hour,
 bits 2/3/4 hide seconds/panel/date; bits 5..7 select the primary color, 0 = theme colors),
