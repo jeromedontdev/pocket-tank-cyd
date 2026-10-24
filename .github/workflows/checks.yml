@@ -17,6 +17,9 @@ jobs:
       - run: python -m unittest discover -s tools -p "test_*.py"
       - run: python tools/test_tank_backup.py --cc gcc
       - run: python tools/test_tank_backup.py --cc gcc --flat-edges
+      - run: python tools/test_rpg.py --cc gcc
       - run: python tools/test_cyd_display.py --cc gcc
+      - run: python tools/test_cyd_settings.py --cc gcc
+      - run: python tools/test_ambient.py --cc gcc
       - run: python tools/test_weather.py --cc gcc
       - run: python sim/run.py --cc gcc --smoke

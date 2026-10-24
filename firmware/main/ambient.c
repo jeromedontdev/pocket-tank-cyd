@@ -182,15 +182,16 @@ static uint32_t saturate(uint32_t rgb) {          /* the water's dark tones, lif
 void ambient_tick(const tank_t *t, float dt) {
     s_sample_t += dt;
     if (s_sample_t >= 0.25f) {
+        float elapsed = s_sample_t;
         int raw = ambient_ldr_raw();
-        if (raw >= 0) s_raw_avg = s_raw_avg < 0 ? raw : s_raw_avg + (raw - s_raw_avg) * (s_sample_t / 4.0f > 1 ? 1 : s_sample_t / 4.0f);
+        if (raw >= 0) s_raw_avg = s_raw_avg < 0 ? raw : s_raw_avg + (raw - s_raw_avg) * (1.0f - expf(-elapsed / 8.0f));
         learn_base(s_sample_t);
         s_sample_t = 0;
         int pct = ambient_room_pct();
-        if (pct <= 12) { s_dark_for += 0.25f; s_lit_for = 0; }
-        else if (pct >= 30) { s_lit_for += 0.25f; s_dark_for = 0; }
+        if (pct <= 12) { s_dark_for += elapsed; s_lit_for = 0; }
+        else if (pct >= 30) { s_lit_for += elapsed; s_dark_for = 0; }
         else s_dark_for = s_lit_for = 0;
-        if (!s_dark && s_dark_for >= 20) { s_dark = true; ESP_LOGI(TAG, "the room went dark (raw %.0f)", s_raw_avg); }
+        if (!s_dark && s_dark_for >= 30) { s_dark = true; ESP_LOGI(TAG, "the room went dark (raw %.0f)", s_raw_avg); }
         if (s_dark && s_lit_for >= 5) { s_dark = false; ESP_LOGI(TAG, "the room is lit again (raw %.0f)", s_raw_avg); }
     }
     if (esp_timer_get_time() < s_override_until) return;

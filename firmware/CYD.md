@@ -1,5 +1,7 @@
 # ESP32-2432S028 CYD
 
+<p align="center"><img src="../web/logo.svg" width="200" alt="Pocket Tank CYD aquarium logo"></p>
+
 This fork targets only the 2.8-inch Cheap Yellow Display with an ESP32, SPI LCD,
 and XPT2046 resistive touch. It uses a 320x240 landscape LCD, an internal-RAM
 framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB flash
@@ -245,7 +247,7 @@ at 115200 baud (for example, `python ..\tools\director.py -p COM4 milestones`).
 The light-dependent resistor beside the display and the rear RGB LED are
 driven by `firmware/main/ambient.c`. **Settings > Display** selects
 ROOM LIGHT OFF / DIM / DIM+NIGHT (backlight scaled to 35-100% of the chosen
-brightness; DIM+NIGHT forces night after 20 s of darkness) and BACK LED
+brightness; DIM+NIGHT forces night after 30 s of sustained darkness) and BACK LED
 OFF / GLOW / ALERTS (water-colored breathing glow; ALERTS adds hunger and
 visitor signals). Choices persist in NVS; the learned lit-room reading is
 saved at most every 30 minutes. **Settings > SD Backups** offers DAILY
@@ -343,7 +345,7 @@ append-only 1.2 polish tail brings the save to 5416 bytes, and the 432-byte 1.3
 story tail (lineage, genes, ancestor names, visitor log, seasons) to 5848. The polish tail holds stable
 fish identities/life records, a bounded recap, tank identity, visitor/backup
 records and six fixed-scenery ownership bits. The 24 KiB NVS partition remains
-unchanged; the 5856-byte save ceiling budgets three copies and 64 settings
+unchanged; the 5920-byte save ceiling budgets three copies and 64 settings
 entries within the 630 usable entries, retaining the dedicated GC page.
 The four care flags reuse one reserved byte;
 they do not shift older fields.
@@ -458,10 +460,10 @@ Console examples: `buy shell`, `buy starfish`, `buy anchor`, `buy buoy`,
 Open **Settings > SD Backups** and tap **BACKUP TO SD**. Each successful backup creates a
 new file in the card's `pocket-tank` directory: `backup-0001.json`,
 `backup-0002.json`, and so on. Existing backups are not overwritten.
-New exports use JSON schema 12, including family lineage, genes, the visitor log, persistent fish stories/buddies, recaps,
+New exports use JSON schema 14, including Lost Current progress, twelve-game records, family lineage, genes, the visitor log, persistent fish stories/buddies, recaps,
 tank identity, rare sightings, fixed scenery, backup status, Enlarged/Normal scale, creature/wardrobe colors, per-fish wearables, the traveling fish, companion progress, item ownership, placement,
 stacking, palette selections, fish appearance, Aquarium Journal progress
-and all stored fish. Schema 1 through 11 backups
+and all stored fish. Schema 1 through 13 backups
 still restore, defaulting absent additions to unowned decorations and
 Classic/Stripes fish (schema 1 also defaults the palettes to original).
 Older backups start with an empty Journal; existing care totals and current
@@ -695,16 +697,31 @@ secondary color; older builds do not understand the packed delay.
 ### Cozy companions and story adventures
 
 Tap a fish, then its card's **MENU**, to open **Home**. Keeper also has a
-**HOME** shortcut. Home groups **Fish** (care/bonds, Bank, wardrobe, names/looks),
-**Tank** (shop/decor, aquariums, palettes, creature colors), **Adventures**,
-**Collections** (Journal, discoveries/frames, progress), **Games**, and
+**HOME** shortcut. Home groups **Fish** (Say Hello, Bank, wardrobe, names/looks,
+life, family/genes), **Tank** (shop/decor, aquariums, palettes, creature colors,
+identity, tank journal), **Adventures**,
+**Collections** (Journal, discoveries, display rewards, visitor log), **Games**, and
 **Settings**. Back returns to the category actually used to enter a page.
-Settings groups Display, Clock/Weather, Wi-Fi/Sync, SD Backups, Feeding, and Device.
+Settings groups Display, Clock/Weather, Wi-Fi/Sync, SD Backups, Aquarium Care, and Device.
 New tanks start in **COZY** care: hunger and exhaustion stay comfortable,
 without inventing player meals, trust, or care achievements. Existing binary
 saves and schema 1–5 JSON backups remain **CLASSIC**, with captions and trophy
-decorations OFF. Care mode, captions, CALM/LIVELY presentation and trophies
-can all be changed without resetting a tank; new tanks start CALM.
+decorations OFF. **Settings > Aquarium Care** holds Comfort Assist (the saved
+Cozy/Classic option) and auto feeding.
+**Settings > Clock/Weather > Effects** holds cosmetic **Sparkles** (formerly
+Calm/Lively) and **Event Captions**. Sparkles are eight bright drifting stars
+beside the clock, not a fish-care setting.
+**Collections > Display Rewards > TROPHIES** shows/hides earned sand ornaments.
+All can be changed without resetting a tank; new tanks start without sparkles.
+
+**Home > Adventures > The Lost Current** is an optional six-chapter, 18-encounter
+story RPG. It saves three shared adventure skills, chapter resolutions, and
+family-linked contributors in a 24-byte append-only tail (5912-byte total save).
+It adds no aquarium AI or timed background activity and does not transfer or
+change real fish. Memories and an optional trophy map are its rewards; it
+does not issue coins or care upgrades. BACK leaves safely; each choice saves
+atomically and save failures leave the story unchanged.
+The serial `rpg` command reports campaign progress without advancing it.
 
 Say hello to the selected fish to grow its permanent bond (once per 30
 seconds of powered-on tank time). At bonds 10/25/50, invite it to dart,
@@ -712,17 +729,18 @@ visit bubbles or follow a friend. Bonds, hello counts and learned tricks
 never decay and follow the actual fish through bank deposits, withdrawals
 and swaps, even when names are duplicated. Selling a fish clears only its
 own relationship; a failed bank/sale save rolls back the transaction.
-CARE shows each fish's favorite (e.g. `LIKES: TANKMATES (NATURE)`), derived
+Say Hello shows each fish's favorite (e.g. `LIKES: TANKMATES (NATURE)`), derived
 from its saved starting personality and roster preset, or `(SEEN)` once that
-fish's matching milestone was actually observed. Status captions rotate every
-6 powered-on seconds through the latest discovery and each fish's favorite
-and current activity, naming the tankmate it is following.
+fish's matching milestone was actually observed. Clock messages show adventures,
+ready postcards, visitors and care needs, not routine exploration or favorites.
+Weather and event text wrap inside the caption panel without ellipses.
 
 The scrapbook automatically records observed behavior, greetings, tricks,
 growth and story postcards. Complete Nature, Friendship and Story collections
-to **CLAIM** their cosmetic frames once. **FRAME** selects an owned frame;
-**SHELF ON/OFF** shows or hides earned shells on a tiny aquarium-floor
-shelf. Gold mini-game challenges also add permanent cosmetic markers.
+to **CLAIM** their cosmetic frames once in Display Rewards. **FRAME** selects an
+unlocked menu border; **ORIGINAL** means the unadorned border.
+**TROPHIES: SHOW/HIDE** shows or hides earned shells on the sand.
+Gold mini-game challenges also add permanent cosmetic markers.
 
 Choose Lantern Lagoon (2 hours), Pearl Library (6 hours) or Starlight Cove
 (12 hours), select a fish and an **ARCH** or **BUBBLES** postcard route.
@@ -832,7 +850,7 @@ saved network offers **CONNECT / SYNC**, **CHANGE NETWORK** and a confirmed
 credential-write failures are shown explicitly. Hidden SSIDs and enterprise
 authentication are not supported by this picker.
 
-After **WI-FI CONNECTED**, tap **BACK TO TANK**. At boot/return the existing NTP
+After **WI-FI CONNECTED**, tap **BACK**. At boot/return the existing NTP
 client tries `pool.ntp.org`, `time.google.com`, then `time.cloudflare.com`;
 it switches the radio off afterward. This setup never checks or installs
 firmware. Network credentials are global device settings, separate from
@@ -851,6 +869,8 @@ With an existing host C compiler and firmware dependencies configured:
 
 ```powershell
 python ..\tools\test_tank_backup.py --cc clang
+python ..\tools\test_cyd_settings.py --cc clang
+python ..\tools\test_ambient.py --cc clang
 python -m unittest discover -s ..\tools -p "test_*.py"
 python ..\sim\run.py --cc clang --smoke
 ```
@@ -859,7 +879,10 @@ python ..\sim\run.py --cc clang --smoke
 (the runner adds `cc` for Zig). The native suite covers purchase/sale,
 placement and persistence, JSON round-trip, invalid inputs without writes,
 failed NVS writes, frozen legacy save fixtures, cached/uncached rendering,
-and Settings restore confirmation/timeout/fixed orientation. The desktop preview
+and Settings restore confirmation/timeout/fixed orientation.
+The CYD settings test runs the hardware touch handler's actual action handoff,
+including room light, back LED, daily backups and photos.
+The desktop preview
 uses the actual Enlarged/Normal renderer and rules advisor via a temporary native library,
 displayed in Python's Tk window. It requires no SDL or LVGL and keeps a separate
 local save. The headless smoke check renders distinct Tank/Keeper/Settings/Shop

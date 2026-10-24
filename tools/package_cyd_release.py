@@ -79,15 +79,27 @@ Source, build instructions, full feature guide and screenshots:
 https://github.com/jeromedontdev/pocket-tank-cyd
 """
     (output / "INSTALL.txt").write_text(instructions, encoding="utf-8")
-    notes = f"""## Pocket Tank CYD {version}
+    notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
+
+## Pocket Tank CYD {version}
 
 Release for **ESP32-2432S028 CYD only**.
+
+### Story, games and menu polish in this build
+- The Lost Current: an optional six-chapter, 18-encounter fish-story RPG with courage, curiosity, kindness, three endings, family-linked chapter guides, and saved choices. Open Home > Adventures > The Lost Current. No real fish leave or get hurt; no care-stat changes, deadlines, or extra aquarium AI.
+- Twelve games across two pages, adding Reef Defender, Current Runner, Pearl Breaker, Tide Tactics, Reef Architect and Deep Expedition, with help, pause, permanent records/medals and transactional rewards.
+- Consistent BACK buttons; dedicated Fish Life, Family/Genes, Visitor Log, tank records and Display Rewards; no duplicate Fish Life in Say Hello or Home in Names & Looks.
+- Clearer Comfort Assist and bond/trick explanations; stable Frame-selector lettering; bright clock sparkles and event captions under Settings > Clock/Weather > Effects.
+- Wrapped clock/weather captions, useful-only fish events, visible tank emblems, cleaner summaries and a redesigned Night Manta.
+- CYD Room Light/Back LED touch fixes, conservative light filtering, and a Wi-Fi screen that stays dark during startup and returns to Settings.
+- Append-only 5912-byte saves and schema-14 JSON, importing schemas 1-13 and older binary saves. Back up before upgrading; older firmware cannot restore schema-14 backups.
+- Refreshed illustrated documentation, actual-renderer screenshots, and Pocket Tank CYD branding across the installer and guides.
 
 ### New in 1.3.0
 - Genetics: every fish carries a hidden second marking and body color plus four recessive traits (Shimmer, Painted Fins, Pale Belly, Gold Eye). Bred fry inherit one allele from each parent, hidden looks can resurface generations later, and rare mutations add a new marking or trait. Existing fish receive hidden genes on upgrade.
 - Five new markings: Saddle, Tiger, Speckle, Fade and Mask (nine in total), also available in CUSTOMIZE.
-- Family Tree (Care > LIFE > FAMILY): generation, parents, grandparents, children, siblings, shown and carried genes; departed ancestors' names are remembered.
-- Visitor Log (Care > TANK > SIGHTINGS): five rare, harmless visitors - Drifter, Old Turtle, Ghost Fish, Night Manta and Lantern Squid.
+- Family Tree (Home > Fish > Family & Genes): generation, parents, grandparents, children, siblings, shown and carried genes; departed ancestors' names are remembered.
+- Visitor Log (Home > Collections > Visitor Log): five rare, harmless visitors - Drifter, Old Turtle, Ghost Fish, Night Manta and Lantern Squid.
 - Seasonal sand scenery from the clock (spring sprigs, summer shells, autumn leaves, winter snow, holiday lights); north, south or off.
 - Room-light sensor (Settings > Display > ROOM LIGHT): dims the backlight in a dark room, optionally switching the tank to night.
 - Back RGB LED (Settings > Display > BACK LED): a soft glow that follows the water color, with optional hunger and visitor alerts.

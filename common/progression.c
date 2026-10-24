@@ -211,6 +211,8 @@ typedef struct {
     companion_state_t companion;
     tank_polish_t polish;
     tank_story_t story;                /* 1.3: family tree, name book, visitor log, seasons */
+    game_records_t games;
+    tank_rpg_t rpg;
 } save_t;
 /* the smallest PTK2 save (pre-upkeep, 2026-08-30): anything shorter is not
  * ours. Every later build wrote sizeof(save_t) of its day - 448, 1112, 1304,
@@ -318,6 +320,8 @@ _Static_assert(sizeof(aquarium_state_t) == 32, "SAVE LAYOUT LOCK: aquarium metad
 SAVE_AT(companion, 4000);
 SAVE_AT(polish, 4520);
 SAVE_AT(story, 5416);
+SAVE_AT(games, 5848);
+SAVE_AT(rpg, 5888);
 _Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: companion tail");
 /* NVS budget: the save is one blob in the nvs partition (0x9000, 0x6000 =
  * 6 pages of 4096 B; tools/make_installer.py pins the row). A page is 126
@@ -325,13 +329,13 @@ _Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: compani
  * 5 x 126 = 630 entries usable. A blob costs an entry per 32 B, a header per
  * chunk (a chunk stays on one page) and an index entry, and nvs_set_blob
  * writes the new copy before it erases the old - on top of the director's
- * parked "bk" copy, three at once at worst. At the 5856-byte ceiling,
- * payload + two chunk headers + index costs 186 entries per copy:
- * 3 x 186 + 64 reserved for namespaces, Wi-Fi, settings and history = 622,
+ * parked "bk" copy, three at once at worst. At the 5920-byte ceiling,
+ * payload + two chunk headers + index costs 188 entries per copy:
+ * 3 x 188 + 64 reserved for namespaces, Wi-Fi, settings and history = 628,
  * below 630, retaining the dedicated GC page. Inactive aquariums live on
  * SD, not additional NVS blobs; their shorter records zero-fill the new
  * tail after checksum validation, retaining the frozen 4000-byte prefix. */
-#define SAVE_NVS_BUDGET 5856
+#define SAVE_NVS_BUDGET 5920
 _Static_assert(sizeof(save_t) <= SAVE_NVS_BUDGET, "the save outgrew its NVS budget - see the math above");
 
 float progression_time_scale = 1.0f;
@@ -1343,7 +1347,11 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
         got < offsetof(save_t, companion) + sizeof sv.companion) return false;
     if (!companion_valid(&sv.companion)) return false;
     if ((got > offsetof(save_t, polish) && got < offsetof(save_t, story)) ||
-        (got > offsetof(save_t, story) && got < sizeof sv) ||
+        (got > offsetof(save_t, story) && got < offsetof(save_t, games)) ||
+        (got > offsetof(save_t, games) && got < offsetof(save_t, rpg)) ||
+        (got > offsetof(save_t, rpg) && got < sizeof sv) ||
+        !companion_rpg_valid(&sv.rpg, sv.polish.next_id) ||
+        !companion_games_valid(&sv.games) ||
         !companion_polish_valid(&sv.polish, sv.n_fish, sv.bank_count, sv.companion.away) ||
         !companion_story_valid(&sv.story, sv.n_fish, sv.bank_count, sv.companion.away, sv.polish.next_id)) {
         fprintf(stderr, "Saved aquarium memories invalid or incomplete (%u bytes)\n", (unsigned)got);
@@ -1446,6 +1454,8 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     t->companion = sv.companion;
     t->polish = sv.polish;
     t->story = sv.story;
+    t->games = sv.games;
+    t->rpg = sv.rpg;
     t->visitor_left = 0;
     for (int i = 0; i < t->n_fish; i++) {
         t->fish[i].wearable = t->companion.active[i].wearable;
@@ -1702,6 +1712,8 @@ static void capture_save(const tank_t *t, save_t *sv) {
     sv->companion = t->companion;
     sv->polish = t->polish;
     sv->story = t->story;
+    sv->games = t->games;
+    sv->rpg = t->rpg;
     if (sv->polish.version)
         snprintf(sv->polish.tank_name, sizeof sv->polish.tank_name, "%s", t->aquariums.name);
     sv->saved_release = PT_RELEASE_NUM;
@@ -1954,6 +1966,19 @@ static const json_field_t STORY_FIELDS[] = {
     S(names, J_HEX, sizeof(((tank_story_t *)0)->names), 0, 255),
 };
 #undef S
+#define G(f, k, n, lo, hi) { #f, offsetof(game_records_t, f), n, k, lo, hi }
+static const json_field_t GAME_FIELDS[] = {
+    G(best, J_U16, 6, 0, UINT16_MAX), G(rounds, J_U16, 6, 0, UINT16_MAX),
+    G(medals, J_U8, 6, 0, 3), G(version, J_U8, 1, 0, 1)
+};
+#undef G
+#define R(f, k, n, lo, hi) { #f, offsetof(tank_rpg_t, f), n, k, lo, hi }
+static const json_field_t RPG_FIELDS[] = {
+    R(participant, J_U32, 1, 0, UINT32_MAX), R(contributors, J_U16, 6, 0, UINT16_MAX),
+    R(version, J_U8, 1, 0, 1), R(chapter, J_U8, 1, 0, 6), R(step, J_U8, 1, 0, 2),
+    R(skills, J_U8, 3, 0, 18), R(routes, J_U8, 1, 0, 63), R(outcome, J_U8, 1, 0, 6)
+};
+#undef R
 #define B(f, k, n, lo, hi) { #f, offsetof(bank_fish_t, f), n, k, lo, hi }
 static const json_field_t BANK_FIELDS[] = {
     B(name, J_NAMES, 1, 0, 0), B(body, J_U32, 1, 1, 0xffffff), B(accent, J_U32, 1, 1, 0xffffff),
@@ -2055,7 +2080,7 @@ char *progression_backup_json(const tank_t *t) {
     save_t sv; capture_save(t, &sv);
     char header[128], *text = NULL;
     size_t used = 0;
-    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":12,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
+    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":14,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
     if (!json_append(&text, &used, header)) goto fail;
     cJSON *tank = json_fields(&sv, SAVE_FIELDS, FIELD_COUNT(SAVE_FIELDS));
     if (!tank) goto fail;
@@ -2075,6 +2100,10 @@ char *progression_backup_json(const tank_t *t) {
         !json_append_value(&text, &used, json_fields(&sv.polish, POLISH_FIELDS, FIELD_COUNT(POLISH_FIELDS))) ||
         !json_append(&text, &used, ",\"story\":") ||
         !json_append_value(&text, &used, json_fields(&sv.story, STORY_FIELDS, FIELD_COUNT(STORY_FIELDS))) ||
+        !json_append(&text, &used, ",\"games\":") ||
+        !json_append_value(&text, &used, json_fields(&sv.games, GAME_FIELDS, FIELD_COUNT(GAME_FIELDS))) ||
+        !json_append(&text, &used, ",\"rpg\":") ||
+        !json_append_value(&text, &used, json_fields(&sv.rpg, RPG_FIELDS, FIELD_COUNT(RPG_FIELDS))) ||
         !json_append(&text, &used, ",\"fish\":[")) goto fail;
     for (int i = 0; i < N_FISH_MAX; i++) {
         if ((i && !json_append(&text, &used, ",")) ||
@@ -2240,9 +2269,9 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     const cJSON *height = cJSON_GetObjectItemCaseSensitive(root, "height");
     const cJSON *fish = cJSON_GetObjectItemCaseSensitive(root, "fish");
     if (!cJSON_IsString(format) || strcmp(format->valuestring, "pocket-tank")
-        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 12 ||
+        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 14 ||
            schema->valuedouble != floor(schema->valuedouble)
-        || cJSON_GetArraySize(root) != (schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
+        || cJSON_GetArraySize(root) != (schema->valuedouble >= 14 ? 13 : schema->valuedouble >= 13 ? 12 : schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
         || !cJSON_IsString(board) || strcmp(board->valuestring, "cyd2432s028")
         || !cJSON_IsNumber(width) || (width->valuedouble != 240 && width->valuedouble != 320)
         || !cJSON_IsNumber(height) || height->valuedouble * 4 != width->valuedouble * 3
@@ -2313,6 +2342,18 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
                            STORY_FIELDS, FIELD_COUNT(STORY_FIELDS), error, error_size) ||
          !companion_story_valid(&sv.story, sv.n_fish, sv.bank_count, sv.companion.away, sv.polish.next_id))) {
         snprintf(error, error_size, "Invalid aquarium story"); goto done;
+    }
+    if (schema->valuedouble >= 13 &&
+        (!json_read_fields(&sv.games, cJSON_GetObjectItemCaseSensitive(root, "games"),
+                           GAME_FIELDS, FIELD_COUNT(GAME_FIELDS), error, error_size) ||
+         !companion_games_valid(&sv.games))) {
+        snprintf(error, error_size, "Invalid game records"); goto done;
+    }
+    if (schema->valuedouble >= 14 &&
+        (!json_read_fields(&sv.rpg, cJSON_GetObjectItemCaseSensitive(root, "rpg"),
+                          RPG_FIELDS, FIELD_COUNT(RPG_FIELDS), error, error_size) ||
+         !companion_rpg_valid(&sv.rpg, sv.polish.next_id))) {
+        snprintf(error, error_size, "Invalid Lost Current story"); goto done;
     }
     if (width->valuedouble != (sv.companion.display_compact ? 320 : 240)) {
         snprintf(error, error_size, "Display size does not match saved scale"); goto done;
@@ -2409,6 +2450,7 @@ const char *progression_aquarium_move(tank_t *t, int target) {
             !companion_valid(&v->companion) ||
             !companion_polish_valid(&v->polish, v->n_fish, v->bank_count, v->companion.away) ||
             !companion_story_valid(&v->story, v->n_fish, v->bank_count, v->companion.away, v->polish.next_id) ||
+            !companion_rpg_valid(&v->rpg, v->polish.next_id) ||
             (v->companion.away && !bank_valid(&v->companion.traveler)) ||
             (v->aquariums.stat_upgrades & ~STAT_MASK) ||
             v->aquariums.clock_theme >= CLOCK_THEME_COUNT ||

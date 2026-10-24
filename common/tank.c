@@ -579,15 +579,22 @@ static bool story_referenced(const tank_story_t *s, uint16_t id) {
     }
     return false;
 }
+static bool rpg_referenced(const tank_rpg_t *s, uint16_t id) {
+    for (int i = 0; id && i < s->chapter && i < 6; i++)
+        if (s->contributors[i] == id) return true;
+    return false;
+}
 void tank_story_remember(tank_t *t, uint32_t id, const char *name) {
     tank_story_t *s = &t->story;
-    if (!s->version || !id || id > 0xffff || !story_referenced(s, (uint16_t)id)) return;
+    if (!s->version || !id || id > 0xffff ||
+        (!story_referenced(s, (uint16_t)id) && !rpg_referenced(&t->rpg, (uint16_t)id))) return;
     for (int i = 0; i < t->bank_count; i++) if (t->polish.bank[i].id == id) return;   /* only moving */
     if (t->companion.away && t->polish.traveler.id == id) return;
     int slot = -1;
     for (int i = 0; i < STORY_NAME_BOOK && slot < 0; i++) if (s->names[i].id == id) slot = i;
     for (int i = 0; i < STORY_NAME_BOOK && slot < 0; i++) if (!s->names[i].id) slot = i;
-    for (int i = 0; i < STORY_NAME_BOOK && slot < 0; i++) if (!story_referenced(s, s->names[i].id)) slot = i;
+    for (int i = 0; i < STORY_NAME_BOOK && slot < 0; i++)
+        if (!story_referenced(s, s->names[i].id) && !rpg_referenced(&t->rpg, s->names[i].id)) slot = i;
     if (slot < 0) slot = 0;
     if (slot < STORY_NAME_BOOK - 1 && s->names[slot].id != id) {     /* newest last: shift the book */
         memmove(&s->names[slot], &s->names[slot + 1], (STORY_NAME_BOOK - 1 - slot) * sizeof s->names[0]);
@@ -630,8 +637,10 @@ bool tank_remove_fish(tank_t *t, int idx) {
 
 void tank_init(tank_t *t, uint32_t seed) {
     memset(&t->companion, 0, sizeof t->companion);
+    memset(&t->games, 0, sizeof t->games);
     memset(&t->polish, 0, sizeof t->polish);
     memset(&t->story, 0, sizeof t->story);
+    memset(&t->rpg, 0, sizeof t->rpg);
     t->season = SEASON_NONE;
     t->visitor_left = 0;
     t->room_dark = false; t->visitor_species = 0;

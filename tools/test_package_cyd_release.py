@@ -45,6 +45,13 @@ class ReleaseTests(unittest.TestCase):
                 self.assertFalse(any("tank.sav" in entry for entry in bundle.namelist()))
                 self.assertFalse(any(entry.startswith("icons-") for entry in bundle.namelist()))
                 self.assertIn("no SD icons are required", bundle.read("INSTALL.txt").decode())
+                notes = bundle.read("RELEASE-NOTES.md").decode()
+                self.assertTrue(notes.startswith('<p align="center">'))
+                self.assertIn("https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg", notes)
+                self.assertIn('alt="Pocket Tank CYD aquarium logo"', notes)
+                self.assertIn("The Lost Current", notes)
+                self.assertIn("Twelve games", notes)
+                self.assertIn("schema-14 JSON", notes)
             for line in (output / "SHA256SUMS.txt").read_text().splitlines():
                 digest, filename = line.split("  ", 1)
                 self.assertEqual(digest, hashlib.sha256((output / filename).read_bytes()).hexdigest())

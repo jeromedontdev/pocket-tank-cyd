@@ -352,6 +352,7 @@ enum { SET_TAP_NONE = 0, SET_TAP_CLOSE = 1, SET_TAP_BRIGHT = 2, SET_TAP_LIGHT = 
  * shown on the settings page. room_pct < 0 = no sensor reading. */
 typedef struct { uint8_t room_mode, led_mode, auto_backup; int room_pct; } render_device_t;
 void render_set_device(const render_device_t *d);
+void render_tank_emblem(uint16_t *fb, int stride, int x, int y, unsigned emblem);
 void render_backup_status(const char *message, bool arm_restore);
 uint32_t render_glow_rgb(const tank_t *t);   /* the water's surface colour, for the back LED */
 void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct);

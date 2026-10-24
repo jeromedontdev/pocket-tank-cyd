@@ -1,5 +1,7 @@
 # CYD fork updates
 
+<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="200" alt="Pocket Tank CYD aquarium logo"></a></p>
+
 ## Save-preserving browser USB updates
 
 Open the [USB installer](https://jeromedontdev.github.io/pocket-tank-cyd/) in

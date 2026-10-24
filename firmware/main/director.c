@@ -214,6 +214,7 @@ static void help(void) {
     ESP_LOGI(TAG, "journal | journal tap <x> <y> | journal demo (parks the real tank, unlocks temporary theme previews; restore when finished)");
     ESP_LOGI(TAG, "games | games tap <x> <y> (framebuffer coordinates; real aquarium care pauses)");
     ESP_LOGI(TAG, "home | home tap <x> <y> (main menu; life remains an alias; framebuffer coordinates)");
+    ESP_LOGI(TAG, "rpg (read-only Lost Current progress and chapter contributors)");
     ESP_LOGI(TAG, "settings | settings tap <x> <y> | settings off (clock, weather and brightness; framebuffer coordinates)");
     ESP_LOGI(TAG, "bank | bank tap <x> <y> | bank verify (JSON validation) | bank demo (parks real tank; restore afterwards)");
     ESP_LOGI(TAG, "tanks | tanks tap <x> <y> | tanks demo (parks real tank, grants test coins; restore afterwards)");
@@ -435,6 +436,14 @@ static void run(tank_t *t, char *line) {
             if (render_games_tap(t, x, y)) touch_port_show_milestones(true);
         } else { ESP_LOGW(TAG, "games | games tap <framebuffer x> <y>"); return; }
         ESP_LOGI(TAG, "games page %s; aquarium care %s", touch_port_games() ? "open" : "closed", touch_port_games() ? "paused" : "resumed");
+    } else if (!strcmp(c, "rpg")) {
+        if (argc != 1) { ESP_LOGW(TAG, "rpg (read-only campaign status)"); return; }
+        ESP_LOGI(TAG, "Lost Current chapter %u/6 encounter %u/3 | courage %u curiosity %u kindness %u | guide %lu",
+                 t->rpg.chapter, t->rpg.step, t->rpg.skills[0], t->rpg.skills[1], t->rpg.skills[2],
+                 (unsigned long)t->rpg.participant);
+        for (int chapter = 0; chapter < t->rpg.chapter; chapter++)
+            ESP_LOGI(TAG, "%s | contributor %u | %s", companion_rpg_chapter_title(chapter),
+                     t->rpg.contributors[chapter], companion_rpg_route(t, chapter));
     } else if (!strcmp(c, "life") || !strcmp(c, "home")) {
         if (argc == 1) touch_port_show_life();
         else if (argc == 4 && !strcmp(argv[1], "tap")) {

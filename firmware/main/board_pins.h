@@ -29,5 +29,5 @@
 #define CYD_PIN_LED_B      17
 #define CYD_PIN_LDR        34
 #define CYD_LDR_ADC_CHANNEL ADC_CHANNEL_6
-#define CYD_LDR_MIN_BASE     40      /* 0 dB ADC floor for the learned lit-room reading */
+#define CYD_LDR_MIN_BASE     200     /* avoid treating normal room light as dark after a very bright baseline */
 #endif

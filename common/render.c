@@ -3953,7 +3953,7 @@ static void theme_details(const tank_t *t, theme_detail_t out[4]) {
         if (step > 23) step = 23;
         /* 1.3 bestiary: each species has its own size, depth and gait */
         static const struct { int w, h, y, bob; } kinds[VISITOR_SPECIES] = {
-            {20, 15, 42, 2}, {28, 15, 0, 1}, {22, 10, 64, 3}, {36, 14, 24, 2}, {12, 19, 54, 5}};
+            {20, 15, 42, 2}, {28, 15, 0, 1}, {22, 10, 64, 3}, {40, 24, 24, 2}, {12, 19, 54, 5}};
         int sp = t->visitor_species < VISITOR_SPECIES ? t->visitor_species : 0;
         int y = sp == VISITOR_TURTLE ? TANK_SAND_TOP - 34 : kinds[sp].y;
         out[3] = (theme_detail_t){6 + step * (TANK_W - 12 - kinds[sp].w) / 23,
@@ -4013,15 +4013,21 @@ static void theme_detail_draw(ctx_t *c, const theme_detail_t *d) {
         px_blend(c, d->x + 17, d->y + 4, 0x23344a, 160);
     } else if (d->kind == 7) {                      /* small manta: wide wings, a slow flap */
         src_t wing = src_color(0x2c3e57, c->dim), edge = src_color(0x5d7898, c->dim);
-        int lift = d->pose ? -2 : 1;
-        for (int y = 0; y < 9; y++) {
-            int half = y < 4 ? 6 + y * 3 : 18 - (y - 4) * 3;
-            int yy = d->y + 3 + y + (half > 12 ? lift : 0);
-            span(c, d->x + 18 - half, d->x + 18 + half - 1, yy, &wing, 225);
-            if (y == 4) span(c, d->x + 18 - half, d->x + 18 + half - 1, yy, &edge, 140);
+        /* Swept, pointed wings around a small body, with a long trailing tail. */
+        for (int y = 0; y < 24; y++) {
+            int distance = y < 12 ? y : 23 - y;
+            int left = 12 + distance * 7 / 11, right = 12 + distance * 19 / 11;
+            if (d->pose && distance < 7) { left += 2; right += 2; }
+            span(c, d->x + left, d->x + right, d->y + y, &wing, 240);
+            px_blend(c, d->x + right, d->y + y, 0x5d7898, 200);
         }
-        for (int i = 0; i < 8; i++) px_blend(c, d->x + 10 - i, d->y + 7 + i / 3, 0x2c3e57, 200 - i * 18);
-        px_blend(c, d->x + 28, d->y + 6, 0xd7e6f2, 230); px_blend(c, d->x + 28, d->y + 9, 0xd7e6f2, 230);
+        fill_ellipse(c, d->x + 27, d->y + 12, 8, 4, 0x2c3e57, 255);
+        for (int x = 0; x < 23; x++) px_blend(c, d->x + x, d->y + 12 + (22 - x) / 5, 0x5d7898, 200);
+        span(c, d->x + 26, d->x + 33, d->y + 15, &edge, 200);
+        px_blend(c, d->x + 32, d->y + 10, 0xd7e6f2, 240);
+        px_blend(c, d->x + 32, d->y + 14, 0xd7e6f2, 240);
+        span(c, d->x + 34, d->x + 37, d->y + 10, &edge, 240);
+        span(c, d->x + 34, d->x + 37, d->y + 14, &edge, 240);
     } else if (d->kind == 8) {                      /* lantern squid: a tiny blinking light */
         src_t body = src_color(0xc77a8a, c->dim);
         for (int y = 0; y < 10; y++) {
@@ -4050,24 +4056,33 @@ static void damage_rows(int top, int bottom) {
     damage_rect(0, top, TANK_W - 1, bottom);
 }
 static bool clock_damage_changed(const tank_t *t);
+static void clock_sparkle_position(const tank_t *t, const render_clock_layout_t *layout, int i, int *x, int *y) {
+    int left = layout->x > 24 ? layout->x / 2 : 3;
+    int gap = TANK_W - layout->x - layout->w;
+    int right = gap > 24 ? TANK_W - gap / 2 : TANK_W - 4;
+    *x = i & 1 ? right : left;
+    *y = 10 + (i / 2 * (TANK_H - 20) / 4 + (int)(t->clock * 4)) % (TANK_H - 20);
+}
 static bool clock_solid(const tank_t *t) {
     return render_clock_active(t) && !(t->aquariums.clock_flags & CLOCK_HIDE_PANEL);
 }
 void render_damage_begin(const tank_t *t, bool force_full) {
-    static struct { int w, h, theme, water, sand, night, shelf; uint32_t unlocks, collections, challenges; uint8_t scenery, season; } previous;
+    static struct { int w, h, theme, water, sand, night, shelf; uint32_t unlocks, collections, challenges; uint8_t scenery, season, chapters; } previous;
     static uint8_t algae[ALGAE_CAP];
     bool full = force_full || previous.w != TANK_W || previous.h != TANK_H ||
         previous.theme != t->journal.theme || previous.water != t->water_style ||
         previous.sand != t->sand_style || previous.night != t->night ||
         previous.unlocks != t->sd_unlocks || previous.scenery != t->polish.scenery_unlocks || previous.shelf != t->companion.decor ||
         previous.season != t->season ||
-        previous.collections != t->companion.collections || previous.challenges != t->companion.game_challenges;
+        previous.collections != t->companion.collections || previous.challenges != t->companion.game_challenges ||
+        previous.chapters != t->rpg.chapter;
     previous.w = TANK_W; previous.h = TANK_H; previous.theme = t->journal.theme;
     previous.water = t->water_style; previous.sand = t->sand_style;
     previous.night = t->night; previous.unlocks = t->sd_unlocks; previous.scenery = t->polish.scenery_unlocks;
     previous.season = t->season;
     previous.shelf = t->companion.decor; previous.collections = t->companion.collections;
     previous.challenges = t->companion.game_challenges;
+    previous.chapters = t->rpg.chapter;
     memset(g_damage, 0, sizeof g_damage);
     for (int cy = 0; cy < ALGAE_ROWS; cy++) for (int cx = 0; cx < ALGAE_COLS; cx++) {
         int index = cy * ALGAE_COLS + cx;
@@ -4124,11 +4139,9 @@ void render_damage_begin(const tank_t *t, bool force_full) {
         render_clock_layout_t layout; render_clock_layout(t, &layout);
         if (!clock_solid(t) || clock_changed)
             damage_rect(layout.x - 2, layout.y - 2, layout.x + layout.w + 2, layout.y + layout.h + 2);
-        if (layout.rows && companion_lively(t)) for (int i = 0; i < 8; i++) {
-            int xx = 6 + (i * 29 + (int)(t->clock * 2)) % (TANK_W - 12);
-            int yy = 12 + (i * 19) % (TANK_H - 40);
-            if (xx < layout.x || xx >= layout.x + layout.w || yy < layout.y || yy >= layout.y + layout.h)
-                damage_rect(xx, yy, xx, yy);
+        if (companion_lively(t)) for (int i = 0; i < 8; i++) {
+            int xx, yy; clock_sparkle_position(t, &layout, i, &xx, &yy);
+            damage_rect(xx - 2, yy - 2, xx + 2, yy + 2);
         }
     } else damage_rows(0, 32); /* Tool chip and earning toasts. */
     if (t->night && (t->sd_unlocks & SD_ITEM_PUMPKIN)) full = true;
@@ -4519,11 +4532,17 @@ static void render_desk_overlay(const tank_t *t, uint16_t *fb, int stride) {
         if (companion_lively(t)) {
             render_clock_layout_t layout; render_clock_layout(t, &layout);
             ctx_t desk = ctx_full(fb, stride, 1);
-            for (int i = 0; layout.rows && i < 8; i++) {
-                int xx = 6 + (i * 29 + (int)(t->clock * 2)) % (TANK_W - 12);
-                int yy = 12 + (i * 19) % (TANK_H - 40);
-                if (xx < layout.x || xx >= layout.x + layout.w || yy < layout.y || yy >= layout.y + layout.h)
-                    px_blend(&desk, xx, yy, 0x9fd8e2, 80);
+            for (int i = 0; i < 8; i++) {
+                int xx, yy; clock_sparkle_position(t, &layout, i, &xx, &yy);
+                uint32_t color = i & 1 ? 0xffdc73 : 0xb7f7ff;
+                int alpha = ((int)(t->clock * 4) + i) % 8 < 4 ? 240 : 150;
+                static const int8_t dx[] = {-2, -1, 0, 1, 2, 0, 0, 0, 0};
+                static const int8_t dy[] = {0, 0, 0, 0, 0, -2, -1, 1, 2};
+                for (int p = 0; p < 9; p++) {
+                    int x = xx + dx[p], y = yy + dy[p];
+                    if (x < layout.x || x >= layout.x + layout.w || y < layout.y || y >= layout.y + layout.h)
+                        px_blend(&desk, x, y, color, p == 2 ? 255 : alpha);
+                }
             }
         }
     }
@@ -5113,8 +5132,11 @@ static const uint8_t *glyph(char ch) {
     return p ? FONT5X7[p - FONT_CHARS] : NULL;
 }
 static int text_w(const char *s, int scale) {
+    int n = (int)strlen(s);
+    if (scale == 1) return n ? (n - 1) * ((6 * PAGE_W + TANK_W - 1) / TANK_W) +
+        (5 * PAGE_W + TANK_W - 1) / TANK_W : 0;
     if (scale < 2) scale = 2;
-    int n = (int)strlen(s); return n ? n * 6 * scale - scale : 0;
+    return n ? n * 6 * scale - scale : 0;
 }
 static void draw_page_glyph(ctx_t *c, int x, int y, int scale, const src_t *col, const uint8_t *g) {
     int left = (int)floorf((float)x * TANK_W / PAGE_W), top = (int)floorf((float)y * TANK_H / PAGE_H);
@@ -5134,10 +5156,11 @@ static void draw_page_glyph(ctx_t *c, int x, int y, int scale, const src_t *col,
     }
 }
 static void draw_text(ctx_t *c, int x, int y, int scale, uint32_t rgb, const char *s) {
-    if (c->scaled && scale < 2) scale = 2;
+    if (scale < 1) scale = 1;
     if (rgb == 0x2a3f45 || rgb == 0x3f6a72) rgb = 0xa4c5ce;
     src_t col = src_color(rgb, c->dim);
-    for (; *s; s++, x += 6 * scale) {
+    int advance = c->scaled && scale == 1 ? (6 * PAGE_W + TANK_W - 1) / TANK_W : 6 * scale;
+    for (; *s; s++, x += advance) {
         const uint8_t *g = glyph(*s);
         if (!g) continue;
         if (c->scaled) { draw_page_glyph(c, x, y, scale, &col, g); continue; }
@@ -5545,7 +5568,6 @@ void render_milestones(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
     for (int y = render_tile_top(); y < render_tile_bottom(); y++)
         for (int x = 0; x < TANK_W; x++) fb[(y - g_tile_y) * stride + x] = rgb565(MSP_INK, 1);
-    button(&c, 330, JOURNAL_ENTRY_Y, 94, 18, 0x1c2f36, MSP_TEAL, "HOME", 2);
     for (int i = 0; i < t->n_fish; i++) {
         const fish_t *f = &t->fish[i];
         int top = MSP_ROW_Y0 + i * MSP_ROW_H;
@@ -5618,7 +5640,7 @@ void render_milestones(const tank_t *t, uint16_t *fb, int stride) {
     }
     /* the way out: a CLOSE button in the prompt's calm dress (a tap anywhere
        else never drops the page - too much to tap for that) */
-    button(&c, MSP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "CLOSE", 2);
+    button(&c, MSP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
     /* a modal up: the page under it is out of reach (any tap only closes the
        modal), so it LOOKS out of reach - every pixel at half (Strato: with
        CLOSE lit it looked like you could still tap it). One shift per
@@ -5737,10 +5759,8 @@ int render_milestones_tap(const tank_t *t, float x, float y) {
         }
         ms_close(); return MS_TAP_KEPT;                  /* any other tap: back to the page */
     }
-    if (y >= JOURNAL_ENTRY_Y && y < JOURNAL_ENTRY_Y + 18) {
-        if (x >= 330 && x < 424) return MS_TAP_LIFE;
-    }
-    if (x >= MSP_CLOSE_X - 8 && y >= MSP_CLOSE_Y - 4) return MS_TAP_CLOSE;      /* slop out to the glass edge */
+    if (x >= MSP_CLOSE_X - 8 && x < MSP_CLOSE_X + MSP_CLOSE_W + 8 &&
+        y >= MSP_CLOSE_Y - 4 && y < MSP_CLOSE_Y + MSP_CLOSE_H + 4) return MS_TAP_CLOSE;
     if (y >= MSP_CLOSE_Y - 4) return MS_TAP_KEPT;
     int row = -1; bool tank_row = false, fry_row = false;
     fry_req_t req[FRY_REQ_MAX]; bool staged;
@@ -6247,12 +6267,27 @@ bool render_clock_active(const tank_t *t) {
     int delay = CLOCK_DELAYS[setting < CLOCK_DELAY_COUNT ? setting : 0];
     return t->clock_requested || (delay >= 0 && t->clock_idle_s >= delay);
 }
-static int clock_caption_lines(const tank_t *t, char lines[3][64]) {
-    weather_clock_lines(lines[0], 64, lines[1], 64);
-    int count = lines[0][0] ? 2 : 0;
-    if (companion_captions(t)) {
-        companion_status(t, lines[count], 64);
-        if (lines[count][0]) count++;
+#define CLOCK_CAPTION_ROWS 9
+static int clock_caption_lines(const tank_t *t, char lines[CLOCK_CAPTION_ROWS][64], int width) {
+    char source[3][64] = {{0}};
+    weather_clock_lines(source[0], 64, source[1], 64);
+    if (companion_captions(t)) companion_status(t, source[2], 64);
+    int count = 0;
+    size_t capacity = (size_t)(width - 12 + 1) / 6;
+    for (int i = 0; i < 3; i++) {
+        const char *s = source[i];
+        while (*s) {
+            while (*s == ' ') s++;
+            if (!*s) break;
+            size_t n = strlen(s);
+            if (n > capacity) {
+                n = capacity;
+                while (n && s[n] != ' ') n--;
+                if (!n) n = capacity;
+            }
+            memcpy(lines[count], s, n); lines[count++][n] = 0;
+            s += n;
+        }
     }
     return count;
 }
@@ -6260,15 +6295,19 @@ void render_clock_layout(const tank_t *t, render_clock_layout_t *layout) {
     int size = t->aquariums.clock_layout & 3, position = t->aquariums.clock_layout >> 2;
     if (size >= CLOCK_SIZE_COUNT) size = CLOCK_LARGE;
     static const int widths[] = {220, 172, 116}, heights[] = {112, 90, 68};
-    static const int caption_scales[] = {2, 1, 1}, caption_pitches[] = {16, 12, 10};
     static const int analog_w[] = {154, 126, 100}, analog_h[] = {166, 138, 112};
     bool analog = t->aquariums.clock_theme == CLOCK_ANALOG || t->aquariums.clock_theme == CLOCK_ORBIT;
-    char lines[3][64] = {{0}};
-    int caption_w = widths[size];
-    layout->caption_scale = caption_scales[size];
-    layout->caption_pitch = caption_pitches[size];
-    int count = clock_caption_lines(t, lines), caption_h = count ? count * layout->caption_pitch + 4 : 0;
+    char lines[CLOCK_CAPTION_ROWS][64] = {{0}};
+    int caption_w = widths[size] < 172 ? 172 : widths[size];
+    layout->caption_scale = 1;
+    layout->caption_pitch = 12;
+    int count = clock_caption_lines(t, lines, caption_w), caption_h = count ? count * layout->caption_pitch + 4 : 0;
     while (size < CLOCK_SMALL && (analog ? analog_h[size] : heights[size]) + caption_h + (count ? 4 : 0) > TANK_H - 12) size++;
+    if ((analog ? analog_h[size] : heights[size]) + caption_h + (count ? 4 : 0) > TANK_H - 12) {
+        caption_w = 220;
+        count = clock_caption_lines(t, lines, caption_w);
+        caption_h = count ? count * layout->caption_pitch + 4 : 0;
+    }
     layout->size = size; layout->rows = count;
     layout->face_w = analog ? analog_w[size] : widths[size];
     layout->face_h = analog ? analog_h[size] : heights[size];
@@ -6488,16 +6527,11 @@ static void clock_overlay_live(const tank_t *t, uint16_t *fb, int stride, int64_
         clock_text_center(&c, x, y + h - (theme == CLOCK_ORBIT ? 24 : 28), w, 1, edge, detail);
     }
     if (layout.rows) {
-        char lines[3][64] = {{0}};
-        int count = clock_caption_lines(t, lines);
+        char lines[CLOCK_CAPTION_ROWS][64] = {{0}};
+        int count = clock_caption_lines(t, lines, layout.w);
         rect_fill(&c, layout.x, layout.caption_y, layout.w, layout.caption_h, 0x04141a);
         rect_edge(&c, layout.x, layout.caption_y, layout.w, layout.caption_h, edge);
         for (int row = 0; row < count; row++) {
-            size_t n = strlen(lines[row]);
-            if (((int)n * 6 - 1) * layout.caption_scale > layout.w - 12) {
-                while (n && ((int)n * 6 - 1) * layout.caption_scale > layout.w - 12) lines[row][--n] = 0;
-                if (n >= 3) memcpy(lines[row] + n - 3, "...", 3);
-            }
             clock_text_center(&c, layout.x, layout.caption_y + 4 + row * layout.caption_pitch, layout.w, layout.caption_scale,
                               row == 0 ? ink : edge, lines[row]);
         }
@@ -6509,7 +6543,7 @@ typedef struct {
         int64_t time;
         int width, height, cosmetic, valid_time;
         unsigned epoch;
-        char lines[3][64];
+        char lines[CLOCK_CAPTION_ROWS][64];
 } clock_key_t;
 static clock_key_t clock_key(const tank_t *t, int64_t unix_time) {
     clock_key_t key; memset(&key, 0, sizeof key);
@@ -6517,7 +6551,7 @@ static clock_key_t clock_key(const tank_t *t, int64_t unix_time) {
     key.cosmetic = t->companion.cosmetic; key.epoch = g_work_epoch;
     key.valid_time = unix_time >= INT64_C(1609459200) && unix_time <= INT64_C(4102444800);
     key.time = t->aquariums.clock_flags & CLOCK_HIDE_SECONDS ? unix_time / 60 : unix_time;
-    render_clock_layout(t, &key.layout); clock_caption_lines(t, key.lines);
+    render_clock_layout(t, &key.layout); clock_caption_lines(t, key.lines, key.layout.w);
     return key;
 }
 static bool clock_damage_changed(const tank_t *t) {
@@ -6580,26 +6614,54 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
         }
     }
 }
-static bool g_clock_settings, g_clock_style, g_clock_weather;
+static bool g_clock_settings, g_clock_style, g_clock_weather, g_clock_effects;
 static int g_settings_section;
 static render_device_t g_device = {0, 1, 1, -1};
 void render_set_device(const render_device_t *d) { g_device = *d; }
+void render_tank_emblem(uint16_t *fb, int stride, int x, int y, unsigned emblem) {
+    ctx_t c = ctx_page(fb, stride);
+    uint32_t ink = 0xffd998;
+    for (int yy = 0; yy < 20; yy++) for (int xx = 0; xx < 24; xx++) {
+        int dx = xx - 12, dy = yy - 10;
+        bool on = emblem == 1 ? (dx * dx + dy * dy < 80 && dy >= -4 &&
+                                  (xx % 4 == 0 || yy == 15 || dx * dx + dy * dy > 50)) :
+                  emblem == 2 ? dx * dx + dy * dy < 49 :
+                  emblem == 3 ? (abs(dx) + abs(dy) < 7 || (abs(dx) < 2 && abs(dy) < 10) ||
+                                  (abs(dy) < 2 && abs(dx) < 11)) :
+                  ((xx == 6 || xx == 12 || xx == 18) && yy > 4) ||
+                  (yy == 10 && xx >= 4 && xx <= 20) || (yy == 5 && xx >= 10 && xx <= 14);
+        if (on) px_blend(&c, x + xx, y + yy, ink, 255);
+    }
+}
 void render_settings_open(void) {
-    g_settings_section = 0; g_clock_settings = g_clock_style = g_clock_weather = false;
+    g_settings_section = 0; g_clock_settings = g_clock_style = g_clock_weather = g_clock_effects = false;
 }
 const char *render_palette_name(bool sand, int index) {
     return sand ? SAND_NAMES[index % SAND_STYLE_COUNT] : WATER_NAMES[index % WATER_STYLE_COUNT];
 }
-enum { SETTINGS_NAV = 200, SETTINGS_SCALE = 210, SETTINGS_BACK = 211 };
+enum { SETTINGS_NAV = 200, SETTINGS_SCALE = 210, SETTINGS_BACK = 211,
+       SETTINGS_COMFORT, SETTINGS_SPARKLES, SETTINGS_CAPTIONS };
 static int g_clock_step;
 static const int CLOCK_STEPS[] = {4, 2, 1};
 static const char *const CLOCK_STEP_NAMES[] = {"1H", "30M", "15M"};
-enum { CLOCK_HIT_PAGE = 100, CLOCK_HIT_THEME, CLOCK_HIT_FORMAT, CLOCK_HIT_POSITION, CLOCK_HIT_PREVIOUS, CLOCK_HIT_NEXT, CLOCK_HIT_SIZE, CLOCK_HIT_DELAY, CLOCK_HIT_DST, CLOCK_HIT_STEP, CLOCK_HIT_STYLE, CLOCK_HIT_COLOR, CLOCK_HIT_SECONDS, CLOCK_HIT_PANEL, CLOCK_HIT_DATE, CLOCK_HIT_SECONDARY, CLOCK_HIT_WEATHER };
+enum { CLOCK_HIT_PAGE = 100, CLOCK_HIT_THEME, CLOCK_HIT_FORMAT, CLOCK_HIT_POSITION, CLOCK_HIT_PREVIOUS, CLOCK_HIT_NEXT, CLOCK_HIT_SIZE, CLOCK_HIT_DELAY, CLOCK_HIT_DST, CLOCK_HIT_STEP, CLOCK_HIT_STYLE, CLOCK_HIT_COLOR, CLOCK_HIT_SECONDS, CLOCK_HIT_PANEL, CLOCK_HIT_DATE, CLOCK_HIT_SECONDARY, CLOCK_HIT_WEATHER, CLOCK_HIT_EFFECTS };
 static const char *const CLOCK_NAMES[CLOCK_THEME_COUNT] = {"OFF", "MINIMAL", "DIGITAL", "ANALOG", "NEON", "FLIP", "BINARY", "ORBIT"};
 static const char *const CLOCK_SIZES[] = {"LARGE", "MEDIUM", "SMALL"};
 static const char *const CLOCK_POSITIONS[] = {"CENTER", "TOP LEFT", "TOP RIGHT", "BOTTOM LEFT", "BOTTOM RIGHT"};
 static const char *const CLOCK_DELAY_NAMES[] = {"1 MIN", "15 SEC", "30 SEC", "2 MIN", "5 MIN", "10 MIN", "MANUAL ONLY"};
 static void clock_settings_draw(ctx_t *c, const tank_t *t) {
+    if (g_clock_effects) {
+        draw_text(c, 24, 18, 2, MSP_TEAL, "CLOCK EFFECTS");
+        button(c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
+        button(c, 32, 76, 384, 40, 0x1c2f36, MSP_TEAL,
+               t->companion.lively ? "SPARKLES: ON" : "SPARKLES: OFF", 2);
+        draw_text_wrap(c, 32, 136, 384, MSP_TEAL, "Bright drifting stars beside the clock. Cosmetic only; no fish mood or care changes.");
+        button(c, 32, 222, 384, 40, 0x1c2f36, MSP_TEAL,
+               t->companion.captions ? "EVENT CAPTIONS: ON" : "EVENT CAPTIONS: OFF", 2);
+        button(c, 32, 282, 384, 40, 0x1c2f36, MSP_TEAL, "SHOW CLOCK", 2);
+        draw_text_wrap(c, 32, 340, 384, MSP_TEAL, s_backup_message);
+        return;
+    }
     if (g_clock_style) {
         draw_text(c, 32, 14, 3, 0xffffff, "CLOCK STYLE");
         button(c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
@@ -6641,6 +6703,7 @@ static void clock_settings_draw(ctx_t *c, const tank_t *t) {
     button(c, 32, 252, 76, 36, 0x1c2f36, MSP_TEAL, label, 2);
     snprintf(label, sizeof label, "+%s", CLOCK_STEP_NAMES[g_clock_step]);
     button(c, 352, 252, 76, 36, 0x1c2f36, MSP_TEAL, label, 2);
+    button(c, 238, 300, 190, 36, 0x1c2f36, MSP_TEAL, "EFFECTS", 2);
     button(c, 32, 300, 190, 36, 0x1c2f36, MSP_TEAL, "SHOW CLOCK", 2);
     draw_text_wrap(c, 32, 344, 396, MSP_TEAL, s_backup_message);
 }
@@ -6660,7 +6723,7 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     if (g_clock_weather) { weather_render(fb, stride); return; }
     if (g_clock_settings) { clock_settings_draw(&c, t); return; }
     button(&c, SET_CLOSE_X, SET_CLOSE_Y, SET_CLOSE_W, SET_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
-    static const char *const names[] = {"DISPLAY", "CLOCK/WEATHER", "WI-FI / SYNC", "SD BACKUPS", "FEEDING", "DEVICE"};
+    static const char *const names[] = {"DISPLAY", "CLOCK/WEATHER", "WI-FI / SYNC", "SD BACKUPS", "AQUARIUM CARE", "DEVICE"};
     if (!g_settings_section) {
         draw_text(&c, 24, 18, 3, 0xffffff, "SETTINGS");
         for (int i = 0; i < 6; i++)
@@ -6677,7 +6740,13 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     }
     if (g_settings_section == 5) {
         set_row(&c, SET_ROW3_Y, "AUTO FEED", SET_FEED, 2, t->autofeed_off ? 1 : 0);
-        draw_text(&c, 32, 100, 2, MSP_TEAL, "OFF: YOU FEED. NO FISH DIES."); return;
+        draw_text(&c, 32, 66, 1, MSP_TEAL, "AUTO FEED OFF: YOU PROVIDE MEALS.");
+        draw_text(&c, 32, 90, 1, MSP_TEAL, "NO FISH DIES IN EITHER CARE MODE.");
+        draw_text_wrap(&c, 32, 120, 384, MSP_TEAL, s_backup_message);
+        button(&c, 32, 234, 384, 30, 0x1c2f36, MSP_TEAL, t->companion.cozy ? "COMFORT ASSIST: ON" : "COMFORT ASSIST: OFF", 2);
+        draw_text(&c, 32, 270, 1, MSP_TEAL, "LIMITS HUNGER AND STRESS.");
+        draw_text(&c, 32, 286, 1, MSP_TEAL, "KEEPS ENERGY UP. NO XP BONUS.");
+        return;
     }
     if (g_settings_section == 1) {
     if (bright_pct < 10) bright_pct = 10;
@@ -6740,7 +6809,7 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
     rect_fill(&c, 0, 0, PAGE_W, PAGE_H, MSP_INK);
     draw_text(&c, 24, 12, 2, MSP_TEAL, "AQUARIUMS");
     button(&c, SET_CLOSE_X, SET_CLOSE_Y, SET_CLOSE_W, SET_CLOSE_H, 0x1c2f36, MSP_TEAL,
-           g_aquarium_pick < 0 && !g_aquarium_naming ? "CLOSE" : "BACK", 2);
+           "BACK", 2);
     snprintf(line, sizeof line, "ACTIVE: %s", g_aquarium_names[t->aquariums.active]);
     draw_text(&c, 24, 48, 2, 0xffffff, line);
     if (g_aquarium_naming) {
@@ -6779,8 +6848,8 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
             else if (!now || !s->last_visit) snprintf(line, sizeof line, "LAST VISIT: CLOCK UNKNOWN");
             else snprintf(line, sizeof line, "LAST VISIT: %lld HOURS AGO", (long long)hours);
             draw_text(&c, 24, 220, 1, MSP_TEAL, line);
-            snprintf(line, sizeof line, "[%s] %s", companion_emblem(s->emblem), companion_subtitle(s->subtitle));
-            draw_text(&c, 24, 278, 1, MSP_TEAL, line);
+            render_tank_emblem(fb, stride, 24, 278, s->emblem);
+            draw_text(&c, 58, 282, 1, MSP_TEAL, companion_subtitle(s->subtitle));
         }
         button(&c, 40, 236, 168, 38, 0x1c2f36, MSP_TEAL, "CANCEL", 2);
         if (!active) button(&c, 240, 236, 168, 38, 0x1c2f36, MSP_TEAL, "CONFIRM", 2);
@@ -6798,14 +6867,15 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
             draw_text(&c, 24, y + 3, 2, 0xffffff, line);
             if (slot < t->aquariums.count && g_aquarium_summary_ok[slot]) {
                 const aquarium_summary_t *s = &g_aquarium_summaries[slot];
-                snprintf(line, sizeof line, "[%s] %s", companion_emblem(s->emblem), companion_subtitle(s->subtitle));
-                draw_text(&c, 24, y + 23, 1, MSP_TEAL, line);
+                render_tank_emblem(fb, stride, 24, y + 20, s->emblem);
+                draw_text(&c, 58, y + 26, 1, MSP_TEAL, companion_subtitle(s->subtitle));
             }
             const char *label = slot == t->aquariums.count ? "BUY" : slot == t->aquariums.active ? "SUMMARY" : "OPEN";
             button(&c, 300, y, 124, 34, 0x1c2f36, MSP_TEAL, label, 2);
         }
     }
-    draw_text_wrap(&c, 24, 286, 400, 0xffffff, g_aquarium_message);
+    draw_text_wrap(&c, 24, g_aquarium_pick >= 0 && g_aquarium_summary_ok[g_aquarium_pick] ? 306 : 286,
+                   400, 0xffffff, g_aquarium_message);
     if (g_aquarium_pick < 0 && !g_aquarium_naming) {
         button(&c, 24, 328, 160, 22, 0x1c2f36, MSP_TEAL, "NAME TANK", 2);
         draw_text(&c, 208, 332, 2, MSP_TEAL, "ACTIVE TANK ONLY");
@@ -6889,7 +6959,7 @@ void render_bank(const tank_t *t, uint16_t *fb, int stride) {
     rect_fill(&c, 0, 0, PAGE_W, PAGE_H, MSP_INK);
     draw_text(&c, 24, 12, 2, MSP_TEAL, "FISH BANK");
     button(&c, SET_CLOSE_X, SET_CLOSE_Y, SET_CLOSE_W, SET_CLOSE_H, 0x1c2f36, MSP_TEAL,
-           g_bank_pick >= 0 || g_bank_pending != -2 ? "BACK" : "CLOSE", 2);
+           "BACK", 2);
     snprintf(line, sizeof line, "STORED %u/%d   TANK %d/%d", t->bank_count, FISH_BANK_CAP, t->n_fish, POP_CAP);
     draw_text(&c, 24, 44, 2, 0xffffff, line);
     bool detail = g_bank_pick >= 0 && g_bank_pick < t->bank_count && g_bank_tab == 0;
@@ -7006,7 +7076,7 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
     rect_fill(&c, 0, 0, PAGE_W, PAGE_H, MSP_INK);
     draw_text(&c, 24, 10, 2, MSP_TEAL, "AQUARIUM JOURNAL");
-    button(&c, SET_CLOSE_X, SET_CLOSE_Y, SET_CLOSE_W, SET_CLOSE_H, 0x1c2f36, MSP_TEAL, "CLOSE", 2);
+    button(&c, SET_CLOSE_X, SET_CLOSE_Y, SET_CLOSE_W, SET_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
     char line[64]; int level = journal_level(t);
     if (level == JOURNAL_LEVEL_MAX)
         snprintf(line, sizeof line, "KEEPER %d/15  MAX - %lu XP", level, (unsigned long)t->journal.xp);
@@ -7135,14 +7205,20 @@ int render_life_tap(tank_t *t, float x, float y) {
         if (choice == 1) return HOME_BANK;
         if (choice == 2) home_companion(4);
         if (choice == 3) return HOME_KEEPER;
+        if (choice == 4) home_companion(COMPANION_SECTION_LIFE);
+        if (choice == 5) home_companion(COMPANION_SECTION_FAMILY);
     } else if (g_home_category == 2) {
         if (choice == 0) return HOME_SHOP;
         if (choice == 1) return HOME_TANKS;
         if (choice == 2) home_companion(COMPANION_SECTION_APPEARANCE);
         if (choice == 3) home_companion(5);
+        if (choice == 4) home_companion(COMPANION_SECTION_IDENTITY);
+        if (choice == 5) home_companion(COMPANION_SECTION_RECAP);
     } else {
         if (choice == 0) return HOME_JOURNAL;
         if (choice == 1) home_companion(COMPANION_SECTION_COLLECTIONS);
+        if (choice == 2) home_companion(COMPANION_SECTION_REWARDS);
+        if (choice == 3) home_companion(COMPANION_SECTION_VISITORS);
     }
     return HOME_NONE;
 }
@@ -7153,20 +7229,22 @@ void render_life(const tank_t *t, uint16_t *fb, int stride) {
     static const char *const titles[] = {"HOME", "FISH", "TANK", "COLLECTIONS"};
     static const char *const labels[4][6] = {
         {"FISH", "TANK", "ADVENTURES", "COLLECTIONS", "GAMES", "SETTINGS"},
-        {"CARE & BONDS", "FISH BANK", "WARDROBE", "NAMES & LOOKS", NULL, NULL},
-        {"SHOP & DECOR", "AQUARIUMS", "SAND & WATER", "CREATURE COLORS", NULL, NULL},
-        {"JOURNAL", "DISCOVERIES", NULL, NULL, NULL, NULL}
+        {"SAY HELLO", "FISH BANK", "WARDROBE", "NAMES & LOOKS", "FISH LIFE", "FAMILY & GENES"},
+        {"SHOP & DECOR", "AQUARIUMS", "SAND & WATER", "CREATURE COLORS", "TANK IDENTITY", "TANK JOURNAL"},
+        {"JOURNAL", "DISCOVERIES", "DISPLAY REWARDS", "VISITOR LOG", NULL, NULL}
     };
     draw_text(&c, 24, 18, 3, 0xffffff, titles[g_home_category]);
-    button(&c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, g_home_category ? "BACK" : "TANK", 2);
+    button(&c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
     for (int i = 0; i < 6; i++) if (labels[g_home_category][i])
         button(&c, 24 + (i % 2) * 212, 70 + (i / 2) * 80, 188, 62, 0x1c2f36, MSP_TEAL, labels[g_home_category][i], 2);
     draw_text(&c, 24, 332, 2, MSP_TEAL, "NO STREAKS. NO DEADLINES.");
 }
 
-enum { GAME_MENU, GAME_BUBBLES, GAME_MATCH, GAME_RESULT, GAME_SLALOM, GAME_CAST, GAME_FRENZY, GAME_REEF, GAME_RECORDS };
+enum { GAME_MENU, GAME_BUBBLES, GAME_MATCH, GAME_RESULT, GAME_SLALOM, GAME_CAST, GAME_FRENZY, GAME_REEF, GAME_RECORDS,
+       GAME_DEFENDER, GAME_RUNNER, GAME_BREAKER, GAME_TACTICS, GAME_ARCHITECT, GAME_EXPEDITION };
 static bool g_game_relaxed;
 static int game_index(int kind) {
+    if (kind >= GAME_DEFENDER && kind <= GAME_EXPEDITION) return 6 + kind - GAME_DEFENDER;
     return kind == GAME_BUBBLES ? 0 : kind == GAME_MATCH ? 1 :
            kind == GAME_SLALOM ? 2 : kind == GAME_CAST ? 3 : kind == GAME_FRENZY ? 4 : 5;
 }
@@ -7178,7 +7256,17 @@ static struct {
     bool claimed, save_failed;
     uint8_t cards[12], matched[12], pipes[9];
     struct { float x, y; bool live, gold; } bubbles[6];
+    int menu, hp, wave, remaining, selected, oxygen, keys, supplies, depth;
+    bool paused, help, launched;
+    float px, bx, by, vx, vy, cooldown, invincible;
+    uint8_t board[25], choices[3];
+    struct { float x, y, vx, vy; int hp; } foes[8], shots[8];
 } g_game;
+static int g_game_menu;
+static const int game_kinds[12] = {GAME_BUBBLES, GAME_MATCH, GAME_SLALOM, GAME_CAST, GAME_FRENZY, GAME_REEF,
+    GAME_DEFENDER, GAME_RUNNER, GAME_BREAKER, GAME_TACTICS, GAME_ARCHITECT, GAME_EXPEDITION};
+static const char *const game_names[12] = {"BUBBLE POP", "PEARL MATCH", "FISH SLALOM", "TREASURE CAST", "FEED FRENZY", "REEF PUZZLE",
+    "REEF DEFENDER", "CURRENT RUNNER", "PEARL BREAKER", "TIDE TACTICS", "REEF ARCHITECT", "DEEP EXPEDITION"};
 static uint32_t g_game_rng = 0x7a5b193du;
 static uint32_t game_random(void) {
     g_game_rng ^= g_game_rng << 13; g_game_rng ^= g_game_rng >> 17; g_game_rng ^= g_game_rng << 5;
@@ -7207,6 +7295,22 @@ static void game_start(int kind) {
         g_game.pipes[i] = (uint8_t)mask;
     }
     g_game.pipes[3] = 3; /* Closed inlet: a generated puzzle cannot start solved. */
+    g_game.hp = 5; g_game.px = 224; g_game.bx = 224; g_game.by = 270;
+    g_game.vx = 90; g_game.vy = -130; g_game.selected = 22;
+    g_game.oxygen = 20; g_game.keys = 1; g_game.supplies = 2;
+    g_game.help = kind >= GAME_DEFENDER;
+    if (kind == GAME_BREAKER) {
+        g_game.hp = 3;
+        for (int i = 0; i < 24; i++) g_game.board[i] = i < 6 ? 2 : 1;
+    } else if (kind == GAME_TACTICS) {
+        g_game.board[2] = g_game.board[10] = g_game.board[14] = 2;
+        g_game.board[6] = g_game.board[18] = 3;
+        g_game.board[0] = g_game.board[4] = g_game.board[12] = 4;
+    } else if (kind == GAME_ARCHITECT) {
+        g_game.board[6] = g_game.board[18] = 3;
+        g_game.selected = 1;
+    }
+    for (int i = 0; i < 3; i++) g_game.choices[i] = (uint8_t)((game_random() + i) % 5);
 }
 static void game_finish(void) {
     g_game.page = GAME_RESULT;
@@ -7214,10 +7318,104 @@ static void game_finish(void) {
                    g_game.kind == GAME_REEF ? 6 : g_game.kind == GAME_CAST ? g_game.score :
                    g_game.score / (g_game.kind == GAME_BUBBLES ? 3 : 2);
     if (g_game.reward > 10) g_game.reward = 10;
+    if (g_game.kind >= GAME_DEFENDER) {
+        g_game.reward = g_game.score / 4;
+        if (g_game.reward > 10) g_game.reward = 10;
+    }
+}
+static int game_distance(int a, int b) {
+    return abs(a % 5 - b % 5) + abs(a / 5 - b / 5);
+}
+static void game_architect_score(void) {
+    int score = 0;
+    for (int i = 0; i < 25; i++) if (g_game.board[i] == 1 || g_game.board[i] == 2) {
+        bool water = false, partner = false;
+        for (int j = 0; j < 25; j++) if (game_distance(i, j) == 1) {
+            if (!g_game.board[j]) water = true;
+            if (g_game.board[j] == 3 - g_game.board[i]) partner = true;
+        }
+        score += 1 + water + partner;
+    }
+    g_game.score = score;
+}
+static void game_extra_tick(float dt) {
+    if (g_game.cooldown > 0) g_game.cooldown -= dt;
+    if (g_game.invincible > 0) g_game.invincible -= dt;
+    float speed = g_game_relaxed ? 0.65f : 1;
+    if (g_game.page == GAME_DEFENDER) {
+        bool live = false;
+        for (int i = 0; i < 8; i++) if (g_game.foes[i].hp) live = true;
+        if (!live) {
+            if (g_game.wave == 5) { game_finish(); return; }
+            g_game.wave++;
+            for (int i = 0; i < g_game.wave + 2; i++) {
+                g_game.foes[i].x = 48 + i * 350.0f / (g_game.wave + 1);
+                g_game.foes[i].y = 112 + i % 2 * 20; g_game.foes[i].hp = g_game.wave >= 3 ? 2 : 1;
+            }
+        }
+        for (int i = 0; i < 8; i++) {
+            if (g_game.foes[i].hp) {
+                g_game.foes[i].y += dt * (12 + g_game.wave * 4) * speed;
+                if (g_game.foes[i].y >= 282) { g_game.foes[i].hp = 0; if (--g_game.hp <= 0) { game_finish(); return; } }
+            }
+            if (g_game.shots[i].hp) {
+                g_game.shots[i].x += g_game.shots[i].vx * dt;
+                g_game.shots[i].y += g_game.shots[i].vy * dt;
+                if (g_game.shots[i].y < 92 || g_game.shots[i].x < 24 || g_game.shots[i].x > 424) g_game.shots[i].hp = 0;
+                for (int j = 0; j < 8 && g_game.shots[i].hp; j++) if (g_game.foes[j].hp &&
+                    fabsf(g_game.foes[j].x - g_game.shots[i].x) < 19 &&
+                    fabsf(g_game.foes[j].y - g_game.shots[i].y) < 22) {
+                    g_game.shots[i].hp = 0;
+                    if (--g_game.foes[j].hp == 0) g_game.score += 2;
+                }
+            }
+        }
+    } else if (g_game.page == GAME_RUNNER) {
+        g_game.travel += dt * (72 + g_game.rounds * 2) * speed;
+        if (g_game.travel >= 180) {
+            if (g_game.lane != g_game.target && g_game.lane != (g_game.target + 1) % 5) g_game.hp--;
+            else g_game.score += g_game.lane == g_game.target ? 3 : 1;
+            g_game.rounds++; g_game.travel = 0;
+            int shift = (int)(game_random() % 3) - 1;
+            g_game.target = (g_game.target + shift + 5) % 5;
+            if (g_game.hp <= 0 || g_game.rounds == 18) game_finish();
+        }
+    } else if (g_game.page == GAME_BREAKER && g_game.launched) {
+        for (int step = 0; step < 8; step++) {
+            float ox = g_game.bx, oy = g_game.by;
+            g_game.bx += g_game.vx * dt * speed / 8; g_game.by += g_game.vy * dt * speed / 8;
+            if (g_game.bx < 30) { g_game.bx = 30; g_game.vx = fabsf(g_game.vx); }
+            if (g_game.bx > 418) { g_game.bx = 418; g_game.vx = -fabsf(g_game.vx); }
+            if (g_game.by < 102) { g_game.by = 102; g_game.vy = fabsf(g_game.vy); }
+            if (g_game.vy > 0 && oy <= 278 && g_game.by >= 278 && fabsf(g_game.bx - g_game.px) < 49) {
+                g_game.by = 277; g_game.vy = -fabsf(g_game.vy);
+                g_game.vx = (g_game.bx - g_game.px) * 3;
+            }
+            for (int i = 0; i < 24; i++) if (g_game.board[i]) {
+                int x = 30 + i % 6 * 65, y = 108 + i / 6 * 24;
+                if (g_game.bx > x - 5 && g_game.bx < x + 63 && g_game.by > y - 5 && g_game.by < y + 23) {
+                    g_game.board[i]--; g_game.score++;
+                    if (ox <= x - 5 || ox >= x + 63) g_game.vx = -g_game.vx;
+                    else g_game.vy = -g_game.vy;
+                    g_game.bx = ox; g_game.by = oy; break;
+                }
+            }
+            bool live = false;
+            for (int i = 0; i < 24; i++) if (g_game.board[i]) live = true;
+            if (!live) { game_finish(); return; }
+            if (g_game.by > 316) {
+                g_game.launched = false; g_game.by = 266; g_game.bx = g_game.px; g_game.vy = -130;
+                if (--g_game.hp <= 0) game_finish();
+                return;
+            }
+        }
+    }
 }
 void render_games_tick(float dt) {
     if (!isfinite(dt) || dt <= 0) return;
     if (dt > 0.25f) dt = 0.25f;
+    if (g_game.paused || g_game.help) return;
+    if (g_game.page >= GAME_DEFENDER) { game_extra_tick(dt); return; }
     if (g_game.page == GAME_BUBBLES) {
         if (!g_game_relaxed) g_game.left -= dt;
         if (g_game.left <= 0) { g_game.left = 0; game_finish(); return; }
@@ -7267,6 +7465,86 @@ static bool game_reef_connected(void) {
     }
     return wet[5] && (g_game.pipes[5] & 2);
 }
+static void game_extra_tap(float x, float y) {
+    if (g_game.page == GAME_DEFENDER && y >= 96 && y < 294 && x >= 24 && x < 424 && g_game.cooldown <= 0) {
+        for (int i = 0; i < 8; i++) if (!g_game.shots[i].hp) {
+            float dx = x - 224, dy = y - 304, length = sqrtf(dx * dx + dy * dy);
+            g_game.shots[i].x = 224; g_game.shots[i].y = 300;
+            g_game.shots[i].vx = dx / length * 330; g_game.shots[i].vy = dy / length * 330;
+            g_game.shots[i].hp = 1; g_game.cooldown = 0.22f; break;
+        }
+    } else if (g_game.page == GAME_RUNNER && x >= 24 && x < 424 && y >= 100 && y < 326) {
+        g_game.lane = (int)(x - 24) / 80;
+    } else if (g_game.page == GAME_BREAKER && x >= 280 && x < 424 && y >= 54 && y < 86) {
+        game_finish();
+    } else if (g_game.page == GAME_BREAKER && x >= 24 && x < 424 && y >= 200 && y < 328) {
+        g_game.px = fmaxf(70, fminf(378, x));
+        if (!g_game.launched) { g_game.bx = g_game.px; g_game.launched = true; }
+    } else if (g_game.page == GAME_TACTICS) {
+        int cell = -1;
+        if (x >= 99 && x < 349 && y >= 92 && y < 292) cell = (int)(y - 92) / 40 * 5 + (int)(x - 99) / 50;
+        bool wait = x >= 24 && x < 424 && y >= 298 && y < 328;
+        if (!wait && (cell < 0 || game_distance(cell, g_game.selected) != 1 || g_game.board[cell] == 3)) return;
+        g_game.moves++;
+        if (wait) { if (g_game.hp < 5) g_game.hp++; }
+        else if (g_game.board[cell] == 2) { g_game.board[cell] = 0; g_game.score += 4; }
+        else {
+            g_game.selected = cell;
+            if (g_game.board[cell] == 4) { g_game.board[cell] = 0; g_game.pairs++; g_game.score += 6; }
+        }
+        bool moved[25] = {false};
+        for (int i = 0; i < 25; i++) if (g_game.board[i] == 2 && !moved[i]) {
+            if (game_distance(i, g_game.selected) == 1) { if (!wait) g_game.hp--; }
+            else {
+                int best = i;
+                for (int j = 0; j < 25; j++) if (!g_game.board[j] && j != g_game.selected &&
+                    game_distance(i, j) == 1 && game_distance(j, g_game.selected) < game_distance(best, g_game.selected)) best = j;
+                if (best != i) { g_game.board[i] = 0; g_game.board[best] = 2; moved[best] = true; }
+            }
+        }
+        if (g_game.pairs == 3) { g_game.score += g_game.hp * 2; game_finish(); }
+        else if (g_game.hp <= 0 || g_game.moves >= 22) game_finish();
+    } else if (g_game.page == GAME_ARCHITECT) {
+        if (y >= 298 && y < 328) {
+            if (x >= 24 && x < 150) g_game.selected = 1;
+            else if (x >= 160 && x < 286) g_game.selected = 2;
+            else if (x >= 296 && x < 424 && g_game.moves == 12) { game_architect_score(); game_finish(); }
+        } else if (x >= 99 && x < 349 && y >= 92 && y < 292) {
+            int i = (int)(y - 92) / 40 * 5 + (int)(x - 99) / 50;
+            if (g_game.board[i] == 3) return;
+            if (g_game.board[i]) { g_game.board[i] = 0; g_game.moves--; }
+            else if (g_game.moves < 12) {
+                int count = 0;
+                for (int j = 0; j < 25; j++) if (g_game.board[j] == g_game.selected) count++;
+                if (count >= 6) return;
+                g_game.board[i] = (uint8_t)g_game.selected; g_game.moves++;
+            }
+            game_architect_score();
+        }
+    } else if (g_game.page == GAME_EXPEDITION) {
+        if (x >= 24 && x < 424 && y >= 298 && y < 328) {
+            if (g_game.depth) { g_game.score += g_game.hp; game_finish(); }
+        } else if (x >= 24 && x < 424 && y >= 128 && y < 282) {
+            int i = (int)(x - 24) / 136;
+            if (i > 2 || x >= 24 + i * 136 + 128) return;
+            int route = g_game.choices[i];
+            if (route == 3 && !g_game.keys) return;
+            if (route == 4 && !g_game.supplies) return;
+            g_game.depth++; g_game.oxygen -= route == 2 ? 4 : 2;
+            if (route == 0) { g_game.supplies++; g_game.score += 2; }
+            if (route == 1) { g_game.keys++; g_game.score += 2; }
+            if (route == 2) { g_game.hp -= 2; g_game.score += 9; }
+            if (route == 3) { g_game.keys--; g_game.score += 8; }
+            if (route == 4) { g_game.supplies--; g_game.oxygen += 5; g_game.hp = g_game.hp < 5 ? g_game.hp + 1 : 5; }
+            if (g_game.hp <= 0 || g_game.oxygen <= 0) { g_game.score /= 2; game_finish(); }
+            else if (g_game.depth == 8) { g_game.score += 8 + g_game.hp; game_finish(); }
+            else {
+                for (int j = 0; j < 3; j++) g_game.choices[j] = (uint8_t)((game_random() + j) % 5);
+                g_game.choices[0] = (uint8_t)(game_random() % 3); /* Always one unlocked route. */
+            }
+        }
+    }
+}
 bool render_games_tap(tank_t *t, float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
     if (x >= 326 && x < 438 && y >= 8 && y < 44) {
@@ -7276,19 +7554,29 @@ bool render_games_tap(tank_t *t, float x, float y) {
         }
         render_games_open(); return false;
     }
+    if (g_game.page != GAME_MENU && g_game.page != GAME_RECORDS && g_game.page != GAME_RESULT) {
+        if (x >= 244 && x < 320 && y >= 8 && y < 44) { g_game.paused = !g_game.paused; return false; }
+        if (x >= 164 && x < 236 && y >= 8 && y < 44) { g_game.help = !g_game.help; return false; }
+        if (g_game.help && x >= 32 && x < 416 && y >= 280 && y < 328) { g_game.help = false; return false; }
+        if (g_game.help || g_game.paused) return false;
+        if (g_game.page >= GAME_DEFENDER) { game_extra_tap(x, y); return false; }
+    }
     if (g_game.page == GAME_MENU) {
+        if (x >= 280 && x < 424 && y >= 60 && y < 102) { g_game_menu ^= 1; return false; }
         if (y >= 316 && y < 352) {
             if (x >= 24 && x < 220) g_game_relaxed = !g_game_relaxed;
             else if (x >= 228 && x < 424) g_game.page = GAME_RECORDS;
             return false;
         }
-        if (x >= 32 && x < 428 && y >= 60 && y < 102 && t->n_fish)
+        if (x >= 32 && x < 272 && y >= 60 && y < 102 && t->n_fish)
             g_game.fish = (g_game.fish + 1) % t->n_fish;
         if (x >= 24 && x < 424 && y >= 116 && y < 308) {
             int col = x >= 228, row = (int)(y - 116) / 64;
-            static const int kinds[] = {GAME_BUBBLES, GAME_MATCH, GAME_SLALOM, GAME_CAST, GAME_FRENZY, GAME_REEF};
-            if (x < (col ? 424 : 220) && y < 116 + row * 64 + 56) game_start(kinds[row * 2 + col]);
+            if (x >= (col ? 228 : 24) && x < (col ? 424 : 220) && y < 116 + row * 64 + 56)
+                game_start(game_kinds[g_game_menu * 6 + row * 2 + col]);
         }
+    } else if (g_game.page == GAME_RECORDS && x >= 280 && x < 424 && y >= 54 && y < 86) {
+        g_game_menu ^= 1;
     } else if (g_game_relaxed && (g_game.page == GAME_BUBBLES || g_game.page == GAME_FRENZY) &&
                x >= 280 && x < 424 && y >= 54 && y < 88) {
         game_finish();
@@ -7361,34 +7649,119 @@ bool render_games_tap(tank_t *t, float x, float y) {
     }
     return false;
 }
+static void game_extra_render(ctx_t *c) {
+    char text[80];
+    if (g_game.page == GAME_DEFENDER) {
+        snprintf(text, sizeof text, "WAVE %d/5  REEF %d  SCORE %d", g_game.wave, g_game.hp, g_game.score);
+        draw_text(c, 24, 88, 2, MSP_TEAL, text);
+        for (int i = 0; i < 8; i++) {
+            if (g_game.foes[i].hp) {
+                int x = (int)g_game.foes[i].x, y = (int)g_game.foes[i].y;
+                rect_fill(c, x - 14, y - 9, 28, 18, g_game.foes[i].hp > 1 ? 0xff8173 : 0xffdc73);
+                rect_fill(c, x - 7, y - 4, 4, 4, MSP_INK);
+            }
+            if (g_game.shots[i].hp) ring(c, (int)g_game.shots[i].x, (int)g_game.shots[i].y, 4, 0x73e5ff);
+        }
+        rect_fill(c, 32, 300, 384, 8, 0x89ffb1); ring(c, 224, 300, 14, MSP_TEAL);
+        draw_text(c, 60, 316, 2, MSP_TEAL, "TAP THE WATER TO AIM AND FIRE");
+    } else if (g_game.page == GAME_RUNNER) {
+        snprintf(text, sizeof text, "GATES %d/18  HULL %d  SCORE %d", g_game.rounds, g_game.hp, g_game.score);
+        draw_text(c, 24, 88, 2, MSP_TEAL, text);
+        for (int i = 0; i < 5; i++) {
+            int x = 24 + i * 80;
+            rect_fill(c, x, 110, 76, 180, 0x102831);
+            int y = 110 + (int)g_game.travel;
+            if (i != g_game.target && i != (g_game.target + 1) % 5) rect_fill(c, x + 5, y, 66, 14, 0x8b6570);
+            else if (i == g_game.target) ring(c, x + 38, y + 6, 7, 0xffdc73);
+        }
+        rect_fill(c, 45 + g_game.lane * 80, 278, 32, 12, MSP_TEAL);
+        draw_text(c, 48, 308, 2, MSP_TEAL, "TAP A LANE - GOLD IS 3 POINTS");
+    } else if (g_game.page == GAME_BREAKER) {
+        button(c, 280, 54, 144, 32, 0x1c2f36, MSP_TEAL, "BANK SCORE", 1);
+        snprintf(text, sizeof text, "BALLS %d  SCORE %d", g_game.hp, g_game.score);
+        draw_text(c, 24, 88, 2, MSP_TEAL, text);
+        for (int i = 0; i < 24; i++) if (g_game.board[i])
+            rect_fill(c, 30 + i % 6 * 65, 108 + i / 6 * 24, 58, 18, g_game.board[i] == 2 ? 0xffdc73 : 0x73e5ff);
+        rect_fill(c, (int)g_game.px - 44, 284, 88, 8, MSP_TEAL);
+        ring(c, (int)g_game.bx, (int)g_game.by, 5, 0xffffff);
+        draw_text(c, 40, 310, 2, MSP_TEAL, g_game.launched ? "TAP BELOW BRICKS TO MOVE PADDLE" : "TAP BELOW BRICKS TO LAUNCH");
+    } else if (g_game.page == GAME_TACTICS || g_game.page == GAME_ARCHITECT) {
+        if (g_game.page == GAME_TACTICS) snprintf(text, sizeof text, "HP %d  TURN %d/22  FLAGS %d/3", g_game.hp, g_game.moves, g_game.pairs);
+        else snprintf(text, sizeof text, "PLACED %d/12  HABITAT SCORE %d", g_game.moves, g_game.score);
+        draw_text(c, 24, 66, 2, MSP_TEAL, text);
+        for (int i = 0; i < 25; i++) {
+            int x = 99 + i % 5 * 50, y = 92 + i / 5 * 40, tile = g_game.board[i];
+            uint32_t color = tile == 3 ? 0x785b6a : tile == 4 ? 0xffdc73 :
+                tile == 2 ? (g_game.page == GAME_TACTICS ? 0xff8173 : 0x89ffb1) : tile == 1 ? 0xffa3cf : 0x102831;
+            rect_fill(c, x, y, 46, 36, color);
+            if (g_game.page == GAME_TACTICS && tile == 2 && game_distance(i, g_game.selected) == 1)
+                rect_edge(c, x, y, 46, 36, 0xffdc73);
+            if (g_game.page == GAME_TACTICS && i == g_game.selected) {
+                ring(c, x + 23, y + 18, 12, MSP_TEAL); draw_text(c, x + 18, y + 10, 2, 0xffffff, "Y");
+            }
+        }
+        if (g_game.page == GAME_TACTICS) button(c, 24, 298, 400, 30, 0x1c2f36, MSP_TEAL, "GUARD: BLOCK ATTACKS / HEAL 1", 2);
+        else {
+            button(c, 24, 298, 126, 30, 0x1c2f36, g_game.selected == 1 ? 0xffdc73 : MSP_TEAL, "CORAL", 2);
+            button(c, 160, 298, 126, 30, 0x1c2f36, g_game.selected == 2 ? 0xffdc73 : MSP_TEAL, "GRASS", 2);
+            button(c, 296, 298, 128, 30, 0x1c2f36, MSP_TEAL, "FINISH", 2);
+        }
+    } else {
+        static const char *const routes[] = {"SUPPLIES", "KEY CACHE", "DARK TUNNEL", "LOCKED RUIN", "REST REEF"};
+        static const char *const costs[] = {"O2 -2", "O2 -2", "O2 -4 HP -2", "O2 -2 KEY -1", "FOOD -1 O2 +3"};
+        static const char *const loot[] = {"+FOOD / 2PT", "+KEY / 2PT", "+9 POINTS", "+8 POINTS", "+1 HP"};
+        snprintf(text, sizeof text, "DEPTH %d/8  O2 %d  HP %d", g_game.depth, g_game.oxygen, g_game.hp);
+        draw_text(c, 24, 88, 2, MSP_TEAL, text);
+        snprintf(text, sizeof text, "KEYS %d  FOOD %d  LOOT %d", g_game.keys, g_game.supplies, g_game.score);
+        draw_text(c, 24, 110, 2, MSP_TEAL, text);
+        for (int i = 0; i < 3; i++) {
+            int route = g_game.choices[i], x = 24 + i * 136;
+            bool locked = (route == 3 && !g_game.keys) || (route == 4 && !g_game.supplies);
+            rect_fill(c, x, 138, 128, 140, 0x1c2f36);
+            draw_text(c, x + 5, 158, 1, locked ? 0x8b6570 : 0xffdc73, routes[route]);
+            draw_text(c, x + 5, 196, 1, MSP_TEAL, costs[route]);
+            draw_text(c, x + 5, 230, 1, MSP_TEAL, locked ? "NEEDS ITEM" : loot[route]);
+        }
+        button(c, 24, 298, 400, 30, 0x1c2f36, MSP_TEAL, "RETURN: BANK LOOT SAFELY", 2);
+    }
+}
 void render_games(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
     rect_fill(&c, 0, 0, PAGE_W, PAGE_H, MSP_INK);
-    static const char *const names[] = {"MINI GAMES", "BUBBLE POP", "PEARL MATCH", "", "FISH SLALOM", "TREASURE CAST", "FEED FRENZY", "REEF PUZZLE"};
-    const char *title = g_game.page == GAME_RECORDS ? "GAME RECORDS" : names[g_game.page == GAME_MENU ? GAME_MENU : g_game.kind];
-    draw_text(&c, 24, 14, 2, 0xffffff, title);
-    button(&c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, g_game.page == GAME_MENU ? "CLOSE" : "BACK", 2);
+    const char *title = g_game.page == GAME_RECORDS ? "GAME RECORDS" : g_game.page == GAME_MENU ? "MINI GAMES" : game_names[game_index(g_game.kind)];
+    draw_text(&c, 24, 14, g_game.page == GAME_MENU || g_game.page == GAME_RECORDS ? 2 : 1, 0xffffff, title);
+    button(&c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
     char text[64];
     if (g_game.page == GAME_MENU) {
         snprintf(text, sizeof text, "PLAY AS: %s >", t->n_fish ? t->fish[g_game.fish % t->n_fish].name : "GUEST");
-        button(&c, 32, 60, 396, 42, 0x1c2f36, MSP_TEAL, text, 2);
-        static const int kinds[] = {GAME_BUBBLES, GAME_MATCH, GAME_SLALOM, GAME_CAST, GAME_FRENZY, GAME_REEF};
+        button(&c, 32, 60, 240, 42, 0x1c2f36, MSP_TEAL, text, 1);
+        button(&c, 280, 60, 144, 42, 0x1c2f36, MSP_TEAL, g_game_menu ? "< PAGE 1" : "PAGE 2 >", 2);
         for (int i = 0; i < 6; i++)
-            button(&c, 24 + i % 2 * 204, 116 + i / 2 * 64, 196, 56, 0x1c2f36, MSP_TEAL, names[kinds[i]], 2);
+            button(&c, 24 + i % 2 * 204, 116 + i / 2 * 64, 196, 56, 0x1c2f36, MSP_TEAL, game_names[g_game_menu * 6 + i], g_game_menu ? 1 : 2);
         button(&c, 24, 314, 196, 32, 0x1c2f36, MSP_TEAL, g_game_relaxed ? "RELAXED" : "CHALLENGE", 2);
         button(&c, 228, 314, 196, 32, 0x1c2f36, MSP_TEAL, "RECORDS", 2);
     } else if (g_game.page == GAME_RECORDS) {
+        button(&c, 280, 54, 144, 32, 0x1c2f36, MSP_TEAL, g_game_menu ? "< PAGE 1" : "PAGE 2 >", 2);
         static const char *const short_names[] = {"BUBBLES", "MATCH", "SLALOM", "CAST", "FRENZY", "REEF"};
         static const char *const medals[] = {"--", "BRONZE", "SILVER", "GOLD"};
         static const char *const targets[] = {"24 POINTS", "16 MOVES", "24 POINTS", "10 POINTS", "40 POINTS", "18 MOVES"};
         for (int i = 0; i < 6; i++) {
-            int y = 64 + i * 40;
+            int y = 94 + i * 38;
+            if (g_game_menu) {
+                snprintf(text, sizeof text, "%s  %s", game_names[6 + i], medals[t->games.medals[i]]);
+                draw_text(&c, 24, y, 1, MSP_TEAL, text);
+                snprintf(text, sizeof text, "BEST %u   ROUNDS %u", (unsigned)t->games.best[i], (unsigned)t->games.rounds[i]);
+                draw_text(&c, 36, y + 14, 2, 0xffffff, text);
+                continue;
+            }
             snprintf(text, sizeof text, "%s%s %s  BEST %u", t->companion.featured == i ? "> " : "",
                      short_names[i], medals[t->companion.game_medals[i]], (unsigned)t->companion.game_best[i]);
             draw_text(&c, 24, y, 2, MSP_TEAL, text);
             snprintf(text, sizeof text, "GOLD: %s%s", targets[i], t->companion.game_challenges & (1u << i) ? "  EARNED" : "");
             draw_text(&c, 36, y + 18, 2, 0xffffff, text);
         }
+    } else if (g_game.page >= GAME_DEFENDER) {
+        game_extra_render(&c);
     } else if (g_game.page == GAME_BUBBLES) {
         if (g_game_relaxed) snprintf(text, sizeof text, "SCORE %d", g_game.score);
         else snprintf(text, sizeof text, "TIME %02d   SCORE %d", (int)ceilf(g_game.left), g_game.score);
@@ -7485,7 +7858,32 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
         snprintf(text, sizeof text, "ALSO %d JOURNAL XP", g_game.reward * 3);
         draw_text(&c, 32, 248, 2, MSP_TEAL, text);
     }
-    if (g_game_relaxed && (g_game.page == GAME_BUBBLES || g_game.page == GAME_FRENZY))
+    if (g_game.page != GAME_MENU && g_game.page != GAME_RECORDS && g_game.page != GAME_RESULT) {
+        button(&c, 244, 8, 76, 36, 0x1c2f36, MSP_TEAL, g_game.paused ? "PLAY" : "PAUSE", 1);
+        button(&c, 164, 8, 72, 36, 0x1c2f36, MSP_TEAL, "HELP", 1);
+        if (g_game.help || g_game.paused) {
+            static const char *const help[12][5] = {
+                {"Tap rising bubbles.", "Gold bubbles score three.", "Challenge lasts 30 seconds.", "Relaxed: FINISH when ready.", "Points earn up to 10 dollars."},
+                {"Tap two cards to reveal.", "Match all six pearl pairs.", "Fewer moves earn medals.", "Mismatch hides after a moment.", "No timer."},
+                {"Use LEFT / RIGHT to swim.", "Follow the gold open gate.", "Twelve gates per round.", "Each clear gate scores two.", "Relaxed gates move slower."},
+                {"Tap CAST over the treasure.", "Watch the moving hook.", "Five casts per round.", "Each accurate cast scores two.", "Relaxed hook moves slower."},
+                {"Tap the requested food.", "Wrong choices lose a point.", "Challenge lasts 30 seconds.", "Relaxed: FINISH when ready.", "No real fish are fed."},
+                {"Tap pipes to rotate them.", "Connect IN on left to OUT.", "Both pipe ends must meet.", "Fewer moves earn medals.", "No timer."},
+                {"Tap water to aim and fire.", "Defend the reef for 5 waves.", "Armored targets take 2 hits.", "Five breaches end the round.", "Each target scores 2."},
+                {"Tap any of the five lanes.", "Avoid the scrolling rocks.", "Gold lane: 3, other gap: 1.", "Survive 18 gates; 5 hull.", "Relaxed scrolls more slowly."},
+                {"Tap below bricks to launch.", "Tap left/right to move paddle.", "Gold bricks need two hits.", "Paddle edges angle the ball.", "24 bricks / 3 balls. BANK ends."},
+                {"Tap a neighboring grid cell.", "Red: attack. Gold: capture.", "Enemies move after your turn.", "Gold outline warns of attack.", "GUARD blocks/heals. 22 turns."},
+                {"Place 6 coral and 6 grass.", "Choose species, then tap cell.", "Tap planted cells to remove.", "+1 per tile, +1 by open water,", "+1 by other species. FINISH."},
+                {"Choose one of three routes.", "Costs and loot shown on cards.", "Keys open ruins; food heals.", "RETURN banks loot plus hull.", "8 depths; no air/hull halves loot."}
+            };
+            rect_fill(&c, 24, 94, 400, 234, MSP_INK);
+            rect_edge(&c, 24, 94, 400, 234, MSP_TEAL);
+            draw_text(&c, 40, 108, 2, 0xffdc73, g_game.paused ? "PAUSED" : "HOW TO PLAY");
+            for (int i = 0; i < 5; i++) draw_text(&c, 40, 148 + i * 24, 1, MSP_TEAL, help[game_index(g_game.kind)][i]);
+            button(&c, 32, 280, 384, 44, 0x1c2f36, MSP_TEAL, g_game.paused ? "USE PLAY ABOVE TO RESUME" : "PLAY", 1);
+        }
+    }
+    if (!g_game.help && !g_game.paused && g_game_relaxed && (g_game.page == GAME_BUBBLES || g_game.page == GAME_FRENZY))
         button(&c, 280, 54, 144, 34, 0x1c2f36, MSP_TEAL, "FINISH", 2);
     if (g_game.page == GAME_MENU) {
         static const char *const featured[] = {"BUBBLES", "MATCH", "SLALOM", "CAST", "FRENZY", "REEF"};
@@ -7505,6 +7903,15 @@ static int set_segment(float x, int n) {
 int render_settings_tap(float x, float y, int *value) {
     x = render_page_x(x); y = render_page_y(y);
     if (g_clock_settings) {
+        if (g_clock_effects) {
+            if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_EFFECTS;
+            if (x >= 32 && x < 416) {
+                if (y >= 76 && y < 116) return SETTINGS_SPARKLES;
+                if (y >= 222 && y < 262) return SETTINGS_CAPTIONS;
+                if (y >= 282 && y < 322) return SET_TAP_CLOCK_SHOW;
+            }
+            return SET_TAP_NONE;
+        }
         if (g_clock_style) {
             if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_STYLE;
             if (x >= 32 && x < 428) {
@@ -7520,6 +7927,7 @@ int render_settings_tap(float x, float y, int *value) {
         if (x >= 140 && x < 224 && y >= 8 && y < 44) return CLOCK_HIT_STYLE;
         if (x >= 230 && x < 318 && y >= 8 && y < 44) return CLOCK_HIT_WEATHER;
         if (x >= 32 && x < 222 && y >= 300 && y < 336) return SET_TAP_CLOCK_SHOW;
+        if (x >= 238 && x < 428 && y >= 300 && y < 336) return CLOCK_HIT_EFFECTS;
         if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_PAGE;
         if (x >= 32 && x < 428) {
             if (y >= 52 && y < 86) return CLOCK_HIT_THEME;
@@ -7565,6 +7973,7 @@ int render_settings_tap(float x, float y, int *value) {
     }
     if (g_settings_section == 5) {
         int two = set_segment(x, 2);
+        if (x >= 32 && x < 416 && y >= 234 && y < 264) return SETTINGS_COMFORT;
         if (y >= SET_SEG_Y(SET_ROW3_Y) - 4 && y < SET_SEG_Y(SET_ROW4_Y) - 4 &&
             two >= 0 && x < SET_SEG_X + 2 * SET_SEG_DX) { *value = two == 0; return SET_TAP_FEED; }
         return SET_TAP_NONE;
@@ -7614,20 +8023,32 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
                 int item = h - SETTINGS_NAV;
                 if (item == 1) g_clock_settings = true;
                 else if (item == 2) r = SET_TAP_WIFI;
-                else g_settings_section = item + 1;
+                else {
+                    g_settings_section = item + 1;
+                    if (item == 0) render_backup_status("ROOM LIGHT DIMMING / BACK LED GLOW", false);
+                    else if (item == 3) render_backup_status("JSON BACKUP / RESTORE FROM SD", false);
+                    else if (item == 4) render_backup_status("OPTIONS SAVE WHEN TAPPED", false);
+                }
             } else if (h == SETTINGS_BACK) {
                 g_settings_section = 0;
             } else if (h == SETTINGS_SCALE) {
                 render_backup_status(companion_compact(t, !t->companion.display_compact) ?
                     "SCALE SAVED" : "SAVE FAILED - SCALE UNCHANGED", false);
+            } else if (h == SETTINGS_COMFORT || h == SETTINGS_SPARKLES || h == SETTINGS_CAPTIONS) {
+                bool ok = companion_set_options(t, h == SETTINGS_COMFORT ? !t->companion.cozy : t->companion.cozy,
+                    h == SETTINGS_CAPTIONS ? !t->companion.captions : t->companion.captions,
+                    h == SETTINGS_SPARKLES ? !t->companion.lively : t->companion.lively);
+                render_backup_status(ok ? "OPTION SAVED" : "SAVE FAILED - OPTION UNCHANGED", false);
             } else if (h == CLOCK_HIT_PAGE) {
                 g_clock_settings = !g_clock_settings;
-                g_clock_style = false;
+                g_clock_style = g_clock_effects = false;
                 render_backup_status(g_clock_settings ? (g_clock_synchronized ? "NTP READY - CHANGES SAVE AUTO" : "SYNC NEEDED - SET UP WI-FI") : "JSON BACKUP / RESTORE FROM SD", false);
             } else if (h == CLOCK_HIT_STEP) {
                 g_clock_step = (g_clock_step + 1) % 3;
             } else if (h == CLOCK_HIT_STYLE) {
                 g_clock_style = !g_clock_style;
+            } else if (h == CLOCK_HIT_EFFECTS) {
+                g_clock_effects = !g_clock_effects;
             } else if (h == CLOCK_HIT_WEATHER) {
                 weather_open(); g_clock_weather = true;
             } else if (h >= CLOCK_HIT_THEME && h <= CLOCK_HIT_SECONDARY) {
@@ -7657,7 +8078,7 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
                 } else render_backup_status("CLOCK SAVED FOR THIS TANK", false);
             } else if (h == SET_TAP_CLOCK_SHOW) {
                 if (t->aquariums.clock_theme == CLOCK_OFF) render_backup_status("CHOOSE A CLOCK THEME FIRST", false);
-                else { g_clock_settings = g_clock_style = false; r = h; }
+                else { g_clock_settings = g_clock_style = g_clock_effects = false; r = h; }
             } else if (h == SET_TAP_FEED) {                    /* ON (1, the default) / OFF */
                 if ((v == 0) != t->autofeed_off) { t->autofeed_off = v == 0; progression_settings_changed(); }
                 r = SET_TAP_FEED; *value = v;

@@ -382,7 +382,8 @@ static void settings_touch(tank_t *t, float x, float y, bool down) {
     else if (r == SET_TAP_WIPE) touch_port_confirm_open();
     else if (r == SET_TAP_UPDATES) { s_set = false; s_upd = true; s_back = true; sd_port_update_reset(); ESP_LOGI(TAG, "SD updates page up"); }
     else if (r == SET_TAP_BRIGHT || r == SET_TAP_BRIGHT_PREVIEW || r == SET_TAP_LIGHT || r == SET_TAP_IDLE || r == SET_TAP_FEED
-             || r == SET_TAP_BACKUP || r == SET_TAP_RESTORE || r == SET_TAP_SAND || r == SET_TAP_WATER || r == SET_TAP_WIFI) { s_set_what = r; s_set_val = v; }
+             || r == SET_TAP_BACKUP || r == SET_TAP_RESTORE || r == SET_TAP_SAND || r == SET_TAP_WATER || r == SET_TAP_WIFI
+             || r == SET_TAP_ROOM || r == SET_TAP_LED || r == SET_TAP_AUTO_BACKUP || r == SET_TAP_PHOTO) { s_set_what = r; s_set_val = v; }
 }
 void touch_port_life_tap(tank_t *t, float x, float y) {
     int action = render_life_tap(t, x, y);

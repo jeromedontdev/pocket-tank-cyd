@@ -120,6 +120,8 @@ static void replace_number(cJSON *object, const char *key, double value) {
     if (!strcmp(key, "schema") && value < 6) cJSON_DeleteItemFromObjectCaseSensitive(object, "companion");
     if (!strcmp(key, "schema") && value < 11) cJSON_DeleteItemFromObjectCaseSensitive(object, "polish");
     if (!strcmp(key, "schema") && value < 12) cJSON_DeleteItemFromObjectCaseSensitive(object, "story");
+    if (!strcmp(key, "schema") && value < 13) cJSON_DeleteItemFromObjectCaseSensitive(object, "games");
+    if (!strcmp(key, "schema") && value < 14) cJSON_DeleteItemFromObjectCaseSensitive(object, "rpg");
     if (!strcmp(key, "schema") && value < 10)
         cJSON_DeleteItemFromObjectCaseSensitive(cJSON_GetObjectItemCaseSensitive(object, "companion"), "display_compact");
 }
@@ -1142,7 +1144,16 @@ static void test_companion(void) {
     tank_t t, loaded; saved_size = 0;
     tank_init(&t, 75); boot_enlarged(&t); progression_setup_done(&t);
     assert(t.companion.cozy && companion_captions(&t) && !companion_lively(&t));
-    { tank_t fresh; tank_init(&fresh, 74); assert(!companion_lively(&fresh)); companion_init(&fresh); assert(!companion_lively(&fresh)); }
+    {
+        tank_t fresh;
+        game_records_t empty = {0};
+        memset(&fresh, 0xa5, sizeof fresh);
+        tank_init(&fresh, 74);
+        assert(!companion_lively(&fresh) && !memcmp(&fresh.games, &empty, sizeof empty));
+        memset(&fresh.games, 0xa5, sizeof fresh.games);
+        companion_init(&fresh);
+        assert(!companion_lively(&fresh) && !memcmp(&fresh.games, &empty, sizeof empty));
+    }
     int meals = t.player_feedings, eaten = t.fish[0].eaten_player;
     float trust = t.fish[0].trust;
     t.autofeed_off = true; t.fish[0].hunger = 9; t.fish[0].energy = 0;
@@ -1202,13 +1213,28 @@ static void test_companion(void) {
                          (1u << GOAL_REST) | (1u << GOAL_DART_PLAY) | (1u << GOAL_INSPECT_REEF)));
         assert((14 + render_text_w("Bonds never fade. Hello: every 30s.", 1)) * TANK_W / PAGE_W <= TANK_W - 4);        t = before; t.greet_timer = 0; t.companion.last_discovery = 0; assert(t.n_fish >= 2);
         t.fish[0].goal.id = GOAL_FOLLOW_FRIEND;
+        t.visitor_left = 0;
+        t.companion.away = t.companion.adventure_done = 0;
+        for (int j = 0; j < t.n_fish; j++) { t.fish[j].hunger = 0; t.fish[j].stress = 0; }
         t.companion.powered_s = 0; before = t;
         companion_status(&t, a, sizeof a); companion_status(&t, b, sizeof b);
-        assert(!strcmp(a, b) && !strncmp(a, t.fish[0].name, strlen(t.fish[0].name)) && strstr(a, " loves "));
+        assert(!strcmp(a, b) && !a[0]);
         t.companion.powered_s = 6; companion_status(&t, a, sizeof a);
-        int friend_idx = tank_nearest_friend(&t, 0, NULL);
-        assert(friend_idx >= 0 && strstr(a, " swims with ") && strstr(a, t.fish[friend_idx].name));
+        assert(!a[0]);
+        t.fish[0].hunger = 8; companion_status(&t, a, sizeof a);
+        assert(strstr(a, "HUNGRY") && strstr(a, t.fish[0].name));
+        t.fish[0].hunger = 0; t.fish[0].stress = 7; companion_status(&t, a, sizeof a);
+        assert(strstr(a, "NEEDS CALM"));
+        t.fish[0].stress = 0;
         t.companion.powered_s = 0; assert(!memcmp(&before, &t, sizeof t));
+        strcpy(t.companion.portrait_name, "Nori");
+        t.companion.away = t.companion.adventure = 1;
+        companion_status(&t, a, sizeof a); assert(!strcmp(a, "Nori: ADVENTURING"));
+        t.companion.away = 0; t.companion.adventure_done = 1;
+        companion_status(&t, a, sizeof a); assert(!strcmp(a, "Nori: POSTCARD READY"));
+        t.companion.adventure_claimed = 1;
+        companion_status(&t, a, sizeof a); assert(!a[0]);
+        t = before;
         /* The companion clock runs under a cover; nothing else changes. */
         t.ui_cover = true; fish_t fishes[N_FISH_MAX]; memcpy(fishes, t.fish, sizeof fishes);
         uint32_t disc = t.companion.discoveries; t.fish[0].goal_age = 5; memcpy(fishes, t.fish, sizeof fishes);
@@ -1241,7 +1267,7 @@ static void test_companion(void) {
         assert(render_text_w("WWWWWWW 12H 00M LEFT", 2) + 14 < 330);
         assert(render_text_w("SHELF OFF", 2) <= 116);
         uint16_t *pfb = calloc((size_t)TANK_W * TANK_H, sizeof *pfb); assert(pfb);
-        companion_open(); companion_tap(&t, render_frame_x(30 + 2 * 146), render_frame_y(60));
+        companion_open_section(COMPANION_SECTION_ADVENTURES);
         companion_render(&t, pfb, TANK_W);
         uint16_t colors[16]; int distinct = 0;
         for (int y = 140 * TANK_H / PAGE_H; y < 196 * TANK_H / PAGE_H; y++)
@@ -1950,6 +1976,9 @@ static void test_cpu_damage(void) {
             t.aquariums.clock_layout = CLOCK_TOP_LEFT << 2;
         }
         if (i == 210) t.companion.decor = 1;
+        if (i == 215) t.rpg.chapter = 3;
+        if (i == 220) t.rpg.chapter = 6;
+        if (i == 225) t.rpg.chapter = 0;
         bool force = i == 115;
         if (force) memset(retained, 0x83, pixels * sizeof *retained); /* Returning from a covering page. */
         render_tile(0, 0); render_region(0, 0); render_tank(&t, full, TANK_W);
@@ -2364,10 +2393,21 @@ static void test_tank_polish(void) {
         render_rect(edge, TANK_W, 0, 0, PAGE_W, PAGE_H, 0x102b36);
         render_rect_edge(edge, TANK_W, 3, 3, PAGE_W - 6, PAGE_H - 6, 0x83b8ac);
         fb[0] = fb[pixels + 1] = 0xa55a;
-        for (int page = 8; page <= 16; page++) {
+        for (int page = 8; page <= 23; page++) {
+            if (page == 17) continue;
             companion_open_section(page);
-            int cases = page == 11 ? SD_ITEM_COUNT : page == 13 ? COMPANION_DISCOVERY_COUNT : page == 9 ? 4 : page == 14 ? 2 : 1;
+            int cases = page == 11 ? SD_ITEM_COUNT : page == 13 ? COMPANION_DISCOVERY_COUNT : page == 9 ? 4 : page == 14 ? 2 : page == 20 ? 19 : 1;
             for (int k = 0; k < cases; k++) {
+                if (page == 20) {
+                    loaded.rpg.chapter = (uint8_t)(k / 3);
+                    loaded.rpg.step = (uint8_t)(k % 3);
+                    int lines = render_text_wrap(fb + 1, TANK_W, 14, 168, 420, 0xe7f4dc, companion_rpg_prompt(&loaded));
+                    assert(lines <= 4 && 168 + (lines - 1) * 16 + 14 < 232);
+                    for (int choice = 0; choice < 3; choice++) {
+                        char label[128]; companion_rpg_choice_label(&loaded, choice, label, sizeof label);
+                        assert(render_text_w(label, 1) <= 408);
+                    }
+                }
                 if (page == 14) loaded.polish.active[0].milestones = k ? (1u << MS_FISH_COUNT) - 1u : 0;
                 companion_render(&loaded, fb + 1, TANK_W);
                 assert(fb[0] == 0xa55a && fb[pixels + 1] == 0xa55a);
@@ -2376,7 +2416,7 @@ static void test_tank_polish(void) {
                         fprintf(stderr, "Polish text crosses right margin: page %d case %d at %d,%d\n", page, k, x, y);
                         assert(false);
                     }
-                if (cases > 1) companion_tap(&loaded, render_frame_x(300), render_frame_y(page == 13 ? 255 : 280));
+                if (cases > 1 && page != 20) companion_tap(&loaded, render_frame_x(300), render_frame_y(page == 13 ? 255 : 280));
             }
         }
         companion_open_section(0);
@@ -2449,7 +2489,7 @@ static void test_story(void) {
     assert(progression_save(&t));
     tank_init(&loaded, 5); progression_boot(&loaded);
     assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
-    char *json = progression_backup_json(&t); assert(json && strstr(json, "\"schema\":12") && strstr(json, "\"story\":{"));
+    char *json = progression_backup_json(&t);     assert(json && strstr(json, "\"schema\":14") && strstr(json, "\"story\":{") && strstr(json, "\"games\":{") && strstr(json, "\"rpg\":{"));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     tank_init(&loaded, 6); progression_boot(&loaded);
     assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
@@ -2762,6 +2802,38 @@ int main(int argc, char **argv) {
     tank.clock += 11;
     render_settings_touch(&tank, rx, y, true, &value);
     assert(render_settings_touch(&tank, rx, y, false, &value) == SET_TAP_RESTORE && value == 0);
+    const struct { int section, x, y, action; } device_taps[] = {
+        {0, 200, 190, SET_TAP_ROOM}, {0, 200, 244, SET_TAP_LED},
+        {3, 100, 232, SET_TAP_AUTO_BACKUP}, {3, 300, 232, SET_TAP_PHOTO}
+    };
+    for (int scale = 0; scale < 2; scale++) {
+        tank_resolution(scale != 0);
+        for (unsigned i = 0; i < sizeof device_taps / sizeof *device_taps; i++) {
+            render_backup_status("JSON BACKUP / RESTORE FROM SD", false);
+            settings_section(&tank, device_taps[i].section);
+            if (device_taps[i].section == 0) {
+                size_t bytes = (size_t)TANK_W * TANK_H * sizeof(uint16_t);
+                uint16_t *actual = malloc(bytes), *expected = malloc(bytes);
+                assert(actual && expected);
+                render_settings(&tank, actual, TANK_W, 100);
+                int back = (int)render_frame_y(12) * TANK_W + (int)render_frame_x(350);
+                int background = (int)render_frame_y(12) * TANK_W + (int)render_frame_x(330);
+                assert(actual[back] != actual[background]);
+                render_backup_status("ROOM LIGHT DIMMING / BACK LED GLOW", false);
+                render_settings(&tank, expected, TANK_W, 100);
+                assert(!memcmp(actual, expected, bytes));
+                free(actual); free(expected);
+            }
+            float tx = render_frame_x(device_taps[i].x), ty = render_frame_y(device_taps[i].y);
+            assert(render_settings_tap(tx, ty, &value) == device_taps[i].action);
+            assert(render_settings_touch(&tank, tx, ty, true, &value) == SET_TAP_NONE);
+            assert(render_settings_touch(&tank, tx, ty, false, &value) == device_taps[i].action);
+            assert(render_settings_touch(&tank, tx, ty, false, &value) == SET_TAP_NONE);
+            render_settings_touch(&tank, tx, ty, true, &value);
+            assert(render_settings_touch(&tank, render_frame_x(440), ty, false, &value) == SET_TAP_NONE);
+        }
+    }
+    tank_resolution(false);
     render_set_scene_cache(NULL); render_set_dirty_mask(NULL); render_set_decor_scratch(NULL);
     free(scene); free(dirty); free(scratch); free(fb); free(text);
     tank_init(&tank, 999); saved_size = 0; boot_enlarged(&tank);

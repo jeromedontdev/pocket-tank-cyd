@@ -1,4 +1,4 @@
-"""Play the six games through public touch/frame APIs, using rendered cues."""
+"""Play all twelve games through public touch/frame APIs, using rendered cues."""
 import ctypes
 import json
 import os
@@ -31,8 +31,8 @@ def exercise(lib, backup, output):
     screens = set()
     pause_footer = None
     for game in range(6):
-        lib.sim_action(1)
-        tap(375, 356); tap(100, 260)
+        lib.sim_action(7)
+        tap(100, 260)
         assert lib.sim_page() == 8
         menu = snapshot()
         frame()
@@ -166,8 +166,8 @@ def exercise(lib, backup, output):
         tap(380, 20)
         assert lib.sim_page() == 9
     assert len(screens) == 6, "Every game needs its own actual-renderer screen"
-    lib.sim_action(1)
-    tap(375, 356); tap(100, 260)
+    lib.sim_action(7)
+    tap(100, 260)
     tap(110, 140)
     no_score = snapshot()
     for _ in range(120):
@@ -180,8 +180,8 @@ def exercise(lib, backup, output):
     lib.sim_action(0)
     frame(0.25)
     assert snapshot()["tank"]["clock"] > no_score["tank"]["clock"], "Aquarium simulation must resume on exit"
-    lib.sim_action(1)
-    tap(375, 356); tap(100, 260)
+    lib.sim_action(7)
+    tap(100, 260)
     tap(80, 330)  # Relaxed: timed games now finish explicitly.
     tap(110, 140)
     relaxed_before = snapshot()
@@ -192,14 +192,171 @@ def exercise(lib, backup, output):
     tap(380, 20)
     tap(380, 20)
     assert lib.sim_page() == 9
-    lib.sim_action(1)
-    tap(375, 356); tap(100, 260)
+    lib.sim_action(7)
+    tap(100, 260)
     tap(80, 330)  # Return to challenge mode for subsequent sessions.
     tap(300, 330)
     records = frame()
     assert any(records), "Persistent game records page must render"
     tap(380, 20)
     tap(380, 20)
+    # Second page: six different mechanics, each using only actual touch/render APIs.
+    old_six = snapshot()["companion"]
+    new_screens = set()
+    for game in range(6):
+        lib.sim_action(7)
+        tap(100, 260)
+        if game == 0:
+            tap(350, 80)
+        tap(110 + game % 2 * 204, 140 + game // 2 * 64)
+        new_screens.add(ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2))
+        before = snapshot()
+        for _ in range(8):
+            frame(0.25)
+        assert snapshot() == before, "Instructions must pause both game and aquarium"
+        tap(224, 302)  # Dismiss HOW TO PLAY.
+        initial = frame()
+        tap(280, 20)  # Explicit pause.
+        paused = frame()
+        for _ in range(12):
+            frame(0.25)
+            tap(180, 200)
+        assert frame() == paused, "Pause must freeze game physics and ignore board touches"
+        tap(280, 20)
+        assert frame() == initial, "Resume must retain the exact game position"
+        if game == 0:  # Defender: aim at visible invaders, leading their descent.
+            for _ in range(1100):
+                pixels = frame(0.25)
+                target = next(((x, y) for y in range(112, 280, 12) for x in range(36, 416, 12)
+                               if cue(pixels, x, y, 0xffdc73, 1) or cue(pixels, x, y, 0xff8173, 1)), None)
+                if target:
+                    tap(target[0], min(280, target[1] + 12))
+        elif game == 1:  # Runner: follow the actual pearl lane in each scrolling gate.
+            for _ in range(350):
+                pixels = frame(0.25)
+                target = next((i for i in range(5) if any(cue(pixels, 62 + i * 80, y, 0xffdc73, 2)
+                                                          for y in range(112, 292, 6))), None)
+                if target is not None:
+                    tap(62 + target * 80, 304)
+        elif game == 2:  # Breaker: track the real white ball and move underneath it.
+            tap(224, 260)
+            for _ in range(2500):
+                pixels = frame(0.125)
+                w, h = lib.sim_width(), lib.sim_height()
+                points = [(i % w, i // w) for i in range(round(106 * h / 368) * w, round(312 * h / 368) * w)
+                          if pixels[i] == rgb(0xffffff)]
+                if points:
+                    x = sum(p[0] for p in points) / len(points) * 448 / w
+                    tap(x + (18 if (_ // 100) % 2 else -18), 310)
+            tap(350, 70)  # Bank the earned brick score without requiring a full clear.
+        elif game == 3:  # Tactics: BFS a route to flags; attack enemies as encountered.
+            pos = 22
+            for _ in range(22):
+                pixels = frame()
+                board = []
+                for i in range(25):
+                    x, y = 102 + i % 5 * 50, 95 + i // 5 * 40
+                    board.append(3 if cue(pixels, x, y, 0x785b6a, 1) else
+                                 4 if cue(pixels, x, y, 0xffdc73, 1) else
+                                 2 if cue(pixels, x, y, 0xff8173, 1) else 0)
+                queue = [(pos, [])]
+                seen = {pos}
+                route = None
+                while queue:
+                    cell, path = queue.pop(0)
+                    if board[cell] == 4:
+                        route = path
+                        break
+                    for j in range(25):
+                        if j not in seen and board[j] != 3 and abs(j % 5 - cell % 5) + abs(j // 5 - cell // 5) == 1:
+                            seen.add(j)
+                            queue.append((j, path + [j]))
+                if not route:
+                    break
+                cell = route[0]
+                tap(122 + cell % 5 * 50, 110 + cell // 5 * 40)
+                if board[cell] != 2:
+                    pos = cell
+        elif game == 4:  # Architect: a mixed habitat, then remove and replace one tile.
+            cells = [i for i in range(25) if i not in (6, 18)][:12]
+            for n, cell in enumerate(cells):
+                tap(80 if n % 2 == 0 else 220, 312)
+                tap(122 + cell % 5 * 50, 110 + cell // 5 * 40)
+            cell = cells[-1]
+            tap(122 + cell % 5 * 50, 110 + cell // 5 * 40)
+            tap(122 + cell % 5 * 50, 110 + cell // 5 * 40)
+            tap(360, 312)
+        else:  # Expedition: complete two routes then deliberately bank loot safely.
+            tap(80, 200)
+            tap(80, 200)
+            tap(224, 312)
+        assert snapshot() == before, "New games must never mutate live care or fish"
+        tap(380, 20)
+        assert snapshot() == before, "First BACK must protect an unclaimed second-page reward"
+        save_path = os.environ["POCKET_TANK_SAVE"]
+        os.environ["POCKET_TANK_SAVE"] = str(output / "missing" / "game-two.sav")
+        tap(224, 226)
+        assert snapshot() == before, "Second-page records and rewards must roll back on failure"
+        os.environ["POCKET_TANK_SAVE"] = save_path
+        tap(224, 226)
+        claimed = snapshot()
+        dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
+        assert 1 <= dollars <= 10, ("New game must reach a meaningful payable result", game, dollars)
+        assert claimed["games"]["rounds"][game] == before["games"]["rounds"][game] + 1
+        assert claimed["games"]["best"][game] >= 4
+        assert claimed["companion"] == old_six, "Original six records must remain byte-for-byte unchanged"
+        tap(224, 226)
+        assert snapshot() == claimed, "Repeated claims must not pay twice"
+        tap(380, 20)
+        tap(380, 20)
+        encoded = backup(lib)
+        assert lib.sim_restore(encoded, len(encoded)), "Current-schema records must round-trip"
+        assert snapshot()["games"] == claimed["games"]
+    assert len(new_screens) == 6, "Second-page games require six distinct instruction screens"
+    saved_games = snapshot()["games"]
+    saved_path = os.environ["POCKET_TANK_SAVE"]
+    binary = open(saved_path, "rb").read()
+    assert len(binary) == 5912, "Game records and RPG must retain their append-only save tails"
+    icons = (output / "icons.bin").read_bytes()
+    assert lib.sim_init(icons, len(icons))
+    assert snapshot()["games"] == saved_games, "All six new records must survive a binary reload"
+    assert snapshot()["companion"] == old_six
+    with open(saved_path, "wb") as stream:
+        stream.write(binary[:5848])
+    assert lib.sim_init(icons, len(icons))
+    assert snapshot()["companion"] == old_six, "A pre-expansion binary save must keep original records"
+    assert snapshot()["games"]["best"] == [0] * 6
+    with open(saved_path, "wb") as stream:
+        stream.write(binary)
+    assert lib.sim_init(icons, len(icons))
+    assert snapshot()["games"] == saved_games
+    for mutate in (
+        lambda g: g.update(version=2),
+        lambda g: g.update(version=0),
+        lambda g: g.update(medals=[4] * 6),
+        lambda g: g.update(rounds=[1] * 5),
+    ):
+        malformed = json.loads(backup(lib))
+        mutate(malformed["games"])
+        encoded = json.dumps(malformed).encode()
+        before = snapshot()
+        assert not lib.sim_restore(encoded, len(encoded)), "Malformed records must be rejected atomically"
+        assert snapshot() == before
+    # A genuine pre-expansion backup migrates without touching its six existing records.
+    legacy = json.loads(backup(lib))
+    legacy["schema"] = 12
+    legacy.pop("games")
+    legacy.pop("rpg", None)
+    encoded = json.dumps(legacy).encode()
+    assert lib.sim_restore(encoded, len(encoded))
+    migrated = snapshot()
+    assert migrated["companion"] == old_six
+    assert migrated["games"]["best"] == [0] * 6
+    assert migrated["games"]["rounds"] == [0] * 6
+    lib.sim_action(7)
+    tap(100, 260)
+    tap(350, 80)  # Restore first menu page for later tests.
+    tap(380, 20)
     encoded = json.dumps(original).encode()
     assert lib.sim_restore(encoded, len(encoded))
-    print("PASS: all six games played through touch/render cues, pause, real-fish safety, transactional coins/XP, save retry, single claims, replay and exit")
+    print("PASS: twelve touch games, pause, aquarium isolation, transactional records/rewards, retries, single claims and schema-12 migration")

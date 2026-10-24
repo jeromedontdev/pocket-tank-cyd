@@ -16,7 +16,7 @@ def exercise(lib, backup):
         return ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
 
     def home():
-        lib.sim_action(1); tap(375, 356)
+        lib.sim_action(7)
 
     def care():
         home(); tap(100, 100); tap(100, 100)
@@ -25,7 +25,9 @@ def exercise(lib, backup):
     keeper = frame()
     original = json.loads(backup(lib))
     tap(375, 356)
-    assert lib.sim_page() == 9, "HOME must open without colliding with GAMES"
+    assert lib.sim_page() == 1, "Removed Names & Looks HOME must not remain a hidden target"
+    home()
+    assert lib.sim_page() == 9
     hub = frame()
     assert hub != keeper
     tap(100, 100)
@@ -43,23 +45,23 @@ def exercise(lib, backup):
     after["tank"]["saved_unix"] = original["tank"]["saved_unix"]
     changed = [key for key in original if after[key] != original[key]]
     assert after == original, ("Browsing LIFE must not mutate aquarium/progression", changed)
-    care()
-    tap(100, 100)
+    lib.sim_action(2); tap(100, 260)
+    tap(200, 248)
     changed_care = json.loads(backup(lib))
     assert changed_care["companion"]["cozy"] != original["companion"]["cozy"]
     changed_care["tank"]["saved_unix"] = after["tank"]["saved_unix"]
     assert changed_care["tank"] == after["tank"], "Changing care mode must not fabricate care rewards"
-    tap(210, 234)
+    care(); tap(210, 124)
     hello = json.loads(backup(lib))
     assert int.from_bytes(bytes.fromhex(hello["companion"]["active"])[4:6], "little") == 5
-    tap(210, 234)
+    tap(210, 124)
     assert json.loads(backup(lib))["companion"] == hello["companion"], "Hello cooldown must prevent repeated bond farming"
     for _ in range(124):
         lib.sim_frame(0.25)
-    tap(210, 234)
+    tap(210, 124)
     second = json.loads(backup(lib))
     assert int.from_bytes(bytes.fromhex(second["companion"]["active"])[4:6], "little") == 10, "Hello cooldown must expire while CARE remains open"
-    tap(60, 298)
+    tap(60, 258)
     trick = json.loads(backup(lib))
     assert bytes.fromhex(trick["companion"]["active"])[8] & 1, "DART must unlock and persist at bond 10"
     tap(380, 24); tap(380, 24); tap(100, 180)
@@ -185,31 +187,77 @@ def exercise(lib, backup):
                 assert frame() == parent, "Back must return to the category actually used"
         home(); tap(100, 100); tap(330, 180)
         assert lib.sim_page() == 1
-        for point in ((70, 356), (170, 356), (275, 356), (70, 326), (220, 326)):
+        for point in ((70, 356), (170, 356), (275, 356), (375, 356), (70, 326), (220, 326)):
             tap(*point)
             assert lib.sim_page() == 1, "Removed Keeper shortcuts must not remain invisible hit targets"
         tap(392, 326)
         assert lib.sim_page() == 9, "Keeper opened from Fish must return to Fish"
         home(); tap(330, 180)
         collections = frame()
-        tap(100, 260)
-        assert lib.sim_page() == 9 and frame() == collections, "Duplicate Progress entry must be removed"
+        tap(100, 180)
+        assert lib.sim_page() == 9 and frame() != collections, "Display Rewards must have its own entry"
+        tap(380, 24); assert frame() == collections
+        rewards = copy.deepcopy(scaled)
+        rewards["companion"].update(discoveries=0xc0, collections=0, cosmetic=0, decor=0)
+        data = json.dumps(rewards).encode(); assert lib.sim_restore(data, len(data))
+        home(); tap(330, 180); tap(330, 100)
+        album = frame(); tap(100, 138); assert frame() != album
+        tap(380, 24); assert frame() == album, "Hint Back must return to Discoveries"
+        tap(100, 300); tap(150, 178)
+        assert json.loads(backup(lib))["companion"]["collections"] == 2, "Friendship CLAIM must use the displayed row"
+        assert json.loads(backup(lib))["companion"]["cosmetic"] == 2
+        tap(330, 257)
+        assert json.loads(backup(lib))["companion"]["cosmetic"] == 0, "ORIGINAL is always available"
+        tap(330, 257)
+        assert json.loads(backup(lib))["companion"]["cosmetic"] == 2, "FRAME cycles only unlocked rewards"
+        tap(100, 257)
+        assert json.loads(backup(lib))["companion"]["decor"] == 1, "TROPHIES changes the sand display"
+        frames_fixture = copy.deepcopy(rewards)
+        frames_fixture["companion"].update(discoveries=0x7ff, collections=7, cosmetic=0)
+        data = json.dumps(frames_fixture).encode(); assert lib.sim_restore(data, len(data))
+        home(); tap(330, 180); tap(100, 180)
+        heights = []
+        for _ in range(4):
+            pixels = lib.sim_frame(0)
+            screen_height = lib.sim_height()
+            rows = []
+            for y in range(246 * screen_height // 368, 272 * screen_height // 368):
+                for x in range(237 * width // 448, 432 * width // 448):
+                    pixel = pixels[y * width + x]
+                    if pixel >> 11 >= 24 and (pixel >> 5 & 63) >= 45:
+                        rows.append(y)
+                        break
+            assert rows, "Frame option lettering must remain visible"
+            heights.append(rows[-1] - rows[0] + 1)
+            tap(330, 257)
+        assert len(set(heights)) == 1 and heights[0] <= 7, ("Frame font must stay native size across all four choices", heights)
+        data = json.dumps(scaled).encode(); assert lib.sim_restore(data, len(data))
+        lib.sim_action(2); tap(100, 260)
+        options_before = json.loads(backup(lib))
+        tap(200, 324)
+        assert json.loads(backup(lib))["companion"]["lively"] == options_before["companion"]["lively"], "Clock effects no longer belong in Care"
+        os.environ["POCKET_TANK_SAVE"] = str(Path(save_path).parent / "missing-care" / "save.sav")
+        tap(200, 248)
+        assert json.loads(backup(lib))["companion"]["cozy"] == options_before["companion"]["cozy"], "Failed Comfort save rolls back"
+        os.environ["POCKET_TANK_SAVE"] = save_path
         care()
         care_frame = frame()
+        tap(100, 320); help_frame = frame(); assert help_frame != care_frame
+        tap(380, 24); assert frame() == care_frame, "Help has one Back, returning to interactions"
         polish_before = json.loads(backup(lib))
-        tap(360, 235)
+        home(); tap(100, 100); tap(100, 260)
         life_frame = frame()
-        assert life_frame != care_frame, "LIFE / TANK must open the fish biography, not Wardrobe"
+        assert life_frame != care_frame, "Fish Life opens from the Fish category, not Say Hello"
         tap(100, 272); assert frame() != life_frame, "Life firsts must open"
         tap(60, 320); assert frame() == life_frame, "LIFE tab must return to the biography"
         tap(330, 272); assert frame() != life_frame, "Keepsakes must open"
-        for x in (170, 280, 390, 60):
+        for x in (220, 370, 60):
             tap(x, 320)
-            assert frame() != care_frame, "Each polish tab stays inside the Life/Tank hub"
+            assert frame() != care_frame, "Each fish tab stays inside the fish story pages"
         polish_after = json.loads(backup(lib))
         polish_after["tank"]["saved_unix"] = polish_before["tank"]["saved_unix"]
-        assert polish_after == polish_before, "Browsing biographies/recaps/objects must not change the aquarium"
-        tap(280, 320); tap(150, 138)
+        assert polish_after == polish_before, "Browsing biographies/family/genes must not change the aquarium"
+        home(); tap(330, 100); tap(100, 260); tap(150, 138)
         identity = json.loads(backup(lib))
         assert identity["polish"]["subtitle"] == (polish_before["polish"]["subtitle"] + 1) % 5
         save_path = os.environ["POCKET_TANK_SAVE"]
@@ -218,11 +266,31 @@ def exercise(lib, backup):
         assert json.loads(backup(lib))["polish"] == identity["polish"], "Failed emblem save must roll back"
         os.environ["POCKET_TANK_SAVE"] = save_path
         tap(380, 24)
-        assert lib.sim_page() == 9, "Biography Back returns to Care"
+        assert lib.sim_page() == 9, "Identity Back returns to Tank"
         lib.sim_action(2); tap(330, 100)
         clock_frame = frame()
         tap(330, 318)
-        assert lib.sim_network_page() == 0 and frame() == clock_frame, "Wi-Fi belongs only in Settings"
+        assert lib.sim_network_page() == 0 and frame() != clock_frame, "EFFECTS opens clock-only options, never Wi-Fi"
+        tap(200, 242)
+        assert json.loads(backup(lib))["companion"]["captions"] != identity["companion"]["captions"]
+        effects_before = json.loads(backup(lib))
+        tap(200, 96)
+        assert json.loads(backup(lib))["companion"]["lively"] != effects_before["companion"]["lively"]
+        os.environ["POCKET_TANK_SAVE"] = str(Path(save_path).parent / "missing-effects" / "save.sav")
+        tap(200, 96)
+        assert json.loads(backup(lib))["companion"]["lively"] != effects_before["companion"]["lively"], "Failed sparkle save must roll back"
+        os.environ["POCKET_TANK_SAVE"] = save_path
+        tap(380, 24)
+        settings_pixels = width * lib.sim_height() * 2 * 336 // 368
+        assert frame()[:settings_pixels] == clock_frame[:settings_pixels], "Effects Back returns to Clock settings"
+        home(); tap(330, 180)
+        collections_frame = frame()
+        tap(330, 180)
+        visitors_frame = frame()
+        for x in (60, 220, 370):
+            tap(x, 320)
+            assert frame() == visitors_frame, "Visitor Log must not expose unrelated tank record tabs"
+        tap(380, 24); assert frame() == collections_frame
         for kind, card in enumerate((98, 99, 97, 96)):
             fixture = copy.deepcopy(scaled)
             fixture["tank"]["sd_unlocks"] = 1 << (5, 1, 6, 7)[kind]

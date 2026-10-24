@@ -77,7 +77,7 @@ void update_mode_run(uint16_t *fb) {
         vTaskDelay(pdMS_TO_TICKS(300));
         esp_restart();
     }
-    ESP_LOGI(TAG, "back to the tank");
+    ESP_LOGI(TAG, "%s", s_wifi_only ? "back to Settings after clock sync" : "back to the tank");
     net_port_off();
 }
 

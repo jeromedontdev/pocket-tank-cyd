@@ -134,10 +134,18 @@ API void sim_action(int action) {
     else if (action == 4) tank_feed(&tank, TANK_W / 2.0f, 3);
     else if (action == 5) progression_sd_grant(&tank, 25);
     else if (action == 6) tank_toggle_light(&tank);
+    else if (action == 7) {
+        setup_cancel(&tank);
+        from_home = home_tanks = false;
+        child_parent = 1;
+        tank_handled(&tank); tank.ui_cover = true;
+        render_life_open(); page = 9;
+    }
 }
 API int sim_page(void) { return page; }
 API int sim_width(void) { return TANK_W; }
 API int sim_height(void) { return TANK_H; }
+API void sim_visit(int species) { companion_debug_visit(&tank, species); }
 API int sim_selected(void) { return selected; }
 /* Read-only touch target for automation: do not feed/startle the tank by probing empty glass. */
 API int sim_creature_target(int card) {

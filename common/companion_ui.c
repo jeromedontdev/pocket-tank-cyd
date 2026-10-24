@@ -7,13 +7,14 @@
 static int page, selected, leaf, story, section;
 static bool draft_pending;
 static bool confirm_departure;
+static bool rpg_chapter_finished;
 static int wardrobe = WEAR_TOP_HAT;
 static int creature;
 static uint8_t color_draft;
 static char notice[48];
 static const uint32_t frame_colors[] = {0x83b8ac, 0x8ed9a5, 0xf0aeca, 0xc0b1ff};
 static void text(uint16_t *fb, int stride, int x, int y, uint32_t rgb, const char *s) {
-    render_text(fb, stride, x, y, 2, rgb, s);
+    render_text(fb, stride, x, y, render_text_w(s, 2) <= PAGE_W - x - 12 ? 2 : 1, rgb, s);
 }
 static void button(uint16_t *fb, int stride, int x, int y, int w, const char *s) {
     render_rect(fb, stride, x, y, w, 30, 0x264d55);
@@ -24,12 +25,119 @@ static unsigned bits(unsigned value) {
     unsigned n = 0; for (; value; value >>= 1) n += value & 1u; return n;
 }
 static void polish_nav(uint16_t *fb, int stride) {
-    static const char *const names[] = {"LIFE", "RECAP", "TANK", "OBJECTS"};
-    for (int i = 0; i < 4; i++) button(fb, stride, 12 + i * 108, 306, 100, names[i]);
+    bool fish = page == 8 || page == 12 || page == 14 || page == 15 || page == 19;
+    static const char *const fish_names[] = {"LIFE", "FAMILY", "GENES"};
+    if (fish)
+        for (int i = 0; i < 3; i++) button(fb, stride, 12 + i * 146, 306, 132, fish_names[i]);
+    else if (page == 9 || page == 11) {
+        button(fb, stride, 12, 306, 205, "RECAP");
+        button(fb, stride, 231, 306, 205, "OBJECTS");
+    }
+}
+static void rpg_render(const tank_t *t, uint16_t *fb, int stride) {
+    const tank_rpg_t *r = &t->rpg;
+    char line[128];
+    int i = selected < t->n_fish ? selected : 0;
+    if (page == 23) {
+        render_text(fb, stride, 14, 92, 2, 0xffd998, "YOUR STORY IS SAVED");
+        render_text_wrap(fb, stride, 14, 132, 420, 0xe7f4dc, companion_rpg_outcome(t));
+        snprintf(line, sizeof line, "COURAGE %u / CURIOSITY %u / KIND %u",
+                 r->skills[0], r->skills[1], r->skills[2]);
+        render_text(fb, stride, 14, 226, 1, 0xffd998, line);
+        render_text_wrap(fb, stride, 14, 256, 420, 0xa7c4ba, rpg_chapter_finished ?
+                         "Chapter and its guide recorded. Rewards saved once." :
+                         "Your fish is safe at home. Continue whenever you like.");
+        button(fb, stride, 12, 304, 424, "CONTINUE STORY");
+        return;
+    }
+    if (page == 22) {
+        static const char *const help[] = {
+            "A saved story. Entirely optional.",
+            "Choose a fish, then an approach.",
+            "Courage, curiosity, kindness grow.",
+            "Bonds and tricks offer help.",
+            "Genes and family add new context.",
+            "Decor, visitors and trips matter.",
+            "No purchase or trait is required.",
+            "Fish never leave or get hurt.",
+            "No care stats or settings change.",
+            "Each choice saves. BACK is safe.",
+            "Chapter prizes are earned once.",
+            "The family can continue later."
+        };
+        for (int j = 0; j < 12; j++)
+            render_text(fb, stride, 14, 88 + 21 * j, 1, 0xe7f4dc, help[j]);
+        return;
+    }
+    if (page == 21) {
+        snprintf(line, sizeof line, "COURAGE %u / CURIOSITY %u / KIND %u",
+                 r->skills[0], r->skills[1], r->skills[2]);
+        render_text(fb, stride, 14, 86, 1, 0xffd998, line);
+        for (int chapter = 0; chapter < 6; chapter++) {
+            int y = 112 + chapter * 31;
+            bool done = chapter < r->chapter;
+            snprintf(line, sizeof line, "%d %s", chapter + 1, companion_rpg_chapter_title(chapter));
+            render_text(fb, stride, 14, y, 1, done ? 0xe7f4dc : 0x809b9a, line);
+            if (done) {
+                const char *name = companion_story_name(t, r->contributors[chapter]);
+                snprintf(line, sizeof line, "%.12s: %s", name && *name ? name : "EARLIER FISH",
+                         companion_rpg_route(t, chapter));
+            } else snprintf(line, sizeof line, "%s", chapter == r->chapter ? "YOUR NEXT CHAPTER" : "UNEXPLORED");
+            render_text(fb, stride, 24, y + 14, 1, done ? 0xffd998 : 0x809b9a, line);
+        }
+        button(fb, stride, 12, 310, 205, "HOW TO PLAY");
+        button(fb, stride, 231, 310, 205, "CONTINUE STORY");
+        return;
+    }
+    if (t->n_fish) {
+        snprintf(line, sizeof line, "GUIDE: %.15s", t->fish[i].name);
+        render_text(fb, stride, 14, 90, 1, 0xe7f4dc, line);
+        button(fb, stride, 304, 82, 132, "NEXT FISH");
+    } else render_text(fb, stride, 14, 90, 1, 0xe7f4dc, "A FISH AT HOME CAN GUIDE YOU.");
+    button(fb, stride, 12, 118, 132, "LOG / HELP");
+    for (int chapter = 0; chapter < 6; chapter++) {
+        int x = 166 + chapter * 47;
+        uint32_t color = chapter < r->chapter ? 0xffd998 : chapter == r->chapter ? 0xb7f7ff : 0x4c6570;
+        if (chapter < 5) render_rect(fb, stride, x + 10, 131, 28, 2, 0x4c6570);
+        render_ring(fb, stride, (float)x, 132, 10, color);
+        snprintf(line, sizeof line, "%d", chapter + 1);
+        render_text(fb, stride, x - 4, 127, 1, color, line);
+    }
+    snprintf(line, sizeof line, "%s%s", r->chapter < 6 ? "" : "FINALE: ", companion_rpg_chapter_name(t));
+    render_text(fb, stride, 14, 152, 1, 0xffd998, line);
+    render_text_wrap(fb, stride, 14, 168, 420, 0xe7f4dc, companion_rpg_prompt(t));
+    if (r->chapter < 6 && t->n_fish) {
+        for (int choice = 0; choice < 3; choice++) {
+            companion_rpg_choice_label(t, choice, line, sizeof line);
+            render_rect(fb, stride, 12, 232 + choice * 36, 424, 30, 0x264d55);
+            render_text(fb, stride, 20, 243 + choice * 36, 1, 0xe7f4dc, line);
+        }
+    } else if (r->chapter >= 6) {
+        render_text_wrap(fb, stride, 14, 240, 420, 0xffd998, companion_rpg_outcome(t));
+        button(fb, stride, 12, 304, 424, "READ YOUR CAMPAIGN JOURNAL");
+    } else render_text_wrap(fb, stride, 14, 240, 420, 0xa7c4ba, "Return a fish from the Bank or wait for your traveler. The story waits without penalty.");
+    snprintf(line, sizeof line, "COURAGE %u / CURIOSITY %u / KIND %u", r->skills[0], r->skills[1], r->skills[2]);
+    render_text(fb, stride, 14, 346, 1, 0xa7c4ba, line);
+}
+static void paragraph(uint16_t *fb, int stride, int y, uint32_t rgb, const char *s) {
+    size_t capacity = (420 - render_text_w("W", 1)) /
+        (render_text_w("WW", 1) - render_text_w("W", 1)) + 1;
+    if (capacity > 70) capacity = 70;
+    while (*s && y < 338) {
+        size_t n = strlen(s), count = n < capacity ? n : capacity;
+        if (n > count) {
+            while (count && s[count] != ' ') count--;
+            if (!count) count = capacity;
+        }
+        char line[71]; memcpy(line, s, count); line[count] = 0;
+        render_text(fb, stride, 14, y, 1, rgb, line);
+        s += count; while (*s == ' ') s++;
+        y += 16;
+    }
 }
 static const char *who(const tank_t *t, uint16_t id) {
     const char *name = companion_story_name(t, id);
-    return name ? name : id ? "A LONG-AGO FISH" : "UNKNOWN";
+    return name && *name ? name : id ? "AN EARLIER FISH" : "UNKNOWN";
 }
 static void family_render(const tank_t *t, int i, uint16_t *fb, int stride) {
     char line[96];
@@ -43,7 +151,7 @@ static void family_render(const tank_t *t, int i, uint16_t *fb, int stride) {
         snprintf(line, sizeof line, "PARENTS: %s", l->generation ? "NOT RECORDED" : "A FOUNDER OF THIS TANK");
     else if (!l->parent[1] || !l->parent[0]) snprintf(line, sizeof line, "PARENT: %s", who(t, l->parent[0] ? l->parent[0] : l->parent[1]));
     else snprintf(line, sizeof line, "PARENTS: %s + %s", who(t, l->parent[0]), who(t, l->parent[1]));
-    render_text(fb, stride, 14, 124, 1, 0xffd998, line);
+    paragraph(fb, stride, 124, 0xffd998, line);
     int n = snprintf(line, sizeof line, "GRANDPARENTS:");
     int grand = 0;
     for (int k = 0; k < 2; k++) {
@@ -53,7 +161,7 @@ static void family_render(const tank_t *t, int i, uint16_t *fb, int stride) {
         }
     }
     if (!grand) snprintf(line + n, sizeof line - n, " NOT RECORDED");
-    render_text_wrap(fb, stride, 14, 146, 420, 0xa7c4ba, line);
+    paragraph(fb, stride, 172, 0xa7c4ba, line);
     int children = 0, siblings = 0;
     n = snprintf(line, sizeof line, "CHILDREN:");
     for (int k = 0; k < N_FISH_MAX + FISH_BANK_CAP + 1; k++) {
@@ -72,17 +180,28 @@ static void family_render(const tank_t *t, int i, uint16_t *fb, int stride) {
     }
     if (!children) snprintf(line + n, sizeof line - n, " NONE YET");
     else if (children > 3) snprintf(line + n, sizeof line - n, " +%d", children - 3);
-    render_text_wrap(fb, stride, 14, 188, 420, 0xe7f4dc, line);
+    paragraph(fb, stride, 220, 0xe7f4dc, line);
     snprintf(line, sizeof line, "SIBLINGS: %d / BORN HERE: %u", siblings, t->story.births);
-    render_text(fb, stride, 14, 226, 1, 0xa7c4ba, line);
-    /* genetics (1.3): what shows, and what this fish could pass on */
+    render_text(fb, stride, 14, 272, 1, 0xa7c4ba, line);
+    if (companion_rpg_legacy(t, i))
+        render_text(fb, stride, 14, 288, 1, 0xffd998, "THIS FAMILY KNOWS THE LOST CURRENT.");
+}
+static void genes_render(const tank_t *t, int i, uint16_t *fb, int stride) {
+    if (!t->n_fish) { text(fb, stride, 14, 94, 0xe7f4dc, "No fish at home."); return; }
+    const fish_lineage_t *l = &t->story.active[i];
+    char line[160];
+    text(fb, stride, 14, 88, 0xe7f4dc, t->fish[i].name);
+    button(fb, stride, 304, 84, 132, "NEXT FISH");
+    snprintf(line, sizeof line, "MARKING: %s", FISH_PATTERN_NAMES[t->fish[i].pattern]);
+    render_text(fb, stride, 14, 124, 1, 0xe7f4dc, line);
+    int n;
     n = snprintf(line, sizeof line, "GENES:");
     int shown = 0;
     for (int k = 0; k < TRAIT_COUNT; k++) if (l->traits & (1u << k))
         n += snprintf(line + n, sizeof line - n, "%s%s", shown++ ? ", " : " ", FISH_TRAIT_NAMES[k]);
     if (!shown) n += snprintf(line + n, sizeof line - n, " CLASSIC");
     if (l->mutation) snprintf(line + n, sizeof line - n, " - MUTANT!");
-    int rows = render_text_wrap(fb, stride, 14, 246, 420, l->mutation ? 0xffd998 : 0xe7f4dc, line);
+    paragraph(fb, stride, 154, l->mutation ? 0xffd998 : 0xe7f4dc, line);
     n = snprintf(line, sizeof line, "CARRIES:");
     int carried = 0;
     if (l->pattern2 && l->pattern2 - 1 != t->fish[i].pattern && l->pattern2 <= FISH_PATTERN_COUNT)
@@ -91,7 +210,8 @@ static void family_render(const tank_t *t, int i, uint16_t *fb, int stride) {
     for (int k = 0; k < TRAIT_COUNT; k++) if (l->traits & (16u << k))
         n += snprintf(line + n, sizeof line - n, "%s%s", carried++ ? ", " : " ", FISH_TRAIT_NAMES[k]);
     if (!carried) snprintf(line + n, sizeof line - n, " NOTHING HIDDEN");
-    render_text_wrap(fb, stride, 14, 250 + rows * 16, 420, 0xa7c4ba, line);
+    paragraph(fb, stride, 202, 0xa7c4ba, line);
+    paragraph(fb, stride, 264, 0xa7c4ba, "Hidden genes pass to fry. Recessive traits need two copies.");
 }
 static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
     const tank_polish_t *p = &t->polish;
@@ -105,7 +225,6 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
             snprintf(line, sizeof line, "%s / %s", f->name, stages[f->stage]);
             text(fb, stride, 14, 90, 0xe7f4dc, line);
             button(fb, stride, 304, 86, 132, "NEXT FISH");
-            button(fb, stride, 304, 120, 132, "FAMILY");
             if (life->arrived_s == UINT32_MAX) snprintf(line, sizeof line, "Arrival predates this journal.");
             else snprintf(line, sizeof line, "Joined: powered tank hour %lu.", (unsigned long)(life->arrived_s / 3600));
             render_text(fb, stride, 14, 125, 1, 0xa7c4ba, line);
@@ -115,13 +234,15 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
             if (t->companion.away && p->traveler.id == life->buddy) buddy = t->companion.traveler.name;
             snprintf(line, sizeof line, "BUDDY: %s", buddy);
             render_text(fb, stride, 14, 153, 1, 0xffd998, line);
-            render_text(fb, stride, 14, 173, 2, 0xa7c4ba,
+            render_text(fb, stride, 14, 173, 1, 0xa7c4ba,
                         life->friend_s >= 600 ? "Close companions" : life->friend_s >= 30 ? "Familiar companions" : "A friendship takes quiet time.");
             companion_care_text(t, i, line, sizeof line);
-            render_text_wrap(fb, stride, 14, 198, 420, 0xe7f4dc, line);
+            paragraph(fb, stride, 198, 0xe7f4dc, line);
             int spot = tank_favorite_decor(t, i);
             snprintf(line, sizeof line, "FAVORITE: %s", spot < 0 ? "THE REEF" : SD_ITEMS[spot].name);
             render_text(fb, stride, 14, 236, 1, 0xa7c4ba, line);
+            if (companion_rpg_contributor(t, life->id))
+                render_text(fb, stride, 14, 250, 1, 0xffd998, "LOST CURRENT: CHAPTER GUIDE");
             snprintf(line, sizeof line, "FIRSTS: %u", bits(life->milestones));
             button(fb, stride, 12, 264, 205, line);
             snprintf(line, sizeof line, "KEEPSAKES: %u", bits(life->adventures));
@@ -131,14 +252,14 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
         int memory_pages = (p->recap_count + 2) / 3;
         if (!memory_pages) memory_pages = 1;
         snprintf(line, sizeof line, "Welcome back to %.15s.", t->aquariums.name);
-        text(fb, stride, 14, 88, 0xe7f4dc, line);
+        render_text(fb, stride, 14, 88, 1, 0xe7f4dc, line);
         if (leaf < memory_pages) {
             if (!p->recap_count) render_text_wrap(fb, stride, 14, 121, 420, 0xa7c4ba, "No observations yet. Quiet viewing is enough.");
             for (int j = 0; j < 3; j++) {
                 int k = leaf * 3 + j;
                 if (k >= p->recap_count) break;
                 companion_memory_text(&p->recap[k], line, sizeof line);
-                render_text_wrap(fb, stride, 14, 119 + j * 42, 420, 0xe7f4dc, line);
+                paragraph(fb, stride, 119 + j * 48, 0xe7f4dc, line);
             }
         } else {
             snprintf(line, sizeof line, "Snail: %ld algae cells cleaned.", (long)t->snail_grazed);
@@ -153,8 +274,8 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
         snprintf(line, sizeof line, "NEXT / HELPERS (%d/%d)", leaf + 1, memory_pages + 1);
         button(fb, stride, 12, 270, 424, line);
     } else if (page == 10) {
-        snprintf(line, sizeof line, "%s [%s]", t->aquariums.name, companion_emblem(p->emblem));
-        text(fb, stride, 14, 90, 0xe7f4dc, line);
+        render_tank_emblem(fb, stride, 14, 86, p->emblem);
+        render_text(fb, stride, 46, 90, 1, 0xe7f4dc, t->aquariums.name);
         snprintf(line, sizeof line, "SUBTITLE: %s", p->subtitle ? companion_subtitle(p->subtitle) : "NONE");
         button(fb, stride, 12, 124, 424, line);
         snprintf(line, sizeof line, "EMBLEM: %s", companion_emblem(p->emblem));
@@ -166,10 +287,11 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
         snprintf(line, sizeof line, "Last SD backup: %s", p->backups ? date : "NOT RECORDED");
         render_text(fb, stride, 14, 236, 1, 0xa7c4ba, line);
         snprintf(line, sizeof line, "SIGHTINGS %lu", (unsigned long)p->visits);
-        button(fb, stride, 12, 256, 205, line);
+        render_text(fb, stride, 14, 266, 1, 0xa7c4ba, line);
         uint8_t flags = t->story.flags;
         button(fb, stride, 231, 256, 205, flags & STORY_SEASONS_OFF ? "SEASONS: OFF" :
                                           flags & STORY_SEASONS_SOUTH ? "SEASONS: SOUTH" : "SEASONS: NORTH");
+        paragraph(fb, stride, 306, 0xa7c4ba, "Badge + subtitle: aquarium list and summaries.");
     } else if (page == 11) {
         int item = leaf % SD_ITEM_COUNT;
         text(fb, stride, 14, 90, 0xe7f4dc, SD_ITEMS[item].name);
@@ -229,6 +351,8 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
         button(fb, stride, 231, 240, 205, "HINT >");
     } else if (page == 15) {
         family_render(t, i, fb, stride);
+    } else if (page == 19) {
+        genes_render(t, i, fb, stride);
     } else if (page == 16) {
         const tank_story_t *s = &t->story;
         for (int j = 0; j < VISITOR_SPECIES; j++) {
@@ -271,42 +395,66 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
     unsigned cosmetic = s->cosmetic <= 3 ? s->cosmetic : 0;
     render_rect(fb, stride, 0, 0, PAGE_W, PAGE_H, 0x102b36);
     render_rect_edge(fb, stride, 3, 3, PAGE_W - 6, PAGE_H - 6, frame_colors[cosmetic]);
-    const char *title = page == 0 ? "CARE & BONDS" : page == 1 ? "DISCOVERIES" : page == 2 ? "ADVENTURES" :
+    const char *title = page == 0 ? "FISH INTERACTION" : page == 1 ? "DISCOVERIES" : page == 2 ? "ADVENTURES" :
                         page == 4 ? "WARDROBE" : page == 5 ? "CREATURE COLORS" : page == 6 ? "GEAR COLORS" : page == 7 ? "SAND & WATER" :
                         page == 8 ? "A FISH'S LIFE" : page == 9 ? "WHILE YOU WATCHED" : page == 10 ? "TANK IDENTITY" :
                         page == 11 ? "OBJECT STORIES" : page == 12 ? "ADVENTURE KEEPSAKES" : page == 13 ? "DISCOVERY HINTS" :
-                        page == 14 ? "LIFE FIRSTS" : page == 15 ? "FAMILY TREE" : page == 16 ? "VISITOR LOG" : "BOND HELP";
+                        page == 14 ? "LIFE FIRSTS" : page == 15 ? "FAMILY TREE" : page == 16 ? "VISITOR LOG" :
+                        page == 18 ? "DISPLAY REWARDS" : page == 19 ? "FISH GENES" :
+                        page == 20 ? "THE LOST CURRENT" : page == 21 ? "CAMPAIGN JOURNAL" :
+                        page == 22 ? "STORY HELP" : page == 23 ? "STORY EVENT" : "BOND & TRICKS";
     text(fb, stride, 14, 15, frame_colors[cosmetic], title);
     button(fb, stride, 346, 8, 90, "BACK");
-    render_text(fb, stride, 14, 55, 1, 0xa7c4ba, "Your aquarium, your pace.");
+    char context[48];
+    if (page == 20) companion_rpg_context(t, selected < t->n_fish ? selected : 0, context, sizeof context);
+    else snprintf(context, sizeof context, "Your aquarium, your pace.");
+    if (page == 20)
+        render_text_wrap(fb, stride, 14, 49, 420, notice[0] ? 0xffd998 : 0xa7c4ba, notice[0] ? notice : context);
+    else render_text(fb, stride, 14, 55, 1, notice[0] ? 0xffd998 : 0xa7c4ba,
+                     notice[0] ? notice : context);
     char line[64];
+    if (page >= 20 && page <= 23) { rpg_render(t, fb, stride); return; }
     if (page >= 8) polish_render(t, fb, stride);
-    else if (page == 0) {
-        button(fb, stride, 12, 86, 205, s->cozy ? "CARE: COZY" : "CARE: CLASSIC");
-        button(fb, stride, 231, 86, 205, s->captions ? "CAPTIONS: ON" : "CAPTIONS: OFF");
-        button(fb, stride, 12, 124, 205, s->lively ? "MOOD: LIVELY" : "MOOD: CALM");
-        button(fb, stride, 231, 124, 205, "BOND / TRICK HELP");
-        text(fb, stride, 14, 165, 0xa7c4ba, s->cozy ? "Cozy: comfortable, no fake XP." : "Classic care. No fish ever dies.");
+    if (page >= 8 && page != 18) {
+        return;
+    }
+    if (page == 18) {
+        paragraph(fb, stride, 84, 0xa7c4ba, "Complete discovery sets, then claim their display rewards. No care bonuses.");
+        for (int j = 0; j < 3; j++) {
+            static const char *const names[] = {"NATURE", "FRIENDSHIP", "ADVENTURES"};
+            static const unsigned masks[] = {0x3f, 0xc0, 0x700}, totals[] = {6, 2, 3};
+            snprintf(line, sizeof line, "%s %u/%u: %s", names[j], bits(s->discoveries & masks[j]), totals[j],
+                     s->collections & (1u << j) ? "CLAIMED" : companion_collection_ready(t, j) ? "TAP TO CLAIM" : "KEEP DISCOVERING");
+            button(fb, stride, 12, 130 + j * 34, 424, line);
+        }
+        button(fb, stride, 12, 242, 205, s->decor ? "TROPHIES: SHOW" : "TROPHIES: HIDE");
+        static const char *const frames[] = {"ORIGINAL", "NATURE", "FRIEND", "STORY"};
+        snprintf(line, sizeof line, "FRAME: %s >", frames[cosmetic]);
+        render_rect(fb, stride, 231, 242, 205, 30, 0x264d55);
+        render_text(fb, stride, 239, 253, 1, 0xe7f4dc, line);
+        paragraph(fb, stride, 282, 0xa7c4ba, "Trophies sit on the sand. Frames change border colors, not the font. Claim a set to unlock its frame.");
+    } else if (page == 0) {
         if (t->n_fish) {
             int i = selected < t->n_fish ? selected : 0;
             const companion_bond_t *b = &s->active[i];
             snprintf(line, sizeof line, "%s BOND %u TRUST %.1f", t->fish[i].name, b->bond, (double)t->fish[i].trust);
-            text(fb, stride, 14, 194, 0xe7f4dc, line);
-            button(fb, stride, 12, 220, 126, "NEXT FISH");
-            button(fb, stride, 152, 220, 132, "SAY HELLO");
-            button(fb, stride, 298, 220, 138, "LIFE / TANK");
+            render_text(fb, stride, 14, 88, 1, 0xe7f4dc, line);
+            button(fb, stride, 304, 110, 132, "NEXT FISH");
+            button(fb, stride, 12, 110, 278, "SAY HELLO (+5 BOND)");
+            render_text(fb, stride, 14, 148, 1, 0xa7c4ba, "Hello every 30s. Bond never fades.");
             companion_favorite_label(t, i, line, sizeof line);
-            render_text(fb, stride, 14, 250, 1, 0xffd998, line);
+            render_text(fb, stride, 14, 170, 1, 0xffd998, line);
             companion_care_text(t, i, line, sizeof line);
-            render_text(fb, stride, 14, 268, 1, 0xa7c4ba, line);
-            static const char *const tricks[] = {"DART 10", "BUBBLE 25", "FOLLOW 50"};
-            for (int j = 0; j < 3; j++) button(fb, stride, 12 + 146 * j, 284, 132, tricks[j]);
-            int friend = tank_familiar_friend(t, i), spot = tank_favorite_decor(t, i);
-            snprintf(line, sizeof line, "SWIM BUDDY: %s", friend < 0 ? "GETTING ACQUAINTED" : t->fish[friend].name);
-            render_text(fb, stride, 14, 326, 1, 0xa7c4ba, line);
-            snprintf(line, sizeof line, "FAVORITE SPOT: %s", spot < 0 ? "THE REEF" : SD_ITEMS[spot].name);
-            render_text(fb, stride, 14, 342, 1, 0xa7c4ba, line);
-        }
+            paragraph(fb, stride, 194, 0xa7c4ba, line);
+            static const char *const tricks[] = {"DART", "BUBBLES", "FOLLOW"};
+            static const unsigned need[] = {10, 25, 50};
+            for (int j = 0; j < 3; j++) {
+                snprintf(line, sizeof line, "%s%s", tricks[j], b->bond >= need[j] ? "" : " (LOCKED)");
+                button(fb, stride, 12 + 146 * j, 244, 132, line);
+            }
+            render_text(fb, stride, 14, 282, 1, 0xa7c4ba, "TRICKS: 10 / 25 / 50 BOND.");
+            button(fb, stride, 12, 306, 424, "HOW BONDS WORK");
+        } else paragraph(fb, stride, 94, 0xa7c4ba, "No fish at home. Check the Fish Bank or Adventures.");
     } else if (page == 7) {
         snprintf(line, sizeof line, "SAND: %s", render_palette_name(true, t->sand_style));
         button(fb, stride, 12, 100, 424, line);
@@ -314,26 +462,16 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
         button(fb, stride, 12, 160, 424, line);
         text(fb, stride, 14, 218, 0xa7c4ba, "Upgrade palettes in Tank > Shop.");
     } else if (page == 1) {
-        snprintf(line, sizeof line, "DISCOVERIES %u/12   GAME GOLD %u/6", bits(s->discoveries), bits(s->game_challenges));
-        text(fb, stride, 14, 91, 0xe7f4dc, line);
+        snprintf(line, sizeof line, "DISCOVERIES %u/12 / PAGE %d/3", bits(s->discoveries), leaf + 1);
+        render_text(fb, stride, 14, 91, 1, 0xe7f4dc, line);
         for (int j = 0; j < 4; j++) {
             int id = leaf * 4 + j;
-            snprintf(line, sizeof line, "%s %s", s->discoveries & (1u << id) ? "*" : "-", COMPANION_DISCOVERIES[id]);
-            text(fb, stride, 14, 121 + j * 24, s->discoveries & (1u << id) ? 0xe7f4dc : 0x809b9a, line);
+            snprintf(line, sizeof line, "%s %s", s->discoveries & (1u << id) ? "+" : "-", COMPANION_DISCOVERIES[id]);
+            button(fb, stride, 12, 121 + j * 38, 424, line);
         }
-        button(fb, stride, 304, 204, 132, "NEXT PAGE");
-        for (int j = 0; j < 3; j++) {
-            static const char *const names[] = {"NATURE", "FRIEND", "STORY"};
-            static const unsigned masks[] = {0x3f, 0xc0, 0x700}, totals[] = {6, 2, 3};
-            snprintf(line, sizeof line, "%s %u/%u %s", names[j], bits(s->discoveries & masks[j]), totals[j],
-                     s->collections & (1u << j) ? "OWNED" : companion_collection_ready(t, j) ? "CLAIM" : "FIND");
-            button(fb, stride, 12, 242 + j * 30, 282, line);
-        }
-        button(fb, stride, 304, 272, 132, s->collections ? "FRAME >" : "LOCKED");
-        button(fb, stride, 304, 242, 132, s->decor ? "SHELF ON" : "SHELF OFF");
-        static const char *const frames[] = {"DEFAULT", "NATURE", "FRIEND", "STORY"};
-        text(fb, stride, 304, 310, frame_colors[cosmetic], frames[cosmetic]);
-        if (!notice[0]) render_text(fb, stride, 14, 344, 1, 0xa7c4ba, "Tap a discovery name for hints.");
+        button(fb, stride, 12, 286, 205, "DISPLAY REWARDS");
+        button(fb, stride, 231, 286, 205, "NEXT PAGE");
+        render_text(fb, stride, 14, 326, 1, 0xa7c4ba, "+ = FOUND. TAP A ROW FOR A HINT.");
     } else if (page == 2) {
         int a = s->adventure ? s->adventure - 1 : story;
         text(fb, stride, 14, 92, 0xa7c4ba, "Fish leaves; returns on its own.");
@@ -375,7 +513,7 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
             button(fb, stride, 12, 285, 278, line);
             button(fb, stride, 304, 285, 132, s->adventure_choice ? "BUBBLES" : "VIA ARCH");
         }
-        render_text(fb, stride, 14, 323, 1, 0xa7c4ba, "Synced time, else powered-on.");
+        button(fb, stride, 12, 326, 424, "THE LOST CURRENT: STORY RPG");
     } else if (page == 4 && t->n_fish) {
         int i = selected < t->n_fish ? selected : 0;
         const companion_bond_t *b = &s->active[i];
@@ -430,27 +568,79 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
             "Close CARE to watch a trick."
         };
         for (int i = 0; i < 10; i++) text(fb, stride, 14, 91 + 23 * i, 0xe7f4dc, help[i]);
-        button(fb, stride, 304, 324, 132, "BACK");
     }
-    if (notice[0]) render_text(fb, stride, 14, 344, 1, 0xffd998, notice);
 }
 bool companion_tap(tank_t *t, float frame_x, float frame_y) {
     prepare_draft(t);
     const companion_state_t *s = &t->companion;
     float x = render_page_x(frame_x), y = render_page_y(frame_y);
     if (x >= 346 && x < 436 && y >= 8 && y < 38) {
+        if (page == 23) { page = 20; notice[0] = 0; return false; }
+        if (page == 22) { page = 21; notice[0] = 0; return false; }
+        if (page == 21) { page = 20; notice[0] = 0; return false; }
         if (page == 6) { page = 4; return false; }
+        if (page == 3) { page = 0; notice[0] = 0; return false; }
+        if (page == 12 || page == 14) { page = 8; leaf = 0; notice[0] = 0; return false; }
+        if (page == 13) { page = 1; leaf /= 4; notice[0] = 0; return false; }
         if (page != section) { page = section; leaf = 0; notice[0] = 0; return false; }
         return true;
     }
-    if (page >= 8) {
-        if (y >= 306 && y < 336 && x >= 12 && x < 436) {
-            int tab = (int)(x - 12) / 108;
-            if (x < 112 + tab * 108) { page = 8 + tab; leaf = 0; notice[0] = 0; }
-        } else if ((page == 8 || page == 15) && y >= 84 && y < 116 && x >= 304 && x < 436 && t->n_fish)
+    if (page == 20) {
+        if (x >= 304 && x < 436 && y >= 82 && y < 112 && t->n_fish) {
+            selected = (selected + 1) % t->n_fish; notice[0] = 0;
+        } else if (x >= 12 && x < 144 && y >= 118 && y < 148) {
+            page = 21; notice[0] = 0;
+        } else if (t->rpg.chapter >= 6 && x >= 12 && x < 436 && y >= 304 && y < 334) {
+            page = 21; notice[0] = 0;
+        } else if (t->rpg.chapter < 6 && t->n_fish && x >= 12 && x < 436 && y >= 232 && y < 334) {
+            int choice = (int)(y - 232) / 36;
+            if ((int)(y - 232) % 36 < 30) {
+                int before = t->rpg.chapter;
+                bool ok = companion_rpg_choose(t, selected < t->n_fish ? selected : 0, choice);
+                if (ok) {
+                    rpg_chapter_finished = t->rpg.chapter != before;
+                    page = 23; notice[0] = 0;
+                } else snprintf(notice, sizeof notice, "Save failed. Story unchanged; retry.");
+            }
+        }
+    } else if (page == 21) {
+        if (y >= 310 && y < 340) {
+            if (x >= 12 && x < 217) { page = 22; notice[0] = 0; }
+            else if (x >= 231 && x < 436) { page = 20; notice[0] = 0; }
+        }
+    } else if (page == 23) {
+        if (x >= 12 && x < 436 && y >= 304 && y < 334) { page = 20; notice[0] = 0; }
+    } else if (page == 22) {
+        return false;
+    } else if (page == 18) {
+        if (x >= 12 && x < 436 && y >= 130 && y < 228) {
+            int set = (int)(y - 130) / 34;
+            if ((int)(y - 130) % 34 >= 30) return false;
+            if (s->collections & (1u << set)) snprintf(notice, sizeof notice, "Claimed. Choose its frame below.");
+            else if (!companion_collection_ready(t, set)) snprintf(notice, sizeof notice, "Complete this discovery set first.");
+            else result(companion_collection_claim(t, set));
+        } else if (y >= 242 && y < 272 && x >= 12 && x < 217) result(companion_set_decor(t, !s->decor));
+        else if (y >= 242 && y < 272 && x >= 231 && x < 436) {
+            if (!s->collections) snprintf(notice, sizeof notice, "Claim a set to unlock menu frames.");
+            else {
+                int next = s->cosmetic;
+                do { next = (next + 1) % 4; } while (next && !(s->collections & (1u << (next - 1))));
+                result(companion_cosmetic(t, next));
+            }
+        }
+    } else if (page >= 8) {
+        bool fish = page == 8 || page == 12 || page == 14 || page == 15 || page == 19;
+        if (fish && y >= 306 && y < 336 && x >= 12 && x < 436) {
+            int tab = (int)(x - 12) / 146;
+            if (tab < 3 && x < 144 + tab * 146) {
+                static const int fish_pages[] = {8, 15, 19};
+                page = fish_pages[tab]; leaf = 0; notice[0] = 0;
+            }
+        } else if ((page == 9 || page == 11) && y >= 306 && y < 336 &&
+                   ((x >= 12 && x < 217) || (x >= 231 && x < 436))) {
+            page = x < 217 ? 9 : 11; leaf = 0; notice[0] = 0;
+        } else if ((page == 8 || page == 15 || page == 19) && y >= 84 && y < 116 && x >= 304 && x < 436 && t->n_fish)
             selected = (selected + 1) % t->n_fish;
-        else if (page == 8 && y >= 120 && y < 150 && x >= 304 && x < 436 && t->n_fish) { page = 15; leaf = 0; }
-        else if (page == 10 && y >= 256 && y < 286 && x >= 12 && x < 217) { page = 16; leaf = 0; notice[0] = 0; }
         else if (page == 10 && y >= 256 && y < 286 && x >= 231 && x < 436) {
             uint8_t f = t->story.flags, next = f & STORY_SEASONS_OFF ? 0 : f & STORY_SEASONS_SOUTH ? STORY_SEASONS_OFF : STORY_SEASONS_SOUTH;
             snprintf(notice, sizeof notice, "%s", companion_set_seasons(t, next) ?
@@ -476,22 +666,15 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
             leaf = (leaf + 1) % (pages ? pages : 1);
         }
     } else if (page == 0) {
-        if (y >= 86 && y < 116 && x >= 12 && x < 217)
-            result(companion_set_options(t, !t->companion.cozy, t->companion.captions, t->companion.lively));
-        else if (y >= 86 && y < 116 && x >= 231 && x < 436)
-            result(companion_set_options(t, t->companion.cozy, !t->companion.captions, t->companion.lively));
-        else if (y >= 124 && y < 154 && x >= 12 && x < 217)
-            result(companion_set_options(t, t->companion.cozy, t->companion.captions, !t->companion.lively));
-        else if (y >= 124 && y < 154 && x >= 231 && x < 436) { page = 3; notice[0] = 0; }
-        else if (y >= 220 && y < 250 && x >= 12 && x < 138 && t->n_fish) selected = (selected + 1) % t->n_fish;
-        else if (y >= 220 && y < 250 && x >= 152 && x < 284) {
+        if (y >= 306 && y < 336 && x >= 12 && x < 436) { page = 3; notice[0] = 0; }
+        else if (y >= 110 && y < 140 && x >= 304 && x < 436 && t->n_fish) selected = (selected + 1) % t->n_fish;
+        else if (y >= 110 && y < 140 && x >= 12 && x < 290 && t->n_fish) {
             int i = selected < t->n_fish ? selected : 0;
             if (t->companion.active[i].next_greet_s > t->companion.powered_s)
                 snprintf(notice, sizeof notice, "Hello ready in %lus.", (unsigned long)(t->companion.active[i].next_greet_s - t->companion.powered_s));
             else snprintf(notice, sizeof notice, "%s", companion_greet(t, i) ? "Hello! +5 bond. Trust unchanged." : "Save failed. Hello not recorded.");
         }
-        else if (y >= 220 && y < 250 && x >= 298 && x < 436) { page = 8; leaf = 0; notice[0] = 0; }
-        else if (y >= 284 && y < 314) for (int j = 0; j < 3; j++)
+        else if (y >= 244 && y < 274 && t->n_fish) for (int j = 0; j < 3; j++)
             if (x >= 12 + 146 * j && x < 144 + 146 * j) {
                 static const unsigned need[] = {10, 25, 50};
                 static const char *const effects[] = {"Dart! Close CARE to watch.", "Bubbles! Close CARE to watch.", "Follow! Close CARE to watch."};
@@ -553,27 +736,14 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
                           (choice ? "Saved. Looking good!" : "Removed. Still owned.") : "Save failed. Nothing changed.");
         }
     } else if (page == 1) {
-        if (x >= 14 && x < 294 && y >= 121 && y < 217) {
-            leaf = leaf * 4 + (int)(y - 121) / 24; page = 13; notice[0] = 0;
-        } else if (x >= 304 && x < 436 && y >= 204 && y < 234) leaf = (leaf + 1) % 3;
-        else if (x >= 12 && x < 294 && y >= 242 && y < 332) {
-            int set = (int)(y - 242) / 30;
-            if (t->companion.collections & (1u << set)) snprintf(notice, sizeof notice, "Owned! Use FRAME > to equip.");
-            else if (!companion_collection_ready(t, set)) snprintf(notice, sizeof notice, "Find missing discoveries first.");
-            else result(companion_collection_claim(t, set));
-        }
-        else if (x >= 304 && x < 436 && y >= 272 && y < 302) {
-            if (!t->companion.collections) {
-                snprintf(notice, sizeof notice, "Frames: claim a completed set.");
-                return false;
-            }
-            int next = t->companion.cosmetic;
-            do { next = (next + 1) % 4; } while (next && !(t->companion.collections & (1u << (next - 1))));
-            result(companion_cosmetic(t, next));
-        }
-        else if (x >= 304 && x < 436 && y >= 242 && y < 272) result(companion_set_decor(t, !t->companion.decor));
+        if (x >= 12 && x < 436 && y >= 121 && y < 265 && (int)(y - 121) % 38 < 30) {
+            leaf = leaf * 4 + (int)(y - 121) / 38; page = 13; notice[0] = 0;
+        } else if (x >= 231 && x < 436 && y >= 286 && y < 316) leaf = (leaf + 1) % 3;
+        else if (x >= 12 && x < 217 && y >= 286 && y < 316) { page = 18; notice[0] = 0; }
     } else if (page == 2) {
-        if (x >= 12 && x < 144 && y >= 244 && y < 274 && !t->companion.adventure) { story = (story + 1) % 3; confirm_departure = false; }
+        if (x >= 12 && x < 436 && y >= 326 && y < 356) {
+            page = 20; notice[0] = 0; confirm_departure = false;
+        } else if (x >= 12 && x < 144 && y >= 244 && y < 274 && !t->companion.adventure) { story = (story + 1) % 3; confirm_departure = false; }
         else if (x >= 158 && x < 436 && y >= 244 && y < 274) {
             if (t->companion.away) snprintf(notice, sizeof notice, "Safe away. Returns on its own.");
             else if (t->companion.adventure) result(companion_adventure_claim(t));
@@ -589,7 +759,7 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
 }
 void companion_render_decor(const tank_t *t, uint16_t *fb, int stride) {
     const companion_state_t *s = &t->companion;
-    if (!s->decor || !(s->collections || s->game_challenges)) return;
+    if (!s->decor || !(s->collections || s->game_challenges || t->rpg.chapter)) return;
     /* PAGE coordinates scale to a tiny sand-corner shelf on every CYD frame.
      * Public rectangles participate in the scene renderer's dirty mask. */
     render_rect(fb, stride, 10, 344, 86, 4, 0x8f7758);
@@ -602,4 +772,10 @@ void companion_render_decor(const tank_t *t, uint16_t *fb, int stride) {
     }
     for (int i = 0; i < 6; i++) if (s->game_challenges & (1u << i))
         render_rect(fb, stride, 12 + i * 14, 350, 8, 5, 0xffd998);
+    if (t->rpg.chapter) {
+        render_rect(fb, stride, 108, 329, 42, 19, 0xd6bc80);
+        render_rect(fb, stride, 112, 326, 34, 25, 0xe8d9a9);
+        for (int chapter = 0; chapter < t->rpg.chapter; chapter++)
+            render_rect(fb, stride, 115 + chapter * 5, 335 + chapter % 2 * 6, 3, 3, 0x3b6d6b);
+    }
 }

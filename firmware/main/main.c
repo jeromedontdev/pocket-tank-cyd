@@ -645,11 +645,13 @@ void app_main(void) {
     render_set_mask_scratch(masks);
     /* Network modes must run before SD/cache allocations consume Wi-Fi headroom. */
     render_clock_us = esp_timer_get_time;    /* per-stage frame profiling in the display log */
+    bool network_mode = update_mode_pending();
+    if (network_mode) display_port_set_brightness(0);
     display_port_init();
     ambient_init();
     touch_port_init();
     weather_init();
-    if (update_mode_pending()) { brightness_apply(false); update_mode_run(fb[0]); }
+    if (network_mode) update_mode_run(fb[0]);
     else if (provision_mode_wanted()) provision_mode_run(fb[0]);   /* just installed, no network yet: the page's Wi-Fi step, the glass dark */
     net_clock_boot(fb[0]);            /* no RTC chip and a saved network: the time from the internet, before the advisor takes the heap */
     sd_port_init();
@@ -699,6 +701,11 @@ void app_main(void) {
     if (progression_setup_pending()) {           /* a new tank (fresh install, or a reset mid-flow): the welcome */
         setup_begin(&tank);
         ESP_LOGI(TAG, "first-run setup: welcome, names, colours (director `setup off` drops it)");
+    }
+    if (network_mode && update_mode_wifi_only() && !progression_setup_pending()) {
+        render_settings_open();
+        touch_port_show_settings(true);
+        ESP_LOGI(TAG, "Wi-Fi setup closed: returning to Settings");
     }
     /* the tank task starts from a one-shot timer, AFTER app_main has returned
        and its own 16 KB stack is back in the internal heap (2026-09-30: with

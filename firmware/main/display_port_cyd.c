@@ -67,6 +67,8 @@ static bool on_color_trans_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_e
 }
 
 bool display_port_init(void) {
+    ESP_ERROR_CHECK(gpio_set_direction(CYD_PIN_LCD_BL, GPIO_MODE_OUTPUT));
+    ESP_ERROR_CHECK(gpio_set_level(CYD_PIN_LCD_BL, 0));
     spi_bus_config_t bus = ILI9341_PANEL_BUS_SPI_CONFIG(CYD_PIN_LCD_SCLK, CYD_PIN_LCD_MOSI, CYD_STRIPE_BYTES);
     ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO));
     s_stripe = heap_caps_malloc(CYD_STRIPE_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

@@ -270,7 +270,7 @@ void weather_open(void) { page = 0; message[0] = 0; }
 void weather_render(uint16_t *fb, int st) {
     render_rect(fb, st, 0, 0, PAGE_W, PAGE_H, BG);
     text(fb, st, 12, 10, page == 1 ? "City search" : page == 2 ? "Choose a city" : "Desk weather");
-    button(fb, st, 350, 4, 88, 32, page ? "Back" : "Done");
+    button(fb, st, 350, 4, 88, 32, "BACK");
     if (page == 0) {
         char line[100];
         button(fb, st, 12, 48, 204, 40, cfg.enabled ? "Weather: ON" : "Weather: OFF");

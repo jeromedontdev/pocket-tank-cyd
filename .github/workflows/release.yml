@@ -33,7 +33,10 @@ jobs:
           python -m unittest discover -s tools -p "test_*.py"
           python tools/test_tank_backup.py --cc gcc
           python tools/test_tank_backup.py --cc gcc --flat-edges
+          python tools/test_rpg.py --cc gcc
           python tools/test_cyd_display.py --cc gcc
+          python tools/test_cyd_settings.py --cc gcc
+          python tools/test_ambient.py --cc gcc
           python tools/test_weather.py --cc gcc
           python sim/run.py --cc gcc --smoke
       - name: Package verified firmware

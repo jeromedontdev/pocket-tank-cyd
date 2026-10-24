@@ -323,6 +323,13 @@ _Static_assert(offsetof(companion_state_t, traveler) == 392, "legacy companion p
 _Static_assert(offsetof(companion_state_t, creature_colors) == 512, "legacy wardrobe prefix");
 _Static_assert(sizeof(companion_state_t) == 520, "companion save layout");
 
+/* Separate append-only save tail: never enlarge the original six game arrays. */
+typedef struct {
+    uint16_t best[6], rounds[6];
+    uint8_t medals[6], version, reserved[9];
+} game_records_t;
+_Static_assert(sizeof(game_records_t) == 40, "second-page records layout");
+
 #define TANK_RECAP_CAP 8
 typedef struct {
     uint32_t id, buddy, arrived_s, milestones;
@@ -382,6 +389,15 @@ typedef struct {
 _Static_assert(sizeof(fish_lineage_t) == 10, "lineage save layout");
 _Static_assert(sizeof(ancestor_name_t) == 10, "ancestor name save layout");
 _Static_assert(sizeof(tank_story_t) == 432, "story save layout");
+
+/* Chapter contributors use the same identity domain as family lineage. The
+ * current participant retains the complete life identity, never a roster slot. */
+typedef struct {
+    uint32_t participant;
+    uint16_t contributors[6];
+    uint8_t version, chapter, step, skills[3], routes, outcome;
+} tank_rpg_t;
+_Static_assert(sizeof(tank_rpg_t) == 24, "Lost Current save budget");
 
 /* a pellet: it sinks FOOD_SINK_PX_S from the surface to the floor (~43 s on
  * the 1.8, ~60 on the watch), then RESTS there FOOD_FLOOR_S before it
@@ -762,8 +778,10 @@ typedef struct tank {
     uint32_t advisor_asks;         /* diagnostic: requests issued */
     uint32_t rng;                  /* xorshift state, deterministic */
     companion_state_t companion;
+    game_records_t games;
     tank_polish_t polish;
     tank_story_t story;
+    tank_rpg_t rpg;
     float visitor_left;
     float companion_fraction;      /* powered-on fractional second; not saved */
     bool  room_dark;               /* 1.3: the platform's room-light sensor says the room is dark

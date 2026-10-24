@@ -9,8 +9,10 @@
 void test_clock_weather(void) {
     tank_t tank;
     tank_init(&tank, 42);
+    tank_new_population(&tank);
     tank.companion.lively = 0;
     tank.companion.cosmetic = 3;
+    tank.fish[0].hunger = 8;
     weather_config_t config = {0};
     config.version = 1; config.located = 1; config.fahrenheit = 1;
     strcpy(config.city.name, "Saint-Remy-en-Bouzemont-Saint-Genest");
@@ -34,15 +36,14 @@ void test_clock_weather(void) {
                         tank.aquariums.clock_layout = (uint8_t)((position << 2) | size);
                         tank.aquariums.clock_flags = (uint8_t)(hidden << 2);
                         render_clock_layout_t l; render_clock_layout(&tank, &l);
-                        assert(l.rows == weather * 2 + activity);
+                        assert(l.rows == weather * 3 + activity);
                         assert(l.x >= 6 && l.y >= 6 && l.x + l.w <= TANK_W - 6 && l.y + l.h <= TANK_H - 6);
                         assert(l.face_x >= l.x && l.face_y == l.y && l.face_x + l.face_w <= l.x + l.w);
                         if (l.rows) {
-                            static const int widths[] = {220, 172, 116};
-                            static const int scales[] = {2, 1, 1}, pitches[] = {16, 12, 10};
+                            static const int widths[] = {220, 172, 172};
                             assert(l.w == widths[size]);
-                            assert(l.caption_scale == scales[size] && l.caption_pitch == pitches[size]);
-                            assert(l.caption_h == l.rows * pitches[size] + 4);
+                            assert(l.caption_scale == 1 && l.caption_pitch == 12);
+                            assert(l.caption_h == l.rows * 12 + 4);
                             assert(l.caption_y == l.face_y + l.face_h + 4);
                             assert(l.caption_y + l.caption_h == l.y + l.h);
                             assert(l.caption_y + 4 + (l.rows - 1) * l.caption_pitch + 7 * l.caption_scale < l.y + l.h);
@@ -108,6 +109,51 @@ void test_clock_weather(void) {
         }
     }
     render_work_caches(false);
+    int original_width = TANK_W;
+    config.enabled = 1;
+    strcpy(config.city.name, "A ABCDEFGHIJKLMNOPQRSTUVWXY Z QRSTUVWX");
+    FILE *file = fopen(path, "wb"); assert(file);
+    assert(fwrite(&config, 1, sizeof config, file) == sizeof config && !fclose(file));
+    weather_init(); tank.companion.captions = 1;
+    for (int compact = 0; compact < 2; compact++) {
+        tank_resolution(compact != 0);
+        for (int theme = CLOCK_COMPACT; theme < CLOCK_THEME_COUNT; theme++)
+            for (int size = 0; size < CLOCK_SIZE_COUNT; size++)
+                for (int position = 0; position < CLOCK_POSITION_COUNT; position++) {
+                    tank.aquariums.clock_theme = (uint8_t)theme;
+                    tank.aquariums.clock_layout = (uint8_t)((position << 2) | size);
+                    render_clock_layout_t l; render_clock_layout(&tank, &l);
+                    assert(l.rows >= 3 && l.rows <= 5);
+                    assert(l.x >= 6 && l.y >= 6 && l.x + l.w <= TANK_W - 6 && l.y + l.h <= TANK_H - 6);
+                }
+        tank.clock = 600;
+        tank.clock_idle_s = 600;
+        tank.aquariums.clock_delay = 1;
+        tank.aquariums.clock_theme = CLOCK_COMPACT;
+        tank.aquariums.clock_layout = 0;
+        assert(render_clock_active(&tank));
+        size_t n = (size_t)TANK_W * TANK_H;
+        uint16_t *plain = malloc(n * sizeof *plain), *sparkles = malloc(n * sizeof *sparkles);
+        assert(plain && sparkles);
+        render_clock_layout_t layout; render_clock_layout(&tank, &layout);
+        tank.companion.lively = 0; render_tank(&tank, plain, TANK_W);
+        tank.companion.lively = 1; render_tank(&tank, sparkles, TANK_W);
+        int changed = 0, bright = 0;
+        for (int y = 0; y < TANK_H; y++) for (int x = 0; x < TANK_W; x++) {
+            int p = y * TANK_W + x;
+            if (plain[p] == sparkles[p]) continue;
+            assert(x < layout.x || x >= layout.x + layout.w || y < layout.y || y >= layout.y + layout.h);
+            changed++;
+            if ((sparkles[p] >> 11) >= 20 && ((sparkles[p] >> 5) & 63) >= 40) bright++;
+        }
+        assert(changed >= 64 && bright >= 32);
+        tank.clock += .5f;
+        render_tank(&tank, plain, TANK_W);
+        assert(memcmp(plain, sparkles, n * sizeof *plain));
+        free(plain); free(sparkles);
+        tank.companion.lively = 0;
+    }
+    tank_resolution(original_width == 320);
     free(expected); free(cached); free(frame); remove(path); weather_init();
     puts("PASS: clock/weather/activity exact bounds: 7 themes, 3 sizes, 5 positions, all detail flags, synced/unsynced, stride guards");
 }

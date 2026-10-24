@@ -206,7 +206,7 @@ void render_updates_page(uint16_t *fb, int stride) {
     render_button(fb, stride, UPD_CHECK_X, UPD_CHECK_Y, UPD_CHECK_W, UPD_CHECK_H, C_GO, C_GO_E, s_sd_ready ? "INSTALL AND RESTART" : "CHECK SD CARD", 2);
     render_text(fb, stride, 32, 268, 2, C_CAPT, "KEEP POWER ON WHILE INSTALLING");
     render_text(fb, stride, 32, 286, 2, C_CAPT, "TANK AND BACKUP ARE PRESERVED");
-    render_button(fb, stride, UPD_CLOSE_X, UPD_CLOSE_Y, UPD_CLOSE_W, UPD_CLOSE_H, C_INNER, C_EDGE, "CLOSE", 2);
+    render_button(fb, stride, UPD_CLOSE_X, UPD_CLOSE_Y, UPD_CLOSE_W, UPD_CLOSE_H, C_INNER, C_EDGE, "BACK", 2);
 }
 int updates_page_tap(float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
@@ -499,7 +499,7 @@ void update_tick(float dt) {
                 s.saved = true;
             }
             if (s.wifi_only)
-                message("WI-FI CONNECTED", s.ssid, true, "RETURN TO TANK TO SYNC NTP TIME", NULL, 0, NULL, 0);
+                message("WI-FI CONNECTED", s.ssid, true, "BACK: SYNC TIME, RETURN TO SETTINGS", NULL, 0, NULL, 0);
             else start_check();
         } else if (st == NET_FAILED) fail(net_port_fail_reason());   /* the store is kept: routers refuse first tries, TYPE IT AGAIN replaces it */
         break;
@@ -570,7 +570,7 @@ int update_hit(float x, float y) {
 const char *update_hit_name(int id) {
     static char buf[24];
     switch (id) {
-    case HIT_NONE: return "none"; case HIT_BACK: return "BACK TO TANK"; case HIT_CANCEL: return "CANCEL";
+    case HIT_NONE: return "none"; case HIT_BACK: return "BACK"; case HIT_CANCEL: return "CANCEL";
     case HIT_RESCAN: return "SCAN AGAIN"; case HIT_YES: return "UPDATE"; case HIT_NO: return "NOT NOW";
     case HIT_PRIMARY: return s.primary ? s.primary : "primary"; case HIT_SECONDARY: return s.secondary ? s.secondary : "secondary";
     case HIT_TERTIARY: return s.tertiary ? s.tertiary : "tertiary";
@@ -706,7 +706,7 @@ void render_update(uint16_t *fb, int stride, float clock) {
             for (int i = 0; i < 4; i++) { render_rect(fb, stride, cx - 3 - i * 3, UPD_ROW_Y0 + UPD_ROWS_PER * UPD_ROW_H - 30 - i * 3, 3, 3, s.list_page < pages - 1 ? C_EDGE : C_DIM); render_rect(fb, stride, cx + i * 3, UPD_ROW_Y0 + UPD_ROWS_PER * UPD_ROW_H - 30 - i * 3, 3, 3, s.list_page < pages - 1 ? C_EDGE : C_DIM); }
             for (int i = 0; i < pages; i++) render_rect(fb, stride, cx - 1, UPD_ROW_Y0 + UPD_ROWS_PER * UPD_ROW_H / 2 - pages * 4 + i * 8, 4, 4, i == s.list_page ? C_EDGE : C_DIM);
         }
-        render_button(fb, stride, UPD_BTN_L_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, C_INNER, C_EDGE, "BACK TO TANK", 2);
+        render_button(fb, stride, UPD_BTN_L_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, C_INNER, C_EDGE, "BACK", 2);
         render_button(fb, stride, UPD_BTN_R_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, C_INNER, C_EDGE, "SCAN AGAIN", 2);
         break; }
     case UPD_PG_PASSWORD:
@@ -753,7 +753,7 @@ void render_update(uint16_t *fb, int stride, float clock) {
         if (s.primary)   render_button(fb, stride, primary_x(), by, UPD_BTN_W, UPD_BTN_H, C_GO, C_GO_E, s.primary, 2);
         if (s.secondary) render_button(fb, stride, UPD_BTN_R_X, by, UPD_BTN_W, UPD_BTN_H, C_INNER, C_EDGE, s.secondary, 2);
         if (s.tertiary)  render_button(fb, stride, UPD_BTN_L_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, C_INNER, C_EDGE, s.tertiary, 2);
-        render_button(fb, stride, s.tertiary ? UPD_BTN_R_X : UPD_BTN_MID_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, C_INNER, C_EDGE, "BACK TO TANK", 2);
+        render_button(fb, stride, s.tertiary ? UPD_BTN_R_X : UPD_BTN_MID_X, UPD_BTN_Y, UPD_BTN_W, UPD_BTN_H, C_INNER, C_EDGE, "BACK", 2);
         break; }
     default: break;
     }

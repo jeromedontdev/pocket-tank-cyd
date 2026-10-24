@@ -23,13 +23,13 @@
     .error { color: #ff9c8f; }
     [hidden] { display: none !important; }
     .brand { display: flex; align-items: center; gap: 1rem; }
-    .brand img { width: 6rem; height: auto; }
+    .brand img { width: clamp(6rem, 20vw, 10rem); height: auto; }
   </style>
 </head>
 <body>
 <main>
   <header class="brand"><img src="./logo.svg" alt="" width="128" height="96"><h1>Pocket Tank CYD save viewer</h1></header>
-  <p>Open a Pocket Tank CYD JSON backup (from <strong>Settings &gt; Device &gt; SD Backup</strong> or the daily
+  <p>Open a Pocket Tank CYD JSON backup (from <strong>Settings &gt; SD Backups &gt; Backup to SD</strong> or the daily
     automatic <code>auto-NNNN.json</code> backups in the SD card's <code>pocket-tank</code> folder) to see your fish, their family tree,
     their genes, the visitor log and recent memories.
     The file is read <strong>only in your browser</strong>; nothing is uploaded.</p>

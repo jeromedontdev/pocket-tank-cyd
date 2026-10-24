@@ -176,6 +176,7 @@ void companion_memory_text(const tank_memory_t *m, char *text, size_t size) {
         case MEMORY_ADVENTURE: snprintf(text, size, "%s brought home a keepsake.", who); break;
         case MEMORY_HELPERS: snprintf(text, size, "Helpers quietly tended the tank."); break;
         case MEMORY_VISITOR: snprintf(text, size, "%s visited the reef.", m->detail ? COMPANION_VISITORS[m->detail % VISITOR_SPECIES].memory : "An unknown drifter"); break;
+        case MEMORY_RPG: snprintf(text, size, "%s helped restore current %u.", who, (unsigned)m->detail + 1); break;
         default: snprintf(text, size, "No observations yet."); break;
     }
 }
@@ -256,9 +257,10 @@ bool companion_polish_valid(const tank_polish_t *p, int fish, int bank, bool awa
     for (int i = 0; i < TANK_RECAP_CAP; i++) {
         const tank_memory_t *m = &p->recap[i];
         if (m->pad || !memchr(m->name, 0, sizeof m->name) ||
-            (i < p->recap_count && (m->kind < MEMORY_ARRIVAL || m->kind > MEMORY_VISITOR ||
+            (i < p->recap_count && (m->kind < MEMORY_ARRIVAL || m->kind > MEMORY_RPG ||
              (m->kind == MEMORY_DISCOVERY && m->detail >= COMPANION_DISCOVERY_COUNT) ||
-             (m->kind == MEMORY_VISITOR && m->detail >= VISITOR_SPECIES)))) return false;
+             (m->kind == MEMORY_VISITOR && m->detail >= VISITOR_SPECIES) ||
+             (m->kind == MEMORY_RPG && m->detail >= 6)))) return false;
     }
     return true;
 }
@@ -350,8 +352,10 @@ static void polish_tick(tank_t *t, uint32_t seconds) {
 void companion_polish_observe(tank_t *t) { polish_tick(t, 0); }
 void companion_init(tank_t *t) {
     memset(&t->companion, 0, sizeof t->companion);
+    memset(&t->games, 0, sizeof t->games);
     memset(&t->polish, 0, sizeof t->polish);
     memset(&t->story, 0, sizeof t->story);
+    memset(&t->rpg, 0, sizeof t->rpg);
     t->visitor_left = 0;
     t->companion.version = COMPANION_VERSION;
     t->companion.cozy = t->companion.captions = 1;
@@ -359,6 +363,198 @@ void companion_init(tank_t *t) {
     t->companion.lively = 0;
     t->companion.decor = 1;
     t->companion_fraction = 0;
+}
+
+typedef struct { const char *prompt, *choice[3]; } rpg_encounter_t;
+static const char *const rpg_chapters[7] = {
+    "THE WHISPERING SHELL", "THE KELP CROSSING", "THE GLASS GARDEN",
+    "THE LANTERN SHOAL", "THE ANCESTORS' ARCH", "THE HEART OF THE CURRENT",
+    "A CURRENT SHARED"
+};
+static const rpg_encounter_t rpg_encounters[18] = {
+    {"A shell hums with a current nobody remembers. How will your fish answer?",
+     {"COURAGE: Answer with a finbeat", "CURIOSITY: Study the shell", "KINDNESS: Listen to its worry"}},
+    {"Sand hides the first waymark. A tiny crab guards a loose stone.",
+     {"COURAGE: Lift the stone", "CURIOSITY: Trace the sand lines", "KINDNESS: Help the little crab"}},
+    {"The shell offers a map or a promise. Choose what your journey will carry.",
+     {"COURAGE: Carry a beacon", "CURIOSITY: Keep the old map", "KINDNESS: Promise to return"}},
+    {"Kelp knots the crossing. A small opening bends away from the marked path.",
+     {"COURAGE: Part the fronds", "CURIOSITY: Follow the opening", "KINDNESS: Untangle the roots"}},
+    {"A shy snail knows a shortcut, but rushing might miss its quiet directions.",
+     {"COURAGE: Mark a direct trail", "CURIOSITY: Read the leaf marks", "KINDNESS: Wait with the snail"}},
+    {"Two currents meet at the kelp gate. Decide what the crossing should become.",
+     {"COURAGE: Open a clear channel", "CURIOSITY: Map a winding path", "KINDNESS: Make a sheltered way"}},
+    {"Glass flowers reflect unfamiliar colours. One reflection moves on its own.",
+     {"COURAGE: Greet the reflection", "CURIOSITY: Compare its markings", "KINDNESS: Offer it some shade"}},
+    {"An old garden wheel has stopped. Its keeper remembers only half a song.",
+     {"COURAGE: Turn the wheel", "CURIOSITY: Find the missing notes", "KINDNESS: Sing along softly"}},
+    {"The garden can shine as a landmark or shelter small travellers.",
+     {"COURAGE: Raise a bright marker", "CURIOSITY: Align the glass petals", "KINDNESS: Grow a quiet refuge"}},
+    {"The lantern shoal has lost its rhythm. Distant visitors leave faint lights.",
+     {"COURAGE: Lead a new rhythm", "CURIOSITY: Follow visitor lights", "KINDNESS: Match the slowest fish"}},
+    {"A young lantern drifts behind. The safe path is longer than the bright one.",
+     {"COURAGE: Guide from the front", "CURIOSITY: Test both light trails", "KINDNESS: Stay beside the lantern"}},
+    {"The shoal asks who its lights should guide when the current returns.",
+     {"COURAGE: Light the open sea", "CURIOSITY: Chart distant reefs", "KINDNESS: Welcome lost wanderers"}},
+    {"Names echo beneath the ancestors' arch. Familiar family marks catch the light.",
+     {"COURAGE: Add your own story", "CURIOSITY: Read the family marks", "KINDNESS: Honour earlier helpers"}},
+    {"An unfinished bridge waits beneath the arch. No ancestor left every answer.",
+     {"COURAGE: Place the first stone", "CURIOSITY: Study old journeys", "KINDNESS: Build a resting ledge"}},
+    {"The arch offers a legacy: a route for explorers or a homeward welcome.",
+     {"COURAGE: Leave a trail banner", "CURIOSITY: Preserve the waymarks", "KINDNESS: Keep a welcome light"}},
+    {"At the heart, the lost current waits. It needs a direction, not a battle.",
+     {"COURAGE: Give it momentum", "CURIOSITY: Listen for its source", "KINDNESS: Ask where it belongs"}},
+    {"Old waymarks join into one circle. Every small contribution has brought you here.",
+     {"COURAGE: Join the channels", "CURIOSITY: Balance the flow", "KINDNESS: Gather the travellers"}},
+    {"The current wakes. What kind of ocean will your companions leave behind?",
+     {"COURAGE: An ocean of journeys", "CURIOSITY: An ocean of wonders", "KINDNESS: An ocean of welcome"}}
+};
+bool companion_rpg_valid(const tank_rpg_t *s, uint32_t next_id) {
+    if (!s->version) { tank_rpg_t empty = {0}; return !memcmp(s, &empty, sizeof empty); }
+    if (s->version != 1 || s->chapter > 6 || s->step > 2 ||
+        (s->chapter == 6 && s->step) || s->outcome > 6 ||
+        (s->routes >> s->chapter) || s->participant >= next_id) return false;
+    unsigned actions = s->chapter * 3 + s->step, total = 0;
+    for (int i = 0; i < 3; i++) {
+        if (s->skills[i] > 18) return false;
+        total += s->skills[i];
+    }
+    if (total != actions || (!!s->outcome != !!actions) || (!!s->participant != !!actions)) return false;
+    for (int i = 0; i < 6; i++) {
+        if (s->contributors[i] >= next_id || (i >= s->chapter && s->contributors[i])) return false;
+    }
+    return true;
+}
+const char *companion_rpg_chapter_name(const tank_t *t) {
+    return rpg_chapters[t->rpg.chapter <= 6 ? t->rpg.chapter : 0];
+}
+const char *companion_rpg_chapter_title(int chapter) {
+    return rpg_chapters[chapter >= 0 && chapter <= 6 ? chapter : 0];
+}
+const char *companion_rpg_route(const tank_t *t, int chapter) {
+    static const char *const open[6] = {
+        "BEACON AND MAP", "EXPLORERS' CROSSING", "GLASS LANDMARK",
+        "DISCOVERY LIGHTS", "TRAIL OF WAYMARKS", "OCEAN OF JOURNEYS"
+    };
+    static const char *const welcome[6] = {
+        "A PROMISE KEPT", "SHELTERED CROSSING", "GARDEN REFUGE",
+        "LIGHTS OF WELCOME", "HOMEWARD LEGACY", "OCEAN OF WELCOME"
+    };
+    if (chapter < 0 || chapter >= 6 || chapter >= t->rpg.chapter) return "NOT YET WRITTEN";
+    if (chapter == 5 && (t->rpg.outcome == 2 || t->rpg.outcome == 5)) return "OCEAN OF WONDERS";
+    return t->rpg.routes & (1u << chapter) ? welcome[chapter] : open[chapter];
+}
+const char *companion_rpg_prompt(const tank_t *t) {
+    if (t->rpg.chapter >= 6) {
+        if (t->rpg.routes & 32)
+            return "The current flows homeward, welcoming wanderers. Your companions have made an ocean of refuge.";
+        if (t->rpg.outcome == 2 || t->rpg.outcome == 5)
+            return "The current reveals hidden reefs. Your companions have made an ocean of wonders to discover.";
+        return "The current opens distant paths. Your companions have made an ocean of journeys and discoveries.";
+    }
+    if (t->rpg.step == 1 && t->rpg.outcome >= 4)
+        return "The first attempt found a gentle detour. A quieter clue now points the way onward.";
+    return rpg_encounters[t->rpg.chapter * 3 + t->rpg.step].prompt;
+}
+void companion_rpg_choice_label(const tank_t *t, int choice, char *text, size_t size) {
+    const char *label = "";
+    if (choice >= 0 && choice < 3 && t->rpg.chapter < 6 && t->rpg.step < 3)
+        label = rpg_encounters[t->rpg.chapter * 3 + t->rpg.step].choice[choice];
+    snprintf(text, size, "%s", label);
+}
+bool companion_rpg_contributor(const tank_t *t, uint32_t id) {
+    if (!id || id > UINT16_MAX) return false;
+    for (int i = 0; i < t->rpg.chapter && i < 6; i++)
+        if (t->rpg.contributors[i] == id) return true;
+    return false;
+}
+bool companion_rpg_legacy(const tank_t *t, int fish) {
+    if (fish < 0 || fish >= t->n_fish) return false;
+    const fish_lineage_t *line = &t->story.active[fish];
+    return companion_rpg_contributor(t, line->parent[0]) ||
+           companion_rpg_contributor(t, line->parent[1]);
+}
+/* Each real-world connection helps, but the selected skill alone always
+ * advances the story. Neither fish care nor the RNG is touched. */
+static unsigned rpg_bonus(const tank_t *t, int fish, int choice) {
+    const companion_bond_t *b = &t->companion.active[fish];
+    const fish_lineage_t *line = &t->story.active[fish];
+    unsigned bonus = b->bond >= 25 || (b->tricks & (1u << choice));
+    if (choice == 0) bonus += line->traits != 0 || line->mutation != 0;
+    if (choice == 1) {
+        bonus += t->sd_unlocks != 0 || t->journal.theme != 0;
+        bonus += t->story.seen[VISITOR_GHOST] || t->story.seen[VISITOR_MANTA] || t->story.seen[VISITOR_SQUID];
+    }
+    if (choice == 2) bonus += t->polish.active[fish].buddy != 0 || companion_rpg_legacy(t, fish);
+    bonus += t->polish.active[fish].adventures != 0;
+    bonus += t->rpg.chapter && (t->rpg.routes & (1u << (t->rpg.chapter - 1))) && choice == 2;
+    return bonus;
+}
+void companion_rpg_context(const tank_t *t, int fish, char *text, size_t size) {
+    const char *context = "Every approach is open. No hurry.";
+    if (fish >= 0 && fish < t->n_fish) {
+        const companion_bond_t *bond = &t->companion.active[fish];
+        const fish_lineage_t *line = &t->story.active[fish];
+        if (companion_rpg_legacy(t, fish))
+            context = "Family legacy helps your guide.";
+        else if (bond->bond >= 25 && bond->tricks)
+            context = "Bonds and tricks help your guide.";
+        else if (bond->bond >= 25)
+            context = "Your bond helps your guide.";
+        else if (bond->tricks)
+            context = "Learned tricks help your guide.";
+        else if (line->traits || line->mutation)
+            context = "Your fish's genes offer courage.";
+        else if (t->sd_unlocks || t->journal.theme)
+            context = "Your decor offers a clue.";
+        else if (t->story.seen[VISITOR_GHOST] || t->story.seen[VISITOR_MANTA] ||
+                 t->story.seen[VISITOR_SQUID])
+            context = "A past visitor left a clue.";
+        else if (t->polish.active[fish].adventures)
+            context = "Past adventures help your guide.";
+        else if (t->polish.active[fish].buddy)
+            context = "A familiar friend inspires kindness.";
+        else if (t->rpg.chapter && (t->rpg.routes & (1u << (t->rpg.chapter - 1))))
+            context = "Your welcoming route inspires kindness.";
+    }
+    snprintf(text, size, "%s", context);
+}
+const char *companion_rpg_outcome(const tank_t *t) {
+    static const char *const outcomes[7] = {
+        "Your journey is waiting. No fish leaves home.",
+        "A brave step opened the way.", "A hidden clue revealed the way.",
+        "A new friendship opened the way.", "A gentle detour taught courage.",
+        "A second look taught curiosity.", "A helping hand taught kindness."
+    };
+    return outcomes[t->rpg.outcome <= 6 ? t->rpg.outcome : 0];
+}
+bool companion_rpg_choose(tank_t *t, int fish, int choice) {
+    if (fish < 0 || fish >= t->n_fish || choice < 0 || choice > 2 ||
+        t->rpg.chapter >= 6 || !t->polish.active[fish].id ||
+        !companion_rpg_valid(&t->rpg, t->polish.next_id)) return false;
+    tank_rpg_t old = t->rpg;
+    tank_memory_t memories[TANK_RECAP_CAP];
+    memcpy(memories, t->polish.recap, sizeof memories);
+    uint8_t count = t->polish.recap_count;
+    tank_rpg_t *s = &t->rpg;
+    unsigned power = s->skills[choice] + rpg_bonus(t, fish, choice);
+    s->version = 1;
+    s->participant = t->polish.active[fish].id;
+    s->outcome = (uint8_t)(choice + 1 + (power < s->chapter + s->step + 1 ? 3 : 0));
+    s->skills[choice]++;
+    if (++s->step == 3) {
+        unsigned chapter = s->chapter;
+        /* Never alias a late life identity to an unrelated ancestor. */
+        s->contributors[chapter] = s->participant <= UINT16_MAX ? (uint16_t)s->participant : 0;
+        if (choice == 2) s->routes |= (uint8_t)(1u << chapter);
+        companion_memory(t, MEMORY_RPG, fish, chapter);
+        s->chapter++; s->step = 0;
+    }
+    if (progression_save(t)) return true;
+    t->rpg = old;
+    memcpy(t->polish.recap, memories, sizeof memories);
+    t->polish.recap_count = count;
+    return false;
 }
 bool companion_valid(const companion_state_t *s) {
     if (s->version > COMPANION_VERSION || s->cozy > 1 || s->captions > 1 || s->lively > 1 || s->decor > 1 ||
@@ -604,10 +800,28 @@ bool companion_adventure_claim(tank_t *t) {
     if (commit(t, &old)) return true;
     t->sd_balance -= coins; t->sd_earned -= coins; t->journal.xp = xp; return false;
 }
+bool companion_games_valid(const game_records_t *s) {
+    if (s->version > 1) return false;
+    for (int i = 0; i < 9; i++) if (s->reserved[i]) return false;
+    for (int i = 0; i < 6; i++)
+        if (s->medals[i] > 3 || (!s->version && (s->best[i] || s->rounds[i] || s->medals[i]))) return false;
+    return true;
+}
 bool companion_game_claim(tank_t *t, int game, int score, int moves, int dollars, bool relaxed) {
-    if (game < 0 || game >= 6 || score < 0 || moves < 0 || dollars < 1 || dollars > 10) return false;
+    if (game < 0 || game >= 12 || score < 0 || moves < 0 || dollars < 1 || dollars > 10) return false;
     companion_state_t old = t->companion;
-    if (!relaxed) {
+    game_records_t old_games = t->games;
+    if (!relaxed && game >= 6) {
+        int index = game - 6;
+        unsigned metric = (unsigned)score;
+        if (metric > UINT16_MAX) metric = UINT16_MAX;
+        t->games.version = 1;
+        if (metric > t->games.best[index]) t->games.best[index] = (uint16_t)metric;
+        if (t->games.rounds[index] < UINT16_MAX) t->games.rounds[index]++;
+        static const uint16_t thresholds[6][3] = {{8,20,36},{12,28,44},{6,14,24},{8,18,30},{12,24,36},{10,24,40}};
+        for (int i = 0; i < 3; i++) if (metric >= thresholds[index][i] && t->games.medals[index] < i + 1)
+            t->games.medals[index] = (uint8_t)(i + 1);
+    } else if (!relaxed) {
         bool lower = game == 1 || game == 5;
         unsigned metric = (unsigned)(lower ? moves : score);
         if (metric > UINT16_MAX) metric = UINT16_MAX;
@@ -621,7 +835,7 @@ bool companion_game_claim(tank_t *t, int game, int score, int moves, int dollars
         if (t->companion.featured == game) t->companion.featured = (uint8_t)((game + 1) % 6);
     }
     if (progression_game_reward(t, dollars)) return true;
-    t->companion = old; return false;
+    t->companion = old; t->games = old_games; return false;
 }
 bool companion_captions(const tank_t *t) { return t->companion.captions != 0; }
 bool companion_lively(const tank_t *t) { return t->companion.lively != 0; }
@@ -663,33 +877,20 @@ void companion_favorite_label(const tank_t *t, int fish, char *text, size_t size
     companion_favorite_text(t, fish, verbose, sizeof verbose);
     snprintf(text, size, "LIKES: %s %s", names[g], strstr(verbose, "(seen!)") ? "(SEEN)" : "(NATURE)");
 }
-static void fish_caption(const tank_t *t, int i, bool favorite, char *text, size_t size) {
-    const fish_t *f = &t->fish[i];
-    if (favorite) {
-        char fav[48];
-        companion_favorite_text(t, i, fav, sizeof fav);
-        snprintf(text, size, "%s loves %s", f->name, fav);
-        return;
-    }
-    int friend_idx = f->goal.id == GOAL_FOLLOW_FRIEND ? tank_nearest_friend(t, i, NULL) : -1;
-    if (friend_idx >= 0) snprintf(text, size, "%s swims with %s", f->name, t->fish[friend_idx].name);
-    else snprintf(text, size, "%s: %s", f->name, GOAL_NAMES[f->goal.id >= 0 && f->goal.id < GOAL_COUNT ? f->goal.id : GOAL_REST]);
-}
 void companion_status(const tank_t *t, char *text, size_t size) {
     if (!size) return;
     const companion_state_t *s = &t->companion;
-    if (s->adventure && (s->adventure_done & (1u << (s->adventure - 1))))
-        snprintf(text, size, "%s's postcard is ready", s->portrait_name);
-    else if (t->greet_timer > 0 && t->n_fish) snprintf(text, size, "A little hello from your fish");
-    else if (s->away) snprintf(text, size, "%s is adventuring: %s", s->portrait_name, COMPANION_ADVENTURES[s->adventure - 1]);
-    else if (s->adventure) snprintf(text, size, "A story unfolds: %s", COMPANION_ADVENTURES[s->adventure - 1]);
-    else if (t->n_fish) {
-        /* Rotates every 6 powered-on seconds: the discovery, then each fish's
-         * favorite and its current activity (with its followed tankmate). */
-        unsigned extra = s->last_discovery ? 1u : 0u, n = extra + 2u * (unsigned)t->n_fish;
-        unsigned k = (s->powered_s / 6u) % n;
-        if (k < extra) snprintf(text, size, "Found: %s", COMPANION_DISCOVERIES[s->last_discovery - 1]);
-        else fish_caption(t, (int)((k - extra) / 2u), ((k - extra) & 1u) == 0, text, size);
-    } else if (s->last_discovery) snprintf(text, size, "Found: %s", COMPANION_DISCOVERIES[s->last_discovery - 1]);
-    else snprintf(text, size, "A quiet moment together");
+    if (s->adventure && (s->adventure_done & (1u << (s->adventure - 1))) &&
+        !(s->adventure_claimed & (1u << (s->adventure - 1))))
+        snprintf(text, size, "%s: POSTCARD READY", s->portrait_name);
+    else if (s->away) snprintf(text, size, "%s: ADVENTURING", s->portrait_name);
+    else if (t->visitor_left > 0) snprintf(text, size, "RARE VISITOR PASSING");
+    else {
+        text[0] = 0;
+        for (int i = 0; i < t->n_fish; i++) {
+            const fish_t *f = &t->fish[i];
+            const char *need = f->hunger >= 8 ? "HUNGRY" : f->stress >= 7 ? "NEEDS CALM" : NULL;
+            if (need) { snprintf(text, size, "%s: %s", f->name, need); break; }
+        }
+    }
 }

@@ -1,9 +1,14 @@
 # Pocket Tank CYD 1.3.0
 
+<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
+
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
 now versioned independently. This is **release 1.3.0**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
+The `main` branch also includes the **unreleased additions below**; the published
+1.3.0 downloads do not yet include those changes. No existing release image or
+tag has been replaced.
 Targets the **ESP32-2432S028 Cheap Yellow Display**:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
@@ -15,12 +20,45 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
+## Current source: beyond 1.3.0
+
+The latest source adds:
+
+- **The Lost Current**, an optional six-chapter, 18-encounter story RPG tied to
+  real fish, bonds, genetics, family legacies, visitors, decorations, and earlier
+  adventures. No fish harm, forced quests, care-stat changes, or background AI.
+- **Twelve games across two pages**, including Reef Defender, Current Runner,
+  Pearl Breaker, Tide Tactics, Reef Architect, and Deep Expedition. Help, pause,
+  saved records, medals, and transactional rewards are included.
+- Consistent **BACK** navigation; separate Fish Life, Family, Genes, Visitor Log,
+  tank recaps, and display rewards; clearer care and bond explanations.
+- Visible clock sparkles under **Clock/Weather > Effects**, useful wrapped
+  event captions, steady Frame-selector typography, and a redesigned manta.
+- Working CYD room-light/LED touch controls, steadier ambient-light filtering,
+  and a non-flashing Wi-Fi flow that returns to Settings.
+- **Schema 14 backups**, retaining imports from schemas 1–13 and existing binary
+  saves. Keep a pre-upgrade backup before deliberately downgrading.
+
+![The Lost Current story and fish guide](docs/media/cyd-features/rpg-story.png)
+
+### Recent releases
+
+- [1.3.0](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v1.3.0):
+  inherited genetics/markings, family trees, five visitors, seasons, rear RGB LED,
+  room-light sensor, SD photos/daily backups, and browser save viewer.
+- [1.2.0](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v1.2.0):
+  persistent fish biographies/buddies, tank identity and recaps, rare sightings,
+  and six fixed sand decorations.
+- [1.1.0](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v1.1.0):
+  calm friendships, creature shortcuts, reversible decoration placement,
+  aquarium summaries, scenic effects, and save-preserving browser USB updates.
+
 ## What remains
 
 - **Genetics and family trees:** fish carry hidden markings, colors and four
   recessive traits (Shimmer, Painted Fins, Pale Belly, Gold Eye) that bred fry
-  inherit, with rare mutations. **Care > LIFE > FAMILY** shows generations,
-  parents, grandparents, children and genes; see the
+  inherit, with rare mutations. **Home > Fish > Family & Genes** shows generations,
+  parents, grandparents and children, with a separate **GENES** tab; see the
   [family guide](docs/CYD-FEATURES.md#family-genes-and-visitors-new-in-13).
 - Five rare harmless visitors with a **Visitor Log**, and seasonal sand scenery
   that follows the clock (north, south or off).
@@ -33,7 +71,7 @@ actual desktop renderer.
 - Rare harmless unknown visitors, plus six cached fixed sand decorations.
 - Verified-backup status and a source-name/version preview before restoring.
 - Calm fish form swim buddies and follow in short, spaced pairs.
-  Stable favorite decorations guide resting and exploration; see **Home > Fish > Care**.
+  Stable favorite decorations guide resting and exploration; see **Home > Fish > Fish Life**.
 - Tap shrimp, snail, urchin or seahorse for diet, activity and progress.
   The shrimp card distinguishes actual population from drawn representatives;
   **COLORS** opens that creature's free color editor.
@@ -357,6 +395,31 @@ not fish transfers: games cannot injure, feed, train or change the actual fish.
 | Treasure Cast | Time five casts over the chest, avoiding fish/debris. | 2 per accurate cast, up to 10 |
 | Feed Frenzy | Choose each visiting fish's requested snack for 30 seconds. Correct +2; wrong -1, never below zero. | Score / 2, rounded down, up to 10 |
 | Reef Puzzle | Rotate pipe tiles to connect the left inlet to the right outlet; untimed, always solvable. | 6 |
+| Reef Defender | Aim taps at incoming hazards; defend the reef across five increasingly busy waves. | Score / 4, up to 10 |
+| Current Runner | Choose among five lanes through 18 scrolling gates; gold gap scores 3, neighboring gap 1. | Score / 4, up to 10 |
+| Pearl Breaker | Move the paddle to keep the pearl bouncing and clear the reef blocks. | Score / 4, up to 10 |
+| Tide Tactics | Move/attack orthogonally, guard to heal, and capture three flags within 22 turns; enemies respond after each move. | Score / 4, up to 10 |
+| Reef Architect | Place coral and seagrass on a grid, balancing water access and neighboring habitats. | Score / 4, up to 10 |
+| Deep Expedition | Choose branching routes, manage oxygen and inventory, and return with your loot. | Score / 4, up to 10 |
+
+Use **PAGE 2** for the six new games and **PAGE 1** to return.
+Each new game opens with its own rules. **PAUSE** freezes a round; **HELP**
+reopens its instructions. Strategy and placement games are turn-based, not
+reaction tests. The records screen has matching pages, with saved best scores,
+round counts, and medals for all twelve games. Original six-game records remain
+intact when upgrading.
+Relaxed Defender, Runner, and Breaker run at 65% speed; the three turn-based
+games keep their normal rules. All six offer the same capped rewards in either
+mode, but only challenge play records personal bests and medals.
+
+| New-game medals | Bronze | Silver | Gold |
+|---|---:|---:|---:|
+| Reef Defender | 8 | 20 | 36 |
+| Current Runner | 12 | 28 | 44 |
+| Pearl Breaker | 6 | 14 | 24 |
+| Tide Tactics | 8 | 18 | 30 |
+| Reef Architect | 12 | 24 | 36 |
+| Deep Expedition | 10 | 24 | 40 |
 
 Each sand dollar also earns **3 permanent Journal XP**, contributing to Keeper
 levels and backdrop unlocks without falsely completing care objectives.
@@ -381,18 +444,55 @@ challenge targets: 24 Bubble points, Match in 16 moves, 24 Slalom points,
 means that many moves or fewer. The suggested game advances after you claim
 its challenge-mode reward; it has no calendar deadline or streak.
 
+## The Lost Current: an optional fish-story RPG
+
+Open **Home > Adventures > The Lost Current** for a saved, turn-based story.
+It is an addition to the aquarium, not a replacement for care or the existing
+timed expeditions. There are no compulsory quests, deadlines, fees, or
+missed-visit penalties. Close it at any time and return to the aquarium.
+
+Choose an actual fish as the story's guide. Across six chapters, explore a
+forgotten current, solve encounters through courage, curiosity, or kindness,
+and leave a shared legacy for the aquarium. Choices save immediately;
+chapter rewards are saved in the same transaction and cannot be claimed twice.
+Failed saves leave both progress and rewards unchanged, with an explicit retry.
+There are 18 encounters. Each choice develops one shared adventure skill;
+an approach can succeed directly or find a safe alternate way forward. Chapter
+resolutions and the finale branch with your decisions. The three endings favor
+journeys, wonders, or welcome. Story rewards are memories, skills, and an
+optional map keepsake on the trophy shelf, not coins or care-stat advantages.
+
+The story recognizes fish bonds and learned tricks, inherited traits and
+family connections, decorations and aquarium appearance, visitor sightings,
+and earlier expedition discoveries. These offer alternative approaches and
+context, never a requirement to buy an object, breed a particular fish, or
+change a device setting. Descendants can continue their family's journey.
+The campaign journal remembers chapter contributors even when a fish leaves
+the active tank.
+
+Adventure skills belong to the shared story, separate from care statistics.
+Story choices do not feed, train, age, injure, transfer, or change a real fish.
+Nothing runs in the aquarium simulation on behalf of the RPG: no new swimming
+AI, background encounters, enemies, or continuous effects. Normal aquarium
+gameplay remains available whether you start, finish, or ignore the story.
+
 ## Desk companion, discoveries and safe adventures
 
 Tap a fish and its **MENU** button for **Home**: **Fish**, **Tank**,
-**Adventures**, **Collections**, **Games**, and **Settings**. The existing
-Keeper page also has a **HOME** shortcut. Fish holds care, Bank, wardrobe and
-names/looks; Tank holds the shop, aquariums, palettes and creature colors.
-Collections holds the Journal and discoveries/frames. Adventures
+**Adventures**, **Collections**, **Games**, and **Settings**.
+Fish holds interactions, Bank, wardrobe,
+names/looks, life and family/genes; Tank holds the shop, aquariums, palettes,
+creature colors, identity and tank journal.
+Collections holds the Journal, discovery hints, display rewards and visitor log. Adventures
 is its own destination, not a container for unrelated features. Back returns
-to the category you used. There are no daily streaks or missed-visit penalties.
+to the category you used. All return buttons are labeled **BACK**; action buttons
+such as Save, Cancel, and Done retain their action labels.
+There are no daily streaks or missed-visit penalties.
 
 **Settings** is grouped into **Display**, **Clock/Weather**, **Wi-Fi/Sync**,
-**SD Backups**, **Feeding**, and **Device** (updates/calibration/wipe).
+**SD Backups**, **Aquarium Care**, and **Device** (updates/calibration/wipe).
+Wi-Fi/Sync restarts into its low-memory setup mode with the backlight dark until
+the first complete frame, then returns to Settings after clock synchronization.
 **Display > SCALE** toggles **Normal 320x240** (formerly Compact, now the default
 for fresh installations, resets and new aquariums) / **Enlarged 240x180**.
 Existing saves retain their selected scale. Normal renders
@@ -402,7 +502,8 @@ readable. The setting and remapped positions persist per aquarium; failed
 saves roll back. Three horizontal tiles reuse the existing framebuffer to
 preserve weather's RAM budget. Normal can have a lower animation rate.
 
-- **Cozy Care** keeps unattended care comfortable without pretending you fed,
+- **Settings > Aquarium Care > Comfort Assist** (the saved Cozy Care option)
+  keeps unattended care comfortable without pretending you fed,
   cleaned or trained your fish. Classic keeps the original care behaviour.
   New aquariums start Cozy; existing aquariums stay Classic until you change
   the option. Bonds never decay in either mode.
@@ -410,12 +511,16 @@ preserve weather's RAM budget. Normal can have a lower animation rate.
   It doesn't manufacture trust, feeding counters or Journal care milestones.
   DART unlocks at bond 10, BUBBLES at 25, FOLLOW at 50. Tap an unlocked trick
   to request a playful dart, a visit to the bubble column, or following a
-  tankmate; close the menu to watch. CARE's **BOND / TRICK HELP** explains
+  tankmate; close the menu to watch. **Fish > Say Hello > HOW BONDS WORK** explains
   this alongside **trust**, the separate 0–10 confidence built through food
   and calm care. Bond is permanent friendship, not another trust multiplier
   or a source of care XP. Bonds/tricks travel with banked and adventuring fish.
-- **CAPTIONS** adds aquarium activity beside the idle clock. **CALM / LIVELY**
-  chooses whether extra drifting clock-mode specks are shown.
+- **Settings > Clock/Weather > Effects > Event Captions** shows useful adventures, ready postcards,
+  visitors, hunger or stress beside the idle clock. Routine exploration is silent.
+  Weather and events wrap to fit; even Enlarged mode with a long city name is bounded.
+  **Settings > Clock/Weather > Effects > Sparkles** controls eight bright cyan/gold
+  drifting stars beside the clock, not fish mood. They remain visible without
+  captions and never cover the clock face or its weather panel.
 - **Collections > Discoveries** automatically records bubble watching, exploration, seagrass naps,
   swimming together, playful darts, reef visits, greetings, learned tricks,
   growing up and adventure postcards. Behaviour discoveries require at least
@@ -423,9 +528,10 @@ preserve weather's RAM budget. Normal can have a lower animation rate.
   tap the event while it happens.
 - Complete **Nature** (six activity discoveries), **Friendship** (hello and a
   trick), or **Story** (all three postcards) and claim its permanent cosmetic
-  frame. Frames colour the companion page and add small clock-corner ornaments;
-  **FRAME >** cycles owned frames and displays the selected name; it explicitly
-  shows **LOCKED** until you complete and claim a collection. DEFAULT removes
+  reward in **Collections > Display Rewards**.
+  Frames colour the companion page and add small clock-corner ornaments;
+  **FRAME >** cycles only unlocked frames and displays the selected name;
+  the page explains which sets still need discoveries or a claim. ORIGINAL removes
   the ornament without changing your clock colours.
   **TROPHIES** shows/hides earned shells and gold game-challenge markers in
   the aquarium. Collection claims are one-time, not a repeatable currency source.
@@ -473,7 +579,7 @@ backups.
 
 The clock displays current temperature/conditions, or an explicit
 unavailable/offline/stale status. Weather occupies a bordered, larger-text area
-attached to the clock, with the city on its own bounded line. Activity captions
+attached to the clock, with the city on its own wrapped lines. Useful event captions
 share the reserved clock area without covering its face. Conditions refresh
 about every **15 minutes**; readings **30 minutes** old are marked stale.
 Disabled weather makes no requests.
@@ -558,10 +664,11 @@ The append-only polish tail adds stable fish identities, remembered buddies,
 biographies, eight recent observations, tank subtitles/emblems, rare-visitor
 sightings and backup status. See the [quiet-depth guide](docs/CYD-FEATURES.md#quiet-depth-new-in-12)
 for menu paths, visitor timing and migration limits. The NVS partition is
-unchanged; a 5856-byte ceiling reserves room for three save copies plus settings
+unchanged; a 5920-byte ceiling reserves room for three save copies plus settings
 and the garbage-collection page.
-JSON exports use schema 12 for an individual aquarium, including the polish and story tails and saved Enlarged/Normal scale; schema
-1 through 11 backups remain importable. Older firmware cannot restore schema 12 backups; keep a matching
+JSON exports use schema 14 for an individual aquarium, including Lost Current progress and twelve-game records,
+the polish and story tails and saved Enlarged/Normal scale; schema
+1 through 13 backups remain importable. Older firmware cannot restore schema 14 backups; keep a matching
 pre-upgrade backup before downgrading. The historical progression documents under `docs`
 describe the original game design; this README and the CYD guide are the
 authoritative build/hardware instructions.
