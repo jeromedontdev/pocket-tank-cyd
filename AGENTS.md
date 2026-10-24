@@ -98,6 +98,63 @@ generic frameworks just to make an unrelated task easier.
   Check `memory_plan.h`, heap and application-slot headroom after changes.
   Each OTA app slot is `0x1e0000` bytes; do not casually grow large assets.
 
+### FPS, internal RAM, PSRAM, and storage budgets
+
+- **There is no PSRAM on the supported board.** Required buffers, renderer
+  scratch, masks, task stacks and DMA transfers must fit internal RAM.
+  Do not "fix" an allocation failure by requiring PSRAM, selecting a PSRAM board,
+  or enabling PSRAM-only code. SD storage cannot replace working RAM.
+- The loop has a **40 ms minimum frame interval (25 FPS ceiling)**, not a
+  promise of 25 FPS in a moving aquarium. The practical populated-tank goal is
+  **10 FPS**, not the earlier 15 FPS aspiration.
+- Historical hardware observations in [firmware/CYD.md](firmware/CYD.md) and
+  [the feature guide's performance notes](docs/CYD-FEATURES.md) include
+  roughly **10.4-11.5 FPS** in Normal with/without Medium Flip clock/weather,
+  and **10.6-11.8 FPS** in a warmed-up 1.2.0 sample with one resident.
+  Earlier populated Ice Cavern samples were **7.5-8.4 FPS**. These are
+  scene-specific observations, not current-release guarantees. Report new
+  measurements with release/build, scene, population, resolution and effects.
+- A stationary retained Home menu can report about 25 FPS while sending no
+  pixels. That is **not** aquarium FPS. Avoid benchmarks based only on menus,
+  simulator speed, the frame cap, or an empty tank.
+- Measure on the real device after warm-up across several 10-second `display`
+  log windows, including busy tanks and clock/weather on/off at both scales.
+  Record total FPS plus poll, tick, prefetch wait, render, flush, tail and sleep;
+  renderer stage timing and SPI fill/wire/send timing identify the actual cost.
+  Compare like-for-like staged scenes; do not change the user's tank to make a
+  result look faster. Repeat after adding creatures, decorations or effects.
+- Enlarged uses a **240x180 RGB565 framebuffer = 86,400 bytes**, allocated as
+  internal DMA-capable 8-bit RAM. Normal reuses that allocation as **three
+  320x80 tiles**, not a full 320x240 framebuffer. Do not add a second framebuffer
+  or a native full-screen allocation (**153,600 bytes**) to simplify drawing.
+- The LCD stripe allocation is also internal DMA RAM. Its size follows
+  `320 * CYD_STRIPE_ROWS * 2`; preserve the alternating stripe/pipelining
+  lifecycle. Changing stripe rows, tile size, alignment or task order requires
+  memory and transfer checks, not just a successful compile.
+- Normal reuses the framebuffer tail for a compressed backdrop/static-scene
+  cache. Optional artwork/clock caches are bounded and fall back to live
+  drawing if unavailable. Some scene/card/dirty caches are deliberately
+  disabled on CYD. Never enable them wholesale or assume all caches can
+  coexist. Preserve explicit diagnostics and tested fallback correctness.
+- At boot, `tank task up`, and periodic `TAG`/`display` lines, inspect **free
+  internal heap and largest internal block**, cache usage, and rows rendered/
+  flushed. A healthy total heap does not prove a contiguous DMA allocation
+  will fit. Check network startup, SD operations and both display modes too.
+- Prefer preallocated scratch, bounded static/cached scenery and localized
+  dirty regions. Avoid per-frame allocation, full-screen animated effects,
+  unconditional full redraws and new continuous simulation. Keep old/new
+  damage bounds and cached/live pixels equivalent.
+- Flash has **two 1,966,080-byte OTA app slots**, not one 4 MB app budget;
+  the SPIFFS partition is only **128 KiB**. Firmware image headroom, internal
+  RAM, NVS save entries and SD capacity are separate limits. Report app bytes
+  and free slot space from each release build. A smaller file or more SD
+  space does not establish runtime heap or NVS safety.
+- Relevant read-only diagnostics include `state`, `clock`, `sd status`, `ota`
+  and the periodic logs (`help` lists current commands). For serial watching,
+  use `python tools\director.py -p COM4 --watch` after confirming the port.
+  Commands such as `seahorse on|off` mutate the scene: use only an authorized
+  staged tank for A/B tests, never casually on the live aquarium.
+
 ## UI and hardware traps
 
 - UI page coordinates and framebuffer coordinates differ. Inspect the relevant
