@@ -1,14 +1,13 @@
-# Pocket Tank CYD 1.3.0
+# Pocket Tank CYD 1.4.0
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 1.3.0**; firmware, update
+now versioned independently. This is **release 1.4.0**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
-The `main` branch also includes the **unreleased additions below**; the published
-1.3.0 downloads do not yet include those changes. No existing release image or
-tag has been replaced.
+Release 1.4.0 includes The Lost Current, twelve games, and the menu/hardware
+fixes below. Older release downloads and tags remain unchanged.
 Targets the **ESP32-2432S028 Cheap Yellow Display**:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
@@ -20,9 +19,9 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## Current source: beyond 1.3.0
+## New in 1.4.0
 
-The latest source adds:
+This release adds:
 
 - **The Lost Current**, an optional six-chapter, 18-encounter story RPG tied to
   real fish, bonds, genetics, family legacies, visitors, decorations, and earlier
@@ -37,12 +36,15 @@ The latest source adds:
 - Working CYD room-light/LED touch controls, steadier ambient-light filtering,
   and a non-flashing Wi-Fi flow that returns to Settings.
 - **Schema 14 backups**, retaining imports from schemas 1–13 and existing binary
-  saves. Keep a pre-upgrade backup before deliberately downgrading.
+  saves. Back up before upgrading; do not downgrade an upgraded save.
 
 ![The Lost Current story and fish guide](docs/media/cyd-features/rpg-story.png)
 
 ### Recent releases
 
+- [1.4.0](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v1.4.0):
+  optional fish-story RPG, six more games, consistent menus, clock effects,
+  CYD control fixes, and the feature-focused website with a separate USB flasher.
 - [1.3.0](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v1.3.0):
   inherited genetics/markings, family trees, five visitors, seasons, rear RGB LED,
   room-light sensor, SD photos/daily backups, and browser save viewer.
@@ -155,6 +157,13 @@ advisor the CYD port already used before the cleanup. SD storage does not
 replace the working RAM needed by the original model.
 
 ## Build and upgrade
+
+### For AI coding assistants
+
+[AGENTS.md](AGENTS.md) is the repository's AI-maintenance entry point: architecture,
+save/memory constraints, safe hardware workflows, test commands, and the complete
+documentation/release checklist. Keep it current when those contracts change.
+It is project guidance, not a private file or part of the firmware.
 
 ### Install from your browser
 

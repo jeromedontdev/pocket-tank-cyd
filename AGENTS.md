@@ -1,0 +1,215 @@
+# Pocket Tank CYD: AI maintenance directives
+
+This is the project entry point for coding assistants. Read it before changes,
+then read the relevant implementation and linked guide. It is shared project
+guidance, not a secret, a runtime configuration, or a promise that every fact
+stays current. Check Git, source constants, and GitHub before claiming a release
+or deployment is published. Update this file when its contracts change.
+
+## Start or resume here
+
+1. Inspect `git status`, recent commits, tags, and the current user request.
+   Preserve unrelated work. Never assume an earlier conversation's local files,
+   compiler paths, credentials, or test results are available.
+2. Read [README.md](README.md), [the illustrated feature guide](docs/CYD-FEATURES.md),
+   and [hardware/build notes](firmware/CYD.md) for the relevant behavior.
+3. Identify the smallest complete change across simulation, renderer, input,
+   persistence, hardware, tests, documentation, and web/release surfaces.
+4. Validate the exact behavior and error/rollback paths. Record what actually
+   passed, what was not tested, and any remaining work in the final response.
+
+### Handoff baseline
+
+- Source release: **1.4.0**, with The Lost Current RPG, twelve games, consistent
+  BACK navigation, reorganized care/collections, visible clock effects,
+  room-light/LED controls, and a feature-focused website.
+- Prior implementation commits: `551e771` (RPG/games/UI/docs) and `44cf7f0`
+  (feature home, separate flasher, GCC signedness fix). Treat these as landmarks,
+  not a substitute for current HEAD. Release publication is verified in Actions.
+- The Lost Current is optional: six chapters, 18 encounters, three endings.
+  It must not hurt/remove real fish, alter care stats, impose deadlines or
+  required purchases, or add background aquarium AI. Chapter choices save
+  transactionally; safe detours still advance.
+- The real device was last tested on **COM4**. Confirm current port/device
+  ownership before connecting. Never manipulate a real aquarium just to stage
+  screenshots or advance the user's story.
+- No known unfinished feature is implied by this handoff. New requests and
+  current CI/GitHub state determine the next task.
+
+## Product constraints
+
+- Supported board only: **ESP32-2432S028 CYD**, ESP32, 4 MB flash, no PSRAM,
+  320x240 SPI LCD, XPT2046 resistive touch. Do not restore generic-board,
+  model inference/training, audio, battery/PMIC, or IMU dependencies.
+- This is a quiet, local, rules-based aquarium. Wi-Fi is optional for normal
+  care; time/weather may use it. Keep new games/stories optional.
+- Preserve fish identities, genetics, family, Bank, aquariums, settings, and
+  backups across upgrades. Never use reset/factory flash to mask a bug.
+- Keep tap targets, labels, and return destinations consistent. Use BACK.
+  Changes must work in both Normal and Enlarged display modes.
+- Surface save/device errors explicitly and roll back failed transactions.
+  Do not claim success, award twice, or silently replace invalid data.
+
+## Architecture map
+
+| Surface | Main files and responsibility |
+| --- | --- |
+| Tank simulation | `common/tank.c`, `common/tank.h`: creatures, runtime fields, initialization, tick behavior |
+| Progression and saves | `common/progression.c`, `.h`: locked binary layout, JSON migrations, bank/tank switching, save policy |
+| Companion systems | `common/companion.c`, `.h`: life, bonds, family, visitors, adventures, RPG and records |
+| Companion UI | `common/companion_ui.c`: Home and its subpages, shared page coordinates and navigation |
+| Rendering/input | `common/render.c`, `.h`: aquarium, clock, menus, games, hit testing, retained damage |
+| Settings/services | `common/setup.c`, `update.c`, `weather.c`, `notice.c`, `advisor.c` and their headers |
+| Firmware loop | `firmware/main/main.c`: boot, frame lifecycle, sleep/wake, display/service coordination |
+| CYD hardware | `firmware/main/board_pins.h`, `display_port_cyd.c`, `touch_port_xpt2046.c`, `ambient.c`, `brightness.c`, `memory_plan.h` |
+| Platform ports | `firmware/components/tankcore/` and `firmware/main/*port*`: NVS, time, network, weather, SD |
+| Device diagnostics | `firmware/main/director.c`: serial staging/debug commands, including read-only `rpg` |
+| Simulator | `sim/main.c`, `sim/run.py`, `sim/*port*`: actual core/renderer, staged saves, native ABI |
+| Regressions | `tools/test_*.c`, `tools/test_*.py`, `sim/test_*.py`, `sim/testdata/saves/` |
+| Screenshots | `tools/capture_cyd_gallery.py` -> `docs/media/cyd-features/`: actual renderer, separate demonstration tank |
+| Web | `web/index.html`: features; `flash.html`: USB flashing; `viewer.html`: local backup viewer; `usb-update.mjs`: safety-critical updater |
+| Release | `common/version.h`, `tools/package_cyd_release.py`, `make_sd_update.py`, `prepare_web_installer.py`, `.github/workflows/` |
+
+Follow existing helpers and naming. Do not split large rendering files or add
+generic frameworks just to make an unrelated task easier.
+
+## Persistence and memory: hard constraints
+
+- Current binary save **5912 bytes**, JSON **schema 14**; imports schemas 1-13.
+  Previous tails: 5848 before new game records, 5888 before RPG.
+- The practical NVS save ceiling is **5920 bytes**. Worst-case space needs
+  three copies plus 64 reserved entries: 628 of 630 entries at this ceiling.
+  Do not add fields without checking this budget and all layout assertions.
+- Existing binary fields and offsets are frozen. Append-only tails, explicit
+  migration, validators, frozen old-save fixtures, and `_Static_assert` locks
+  are required. Never reorder fields or rename NVS namespace `tank`, key `save`.
+- `tank_init` and `companion_init` initialize fields individually: explicitly
+  initialize new state in both relevant paths; do not assume a whole-struct clear.
+- RPG is a 24-byte `tank_rpg_t`; new-game records are a 40-byte `game_records_t`.
+  RPG participant is uint32; chapter contributors are uint16 lineage IDs.
+  IDs above 65535 must become unknown, never alias an unrelated ancestor.
+- Older-schema JSON fixtures must remove later fields: `<11` polish,
+  `<12` story, `<13` games, `<14` rpg.
+- Update every relevant import/export, active/Bank/away/tank-switch path,
+  rollback snapshot, simulator fixture, viewer, and documentation together.
+- NVS writes are event-driven/coalesced (30 seconds; 10-minute heartbeat).
+  Do not add per-frame flash writes. Failed loads must not overwrite saves.
+- Rendering uses internal RAM, cached/tiled backgrounds and DMA stripe buffers.
+  Check `memory_plan.h`, heap and application-slot headroom after changes.
+  Each OTA app slot is `0x1e0000` bytes; do not casually grow large assets.
+
+## UI and hardware traps
+
+- UI page coordinates and framebuffer coordinates differ. Inspect the relevant
+  scale/transform before changing touch bounds. Raw XPT2046 coordinates also
+  depend on affine calibration, orientation and finger bias.
+- Settings subpages may need device-option forwarding in the HAL touch path,
+  not just core rendering. Verify both visible labels and actual device actions.
+- Keep CYD LCD orientation/color fixes, active-low rear LED wiring, and touch
+  transforms intact. Do not infer board pin values; read `board_pins.h`.
+- Retained rendering must clear both old and new bounds for moving effects and
+  captions. Test retained/full pixel equivalence and clip effects outside text.
+- Page text wraps differently at each resolution. Test actual glyph bounds,
+  longest prompts, button collisions, and help/return paths; do not rely on
+  ellipses or a screenshot from only one scale.
+- `sim_frame(0)` can normalize tank state. Warm staged fixtures before asserting
+  browsing does not mutate saves. Change resolution through the real UI rather
+  than editing framebuffer dimensions in a serialized fixture.
+- Display SPI access is coordinated by the firmware loop. New display tasks
+  can cause contention/deadlocks; reuse existing paths.
+
+## Build and validation
+
+Run commands from the repository root (PowerShell on Windows). Use an available
+compiler; do not hard-code a previous assistant's session-local Zig path.
+The native runners accept `--cc gcc`, `--cc clang`, or a path to Zig.
+ESP-IDF setup and managed cJSON are needed by the corresponding builds.
+
+```powershell
+python -m unittest discover -s tools -p "test_*.py"
+python tools\test_tank_backup.py --cc gcc
+python tools\test_tank_backup.py --cc gcc --flat-edges
+python tools\test_rpg.py --cc gcc
+python tools\test_cyd_display.py --cc gcc
+python tools\test_cyd_settings.py --cc gcc
+python tools\test_ambient.py --cc gcc
+python tools\test_weather.py --cc gcc
+python sim\run.py --cc gcc --smoke
+.\tools\build_cyd.ps1
+git diff --check
+```
+
+- Choose the smallest relevant subset for a focused change; releases run the
+  full matrix in CI. GCC treats warnings as errors; Clang-only success is not
+  sufficient evidence of GCC compatibility (watch signed/unsigned comparisons).
+- Core tests cover migrations, transactional saves, layout guards, retained
+  rendering, games and optional RPG isolation. Keep these protections.
+- Screenshot command:
+  `python tools\capture_cyd_gallery.py --cc gcc --out <separate-output-directory>`.
+  Never capture against the user's live save. Refresh relevant named images,
+  ensure Markdown links resolve, and stage no generated binaries/scratch saves.
+- Web changes: Python staging tests plus desktop/mobile real-browser checks,
+  decoded images, no horizontal overflow, local links, correct release version.
+  Verify flasher acknowledgments start unchecked, update disabled, factory
+  hidden; no serial operation should run merely from visiting a page.
+
+### Physical-device safety
+
+- Build/inspect first. Flash only when requested; the current publication task
+  does not imply permission to reset or advance the user's aquarium.
+- Prefer `.\tools\build_cyd.ps1 -Flash -Port COM4` for an existing installation.
+  It queries the actual running slot. Never assume `ota_0` (`0x20000`) versus
+  `ota_1` (`0x200000`); never rewrite NVS, partition table or OTA selection during
+  a normal upgrade. Keep a backup and stable power.
+- Factory flashing is destructive and only for a new board or an explicitly
+  approved reset. An update refusal must never fall back to factory flashing.
+- Close serial monitors before flashing; do not kill unrelated processes.
+  Preserve DTR/RTS behavior when using serial diagnostics.
+- Prefer read-only diagnostics and separate simulator staging. If visual proof
+  from a webcam is unavailable, say so; do not claim a renderer image is hardware.
+
+## Documentation and release checklist
+
+For feature work, update the relevant entries in:
+
+1. [README.md](README.md): release status, overview, menu paths, build/install.
+2. [docs/CYD-FEATURES.md](docs/CYD-FEATURES.md): user-facing behavior and screenshots.
+3. [firmware/CYD.md](firmware/CYD.md) and [docs/OTA.md](docs/OTA.md): hardware,
+   persistence, backup/update constraints when changed.
+4. `docs/media/cyd-features/`: actual-renderer screenshots, no invented UI.
+5. `web/index.html`, `flash.html`, `viewer.html` and staging tests when relevant.
+   Screenshot selection is `FEATURE_IMAGES` in `tools/prepare_web_installer.py`;
+   images come from docs during Pages staging, not duplicated web assets.
+6. `tools/package_cyd_release.py`: accurate new-build notes and install safety.
+   Reuse `web/logo.svg` in website, docs and release notes. Use an absolute raw
+   GitHub logo URL in release notes. Do not rewrite older release claims.
+7. This file when architecture, budgets, commands or maintenance contracts change.
+
+### Publish only when requested
+
+- Source push, Pages deployment, GitHub firmware release, and physical-device
+  flash are separate operations. Clarify when ambiguous; never report one as
+  evidence of another.
+- Inspect `common/version.h`, Git tags, remote main, and latest GitHub release.
+  For a new release update numeric/string version together, docs, website
+  release copy, and release notes. Do not show source-only work as already in
+  older downloadable binaries.
+- Run relevant tests, check diff/staging for secrets and generated artifacts,
+  commit with the required coauthor trailer, and push main without force.
+- Tag the verified release commit `vMAJOR.MINOR.PATCH` and push that tag.
+  `.github/workflows/release.yml` builds/tests/packages and publishes.
+  Never move an existing tag or replace historical firmware assets.
+- Verify the release action, eight download assets (ZIP, app, factory, PTU,
+  checksums, notes, install instructions, license), checksums, board/version
+  markers and stable/latest status. Check actual package contents, not only
+  the presence of a release page.
+- Pages uses `tools/prepare_web_installer.py` to fetch the latest stable release,
+  verify checksums/board/layout/app match, then stage the site and both firmware
+  images. Release workflow explicitly dispatches Pages after publication.
+- Wait for Pages success; verify public home/flasher/viewer/images, manifest
+  version, app checksum and latest download. Keep update/factory warnings.
+- Use available GitHub tools or authenticated REST without exposing tokens.
+  Never save or print credentials. Preserve historical release bodies/assets
+  when applying branding. Report commit/tag/release URLs and verification status.
+- End with a clean worktree or explicitly describe remaining changes/failures.
+  Do not label a running/failed workflow a successful publication.

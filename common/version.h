@@ -4,9 +4,9 @@
 #define VERSION_H
 
 #define PT_RELEASE_MAJOR 1
-#define PT_RELEASE_MINOR 3
+#define PT_RELEASE_MINOR 4
 #define PT_RELEASE_PATCH 0
-#define PT_RELEASE       "1.3.0"
+#define PT_RELEASE       "1.4.0"
 #define PT_RELEASE_STAGE "CYD"
 #define PT_RELEASE_NUM   ((PT_RELEASE_MAJOR << 16) | (PT_RELEASE_MINOR << 8) | PT_RELEASE_PATCH)
 

@@ -2,13 +2,14 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD: 1.3.0 plus current-source additions**
+**An illustrated tour of Pocket Tank CYD 1.4.0**
 Updated October 24, 2026
 
-This page and its screenshots describe `main`, including the **unreleased**
-Lost Current RPG, second game page, menu polish, and hardware-setting fixes.
-[Published 1.3.0 downloads](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v1.3.0)
-remain unchanged. For the exact guide shipped with that release, use the
+This page and its screenshots describe **1.4.0**, including The Lost Current RPG,
+the second game page, menu polish, and hardware-setting fixes.
+[Get the 1.4.0 release](https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v1.4.0)
+or use the [website flasher](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html).
+Older releases remain unchanged; for their original interface, use the
 [1.3.0 guide](https://github.com/jeromedontdev/pocket-tank-cyd/blob/v1.3.0/docs/CYD-FEATURES.md).
 
 This fork keeps Pocket Tank's feeding, growth, personality, trust and
@@ -19,7 +20,7 @@ Cheap Yellow Display**, rather than trying to fit every supported board.
 The headline additions:
 
 - **The Lost Current:** optional fish-and-family story RPG with six chapters,
-  18 encounters, three endings, and saved chapter contributors (current source).
+  18 encounters, three endings, and saved chapter contributors (new in 1.4).
 
 - **A 20-slot Fish Bank** with confirmed deposits, returns and swaps.
 - **Purchasable aquariums:** 500 sand dollars each, up to eight named tanks.

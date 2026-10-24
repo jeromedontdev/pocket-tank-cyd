@@ -85,7 +85,7 @@ https://github.com/jeromedontdev/pocket-tank-cyd
 
 Release for **ESP32-2432S028 CYD only**.
 
-### Story, games and menu polish in this build
+### New in 1.4.0: story, games and menu polish
 - The Lost Current: an optional six-chapter, 18-encounter fish-story RPG with courage, curiosity, kindness, three endings, family-linked chapter guides, and saved choices. Open Home > Adventures > The Lost Current. No real fish leave or get hurt; no care-stat changes, deadlines, or extra aquarium AI.
 - Twelve games across two pages, adding Reef Defender, Current Runner, Pearl Breaker, Tide Tactics, Reef Architect and Deep Expedition, with help, pause, permanent records/medals and transactional rewards.
 - Consistent BACK buttons; dedicated Fish Life, Family/Genes, Visitor Log, tank records and Display Rewards; no duplicate Fish Life in Say Hello or Home in Names & Looks.

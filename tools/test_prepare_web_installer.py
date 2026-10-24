@@ -80,7 +80,7 @@ class WebInstallerTests(unittest.TestCase):
         self.assertIn('href="./viewer.html"', home)
         self.assertIn('href="./"', flasher)
         self.assertIn('href="./flash.html"', viewer)
-        self.assertIn("not yet included", home)
+        self.assertIn("require <strong>1.4.0 or newer</strong>", home)
         self.assertNotIn("usb-update.mjs", home)
         self.assertNotIn("esp-web-install-button", home)
         self.assertIn('src="./usb-update.mjs"', flasher)
