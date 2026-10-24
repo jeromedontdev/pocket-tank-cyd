@@ -369,6 +369,10 @@ def main():
                 lib.sim_touch(176 * lib.sim_width() / 448, 28 * lib.sim_height() / 368, 1)
                 lib.sim_touch(206 * lib.sim_width() / 448, 28 * lib.sim_height() / 368, 0)
                 assert lib.sim_selected() == first and lib.sim_page() == 0, "Sliding outside the arrow cancels cycling"
+                tap(172, 315)
+                assert json.loads(backup(lib))["tank"]["tools_locked"] == 0 and lib.sim_selected() == first
+                tap(172, 315)
+                assert json.loads(backup(lib))["tank"]["tools_locked"] == 1 and lib.sim_selected() == first
                 tap(70, 80)
                 assert lib.sim_page() == 9, "The fish card MENU must open Home"
                 print("PASS: fish-card arrow cycles all fish, wraps, cancels off-target releases and does not feed/open Keeper")

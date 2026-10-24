@@ -172,6 +172,50 @@ async function main() {
       await page.locator(`[data-action="${action}"]`).click();
       assert.equal(await native("return game._sim_page()"), expected);
     }
+    async function selectFish() {
+      await page.locator('[data-action="0"]').click();
+      for (let y = 65; y < 310; y += 40) {
+        for (let x = 40; x < 430; x += 40) {
+          await tap(x, y);
+          if (await native("return game._sim_selected() >= 0 && game._sim_selected() < 20")) return;
+          if (await native("return game._sim_page() !== 0 || game._sim_selected() >= 20"))
+            await page.locator('[data-action="0"]').click();
+        }
+      }
+      assert.fail("A real tank tap must open a fish card");
+    }
+    for (let scale = 0; scale < 2; scale++) {
+      await selectFish();
+      const selected = await native("return game._sim_selected()");
+      const locked = (await snapshot()).tank.tools_locked;
+      await tap(172, 315);
+      assert.equal((await snapshot()).tank.tools_locked, locked ? 0 : 1, "Padlock must toggle");
+      assert.equal(await native("return game._sim_selected()"), selected, "Lock must leave the card open");
+      await tap(172, 315);
+      assert.equal((await snapshot()).tank.tools_locked, locked, "Padlock must unlock again");
+      await tap(45, 315);
+      assert.equal(await native("return game._sim_tool()"), 1, "Sponge must be selectable");
+      assert.equal(await native("return game._sim_selected()"), -1);
+      await tap(230, 130);
+      assert.equal(await native("return game._sim_tool()"), 1, "Tool owns the tank until DONE");
+      await tap(60, 28);
+      assert.equal(await native("return game._sim_tool()"), 0, "DONE must return to bare hands");
+      await selectFish();
+      await tap(105, 315);
+      assert.equal(await native("return game._sim_tool()"), 2, "Scissors must be selectable");
+      await tap(60, 28);
+      assert.equal(await native("return game._sim_tool()"), 0);
+      await page.locator('[data-action="2"]').click();
+      await tap(100, 100); await tap(200, 138);
+      await page.locator('[data-action="0"]').click();
+    }
+    await selectFish();
+    const savedLock = (await snapshot()).tank.tools_locked;
+    await tap(172, 315);
+    await page.reload(); await ready();
+    assert.equal((await snapshot()).tank.tools_locked, savedLock ? 0 : 1, "Lock must survive reload");
+    await selectFish(); await tap(172, 315);
+    await page.locator('[data-action="0"]').click();
     // Launch a real mini-game from the visible Life hub, then pop rendered bubbles.
     await page.locator('[data-action="7"]').click(); await tap(100, 260);
     assert.equal(await native("return game._sim_page()"), 8);
@@ -378,7 +422,7 @@ async function main() {
       fs.rmSync(profile, {recursive: true, force: true});
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: fullscreen entry/exit, exact food columns at both resolutions and letterboxed sizes, ignored margins, Left/Middle/Right, touch hints/mobile feeding; real WASM gameplay, all modes, durable saves/restart, exclusive tabs and corruption/quota recovery.");
+    console.log("PASS: fish-card lock toggle/persistence and sponge/scissors/DONE at both scales; fullscreen entry/exit, exact food columns at both resolutions and letterboxed sizes, ignored margins, Left/Middle/Right, touch hints/mobile feeding; real WASM gameplay, all modes, durable saves/restart, exclusive tabs and corruption/quota recovery.");
   } finally {
     await browser.close();
   }

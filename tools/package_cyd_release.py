@@ -89,7 +89,13 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.1.1: fullscreen browser game and precise feeding
+### New in 2.1.2: browser fish-card tool controls
+
+- Wire the displayed padlock, sponge, scissors and DONE controls into browser/simulator input. The padlock toggles and saves the tank-wide tool safety lock without closing the fish card.
+- Explicit tools own tank interaction until DONE; tool/lock control presses do not accidentally start cleaning/trimming strokes.
+- Tested through actual browser clicks at Normal and Enlarged scales. No hardware touchscreen or save-format changes.
+
+### Previously in 2.1.1: fullscreen browser game and precise feeding
 
 - Fullscreen/Exit fullscreen retains game controls. Optional Touch hints show taps/drags.
 - Place food allows tap-to-place feeding at a chosen column or Left/Middle/Right buttons. Food falls from the surface; existing pellet limits remain. Letterbox margins do not activate the tank.

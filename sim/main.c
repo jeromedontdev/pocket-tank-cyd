@@ -222,6 +222,7 @@ API int sim_width(void) { return TANK_W; }
 API int sim_height(void) { return TANK_H; }
 API void sim_visit(int species) { companion_debug_visit(&tank, species); }
 API int sim_selected(void) { return selected; }
+API int sim_tool(void) { return tank.tool; }
 /* Read-only touch target for automation: do not feed/startle the tank by probing empty glass. */
 API int sim_creature_target(int card) {
     for (int y = 0; y < TANK_H; y += 2) for (int x = 0; x < TANK_W; x += 2) {
@@ -335,11 +336,18 @@ API void sim_touch(float x, float y, int down) {
             else if (result == UPD_TAP_CHECK) updates_sd_status("SD INSTALLATION IS ON THE CYD", false);
         } else if (page == 0 && held < 0.35f && hypotf(x - px, y - py) < 12) {
             if (!notice_dismiss()) {
-                if (render_stats_next_hit(&tank, selected, px, py)) {
+                if (tank.tool != TOOL_HAND) {
+                    selected = -1;
+                    if (render_tool_chip_hit(&tank, px, py)) tank_set_tool(&tank, TOOL_HAND);
+                } else if (render_stats_next_hit(&tank, selected, px, py)) {
                     if (render_stats_next_hit(&tank, selected, x, y)) selected = (selected + 1) % tank.n_fish;
                 } else if (render_creature_colors_hit(&tank, selected, px, py) >= 0) {
                     render_life_creature_open(render_creature_colors_hit(&tank, selected, px, py));
                     from_home = false; page = 9; selected = -1;
+                } else if (selected >= 0 && selected < tank.n_fish && render_tools_hit(px, py) >= 0) {
+                    tank_set_tool(&tank, render_tools_hit(px, py)); selected = -1;
+                } else if (selected >= 0 && selected < tank.n_fish && render_lock_hit(px, py)) {
+                    tank_lock_tools(&tank, !tank.tools_locked); progression_settings_changed();
                 } else if (selected >= 0 && selected < tank.n_fish && RENDER_CARD_HIT(px, py)) { render_life_open(); from_home = false; page = 9; }
                 else {
                     int best = -1; float distance = 38;
@@ -440,7 +448,10 @@ API const uint16_t *sim_frame(float dt) {
     }
     if (pressed) {
         held += dt;
-        if (!page && !setup_active() && !render_stats_next_hit(&tank, selected, px, py)) {
+        bool card_control = selected >= 0 && selected < tank.n_fish &&
+            (render_stats_next_hit(&tank, selected, px, py) ||
+             render_tools_hit(px, py) >= 0 || render_lock_hit(px, py));
+        if (!page && !setup_active() && !card_control && !render_tool_chip_hit(&tank, px, py)) {
             tank_touch_drag(&tank, last_x, last_y);
             if (held > 0.3f) tank_touch_hold(&tank, last_x, last_y);
         }

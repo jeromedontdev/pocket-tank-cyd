@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.1.1
+# Pocket Tank CYD 2.1.2
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.1.1**; firmware, update
+now versioned independently. This is **release 2.1.2**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,14 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.1.1: fullscreen browser play and food placement
+## New in 2.1.2: working browser fish-card tools
+
+The fish-card padlock, sponge, scissors and DONE controls now work in the
+browser. The lock prevents bare-hand cleaning/trimming; selected tools still
+work. Lock changes are saved, and the card stays open when toggling it.
+Hardware touchscreen behavior and the save format are unchanged.
+
+## Previously in 2.1.1: fullscreen browser play and food placement
 
 - Fullscreen/Exit fullscreen enlarges the game while keeping its controls.
 - **Place food** lets you tap a column anywhere in the tank, or choose

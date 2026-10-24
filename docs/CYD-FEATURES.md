@@ -2,7 +2,7 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.1.1**
+**An illustrated tour of Pocket Tank CYD 2.1.2**
 
 **[Play the actual game in your browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html)**,
 using mouse/touch controls and a separate local save. It needs no CYD or account,
@@ -16,6 +16,10 @@ Left/Middle/Right. Food drops from the surface; the pellet cap still applies.
 The public simulator is compiled from the latest stable release tag, not the
 ESP32 binary or unreleased main. Its release tag and source commit appear above
 the game and must match the installer's release before deployment.
+
+**2.1.2** fixes browser fish-card controls: the padlock toggles and saves the
+tank-wide tool safety lock, sponge/scissors select their tools, and DONE returns
+to bare hands. Locked bare-hand drags cannot clean or trim; explicit tools can.
 Updated October 24, 2026
 
 This release also separates games from aquarium rendering, names companion
