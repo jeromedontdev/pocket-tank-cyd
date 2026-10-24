@@ -262,6 +262,7 @@ typedef struct {
      * parent_b's, bold / sociable the pair's average with a nudge. -1 = one
      * of the founding pair (or an older save). Saved per fish. */
     int8_t parent_a, parent_b;
+    uint8_t traits;         /* TRAIT_* shown (1.3 genetics); mirrors story.active[slot].traits & 15 */
 } fish_t;
 float tank_fish_pitch(const fish_t *f);
 float tank_fish_clearance(const fish_t *f);
@@ -346,6 +347,41 @@ typedef struct {
 } tank_polish_t;
 _Static_assert(sizeof(fish_life_t) == 20, "fish life save layout");
 _Static_assert(sizeof(tank_memory_t) == 16, "tank memory save layout");
+
+/* 1.3 story tail: family lineage, departed-parent names, visitor bestiary and
+ * seasonal scenery preference. Parent IDs are polish life identities; IDs past
+ * 65535 are stored as 0 (unknown). Generation 0 means founder or unknown. */
+#define STORY_NAME_BOOK 12
+enum { VISITOR_DRIFTER, VISITOR_TURTLE, VISITOR_GHOST, VISITOR_MANTA, VISITOR_SQUID, VISITOR_SPECIES };
+enum { STORY_SEASONS_OFF = 1, STORY_SEASONS_SOUTH = 2 };
+enum { SEASON_NONE, SEASON_SPRING, SEASON_SUMMER, SEASON_AUTUMN, SEASON_WINTER, SEASON_MASK = 7, SEASON_LIGHTS = 8 };
+/* genetics (1.3): each fish carries a hidden second allele for its marking
+ * and its body colour (0 = the same as the shown one, else index + 1), and
+ * four recessive cosmetic traits - low nibble shown, high nibble carried.
+ * mutation: GENE_MUTANT_* when this fish was born with a new marking/trait. */
+typedef struct {
+    uint16_t parent[2];
+    uint8_t generation, flags;
+    uint8_t pattern2, color2, traits, mutation;
+} fish_lineage_t;
+enum { GENE_MUTANT_PATTERN = 1, GENE_MUTANT_TRAIT = 2 };
+typedef struct {
+    uint16_t id;
+    char name[FISH_NAME_MAX + 1];
+} ancestor_name_t;
+typedef struct {
+    uint8_t version, flags, last_species, pad;
+    uint32_t first_seen_s[VISITOR_SPECIES];   /* powered seconds + 1; 0 = never/unknown */
+    uint16_t seen[VISITOR_SPECIES];
+    uint16_t births;
+    fish_lineage_t active[N_FISH_MAX], bank[FISH_BANK_CAP], traveler;
+    ancestor_name_t names[STORY_NAME_BOOK];
+    uint16_t pad2;
+    uint32_t reserved;                        /* keeps save_t 8-byte exact */
+} tank_story_t;
+_Static_assert(sizeof(fish_lineage_t) == 10, "lineage save layout");
+_Static_assert(sizeof(ancestor_name_t) == 10, "ancestor name save layout");
+_Static_assert(sizeof(tank_story_t) == 432, "story save layout");
 
 /* a pellet: it sinks FOOD_SINK_PX_S from the surface to the floor (~43 s on
  * the 1.8, ~60 on the watch), then RESTS there FOOD_FLOOR_S before it
@@ -727,8 +763,13 @@ typedef struct tank {
     uint32_t rng;                  /* xorshift state, deterministic */
     companion_state_t companion;
     tank_polish_t polish;
+    tank_story_t story;
     float visitor_left;
     float companion_fraction;      /* powered-on fractional second; not saved */
+    bool  room_dark;               /* 1.3: the platform's room-light sensor says the room is dark
+                                    * (ROOM LIGHT = DIM+NIGHT); the tank rests with it. Not saved. */
+    uint8_t visitor_species;       /* 1.3: the current/last visitor (VISITOR_*); not saved */
+    uint8_t season;                /* 1.3: SEASON_* from the clock, for the seasonal floor; not saved */
 } tank_t;
 void tank_reframe(tank_t *t, bool compact);
 
@@ -773,6 +814,8 @@ int   tank_add_bought_fry(tank_t *t, uint32_t body, uint32_t accent);
  * (progression_sell_fish) keeps the rules: who may leave, and its own
  * per-slot state. */
 bool  tank_remove_fish(tank_t *t, int idx);
+/* keeps a departing parent's name while a family line still points at its life identity */
+void  tank_story_remember(tank_t *t, uint32_t id, const char *name);
 /* (re)build slot from a roster preset: used by persistence to restore a fish */
 void  tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold, stage_t stage);
 /* face the fish the way its heading points, at once (no turn plays): for
@@ -930,7 +973,15 @@ void tank_fish_set_look(fish_t *f, uint32_t body, uint32_t accent);
 void tank_set_look(tank_t *t, int slot, uint32_t body, uint32_t accent);
 enum { FISH_CLASSIC, FISH_ANGEL, FISH_GUPPY, FISH_TETRA, FISH_PUFFER,
        FISH_SHARK, FISH_JELLYFISH, FISH_STINGRAY, FISH_CLOWNFISH, FISH_BETTA, FISH_VARIETY_COUNT };
-enum { PATTERN_STRIPES, PATTERN_SPOTS, PATTERN_BAND, PATTERN_PLAIN, FISH_PATTERN_COUNT };
+enum { PATTERN_STRIPES, PATTERN_SPOTS, PATTERN_BAND, PATTERN_PLAIN,
+       PATTERN_SADDLE, PATTERN_TIGER, PATTERN_SPECKLE, PATTERN_FADE, PATTERN_MASK, FISH_PATTERN_COUNT };
+enum { TRAIT_SHIMMER = 1, TRAIT_PAINTED_FINS = 2, TRAIT_PALE_BELLY = 4, TRAIT_GOLD_EYE = 8, TRAIT_COUNT = 4 };
+extern const char *const FISH_TRAIT_NAMES[TRAIT_COUNT];
+/* genetics: seed a founder/arrival's hidden genes from a stable hash (the rng is untouched) */
+void tank_seed_genes(tank_t *t, int slot, uint32_t salt);
+void tank_seed_line(fish_lineage_t *l, uint32_t salt);
+void tank_sync_traits(tank_t *t);           /* fish[].traits from the story's lines */
+int  tank_body_index(uint32_t rgb);         /* nearest FISH_BODY_COLORS entry */
 extern const char *const FISH_VARIETY_NAMES[FISH_VARIETY_COUNT];
 extern const char *const FISH_PATTERN_NAMES[FISH_PATTERN_COUNT];
 uint32_t tank_fin_for(uint32_t body);   /* the fin tank_set_look gives that body (the shop's fry previews) */

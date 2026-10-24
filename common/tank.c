@@ -345,6 +345,8 @@ void tank_fish_face(fish_t *f) {
 void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold, stage_t stage) {
     memset(&t->companion.active[slot], 0, sizeof t->companion.active[slot]);
     memset(&t->polish.active[slot], 0, sizeof t->polish.active[slot]);
+    memset(&t->story.active[slot], 0, sizeof t->story.active[slot]);
+    t->fish[slot].traits = 0;
     fish_t *f = &t->fish[slot];
     const preset_t *p = &ROSTER[preset];
     f->preset = preset; tank_set_name(t, slot, p->name);
@@ -378,6 +380,7 @@ void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold,
     f->color = p->color; f->fin = p->fin; f->accent = p->accent;
     f->variety = FISH_CLASSIC; f->pattern = PATTERN_STRIPES; f->wearable = WEAR_NONE; f->wear_colors = 0;
     f->parent_a = f->parent_b = -1;
+    if (t->story.version) tank_seed_genes(t, slot, t->rng ^ (uint32_t)preset * 0x27d4eb2du);
 }
 
 void tank_set_bubble_x(tank_t *t, float x) {
@@ -413,6 +416,97 @@ void tank_new_population(tank_t *t) {
     t->n_fish = 2;
 }
 
+/* ---- genetics (1.3) ----------------------------------------------------
+ * Cosmetic only. A stable hash drives every roll, so breeding draws nothing
+ * from the tank's rng and older behaviour keeps its sequence. */
+static uint32_t gene_hash(uint32_t x) {
+    x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x;
+}
+int tank_body_index(uint32_t rgb) {
+    int best = 0; long best_d = -1;
+    for (int i = 0; i < FISH_COLOR_N; i++) {
+        long dr = (long)((rgb >> 16) & 255) - (long)((FISH_BODY_COLORS[i] >> 16) & 255);
+        long dg = (long)((rgb >> 8) & 255) - (long)((FISH_BODY_COLORS[i] >> 8) & 255);
+        long db = (long)(rgb & 255) - (long)(FISH_BODY_COLORS[i] & 255);
+        long d = dr * dr + dg * dg + db * db;
+        if (best_d < 0 || d < best_d) { best_d = d; best = i; }
+    }
+    return best;
+}
+void tank_seed_line(fish_lineage_t *l, uint32_t salt) {
+    uint32_t h = gene_hash(salt * 0x9e3779b1u ^ 0x85ebca6bu);
+    l->pattern2 = (h & 0xff) < 90 ? (uint8_t)(1 + (h >> 8) % FISH_PATTERN_COUNT) : 0;          /* ~35% */
+    h = gene_hash(h);
+    l->color2 = (h & 0xff) < 77 ? (uint8_t)(1 + (h >> 8) % FISH_COLOR_N) : 0;                   /* ~30% */
+    h = gene_hash(h);
+    l->traits = 0;
+    for (int k = 0; k < TRAIT_COUNT; k++) if (((h >> (k * 8)) & 0xff) < 51) l->traits |= (uint8_t)(16u << k);  /* ~20% carriers */
+    l->mutation = 0;
+}
+void tank_seed_genes(tank_t *t, int slot, uint32_t salt) {
+    if (slot < 0 || slot >= N_FISH_MAX) return;
+    tank_seed_line(&t->story.active[slot], salt ^ (uint32_t)slot * 0x85ebca6bu ^ t->fish[slot].color);
+    t->fish[slot].traits = 0;
+}
+void tank_sync_traits(tank_t *t) {
+    for (int i = 0; i < N_FISH_MAX; i++) t->fish[i].traits = i < t->n_fish ? (uint8_t)(t->story.active[i].traits & 15) : 0;
+}
+static int pattern_rank(int p) {                  /* the classic marks dominate; plain is recessive */
+    return p == PATTERN_PLAIN ? 0 : p <= PATTERN_BAND ? 2 : 1;
+}
+static uint32_t blend_rgb(uint32_t a, uint32_t b) {
+    return (((a >> 16 & 255) + (b >> 16 & 255)) / 2) << 16 | (((a >> 8 & 255) + (b >> 8 & 255)) / 2) << 8 | ((a & 255) + (b & 255)) / 2;
+}
+static int pass_trait(int shown, int carried, uint32_t roll) {
+    return shown ? 1 : carried ? (int)(roll & 1) : 0;
+}
+/* called once the coin has picked which parent lends the body (a) and the markings (b) */
+static void inherit(tank_t *t, int slot, int a, int b) {
+    fish_t *child = &t->fish[slot];
+    const fish_t *fa = &t->fish[a], *fb = &t->fish[b];
+    const fish_lineage_t *la = &t->story.active[a], *lb = &t->story.active[b];
+    fish_lineage_t *l = &t->story.active[slot];
+    uint32_t h = gene_hash(t->rng ^ (uint32_t)t->story.births * 0x9e3779b1u ^ (uint32_t)slot * 0x632be5abu);
+    /* marking: one allele from each parent, the higher rank shows */
+    int pa = (h & 1) && la->pattern2 ? la->pattern2 - 1 : fa->pattern;
+    int pb = (h & 2) && lb->pattern2 ? lb->pattern2 - 1 : fb->pattern;
+    int shown = pattern_rank(pa) > pattern_rank(pb) ? pa : pattern_rank(pb) > pattern_rank(pa) ? pb : (h & 4) ? pa : pb;
+    int hidden = shown == pa ? pb : pa;
+    l->mutation = 0;
+    if ((h >> 3) % 14 == 0) {                     /* ~7%: a brand-new marking shows */
+        hidden = shown;
+        shown = PATTERN_SADDLE + (int)((h >> 8) % (FISH_PATTERN_COUNT - PATTERN_SADDLE));
+        l->mutation |= GENE_MUTANT_PATTERN;
+    }
+    child->pattern = (uint8_t)shown;
+    l->pattern2 = hidden == shown ? 0 : (uint8_t)(hidden + 1);
+    /* body colour: one allele from each, a coin shows one; sometimes they blend */
+    h = gene_hash(h);
+    uint32_t ca = (h & 1) && la->color2 ? FISH_BODY_COLORS[(la->color2 - 1) % FISH_COLOR_N] : fa->color;
+    uint32_t cb = (h & 2) && lb->color2 ? FISH_BODY_COLORS[(lb->color2 - 1) % FISH_COLOR_N] : fb->color;
+    uint32_t body = (h & 4) ? cb : ca, other = (h & 4) ? ca : cb;
+    if ((h >> 3) % 5 == 0) body = blend_rgb(ca, cb);
+    int oi = tank_body_index(other);
+    l->color2 = FISH_BODY_COLORS[oi] == body ? 0 : (uint8_t)(oi + 1);
+    tank_set_look(t, slot, body, (h & 8) ? fb->accent : fa->accent);
+    /* traits: recessive - shown only with an allele from both parents */
+    h = gene_hash(h);
+    uint8_t traits = 0;
+    for (int k = 0; k < TRAIT_COUNT; k++) {
+        int got = pass_trait(fa->traits & (1 << k) || la->traits & (1 << k), la->traits & (16 << k), h >> (k * 2)) +
+                  pass_trait(fb->traits & (1 << k) || lb->traits & (1 << k), lb->traits & (16 << k), h >> (k * 2 + 1));
+        if (got == 2) traits |= (uint8_t)(1u << k); else if (got == 1) traits |= (uint8_t)(16u << k);
+    }
+    h = gene_hash(h);
+    if (h % 12 == 0) {                            /* ~8%: a new trait allele appears */
+        int k = (int)((h >> 8) % TRAIT_COUNT);
+        if (traits & (16u << k)) traits = (uint8_t)((traits & ~(16u << k)) | (1u << k)); else traits |= (uint8_t)(16u << k);
+        l->mutation |= GENE_MUTANT_TRAIT;
+    }
+    l->traits = traits;
+    child->traits = traits & 15;
+}
+
 int tank_add_fish(tank_t *t, int parent_a, int parent_b) {
     if (t->n_fish + t->companion.away >= N_FISH_MAX || t->n_fish + t->companion.away >= ROSTER_N) return -1;
     int used[ROSTER_N] = {0};
@@ -435,6 +529,17 @@ int tank_add_fish(tank_t *t, int parent_a, int parent_b) {
     tank_set_look(t, slot, pa->color, pb->accent);
     t->fish[slot].variety = pa->variety; t->fish[slot].pattern = pb->pattern;
     t->fish[slot].parent_a = (int8_t)ia; t->fish[slot].parent_b = (int8_t)ib;
+    if (t->story.version) {                       /* 1.3 family tree: the parents' life identities */
+        fish_lineage_t *line = &t->story.active[slot];
+        inherit(t, slot, ia, ib);
+        uint32_t id_a = t->polish.active[ia].id, id_b = t->polish.active[ib].id;
+        line->parent[0] = id_a <= 0xffff ? (uint16_t)id_a : 0;
+        line->parent[1] = ib != ia && id_b <= 0xffff ? (uint16_t)id_b : 0;
+        int gen = t->story.active[ia].generation > t->story.active[ib].generation ?
+                  t->story.active[ia].generation : t->story.active[ib].generation;
+        line->generation = (uint8_t)(gen < 254 ? gen + 1 : 255);
+        if (t->story.births < 0xffff) t->story.births++;
+    }
     place_near_reef(t, &t->fish[slot]);
     t->fish[slot].hunger = 4; t->fish[slot].trust = 4;
     t->n_fish++;
@@ -464,13 +569,44 @@ int tank_add_bought_fry(tank_t *t, uint32_t body, uint32_t accent) {
     return slot;
 }
 
+/* a departing parent's name stays in the story's small name book while a
+ * family line still points at it; the oldest unreferenced entry makes room */
+static bool story_referenced(const tank_story_t *s, uint16_t id) {
+    for (int i = 0; i < N_FISH_MAX + FISH_BANK_CAP + 1; i++) {
+        const fish_lineage_t *l = i < N_FISH_MAX ? &s->active[i] :
+            i < N_FISH_MAX + FISH_BANK_CAP ? &s->bank[i - N_FISH_MAX] : &s->traveler;
+        if (id && (l->parent[0] == id || l->parent[1] == id)) return true;
+    }
+    return false;
+}
+void tank_story_remember(tank_t *t, uint32_t id, const char *name) {
+    tank_story_t *s = &t->story;
+    if (!s->version || !id || id > 0xffff || !story_referenced(s, (uint16_t)id)) return;
+    for (int i = 0; i < t->bank_count; i++) if (t->polish.bank[i].id == id) return;   /* only moving */
+    if (t->companion.away && t->polish.traveler.id == id) return;
+    int slot = -1;
+    for (int i = 0; i < STORY_NAME_BOOK && slot < 0; i++) if (s->names[i].id == id) slot = i;
+    for (int i = 0; i < STORY_NAME_BOOK && slot < 0; i++) if (!s->names[i].id) slot = i;
+    for (int i = 0; i < STORY_NAME_BOOK && slot < 0; i++) if (!story_referenced(s, s->names[i].id)) slot = i;
+    if (slot < 0) slot = 0;
+    if (slot < STORY_NAME_BOOK - 1 && s->names[slot].id != id) {     /* newest last: shift the book */
+        memmove(&s->names[slot], &s->names[slot + 1], (STORY_NAME_BOOK - 1 - slot) * sizeof s->names[0]);
+        slot = STORY_NAME_BOOK - 1;
+    }
+    s->names[slot].id = (uint16_t)id;
+    memset(s->names[slot].name, 0, sizeof s->names[slot].name);
+    snprintf(s->names[slot].name, sizeof s->names[slot].name, "%s", name);
+}
+
 bool tank_remove_fish(tank_t *t, int idx) {
     if (idx < 0 || idx >= t->n_fish) return false;
+    tank_story_remember(t, t->polish.active[idx].id, t->fish[idx].name);
     for (int i = idx; i < t->n_fish - 1; i++) {
         t->fish[i] = t->fish[i + 1];
         t->sd_paid_fish[i] = t->sd_paid_fish[i + 1];
         t->companion.active[i] = t->companion.active[i + 1];
         t->polish.active[i] = t->polish.active[i + 1];
+        t->story.active[i] = t->story.active[i + 1];
         /* its spot by the reef is its slot's (tank_make_fish): a slot nearer,
            so the next arrival's spot is free again */
         t->fish[i].rest_dx -= 24; t->fish[i].rest_dy += 9;
@@ -479,6 +615,7 @@ bool tank_remove_fish(tank_t *t, int idx) {
     t->sd_paid_fish[t->n_fish] = 0;
     memset(&t->companion.active[t->n_fish], 0, sizeof t->companion.active[0]);
     memset(&t->polish.active[t->n_fish], 0, sizeof t->polish.active[0]);
+    memset(&t->story.active[t->n_fish], 0, sizeof t->story.active[0]);
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
         if (f->parent_a == idx) f->parent_a = -1; else if (f->parent_a > idx) f->parent_a--;
@@ -494,7 +631,10 @@ bool tank_remove_fish(tank_t *t, int idx) {
 void tank_init(tank_t *t, uint32_t seed) {
     memset(&t->companion, 0, sizeof t->companion);
     memset(&t->polish, 0, sizeof t->polish);
+    memset(&t->story, 0, sizeof t->story);
+    t->season = SEASON_NONE;
     t->visitor_left = 0;
+    t->room_dark = false; t->visitor_species = 0;
     t->companion.version = 2;
     t->companion.cozy = t->companion.captions = 1;
     t->companion.lively = 0;
@@ -1896,7 +2036,9 @@ const char *const FISH_VARIETY_NAMES[FISH_VARIETY_COUNT] = {
     "CLASSIC", "ANGEL", "GUPPY", "TETRA", "PUFFER",
     "SHARK", "JELLYFISH", "STINGRAY", "CLOWNFISH", "BETTA"
 };
-const char *const FISH_PATTERN_NAMES[FISH_PATTERN_COUNT] = { "STRIPES", "SPOTS", "BAND", "PLAIN" };
+const char *const FISH_PATTERN_NAMES[FISH_PATTERN_COUNT] = { "STRIPES", "SPOTS", "BAND", "PLAIN",
+    "SADDLE", "TIGER", "SPECKLE", "FADE", "MASK" };
+const char *const FISH_TRAIT_NAMES[TRAIT_COUNT] = { "SHIMMER", "PAINTED FINS", "PALE BELLY", "GOLD EYE" };
 int tank_ornament_index(int item) { return item >= 10 && item <= 13 ? item - 10 : item >= 16 && item < 22 ? item - 12 : -1; }
 int tank_ornament_w(int item) {
     static const int widths[6] = {64, 30, 42, 48, 58, 36};
@@ -2879,6 +3021,7 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
     bool was_night = t->night;
     t->night = t->light_override ? !t->light_on
              : t->hold_light ? false
+             : t->room_dark ? true
              : !t->light_auto ? t->light_manual_off              /* MANUAL (default): the double-tap's state */
              : t->idle_s > (float)t->light_idle_s;                      /* AUTO: the idle rule */
     if (t->night != was_night) tank_emit(t->night ? TEV_LIGHT_OFF : TEV_LIGHT_ON, -1);

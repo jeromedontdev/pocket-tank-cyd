@@ -156,12 +156,12 @@ def exercise(lib, backup):
     assert reset["tank"]["journal_xp"] == wardrobe["tank"]["journal_xp"], "Cosmetics must not grant XP"
     lib.sim_action(2); tap(100, 100)
     os.environ["POCKET_TANK_SAVE"] = str(Path(save_path).parent / "missing-scale" / "save.sav")
-    tap(200, 175)
+    tap(200, 140)
     assert lib.sim_width() == reset["width"]
     assert json.loads(backup(lib))["companion"]["display_compact"] == reset["companion"]["display_compact"]
     os.environ["POCKET_TANK_SAVE"] = save_path
     for width in ((240, 320) if reset["width"] == 320 else (320, 240)):
-        tap(200, 175)
+        tap(200, 140)
         scaled = json.loads(backup(lib))
         assert lib.sim_width() == scaled["width"] == width and lib.sim_height() == width * 3 // 4
         assert scaled["companion"]["display_compact"] == (width == 320)

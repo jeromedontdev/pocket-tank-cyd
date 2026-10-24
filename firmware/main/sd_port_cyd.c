@@ -19,6 +19,8 @@
 #include "update.h"
 #include "version.h"
 #include "touch_port.h"
+#include "ambient.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <errno.h>
@@ -243,6 +245,125 @@ void sd_port_backup_action(tank_t *tank, bool restore, bool confirmed) {
     backup_action(tank, restore, confirmed, "backup", 0);
 }
 
+/* 1.3 daily automatic backup: once per UTC day (the wall clock, or the clock
+ * resumed from the save), "auto-NNNN.json" verified like a manual backup;
+ * only the newest AUTO_KEEP stay. The day is kept in NVS "tank"/"autobk_day". */
+#define AUTO_KEEP 7
+static float s_auto_wait = 90;          /* settle after boot before the first try */
+static uint32_t s_auto_day;
+static bool s_auto_day_loaded;
+static void auto_prune(unsigned newest) {
+    DIR *dir = opendir(SAVE_DIR);
+    if (!dir) return;
+    struct dirent *entry; unsigned doomed[AUTO_KEEP * 2]; int n_doomed = 0;
+    while ((entry = readdir(dir)) != NULL && n_doomed < AUTO_KEEP * 2) {
+        unsigned n; char exact[24];
+        if (sscanf(entry->d_name, "auto-%4u.json", &n) != 1 || n > 9999) continue;
+        snprintf(exact, sizeof exact, "auto-%04u.json", n);
+        if (!strcmp(exact, entry->d_name) && n + AUTO_KEEP <= newest) doomed[n_doomed++] = n;
+    }
+    closedir(dir);
+    for (int i = 0; i < n_doomed; i++) {
+        char path[64]; snprintf(path, sizeof path, SAVE_DIR "/auto-%04u.json", doomed[i] % 10000);
+        if (remove(path) != 0) ESP_LOGW(TAG, "auto backup prune %s: %s", path, strerror(errno));
+        else ESP_LOGI(TAG, "auto backup pruned: %s", path);
+    }
+}
+bool sd_port_auto_backup_now(tank_t *tank) {
+    if (!tank || !s_mounted || s_upload) { ESP_LOGW(TAG, "auto backup skipped: SD unavailable/busy"); return false; }
+    char path[96]; unsigned n;
+    if (!backup_write(tank, "auto", path) || sscanf(path, SAVE_DIR "/auto-%4u.json", &n) != 1) {
+        ESP_LOGE(TAG, "auto backup FAILED; retrying in an hour");
+        return false;
+    }
+    auto_prune(n);
+    if (!companion_backup_record(tank)) ESP_LOGE(TAG, "auto backup verified but its status could not be saved");
+    return true;
+}
+void sd_port_auto_backup_tick(tank_t *tank, float dt) {
+    if (!ambient_auto_backup() || !s_mounted) return;
+    s_auto_wait -= dt;
+    if (s_auto_wait > 0) return;
+    s_auto_wait = 60;
+    int64_t now = clock_port_now_unix();
+    if (now < 1600000000LL) return;
+    uint32_t day = (uint32_t)(now / 86400);
+    nvs_handle_t h;
+    if (!s_auto_day_loaded) {
+        if (nvs_open("tank", NVS_READONLY, &h) == ESP_OK) { nvs_get_u32(h, "autobk_day", &s_auto_day); nvs_close(h); }
+        s_auto_day_loaded = true;
+    }
+    if (day == s_auto_day) return;
+    ESP_LOGI(TAG, "daily auto backup (day %lu)", (unsigned long)day);
+    if (!sd_port_auto_backup_now(tank)) { s_auto_wait = 3600; return; }
+    s_auto_day = day;
+    if (nvs_open("tank", NVS_READWRITE, &h) == ESP_OK) {
+        if (nvs_set_u32(h, "autobk_day", day) != ESP_OK || nvs_commit(h) != ESP_OK) ESP_LOGE(TAG, "auto backup day not saved");
+        nvs_close(h);
+    }
+}
+
+/* 1.3 photo mode: the live tank, captured tile by tile during one full
+ * repaint, as a top-down RGB565 BMP in pocket-tank/photos. */
+#define PHOTO_DIR SAVE_DIR "/photos"
+static FILE *s_photo;
+static int s_photo_rows;
+static char s_photo_path[64];
+static void put16(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
+static void put32(uint8_t *p, uint32_t v) { put16(p, v); put16(p + 2, v >> 16); }
+bool sd_port_photo_begin(int width, int height) {
+    if (!s_mounted || s_upload || s_photo) return false;
+    if ((mkdir(SAVE_DIR, 0755) != 0 && errno != EEXIST) || (mkdir(PHOTO_DIR, 0755) != 0 && errno != EEXIST)) {
+        ESP_LOGE(TAG, "photo directory: %s", strerror(errno)); return false;
+    }
+    unsigned latest = 0;
+    DIR *dir = opendir(PHOTO_DIR);
+    if (!dir) { ESP_LOGE(TAG, "photo directory: %s", strerror(errno)); return false; }
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        unsigned n;
+        if (sscanf(entry->d_name, "photo-%4u.bmp", &n) == 1 && n > latest && n <= 9999) latest = n;
+        if (sscanf(entry->d_name, "PHOTO-%4u.BMP", &n) == 1 && n > latest && n <= 9999) latest = n;
+    }
+    closedir(dir);
+    if (latest >= 9999) { ESP_LOGE(TAG, "photo slots full"); return false; }
+    snprintf(s_photo_path, sizeof s_photo_path, PHOTO_DIR "/photo-%04u.bmp", latest + 1);
+    s_photo = fopen(s_photo_path, "wb");
+    if (!s_photo) { ESP_LOGE(TAG, "create %s: %s", s_photo_path, strerror(errno)); return false; }
+    uint32_t image = (uint32_t)width * height * 2;
+    uint8_t header[66] = {'B', 'M'};
+    put32(header + 2, sizeof header + image); put32(header + 10, sizeof header);
+    put32(header + 14, 40); put32(header + 18, (uint32_t)width); put32(header + 22, (uint32_t)-height);
+    put16(header + 26, 1); put16(header + 28, 16); put32(header + 30, 3); put32(header + 34, image);
+    put32(header + 38, 2835); put32(header + 42, 2835);
+    put32(header + 54, 0xf800); put32(header + 58, 0x07e0); put32(header + 62, 0x001f);
+    s_photo_rows = 0;
+    if (fwrite(header, 1, sizeof header, s_photo) != sizeof header) { sd_port_photo_end(false); return false; }
+    return true;
+}
+bool sd_port_photo_rows(const uint16_t *rows, int first, int count, int width) {
+    if (!s_photo || first != s_photo_rows) return false;
+    if (fwrite(rows, sizeof *rows, (size_t)count * width, s_photo) != (size_t)count * width) return false;
+    s_photo_rows += count;
+    return true;
+}
+bool sd_port_photo_end(bool ok) {
+    if (!s_photo) return false;
+    if (fflush(s_photo) != 0 || fsync(fileno(s_photo)) != 0) ok = false;
+    if (fclose(s_photo) != 0) ok = false;
+    s_photo = NULL;
+    if (!ok) {
+        ESP_LOGE(TAG, "photo failed; removing %s", s_photo_path);
+        remove(s_photo_path);
+        render_backup_status("PHOTO FAILED - SEE SERIAL", false);
+        return false;
+    }
+    ESP_LOGI(TAG, "PHOTO saved: %s (%d rows)", s_photo_path, s_photo_rows);
+    char message[64]; snprintf(message, sizeof message, "PHOTO SAVED: %s", s_photo_path + strlen(SAVE_DIR) + 1);
+    render_backup_status(message, false);
+    return true;
+}
+
 #define UPDATE_PATH SAVE_DIR "/update.ptu"
 #define UPDATE_TEMP UPDATE_PATH ".upload"
 typedef struct {
@@ -422,6 +543,24 @@ void sd_port_command(tank_t *tank, int argc, char **argv) {
         if (!text) return;
         printf("JSON BEGIN %u\n%s\nJSON END\n", (unsigned)len, text);
         free(text);
+    } else if (argc == 3 && !strcmp(argv[1], "photo-dump")) {
+        char path[64]; snprintf(path, sizeof path, SAVE_DIR "/photos/photo-%04u.bmp", (unsigned)atoi(argv[2]) % 10000);
+        FILE *f = fopen(path, "rb");
+        if (!f) { ESP_LOGE(TAG, "%s: %s", path, strerror(errno)); return; }
+        static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        uint8_t in[57]; char out[80]; size_t got;
+        printf("PHOTO BEGIN %s\n", path);
+        while ((got = fread(in, 1, sizeof in, f)) > 0) {
+            size_t o = 0;
+            for (size_t i = 0; i < got; i += 3) {
+                uint32_t v = (uint32_t)in[i] << 16 | (i + 1 < got ? (uint32_t)in[i + 1] << 8 : 0) | (i + 2 < got ? in[i + 2] : 0);
+                out[o++] = b64[v >> 18 & 63]; out[o++] = b64[v >> 12 & 63];
+                out[o++] = i + 1 < got ? b64[v >> 6 & 63] : '='; out[o++] = i + 2 < got ? b64[v & 63] : '=';
+            }
+            out[o] = 0; printf("%s\n", out);
+        }
+        fclose(f);
+        printf("PHOTO END\n");
     } else if (argc >= 2 && !strcmp(argv[1], "backups")) {
         char path[96]; unsigned n;
         if (backup_latest("backup", path, &n)) ESP_LOGI(TAG, "JSON latest: %s", n ? path : "none");

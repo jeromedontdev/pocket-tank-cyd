@@ -19,6 +19,7 @@ bool director_provision_done(void);        /* a network was connected to and sto
 bool director_provision_busy(void);        /* a scan or a connect is running */
 int64_t director_provision_last_us(void);  /* the page's last packet (esp_timer time; 0 = none) */
 void device_sleep(int wake_after_s);   /* main.c: the keeper's sleep (0: grace then power-off) or, N > 0, a 5 s grace then deep sleep with an N s timer wake */
+void device_photo(bool from_settings); /* main.c: save the live tank to SD as a BMP after a short settle */
 void device_clock_log(void);           /* main.c: the clock - RTC chip or the internet's time (the clockless night), and what tonight will be */
 void device_poweroff(void);            /* main.c: save + PMIC cut now */
 void device_update_check(void);        /* main.c: as CHECK FOR UPDATES - save, restart into update mode (docs/OTA.md) */

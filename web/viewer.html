@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pocket Tank CYD save viewer</title>
+  <link rel="icon" href="./logo.svg" type="image/svg+xml">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #081c25; color: #e0f2f1; }
+    main { max-width: 60rem; margin: 2.5rem auto; padding: 0 1.25rem; line-height: 1.5; }
+    h1, h2, a { color: #78e3cf; }
+    section { margin: 1.5rem 0; padding: 1rem 1.25rem; border: 1px solid #527782; border-radius: .5rem; }
+    #drop { border: 2px dashed #527782; padding: 2rem; text-align: center; border-radius: .5rem; }
+    #drop.over { border-color: #78e3cf; background: #0d2a35; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .75rem; }
+    .card { background: #0d2a35; border-radius: .5rem; padding: .75rem; }
+    .card h3 { margin: .25rem 0; color: #ffd998; }
+    .muted { color: #a7c4ba; }
+    .mutant { color: #ffd998; font-weight: bold; }
+    canvas { image-rendering: pixelated; background: #10394a; border-radius: .25rem; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { text-align: left; padding: .25rem .5rem; border-bottom: 1px solid #1d4250; }
+    .error { color: #ff9c8f; }
+    [hidden] { display: none !important; }
+    .brand { display: flex; align-items: center; gap: 1rem; }
+    .brand img { width: 6rem; height: auto; }
+  </style>
+</head>
+<body>
+<main>
+  <header class="brand"><img src="./logo.svg" alt="" width="128" height="96"><h1>Pocket Tank CYD save viewer</h1></header>
+  <p>Open a Pocket Tank CYD JSON backup (from <strong>Settings &gt; Device &gt; SD Backup</strong> or the daily
+    automatic <code>auto-NNNN.json</code> backups in the SD card's <code>pocket-tank</code> folder) to see your fish, their family tree,
+    their genes, the visitor log and recent memories.
+    The file is read <strong>only in your browser</strong>; nothing is uploaded.</p>
+  <div id="drop">
+    <p>Drop a backup <code>.json</code> here, or</p>
+    <input id="file" type="file" accept=".json,application/json">
+  </div>
+  <p id="error" class="error" role="alert"></p>
+  <div id="out" hidden>
+    <section><h2 id="title">Your tank</h2><div id="overview"></div></section>
+    <section><h2>Fish at home</h2><div id="home" class="grid"></div></section>
+    <section><h2>Bank and travelers</h2><div id="away" class="grid"></div></section>
+    <section><h2>Visitor log</h2><div id="visitors"></div></section>
+    <section><h2>Recent memories</h2><div id="memories"></div></section>
+  </div>
+  <p><a href="./">USB installer</a> &middot;
+    <a href="https://github.com/jeromedontdev/pocket-tank-cyd">Source and documentation</a></p>
+</main>
+<script>
+"use strict";
+const VARIETIES = ["CLASSIC", "ANGEL", "GUPPY", "TETRA", "PUFFER", "SHARK", "JELLYFISH", "STINGRAY", "CLOWNFISH", "BETTA"];
+const PATTERNS = ["STRIPES", "SPOTS", "BAND", "PLAIN", "SADDLE", "TIGER", "SPECKLE", "FADE", "MASK"];
+const TRAITS = ["SHIMMER", "PAINTED FINS", "PALE BELLY", "GOLD EYE"];
+const STAGES = ["FRY", "JUVENILE", "ADULT", "ELDER"];
+const VISITORS = [
+  ["DRIFTER", "A pale bell that drifts past on its own errand."],
+  ["OLD TURTLE", "Slow, scarred and unhurried. It has seen many reefs."],
+  ["GHOST FISH", "Almost glass. You see the reef through it."],
+  ["NIGHT MANTA", "Wide wings, a lazy glide, gone before you blink."],
+  ["LANTERN SQUID", "A tiny light that blinks in the open water."],
+];
+const VISITOR_MEMORY = ["An unknown drifter", "An old sea turtle", "A ghost fish", "A small manta", "A lantern squid"];
+const BODY_COLORS = [
+  0x38dcc7, 0xff725c, 0x78d67d, 0xa799ff, 0xffd166, 0xf48fb1, 0x4da3ff, 0xe8f1f2,
+  0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
+  0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xffffff, 0x263d50,
+];
+const LIFE = 20, LINE = 10, MEMORY = 16, ANCESTOR = 10, NAME = 8;
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+const hex = (s) => { const b = new Uint8Array((s || "").length / 2); for (let i = 0; i < b.length; i++) b[i] = parseInt(s.substr(i * 2, 2), 16); return b; };
+const view = (b) => new DataView(b.buffer, b.byteOffset, b.byteLength);
+const cstr = (b, at, n) => { let s = ""; for (let i = 0; i < n && b[at + i]; i++) s += String.fromCharCode(b[at + i]); return s; };
+const rgb = (n) => "#" + (n >>> 0).toString(16).padStart(6, "0").slice(-6);
+
+function lives(bytes) {
+  const out = [], v = view(bytes);
+  for (let at = 0; at + LIFE <= bytes.length; at += LIFE)
+    out.push({ id: v.getUint32(at, true), buddy: v.getUint32(at + 4, true), arrived: v.getUint32(at + 8, true), stage: bytes[at + 19] });
+  return out;
+}
+function lines(bytes) {
+  const out = [], v = view(bytes);
+  for (let at = 0; at + LINE <= bytes.length; at += LINE)
+    out.push({ parents: [v.getUint16(at, true), v.getUint16(at + 2, true)], generation: bytes[at + 4],
+               pattern2: bytes[at + 6], color2: bytes[at + 7], traits: bytes[at + 8], mutation: bytes[at + 9] });
+  return out;
+}
+function bankRecord(bytes) {          /* bank_fish_t: 68-byte core, then name, body, accent */
+  if (bytes.length < 84) return null;
+  const v = view(bytes);
+  return { stage: bytes[1], appearance: v.getUint16(2, true), name: cstr(bytes, 68, NAME),
+           body: v.getUint32(76, true), accent: v.getUint32(80, true) };
+}
+
+function drawFish(f) {
+  const c = el("canvas"); c.width = 96; c.height = 56; c.style.width = "144px"; c.style.height = "84px";
+  const g = c.getContext("2d"), body = rgb(f.body), accent = rgb(f.accent), traits = f.traits || 0;
+  const fin = traits & 2 ? accent : rgb(mix(f.body, 0x5a6a6e, .35));
+  g.save(); g.translate(48, 28);
+  if (f.variety === 6) {               /* jellyfish bell and strands */
+    g.strokeStyle = fin; g.lineWidth = 2;
+    for (let i = -2; i <= 2; i++) { g.beginPath(); g.moveTo(i * 6, 2); g.quadraticCurveTo(i * 6 + 4, 12, i * 6, 22); g.stroke(); }
+    g.fillStyle = body; g.beginPath(); g.ellipse(0, 2, 18, 18, 0, Math.PI, 0); g.fill();
+    g.beginPath(); g.rect(-18, 1, 36, 2); g.fill();
+  } else {
+    g.fillStyle = fin; g.beginPath(); g.moveTo(-14, 0); g.lineTo(-30, -12); g.lineTo(-30, 12); g.fill();
+    g.beginPath(); g.moveTo(-6, -9); g.lineTo(4, -18); g.lineTo(8, -9); g.fill();
+    g.fillStyle = body; g.beginPath(); g.ellipse(0, 0, 20, f.variety === 1 ? 15 : f.variety === 5 ? 7 : 11, 0, 0, 2 * Math.PI); g.fill();
+  }
+  if (f.stage >= 1) {
+    g.save(); g.beginPath();
+    if (f.variety === 6) g.ellipse(0, 2, 18, 18, 0, Math.PI, 0); else g.ellipse(0, 0, 20, f.variety === 1 ? 15 : f.variety === 5 ? 7 : 11, 0, 0, 2 * Math.PI);
+    g.clip(); g.fillStyle = accent;
+    switch (f.pattern) {
+      case 0: for (let i = -1; i <= 1; i++) g.fillRect(i * 7 - 1.5, -12, 3, 24); break;
+      case 1: for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(-10 + (i % 3) * 7, i < 3 ? -4 : 3, 2, 0, 7); g.fill(); } break;
+      case 2: g.fillRect(-16, -2, 30, 4); break;
+      case 4: g.beginPath(); g.ellipse(-2, -8, 7, 4, 0, 0, 7); g.fill(); break;
+      case 5: for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(-11 + i * 6 + 2, -14); g.lineTo(-11 + i * 6 + 4, -14); g.lineTo(-11 + i * 6, 14); g.lineTo(-11 + i * 6 - 2, 14); g.fill(); } break;
+      case 6: [[-12, -2], [-8, 3], [-5, -5], [-2, 1], [1, -4], [4, 4], [7, -1], [-9, -5], [3, 6]].forEach(([x, y]) => g.fillRect(x, y, 2, 2)); break;
+      case 7: g.fillRect(-22, -20, 12, 40); break;
+      case 8: g.fillRect(5, -14, 4, 28); break;
+    }
+    g.restore();
+  }
+  if (traits & 4) { g.fillStyle = rgb(mix(f.body, 0xf6f1e4, .55)); g.beginPath(); g.ellipse(0, f.variety === 6 ? 0 : 6, 12, 2.5, 0, 0, 7); g.fill(); }
+  if (traits & 1) { g.fillStyle = "rgba(255,255,255,.45)"; g.beginPath(); g.ellipse(-3, f.variety === 6 ? -10 : -6, 6, 1.5, 0, 0, 7); g.fill(); }
+  const ex = f.variety === 6 ? 7 : 11, ey = f.variety === 6 ? -6 : -3;
+  g.fillStyle = traits & 8 ? "#ffd25e" : "#ffffff"; g.beginPath(); g.arc(ex, ey, 2.6, 0, 7); g.fill();
+  g.fillStyle = "#031015"; g.beginPath(); g.arc(ex + .5, ey, 1.4, 0, 7); g.fill();
+  g.restore();
+  return c;
+}
+function mix(a, b, t) {
+  const ch = (s) => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+function genes(line, shownPattern) {
+  if (!line) return [];
+  const shown = TRAITS.filter((_, k) => line.traits & (1 << k));
+  const carried = [];
+  if (line.pattern2 && line.pattern2 - 1 !== shownPattern && PATTERNS[line.pattern2 - 1]) carried.push(PATTERNS[line.pattern2 - 1] + " marking");
+  if (line.color2) carried.push("a hidden colour");
+  TRAITS.forEach((t, k) => { if (line.traits & (16 << k)) carried.push(t); });
+  const out = [["Genes", shown.length ? shown.join(", ") : "classic"], ["Carries", carried.length ? carried.join(", ") : "nothing hidden"]];
+  if (line.mutation) out.push(["Mutation", [line.mutation & 1 ? "new marking" : "", line.mutation & 2 ? "new trait" : ""].filter(Boolean).join(" + ") + "!"]);
+  return out;
+}
+
+function card(f, line, life, names, extra) {
+  const c = el("div", null, "card");
+  c.append(drawFish(f), el("h3", f.name || "(unnamed)"));
+  c.append(el("div", `${STAGES[f.stage] || "?"} ${VARIETIES[f.variety] || "FISH"} / ${PATTERNS[f.pattern] || "?"} markings`));
+  const rows = [];
+  if (line) {
+    const who = (id) => names.get(id) || (id ? "a long-ago fish" : null);
+    const parents = line.parents.map(who).filter(Boolean);
+    rows.push(["Generation", String(line.generation + 1)],
+              ["Parents", parents.length ? parents.join(" + ") : line.generation ? "not recorded" : "a founder of this tank"]);
+    const grand = [];
+    for (const p of line.parents) { const pl = names.lines.get(p); if (pl) pl.parents.filter(Boolean).forEach((g) => grand.push(who(g))); }
+    if (grand.length) rows.push(["Grandparents", grand.join(", ")]);
+    if (life && life.id) {
+      const kids = [...names.lines].filter(([, l]) => l.parents.includes(life.id)).map(([id]) => who(id));
+      if (kids.length) rows.push(["Children", kids.join(", ")]);
+    }
+    rows.push(...genes(line, f.pattern));
+  }
+  if (extra) rows.push(extra);
+  for (const [k, v] of rows) {
+    const p = el("div");
+    if (k === "Mutation") p.className = "mutant";
+    p.append(el("span", k + ": ", "muted"), document.createTextNode(v));
+    c.append(p);
+  }
+  return c;
+}
+
+function show(save) {
+  if (!save || save.format !== "pocket-tank" || typeof save.schema !== "number" || !save.tank) throw new Error("This is not a Pocket Tank backup.");
+  if (save.schema < 9) throw new Error(`Schema ${save.schema} is too old to view - restore it on the tank and back up again.`);
+  const t = save.tank, comp = save.companion || {}, pol = save.polish || {}, story = save.story || null;
+  const life = { active: lives(hex(pol.active)), bank: lives(hex(pol.bank)), traveler: lives(hex(pol.traveler))[0] };
+  const lin = story ? { active: lines(hex(story.active)), bank: lines(hex(story.bank)), traveler: lines(hex(story.traveler))[0] } : null;
+  const names = new Map(); names.lines = new Map();
+  if (story) {
+    const book = hex(story.names), v = view(book);
+    for (let at = 0; at + ANCESTOR <= book.length; at += ANCESTOR) { const id = v.getUint16(at, true); if (id) names.set(id, cstr(book, at + 2, NAME)); }
+  }
+  const home = [];
+  for (let i = 0; i < t.n_fish; i++) {
+    home.push({ name: t.names[i], body: t.body[i], accent: t.accent[i], variety: t.fish_variety[i], pattern: t.fish_pattern[i],
+                stage: save.fish[i].stage, traits: lin ? lin.active[i].traits & 15 : 0 });
+    if (life.active[i]) { names.set(life.active[i].id, t.names[i] || "an unnamed fish"); if (lin) names.lines.set(life.active[i].id, lin.active[i]); }
+  }
+  const bank = (save.bank || []).map((b, i) => {
+    if (life.bank[i]) { names.set(life.bank[i].id, b.name || "an unnamed fish"); if (lin) names.lines.set(life.bank[i].id, lin.bank[i]); }
+    return { name: b.name, body: b.body, accent: b.accent, variety: b.appearance & 255, pattern: b.appearance >> 8,
+             stage: b.fish.stage, traits: lin ? lin.bank[i].traits & 15 : 0 };
+  });
+  const traveler = comp.away ? bankRecord(hex(comp.traveler)) : null;
+  if (traveler && life.traveler) { names.set(life.traveler.id, traveler.name || "an unnamed fish"); if (lin) names.lines.set(life.traveler.id, lin.traveler); }
+
+  const tankName = cstr(hex(pol.tank_name), 0, 16);
+  $("title").textContent = tankName || "Your tank";
+  const ov = $("overview"); ov.replaceChildren();
+  const facts = [
+    ["Fish", `${t.n_fish} at home, ${bank.length} in the Bank${traveler ? ", 1 on an adventure" : ""}`],
+    ["Journal XP", t.journal_xp], ["Sand dollars", t.sd_balance],
+    ["Born in this tank", story ? story.births : "-"],
+    ["Seasons", !story ? "-" : story.flags & 1 ? "off" : story.flags & 2 ? "southern hemisphere" : "northern hemisphere"],
+    ["Founded", pol.founded_unix ? new Date(pol.founded_unix * 1000).toLocaleDateString() : "unknown"],
+    ["Saved", t.saved_unix ? new Date(t.saved_unix * 1000).toLocaleString() : "unknown"],
+    ["Backup schema", save.schema],
+  ];
+  const table = el("table");
+  for (const [k, v] of facts) { const r = el("tr"); r.append(el("th", k), el("td", String(v))); table.append(r); }
+  ov.append(table);
+
+  $("home").replaceChildren(...home.map((f, i) => card(f, lin && lin.active[i], life.active[i], names)));
+  const awayCards = bank.map((f, i) => card(f, lin && lin.bank[i], life.bank[i], names, ["Where", "the Bank"]));
+  if (traveler) awayCards.unshift(card({ ...traveler, variety: traveler.appearance & 255, pattern: traveler.appearance >> 8,
+                                         traits: lin ? lin.traveler.traits & 15 : 0 }, lin && lin.traveler, life.traveler, names, ["Where", "on an adventure"]));
+  $("away").replaceChildren(...(awayCards.length ? awayCards : [el("p", "Nobody is banked or travelling.", "muted")]));
+
+  const vis = $("visitors"); vis.replaceChildren();
+  if (!story) vis.append(el("p", `Visitors seen: ${pol.visits || 0}. This backup predates the visitor log (1.3).`, "muted"));
+  else {
+    const vt = el("table");
+    VISITORS.forEach(([name, words], i) => {
+      const r = el("tr"), seen = story.seen[i];
+      r.append(el("th", seen ? name : "???"), el("td", seen ? `${seen} sighting${seen === 1 ? "" : "s"}` : "not yet seen"), el("td", seen ? words : "", "muted"));
+      vt.append(r);
+    });
+    vis.append(vt);
+  }
+
+  const mem = $("memories"); mem.replaceChildren();
+  const recap = hex(pol.recap), list = el("ul");
+  for (let k = 0; k < (pol.recap_count || 0); k++) {
+    const at = k * MEMORY; if (at + MEMORY > recap.length) break;
+    const who = cstr(recap, at + 4, NAME) || "A fish", kind = recap[at + 12], detail = recap[at + 13];
+    const text = { 1: `${who} joined the aquarium.`, 2: `${who} reached a new life stage.`, 3: `${who} made a familiar friend.`,
+                   4: "Discovered something new.", 5: `${who} brought home a keepsake.`, 6: "Helpers quietly tended the tank.",
+                   7: `${VISITOR_MEMORY[detail % VISITOR_MEMORY.length]} visited the reef.` }[kind];
+    if (text) list.append(el("li", text));
+  }
+  mem.append(list.children.length ? list : el("p", "No memories yet.", "muted"));
+  $("out").hidden = false;
+}
+
+async function open(file) {
+  $("error").textContent = "";
+  try { show(JSON.parse(await file.text())); }
+  catch (e) { $("out").hidden = true; $("error").textContent = `Could not read ${file.name}: ${e.message}`; }
+}
+$("file").addEventListener("change", (e) => e.target.files[0] && open(e.target.files[0]));
+const drop = $("drop");
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) open(e.dataTransfer.files[0]); });
+</script>
+</body>
+</html>

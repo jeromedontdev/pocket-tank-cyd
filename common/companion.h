@@ -52,7 +52,18 @@ void companion_favorite_label(const tank_t *t, int fish, char *text, size_t size
 void companion_status(const tank_t *t, char *text, size_t size);
 enum { MEMORY_ARRIVAL = 1, MEMORY_GROWTH, MEMORY_BUDDY, MEMORY_DISCOVERY,
        MEMORY_ADVENTURE, MEMORY_HELPERS, MEMORY_VISITOR };
-void companion_polish_init(tank_t *t, bool fresh);
+void companion_polish_init(tank_t *t, bool fresh);   /* also migrates the 1.3 story */
+typedef struct { const char *name, *memory, *words; int weight; } companion_visitor_t;
+extern const companion_visitor_t COMPANION_VISITORS[VISITOR_SPECIES];
+void companion_story_init(tank_t *t);
+bool companion_story_valid(const tank_story_t *s, int fish, int bank, bool away, uint32_t next_id);
+const char *companion_story_name(const tank_t *t, uint16_t id);          /* NULL = unknown */
+const fish_lineage_t *companion_story_line(const tank_t *t, uint16_t id); /* a living fish's line */
+int  companion_visitor_pick(tank_t *t);                                  /* records the sighting */
+void companion_debug_visit(tank_t *t, int species);   /* serial: a visit on the next tick (-1 = random) */
+void companion_debug_season(tank_t *t, int season);   /* serial: force SEASON_* (-1 = the clock) */
+int  companion_season_for(int64_t local_unix, uint8_t flags);            /* SEASON_* | SEASON_LIGHTS */
+bool companion_set_seasons(tank_t *t, uint8_t flags);                    /* saved; false = unchanged */
 void companion_polish_observe(tank_t *t);
 bool companion_polish_valid(const tank_polish_t *p, int fish, int bank, bool away);
 void companion_memory(tank_t *t, int kind, int fish, int detail);

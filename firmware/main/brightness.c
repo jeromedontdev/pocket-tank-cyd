@@ -1,4 +1,5 @@
 #include "brightness.h"
+#include "ambient.h"
 #include "display_port.h"
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -42,7 +43,7 @@ bool brightness_set_level(int pct) {
 }
 void brightness_cycle(void) { brightness_set_level(s_pct == 100 ? 60 : s_pct == 60 ? 30 : 100); }
 void brightness_apply(bool night) {
-    int target = s_pct * 255 / 100;
+    int target = ambient_brightness_pct(s_pct) * 255 / 100;
     if (night) target = target * 6 / 10;
     if (target != s_applied) { display_port_set_brightness((uint8_t)target); s_applied = target; }
 }

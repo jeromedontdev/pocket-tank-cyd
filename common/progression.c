@@ -210,6 +210,7 @@ typedef struct {
     aquarium_state_t aquariums;
     companion_state_t companion;
     tank_polish_t polish;
+    tank_story_t story;                /* 1.3: family tree, name book, visitor log, seasons */
 } save_t;
 /* the smallest PTK2 save (pre-upkeep, 2026-08-30): anything shorter is not
  * ours. Every later build wrote sizeof(save_t) of its day - 448, 1112, 1304,
@@ -316,6 +317,7 @@ SAVE_AT(aquariums, 3968);
 _Static_assert(sizeof(aquarium_state_t) == 32, "SAVE LAYOUT LOCK: aquarium metadata and name");
 SAVE_AT(companion, 4000);
 SAVE_AT(polish, 4520);
+SAVE_AT(story, 5416);
 _Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: companion tail");
 /* NVS budget: the save is one blob in the nvs partition (0x9000, 0x6000 =
  * 6 pages of 4096 B; tools/make_installer.py pins the row). A page is 126
@@ -323,13 +325,13 @@ _Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: compani
  * 5 x 126 = 630 entries usable. A blob costs an entry per 32 B, a header per
  * chunk (a chunk stays on one page) and an index entry, and nvs_set_blob
  * writes the new copy before it erases the old - on top of the director's
- * parked "bk" copy, three at once at worst. At the 5504-byte ceiling,
- * payload + two chunk headers + index costs 175 entries per copy:
- * 3 x 175 + 64 reserved for namespaces, Wi-Fi, settings and history = 589,
+ * parked "bk" copy, three at once at worst. At the 5856-byte ceiling,
+ * payload + two chunk headers + index costs 186 entries per copy:
+ * 3 x 186 + 64 reserved for namespaces, Wi-Fi, settings and history = 622,
  * below 630, retaining the dedicated GC page. Inactive aquariums live on
  * SD, not additional NVS blobs; their shorter records zero-fill the new
  * tail after checksum validation, retaining the frozen 4000-byte prefix. */
-#define SAVE_NVS_BUDGET 5504
+#define SAVE_NVS_BUDGET 5856
 _Static_assert(sizeof(save_t) <= SAVE_NVS_BUDGET, "the save outgrew its NVS budget - see the math above");
 
 float progression_time_scale = 1.0f;
@@ -720,6 +722,7 @@ bool progression_adventure_depart(tank_t *t, int adventure, int fish) {
     s->version = COMPANION_VERSION; s->adventure = (uint8_t)(adventure + 1); s->adventure_s = 0;
     s->traveler = bank_capture(t, fish); s->traveler_bond = s->active[fish]; s->away = 1;
     next->polish.traveler = next->polish.active[fish];
+    next->story.traveler = next->story.active[fish];
     s->adventure_clock = clock_port_now_unix();
     if (s->adventure_clock < 0 || s->adventure_clock > 4102444800LL) s->adventure_clock = 0;
     memcpy(s->portrait_name, t->fish[fish].name, sizeof s->portrait_name);
@@ -757,6 +760,8 @@ bool progression_adventure_return(tank_t *t) {
     next->polish.active[slot] = next->polish.traveler;
     next->polish.active[slot].adventures |= (uint8_t)(1u << a);
     memset(&next->polish.traveler, 0, sizeof next->polish.traveler);
+    next->story.active[slot] = next->story.traveler;
+    memset(&next->story.traveler, 0, sizeof next->story.traveler);
     companion_memory(next, MEMORY_ADVENTURE, slot, a);
     next->fish[slot].wearable = s->traveler_bond.wearable;
     next->fish[slot].wear_colors = s->traveler_bond.wear_colors;
@@ -790,6 +795,7 @@ const char *progression_bank_move(tank_t *t, int bank, int active) {
     if (bank < 0) {
         next->companion.bank[next->bank_count] = next->companion.active[active];
         next->polish.bank[next->bank_count] = next->polish.active[active];
+        next->story.bank[next->bank_count] = next->story.active[active];
         next->bank[next->bank_count++] = bank_capture(t, active);
         tank_remove_fish(next, active);
         for (int i = active; i < next->n_fish; i++) { s_age[i] = s_age[i + 1]; s_starve_s[i] = s_starve_s[i + 1]; }
@@ -798,6 +804,7 @@ const char *progression_bank_move(tank_t *t, int bank, int active) {
         bank_fish_t incoming = next->bank[bank];
         companion_bond_t incoming_bond = next->companion.bank[bank];
         fish_life_t incoming_life = next->polish.bank[bank];
+        fish_lineage_t incoming_line = next->story.bank[bank];
         if (active < 0) {
             active = next->n_fish++;
             memmove(&next->companion.bank[bank], &next->companion.bank[bank + 1],
@@ -806,11 +813,15 @@ const char *progression_bank_move(tank_t *t, int bank, int active) {
             memmove(&next->polish.bank[bank], &next->polish.bank[bank + 1],
                     (next->bank_count - bank - 1) * sizeof next->polish.bank[0]);
             memset(&next->polish.bank[next->bank_count - 1], 0, sizeof next->polish.bank[0]);
+            memmove(&next->story.bank[bank], &next->story.bank[bank + 1],
+                    (next->bank_count - bank - 1) * sizeof next->story.bank[0]);
+            memset(&next->story.bank[next->bank_count - 1], 0, sizeof next->story.bank[0]);
             memmove(&next->bank[bank], &next->bank[bank + 1], (next->bank_count - bank - 1) * sizeof next->bank[0]);
             memset(&next->bank[--next->bank_count], 0, sizeof next->bank[0]);
         } else {
             next->companion.bank[bank] = next->companion.active[active];
             next->polish.bank[bank] = next->polish.active[active];
+            next->story.bank[bank] = next->story.active[active];
             next->bank[bank] = bank_capture(t, active);
             for (int i = 0; i < next->n_fish; i++) {
                 if (next->fish[i].parent_a == active) next->fish[i].parent_a = -1;
@@ -820,6 +831,7 @@ const char *progression_bank_move(tank_t *t, int bank, int active) {
         bank_restore(next, active, &incoming);
         next->companion.active[active] = incoming_bond;
         next->polish.active[active] = incoming_life;
+        next->story.active[active] = incoming_line;
         next->fish[active].wearable = incoming_bond.wearable;
         next->fish[active].wear_colors = incoming_bond.wear_colors;
         next->roster_gen++;
@@ -1330,8 +1342,10 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
         got != offsetof(save_t, companion) + 512 &&
         got < offsetof(save_t, companion) + sizeof sv.companion) return false;
     if (!companion_valid(&sv.companion)) return false;
-    if ((got > offsetof(save_t, polish) && got < sizeof sv) ||
-        !companion_polish_valid(&sv.polish, sv.n_fish, sv.bank_count, sv.companion.away)) {
+    if ((got > offsetof(save_t, polish) && got < offsetof(save_t, story)) ||
+        (got > offsetof(save_t, story) && got < sizeof sv) ||
+        !companion_polish_valid(&sv.polish, sv.n_fish, sv.bank_count, sv.companion.away) ||
+        !companion_story_valid(&sv.story, sv.n_fish, sv.bank_count, sv.companion.away, sv.polish.next_id)) {
         fprintf(stderr, "Saved aquarium memories invalid or incomplete (%u bytes)\n", (unsigned)got);
         return false;
     }
@@ -1431,6 +1445,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     t->aquariums = sv.aquariums;
     t->companion = sv.companion;
     t->polish = sv.polish;
+    t->story = sv.story;
     t->visitor_left = 0;
     for (int i = 0; i < t->n_fish; i++) {
         t->fish[i].wearable = t->companion.active[i].wearable;
@@ -1686,6 +1701,7 @@ static void capture_save(const tank_t *t, save_t *sv) {
     sv->aquariums = t->aquariums;
     sv->companion = t->companion;
     sv->polish = t->polish;
+    sv->story = t->story;
     if (sv->polish.version)
         snprintf(sv->polish.tank_name, sizeof sv->polish.tank_name, "%s", t->aquariums.name);
     sv->saved_release = PT_RELEASE_NUM;
@@ -1927,6 +1943,17 @@ static const json_field_t POLISH_FIELDS[] = {
     P(tank_name, J_HEX, 16, 0, 255),
 };
 #undef P
+#define S(f, k, n, lo, hi) { #f, offsetof(tank_story_t, f), n, k, lo, hi }
+static const json_field_t STORY_FIELDS[] = {
+    S(version, J_U8, 1, 0, 1), S(flags, J_U8, 1, 0, 3), S(last_species, J_U8, 1, 0, VISITOR_SPECIES - 1),
+    S(first_seen_s, J_U32, VISITOR_SPECIES, 0, UINT32_MAX), S(seen, J_U16, VISITOR_SPECIES, 0, UINT16_MAX),
+    S(births, J_U16, 1, 0, UINT16_MAX),
+    S(active, J_HEX, sizeof(((tank_story_t *)0)->active), 0, 255),
+    S(bank, J_HEX, sizeof(((tank_story_t *)0)->bank), 0, 255),
+    S(traveler, J_HEX, sizeof(fish_lineage_t), 0, 255),
+    S(names, J_HEX, sizeof(((tank_story_t *)0)->names), 0, 255),
+};
+#undef S
 #define B(f, k, n, lo, hi) { #f, offsetof(bank_fish_t, f), n, k, lo, hi }
 static const json_field_t BANK_FIELDS[] = {
     B(name, J_NAMES, 1, 0, 0), B(body, J_U32, 1, 1, 0xffffff), B(accent, J_U32, 1, 1, 0xffffff),
@@ -2028,7 +2055,7 @@ char *progression_backup_json(const tank_t *t) {
     save_t sv; capture_save(t, &sv);
     char header[128], *text = NULL;
     size_t used = 0;
-    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":11,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
+    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":12,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
     if (!json_append(&text, &used, header)) goto fail;
     cJSON *tank = json_fields(&sv, SAVE_FIELDS, FIELD_COUNT(SAVE_FIELDS));
     if (!tank) goto fail;
@@ -2046,6 +2073,8 @@ char *progression_backup_json(const tank_t *t) {
         !json_append_value(&text, &used, json_fields(&sv.companion, COMPANION_FIELDS, FIELD_COUNT(COMPANION_FIELDS))) ||
         !json_append(&text, &used, ",\"polish\":") ||
         !json_append_value(&text, &used, json_fields(&sv.polish, POLISH_FIELDS, FIELD_COUNT(POLISH_FIELDS))) ||
+        !json_append(&text, &used, ",\"story\":") ||
+        !json_append_value(&text, &used, json_fields(&sv.story, STORY_FIELDS, FIELD_COUNT(STORY_FIELDS))) ||
         !json_append(&text, &used, ",\"fish\":[")) goto fail;
     for (int i = 0; i < N_FISH_MAX; i++) {
         if ((i && !json_append(&text, &used, ",")) ||
@@ -2211,9 +2240,9 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     const cJSON *height = cJSON_GetObjectItemCaseSensitive(root, "height");
     const cJSON *fish = cJSON_GetObjectItemCaseSensitive(root, "fish");
     if (!cJSON_IsString(format) || strcmp(format->valuestring, "pocket-tank")
-        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 11 ||
+        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 12 ||
            schema->valuedouble != floor(schema->valuedouble)
-        || cJSON_GetArraySize(root) != (schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
+        || cJSON_GetArraySize(root) != (schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
         || !cJSON_IsString(board) || strcmp(board->valuestring, "cyd2432s028")
         || !cJSON_IsNumber(width) || (width->valuedouble != 240 && width->valuedouble != 320)
         || !cJSON_IsNumber(height) || height->valuedouble * 4 != width->valuedouble * 3
@@ -2278,6 +2307,12 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
                            POLISH_FIELDS, FIELD_COUNT(POLISH_FIELDS), error, error_size) ||
          !companion_polish_valid(&sv.polish, sv.n_fish, sv.bank_count, sv.companion.away))) {
         snprintf(error, error_size, "Invalid aquarium memories"); goto done;
+    }
+    if (schema->valuedouble >= 12 &&
+        (!json_read_fields(&sv.story, cJSON_GetObjectItemCaseSensitive(root, "story"),
+                           STORY_FIELDS, FIELD_COUNT(STORY_FIELDS), error, error_size) ||
+         !companion_story_valid(&sv.story, sv.n_fish, sv.bank_count, sv.companion.away, sv.polish.next_id))) {
+        snprintf(error, error_size, "Invalid aquarium story"); goto done;
     }
     if (width->valuedouble != (sv.companion.display_compact ? 320 : 240)) {
         snprintf(error, error_size, "Display size does not match saved scale"); goto done;
@@ -2373,6 +2408,7 @@ const char *progression_aquarium_move(tank_t *t, int target) {
             v->n_fish + v->companion.away > POP_CAP || v->bank_count > FISH_BANK_CAP ||
             !companion_valid(&v->companion) ||
             !companion_polish_valid(&v->polish, v->n_fish, v->bank_count, v->companion.away) ||
+            !companion_story_valid(&v->story, v->n_fish, v->bank_count, v->companion.away, v->polish.next_id) ||
             (v->companion.away && !bank_valid(&v->companion.traveler)) ||
             (v->aquariums.stat_upgrades & ~STAT_MASK) ||
             v->aquariums.clock_theme >= CLOCK_THEME_COUNT ||

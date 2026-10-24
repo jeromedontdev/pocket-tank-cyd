@@ -299,6 +299,15 @@ API void sim_touch(float x, float y, int down) {
             else render_backup_status("SAVE FAILED - WIFI NOT OPENED", false);
         }
         else if (result == SET_TAP_SAND || result == SET_TAP_WATER) progression_save(&tank);
+        else if (result == SET_TAP_ROOM || result == SET_TAP_LED || result == SET_TAP_AUTO_BACKUP) {
+            static render_device_t device = {0, 1, 1, -1};
+            if (result == SET_TAP_ROOM) device.room_mode = (uint8_t)((device.room_mode + 1) % 3);
+            else if (result == SET_TAP_LED) device.led_mode = (uint8_t)((device.led_mode + 1) % 3);
+            else device.auto_backup = !device.auto_backup;
+            render_set_device(&device);
+            render_backup_status("THE SENSOR AND LED ARE ON THE CYD", false);
+        }
+        else if (result == SET_TAP_PHOTO) render_backup_status("PHOTOS SAVE TO THE CYD'S SD CARD", false);
         else if (result == SET_TAP_BACKUP || result == SET_TAP_RESTORE)
             render_backup_status("USE THE WINDOW EXPORT / RESTORE BUTTONS", false);
     }

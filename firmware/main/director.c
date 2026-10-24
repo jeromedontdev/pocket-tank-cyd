@@ -11,6 +11,7 @@
 #include "sdkconfig.h"
 #include "esp_log.h"
 #include "progression.h"
+#include "companion.h"
 #include "setup.h"
 #include "director.h"
 #include "update.h"
@@ -23,6 +24,7 @@ bool net_port_set_manifest_url(const char *url);
 #include "display_port.h"
 #include "driver/gpio.h"
 #include "brightness.h"
+#include "ambient.h"
 #include "notice.h"
 #include "esp_timer.h"
 #include "esp_attr.h"
@@ -593,6 +595,37 @@ static void run(tank_t *t, char *line) {
         tank_decor_set(t, item, (float)atof(argv[a]), z); progression_save(t); z = tank_decor_z(t, item);
         ESP_LOGI(TAG, "%s at x %.0f, %s, saved", what, tank_decor_x(t, item),
                  item == 2 ? (z == DECOR_Z_BACK ? "BEHIND the grass" : "IN FRONT of the grass") : z == DECOR_Z_BACK ? "BEHIND the fish" : z == DECOR_Z_FRONT ? "IN FRONT of the fish" : "AMONG the fish");
+    } else if (!strcmp(c, "led")) {
+        if (argc >= 4) {
+            ambient_led((uint8_t)atoi(argv[1]), (uint8_t)atoi(argv[2]), (uint8_t)atoi(argv[3]));
+            ambient_led_override(argc > 4 ? atoi(argv[4]) : 10000);
+        } else if (argc == 2) ambient_set_led_mode(atoi(argv[1]));
+        ambient_log();
+    } else if (!strcmp(c, "ldr")) {
+        if (argc == 3) ambient_calibrate(atoi(argv[1]), atoi(argv[2]));
+        else if (argc == 2) ambient_set_room_mode(atoi(argv[1]));
+        ambient_log();
+    } else if (!strcmp(c, "visit")) {            /* visit [0-4]: a visitor on the next tick (drifter/turtle/ghost/manta/squid) */
+        companion_debug_visit(t, argc > 1 ? atoi(argv[1]) : -1);
+        ESP_LOGI(TAG, "visitor due (seen %u/%u/%u/%u/%u)", t->story.seen[0], t->story.seen[1], t->story.seen[2], t->story.seen[3], t->story.seen[4]);
+    } else if (!strcmp(c, "season")) {           /* season <0-4, +8 lights | -1 clock> */
+        companion_debug_season(t, argc > 1 ? atoi(argv[1]) : -1);
+        ESP_LOGI(TAG, "season %u", t->season);
+    } else if (!strcmp(c, "genes")) {            /* genes: every fish's shown/hidden alleles */
+        for (int i = 0; i < t->n_fish; i++) {
+            const fish_lineage_t *l = &t->story.active[i];
+            ESP_LOGI(TAG, "%d %s: gen %u pattern %s hidden %d color2 %d traits 0x%02x mutation %u", i, t->fish[i].name, l->generation + 1u,
+                     FISH_PATTERN_NAMES[t->fish[i].pattern % FISH_PATTERN_COUNT], l->pattern2 - 1, l->color2 - 1, l->traits, l->mutation);
+        }
+        ESP_LOGI(TAG, "away %u%s%s, bank %d, births %u, story v%u", t->companion.away, t->companion.away ? ": " : "",
+                 t->companion.away ? t->companion.traveler.name : "", t->bank_count, t->story.births, t->story.version);
+    } else if (!strcmp(c, "photo")) {
+        device_photo(false);
+        ESP_LOGI(TAG, "photo requested");
+    } else if (!strcmp(c, "autobackup")) {
+        if (argc == 2) ambient_set_auto_backup(atoi(argv[1]) != 0);
+        else sd_port_auto_backup_now(t);
+        ambient_log();
     } else if (!strcmp(c, "bright") && argc > 1) {
         int v = atoi(argv[1]); if (v < 0) v = 0; if (v > 255) v = 255;
         display_port_set_brightness((uint8_t)v);

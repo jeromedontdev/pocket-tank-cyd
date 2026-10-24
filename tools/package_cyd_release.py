@@ -83,6 +83,18 @@ https://github.com/jeromedontdev/pocket-tank-cyd
 
 Release for **ESP32-2432S028 CYD only**.
 
+### New in 1.3.0
+- Genetics: every fish carries a hidden second marking and body color plus four recessive traits (Shimmer, Painted Fins, Pale Belly, Gold Eye). Bred fry inherit one allele from each parent, hidden looks can resurface generations later, and rare mutations add a new marking or trait. Existing fish receive hidden genes on upgrade.
+- Five new markings: Saddle, Tiger, Speckle, Fade and Mask (nine in total), also available in CUSTOMIZE.
+- Family Tree (Care > LIFE > FAMILY): generation, parents, grandparents, children, siblings, shown and carried genes; departed ancestors' names are remembered.
+- Visitor Log (Care > TANK > SIGHTINGS): five rare, harmless visitors - Drifter, Old Turtle, Ghost Fish, Night Manta and Lantern Squid.
+- Seasonal sand scenery from the clock (spring sprigs, summer shells, autumn leaves, winter snow, holiday lights); north, south or off.
+- Room-light sensor (Settings > Display > ROOM LIGHT): dims the backlight in a dark room, optionally switching the tank to night.
+- Back RGB LED (Settings > Display > BACK LED): a soft glow that follows the water color, with optional hunger and visitor alerts.
+- Daily automatic SD backups (`auto-NNNN.json`, newest seven kept) and PHOTO TO SD (BMP screenshots) in Settings > SD Backups.
+- Web save viewer and a new logo on the installer site: open a JSON backup locally to see fish, family, genes and visitors.
+- Append-only 5848-byte saves and schema-12 JSON, importing all prior saves and backups without reset. Older builds cannot restore schema-12 backups.
+
 ### New in 1.2.0
 - Stable per-fish identities, biographies, life firsts and remembered swim buddies across reboot, Bank moves and adventures.
 - Expressive Care text, eight recent real observations, helper reports and gentle discovery hints; no streaks or extra care meters.

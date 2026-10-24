@@ -1,7 +1,7 @@
-# Pocket Tank CYD 1.2.0
+# Pocket Tank CYD 1.3.0
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 1.2.0**; firmware, update
+now versioned independently. This is **release 1.3.0**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 Targets the **ESP32-2432S028 Cheap Yellow Display**:
@@ -17,6 +17,17 @@ actual desktop renderer.
 
 ## What remains
 
+- **Genetics and family trees:** fish carry hidden markings, colors and four
+  recessive traits (Shimmer, Painted Fins, Pale Belly, Gold Eye) that bred fry
+  inherit, with rare mutations. **Care > LIFE > FAMILY** shows generations,
+  parents, grandparents, children and genes; see the
+  [family guide](docs/CYD-FEATURES.md#family-genes-and-visitors-new-in-13).
+- Five rare harmless visitors with a **Visitor Log**, and seasonal sand scenery
+  that follows the clock (north, south or off).
+- The CYD's **room-light sensor** can dim the backlight in a dark room, and the
+  **back RGB LED** glows with the water color or signals hunger and visitors.
+- Daily automatic SD backups (newest seven kept), **PHOTO TO SD** screenshots
+  and a browser [save viewer](https://jeromedontdev.github.io/pocket-tank-cyd/viewer.html).
 - Fish biographies, remembered swim buddies, life firsts and adventure keepsakes.
 - Quiet bounded recaps, helper reports, tank subtitles/emblems and discovery hints.
 - Rare harmless unknown visitors, plus six cached fixed sand decorations.
@@ -51,8 +62,8 @@ actual desktop renderer.
 - Shipwreck (200), treasure urn (60), crystals (100), sea fan (80),
   sunken ruins (160), and a bobbing tethered jelly lantern (120).
 - Ten creature looks: Classic, Angel, Guppy, Tetra, Puffer, Shark, Jellyfish,
-  Stingray, Clownfish and Betta; four marking
-  patterns: Stripes, Spots, Band and Plain. Open **Keeper > fish portrait >
+  Stingray, Clownfish and Betta; nine marking
+  patterns: Stripes, Spots, Band, Plain, Saddle, Tiger, Speckle, Fade and Mask. Open **Keeper > fish portrait >
   CUSTOMIZE** to change an existing fish's unlocked variety, pattern, body and marking
   colors for free. Varieties unlock through [Keeper levels](#fish-variety-unlocks);
   existing owned/seen looks stay available. DONE saves; CANCEL discards the preview. Fry offers show
@@ -533,7 +544,7 @@ after buying aquariums: older builds do not preserve collection metadata.
 This is intentionally no longer a multi-board tree. Upstream gameplay changes
 can still be ported manually, but merges and release compatibility are not
 automatic. Preserve existing binary offsets and append new fields; the save
-is now 5416 bytes, with the previous 4520-byte layout and the
+is now 5848 bytes (a 432-byte 1.3 story tail after the 5416-byte 1.2 layout), with the previous 4520-byte layout and the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
 aquarium metadata identifies the purchased collection, active slot, its name and
@@ -547,10 +558,10 @@ The append-only polish tail adds stable fish identities, remembered buddies,
 biographies, eight recent observations, tank subtitles/emblems, rare-visitor
 sightings and backup status. See the [quiet-depth guide](docs/CYD-FEATURES.md#quiet-depth-new-in-12)
 for menu paths, visitor timing and migration limits. The NVS partition is
-unchanged; a 5504-byte ceiling reserves room for three save copies plus settings
+unchanged; a 5856-byte ceiling reserves room for three save copies plus settings
 and the garbage-collection page.
-JSON exports use schema 11 for an individual aquarium, including the polish tail and saved Enlarged/Normal scale; schema
-1 through 10 backups remain importable. Older firmware cannot restore schema 11 backups; keep a matching
+JSON exports use schema 12 for an individual aquarium, including the polish and story tails and saved Enlarged/Normal scale; schema
+1 through 11 backups remain importable. Older firmware cannot restore schema 12 backups; keep a matching
 pre-upgrade backup before downgrading. The historical progression documents under `docs`
 describe the original game design; this README and the CYD guide are the
 authoritative build/hardware instructions.

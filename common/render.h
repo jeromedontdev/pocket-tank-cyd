@@ -346,8 +346,14 @@ int  render_confirm_hit(float x, float y);
  * Brightness and SD operations are handed back to the platform. */
 enum { SET_TAP_NONE = 0, SET_TAP_CLOSE = 1, SET_TAP_BRIGHT = 2, SET_TAP_LIGHT = 4, SET_TAP_IDLE = 5,
        SET_TAP_UPDATES = 6, SET_TAP_FEED = 8,
-       SET_TAP_BACKUP = 10, SET_TAP_RESTORE = 11, SET_TAP_SAND = 12, SET_TAP_WATER = 13, SET_TAP_TOUCH = 14, SET_TAP_WIPE = 15, SET_TAP_WIFI = 16, SET_TAP_CLOCK_SHOW = 17, SET_TAP_BRIGHT_PREVIEW = 18 };
+       SET_TAP_BACKUP = 10, SET_TAP_RESTORE = 11, SET_TAP_SAND = 12, SET_TAP_WATER = 13, SET_TAP_TOUCH = 14, SET_TAP_WIPE = 15, SET_TAP_WIFI = 16, SET_TAP_CLOCK_SHOW = 17, SET_TAP_BRIGHT_PREVIEW = 18,
+       SET_TAP_ROOM = 19, SET_TAP_LED = 20, SET_TAP_AUTO_BACKUP = 21, SET_TAP_PHOTO = 22 };
+/* 1.3: the board's own options, kept by the platform (NVS on the CYD) and
+ * shown on the settings page. room_pct < 0 = no sensor reading. */
+typedef struct { uint8_t room_mode, led_mode, auto_backup; int room_pct; } render_device_t;
+void render_set_device(const render_device_t *d);
 void render_backup_status(const char *message, bool arm_restore);
+uint32_t render_glow_rgb(const tank_t *t);   /* the water's surface colour, for the back LED */
 void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct);
 int  render_settings_tap(float x, float y, int *value);
 int  render_settings_touch(tank_t *t, float x, float y, bool down, int *value);

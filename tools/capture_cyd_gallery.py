@@ -86,10 +86,11 @@ def main():
 
                 def restore(snapshot, preserve_life=False):
                     snapshot = copy.deepcopy(snapshot)
-                    if snapshot.get("schema") == 11 and not preserve_life:
+                    if snapshot.get("schema") in (11, 12) and not preserve_life:
                         # Staged rosters replace identities; migrate their life records honestly.
                         snapshot["schema"] = 10
                         snapshot.pop("polish")
+                        snapshot.pop("story", None)
                     data = json.dumps(snapshot, separators=(",", ":")).encode()
                     if not lib.sim_restore(data, len(data)):
                         raise RuntimeError(lib.sim_error().decode())
@@ -142,6 +143,33 @@ def main():
                 tap(170, 320); capture("tank-recap")
                 tap(280, 320); capture("tank-identity")
                 tap(390, 320); capture("object-stories")
+                # A staged three-generation family with inherited genes and a departed ancestor.
+                family = json.loads(sim.backup(lib))
+                pol, story = family["polish"], family["story"]
+                ids = [struct.unpack_from("<I", bytes.fromhex(pol["active"]), i * 20)[0] for i in range(5)]
+                marlo = pol["next_id"]; pol["next_id"] += 1
+                lines = bytearray.fromhex(story["active"])
+
+                def lineage(i, parents, generation, pattern2=0, color2=0, traits=0, mutation=0):
+                    struct.pack_into("<HHBBBBBB", lines, i * 10, *parents, generation, 0, pattern2, color2, traits, mutation)
+
+                lineage(0, (ids[1], marlo), 2, traits=0x88, mutation=1)   # Nori: gold eye, a new tiger marking
+                lineage(1, (ids[2], ids[3]), 1, pattern2=6, traits=0x91)   # Pearl: shimmer, carries speckle
+                lineage(2, (0, 0), 0, color2=5, traits=0x10)
+                lineage(3, (0, 0), 0, traits=0x80)
+                lineage(4, (ids[1], marlo), 2, traits=0x13)                # Azure: shimmer + painted fins
+                story["active"] = lines.hex()
+                book = bytearray.fromhex(story["names"])
+                struct.pack_into("<H8s", book, 0, marlo, b"Marlo")
+                story["names"] = book.hex()
+                story.update(births=3, seen=[3, 1, 0, 2, 0], first_seen_s=[3600, 90000, 0, 40000, 0], last_species=3)
+                family["tank"]["fish_pattern"][0] = 5
+                family["tank"]["fish_pattern"][4] = 6
+                restore(family, preserve_life=True)
+                home(); tap(100, 100); tap(100, 100); tap(360, 235); tap(370, 135)
+                capture("family-tree")
+                home(); tap(100, 100); tap(100, 100); tap(360, 235); tap(280, 320); tap(100, 270)
+                capture("visitor-log")
                 restore(demo)
                 for theme, name in ((2, "tank-coral"), (3, "tank-deep-glow"),
                                     (4, "tank-ruins"), (5, "tank-sunset"),

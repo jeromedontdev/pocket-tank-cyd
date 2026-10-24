@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pocket Tank CYD USB update and factory installer</title>
+  <link rel="icon" href="./logo.svg" type="image/svg+xml">
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #081c25; color: #e0f2f1; }
     main { max-width: 46rem; margin: 3rem auto; padding: 0 1.25rem; line-height: 1.6; }
@@ -16,11 +17,13 @@
     button:disabled { cursor: not-allowed; opacity: .6; }
     progress { width: 100%; }
     [hidden] { display: none !important; }
+    .brand { display: flex; align-items: center; gap: 1rem; }
+    .brand img { width: 6rem; height: auto; }
   </style>
 </head>
 <body>
 <main>
-  <h1>Pocket Tank CYD</h1>
+  <header class="brand"><img src="./logo.svg" alt="" width="128" height="96"><h1>Pocket Tank CYD</h1></header>
   <p>For the <strong>ESP32-2432S028 Cheap Yellow Display only</strong>
     (4 MB flash, 2.8-inch display). Not for other ESP32 boards.
     The factory installer checks the ESP32 chip family, but cannot identify your display model.
@@ -93,6 +96,7 @@
     USB flashing stays in your browser; this site
     does not upload your tank or credentials. The flashing component is loaded from
     pinned ESP Web Tools and esptool-js CDNs.</p>
+  <p><a href="./viewer.html">Save viewer</a> - see your fish, family tree and genes from an SD backup.</p>
   <p><a href="https://github.com/jeromedontdev/pocket-tank-cyd">Source and documentation</a>
     &middot; <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a></p>
 </main>

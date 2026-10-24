@@ -1,7 +1,7 @@
 # Pocket Tank CYD: a more personal little ocean
 
-**An illustrated tour of Pocket Tank CYD (release 1.2.0)**
-Updated October 23, 2026
+**An illustrated tour of Pocket Tank CYD (release 1.3.0)**
+Updated October 24, 2026
 
 This fork keeps Pocket Tank's feeding, growth, personality, trust and
 aquarium care, while adding more ways to decorate, collect, progress and
@@ -12,8 +12,12 @@ The headline additions:
 
 - **A 20-slot Fish Bank** with confirmed deposits, returns and swaps.
 - **Purchasable aquariums:** 500 sand dollars each, up to eight named tanks.
-- **Ten creature appearances**, four patterns and 24 colors for both body
+- **Ten creature appearances**, nine markings and 24 colors for both body
   and markings.
+- **Genetics and a family tree:** hidden markings, colors and recessive traits
+  pass from parents to fry, with rare mutations.
+- **Five rare visitors**, a visitor log and seasonal sand scenery.
+- **Room-light dimming, a back LED glow,** daily SD backups and screenshots.
 - **An Aquarium Journal** with 15 Keeper levels, objectives, an appearance
   album and unlockable backdrops.
 - **Six mini-games** using your fish, with sand-dollar and Journal XP rewards.
@@ -168,6 +172,64 @@ The visitor capture uses an accelerated demonstration schedule, not a changed
 hardware encounter rate:
 
 ![A rare unknown drifter crossing the demonstration aquarium](media/cyd-features/tank-rare-visitor.png)
+
+### Family, genes and visitors (new in 1.3)
+
+Every fish now carries genes. Besides the marking and body color you see,
+each fish holds a **hidden second marking and body color**, plus four
+recessive cosmetic traits: **Shimmer** (a moving sheen), **Painted Fins**
+(fins in the marking color), **Pale Belly** and **Gold Eye**. A trait only
+shows when a fish inherits it from both parents; one copy is carried silently.
+Bred fry take one allele from each parent, so a hidden look can resurface
+generations later. About one birth in fourteen brings a brand-new marking, and
+about one in twelve a new trait allele; the Family Tree marks these as
+**MUTANT!** Existing fish receive randomly seeded hidden genes on upgrade.
+
+Five new markings join Stripes, Spots, Band and Plain: **Saddle, Tiger,
+Speckle, Fade and Mask**. They can appear through breeding or be chosen in
+**CUSTOMIZE**, and work on every creature look, including jellyfish.
+
+Open **Home > Fish > Care > LIFE**, then **FAMILY**, for a fish's generation,
+parents, grandparents, children, siblings, births in this tank, shown genes
+and what it carries. Up to twelve departed ancestors keep their names, so a
+parent who has gone is still remembered. **NEXT FISH** walks the family.
+
+The rare-visitor encounter now chooses among five harmless species: the
+Drifter, Old Turtle, Ghost Fish, Night Manta and very rare Lantern Squid.
+**TANK > SIGHTINGS** opens the Visitor Log with sighting counts and the
+powered hour each was first seen; unseen visitors stay as **???**.
+
+With a synchronized clock, the sand follows the seasons: spring sprigs,
+summer shells and starfish, autumn leaves and a winter snow dusting, plus
+holiday lights from December 15 to January 1. Choose **SEASONS: NORTH**,
+**SOUTH** or **OFF** on the TANK page. Seasonal scenery is drawn into the
+cached backdrop, so it does not add continuous animation.
+
+| Family tree and genes | Visitor log |
+|---|---|
+| ![Three-generation family tree with inherited Gold Eye mutation](media/cyd-features/family-tree.png) | ![Visitor log with sighting counts](media/cyd-features/visitor-log.png) |
+
+The [save viewer](https://jeromedontdev.github.io/pocket-tank-cyd/viewer.html)
+opens any schema 9 or newer JSON backup in the browser, without uploading it,
+and draws each fish card with its family, genes and visitor history.
+
+### Room light, back LED and photos (new in 1.3)
+
+The CYD's light sensor beside the screen and RGB LED on the back are now used.
+In **Settings > Display**:
+
+- **ROOM LIGHT: DIM** scales the backlight down (to 35% of your brightness)
+  as the room darkens. **DIM+NIGHT** also switches the tank to night after
+  20 seconds of darkness and back after 5 seconds of light. **OFF** ignores it.
+  The sensor learns your lit room automatically.
+- **BACK LED: GLOW** breathes softly in the water's color, dimmer at night.
+  **ALERTS** adds an orange pulse when a fish is hungry and a pale flicker
+  while a visitor passes. **OFF** keeps it dark.
+
+**Settings > SD Backups > DAILY** makes one verified automatic backup per day
+(`pocket-tank/auto-NNNN.json`, the newest seven are kept) once the clock is
+set. **PHOTO TO SD** saves a BMP screenshot of the aquarium to
+`pocket-tank/photos/`.
 
 ## Mini-games: play with your fish, not their care stats
 
@@ -504,7 +566,7 @@ still a small clearance for leaf sway rather than drawing past the screen.
 
 Each appearance supports:
 
-- **Four patterns:** Stripes, Spots, Band and Plain.
+- **Nine markings:** Stripes, Spots, Band, Plain, Saddle, Tiger, Speckle, Fade and Mask.
 - **24 body colors** and **24 marking colors**, chosen independently.
 - Vivid pinks, reds, oranges, yellows, lime, cyan, electric blue, purple,
   magenta, pastels, white and dark slate.
@@ -932,11 +994,11 @@ palettes, Journal and bank.
 Backups are written and read back for validation. A restore first creates
 a safety snapshot of the current aquarium.
 
-New backups use **schema 11**, including fish identities/stories, remembered buddies,
+New backups use **schema 12**, including family lineage, genes, visitor sightings, fish identities/stories, remembered buddies,
 recaps, tank identity, fixed scenery, backup status, display scale, traveling fish, creature colors, per-fish wearables/colors,
 companion progression and the optional `tank.stat_upgrades` field for the four
-fish-care purchases. Schemas 1 through 10 remain importable; older firmware
-cannot restore schema 11 files. Keep a matching backup
+fish-care purchases. Schemas 1 through 11 remain importable; older firmware
+cannot restore schema 12 files. Keep a matching backup
 when deliberately downgrading.
 
 Backup export processes sections and stored fish one record at a time to
@@ -964,8 +1026,10 @@ Packages are **local and unsigned**: the checksum detects corruption,
 not an untrusted publisher. Only install trusted packages and keep power
 connected. See [the update guide](OTA.md) for packaging and installation.
 
-The SD card also holds the icon art. It provides useful storage, but does
-not substitute for the RAM that rendering and JSON processing need.
+All artwork is embedded in firmware; no icons are needed on SD. The card provides
+useful storage, but does not substitute for the RAM that rendering and JSON
+processing need. Optional daily backups and photos are described under
+[room light, back LED and photos](#room-light-back-led-and-photos-new-in-13).
 
 ## 7. A focused CYD fork, not a different game
 

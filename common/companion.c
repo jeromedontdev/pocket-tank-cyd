@@ -25,6 +25,129 @@ const char *const WEAR_NAMES[WEAR_COUNT] = {"NONE", "TOP HAT", "PARTY HAT", "CRO
 const uint8_t WEAR_LEVELS[WEAR_COUNT] = {0, 3, 2, 10, 5, 4, 2};
 const uint8_t WEAR_PRICES[WEAR_COUNT] = {0, 45, 20, 100, 35, 30, 20};
 
+const companion_visitor_t COMPANION_VISITORS[VISITOR_SPECIES] = {
+    {"DRIFTER", "An unknown drifter", "A pale bell that drifts past on its own errand.", 40},
+    {"OLD TURTLE", "An old sea turtle", "Slow, scarred and unhurried. It has seen many reefs.", 22},
+    {"GHOST FISH", "A ghost fish", "Almost glass. You see the reef through it.", 15},
+    {"NIGHT MANTA", "A small manta", "Wide wings, a lazy glide, gone before you blink.", 15},
+    {"LANTERN SQUID", "A lantern squid", "A tiny light that blinks in the open water.", 8},
+};
+/* 1.3 story: the family tree, departed names, the visitor log and the seasons. */
+static bool line_empty(const fish_lineage_t *l) { fish_lineage_t zero = {0}; return !memcmp(l, &zero, sizeof zero); }
+void companion_story_init(tank_t *t) {
+    tank_story_t *s = &t->story;
+    if (s->version) return;
+    memset(s, 0, sizeof *s);
+    s->version = 1;
+    s->seen[VISITOR_DRIFTER] = t->polish.visits > 0xffff ? 0xffff : (uint16_t)t->polish.visits;
+    for (int i = 0; i < t->n_fish; i++) {          /* the slot links an older save kept for this tank's fry */
+        const fish_t *f = &t->fish[i];
+        int pa = f->parent_a, pb = f->parent_b;
+        if (pa < 0 || pa >= t->n_fish || pa == i) continue;
+        uint32_t id_a = t->polish.active[pa].id, id_b = pb >= 0 && pb < t->n_fish && pb != i && pb != pa ? t->polish.active[pb].id : 0;
+        s->active[i].parent[0] = id_a <= 0xffff ? (uint16_t)id_a : 0;
+        s->active[i].parent[1] = id_b <= 0xffff ? (uint16_t)id_b : 0;
+        s->active[i].generation = 1;
+    }
+    /* every fish already here gets hidden genes: carried markings, colours and traits */
+    for (int i = 0; i < t->n_fish; i++) tank_seed_line(&s->active[i], t->polish.active[i].id ^ t->fish[i].color);
+    for (int i = 0; i < t->bank_count; i++) tank_seed_line(&s->bank[i], t->polish.bank[i].id ^ t->bank[i].body);
+    if (t->companion.away) tank_seed_line(&s->traveler, t->polish.traveler.id ^ t->companion.traveler.body);
+    tank_sync_traits(t);
+}
+bool companion_story_valid(const tank_story_t *s, int fish, int bank, bool away, uint32_t next_id) {
+    if (!s->version) {
+        tank_story_t empty = {0};
+        return !memcmp(s, &empty, sizeof empty);
+    }
+    if (s->version != 1 || (s->flags & ~3u) || s->last_species >= VISITOR_SPECIES || s->pad || s->pad2 || s->reserved) return false;
+    for (int i = 0; i < N_FISH_MAX + FISH_BANK_CAP + 1; i++) {
+        const fish_lineage_t *l = i < N_FISH_MAX ? &s->active[i] :
+            i < N_FISH_MAX + FISH_BANK_CAP ? &s->bank[i - N_FISH_MAX] : &s->traveler;
+        bool present = i < N_FISH_MAX ? i < fish : i < N_FISH_MAX + FISH_BANK_CAP ? i - N_FISH_MAX < bank : away;
+        if (!present ? !line_empty(l) : (l->flags || l->parent[0] >= next_id || l->parent[1] >= next_id ||
+                                        (l->parent[0] && l->parent[0] == l->parent[1]) ||
+                                        l->pattern2 > FISH_PATTERN_COUNT || l->color2 > FISH_COLOR_N ||
+                                        (l->mutation & ~3u))) return false;
+    }
+    for (int i = 0; i < STORY_NAME_BOOK; i++) {
+        const ancestor_name_t *a = &s->names[i];
+        if (!memchr(a->name, 0, sizeof a->name) || a->id >= next_id || (!a->id && a->name[0])) return false;
+    }
+    return true;
+}
+const char *companion_story_name(const tank_t *t, uint16_t id) {
+    if (!id) return NULL;
+    for (int i = 0; i < t->n_fish; i++) if (t->polish.active[i].id == id) return t->fish[i].name;
+    for (int i = 0; i < t->bank_count; i++) if (t->polish.bank[i].id == id) return t->bank[i].name;
+    if (t->companion.away && t->polish.traveler.id == id) return t->companion.traveler.name;
+    for (int i = 0; i < STORY_NAME_BOOK; i++) if (t->story.names[i].id == id) return t->story.names[i].name;
+    return NULL;
+}
+const fish_lineage_t *companion_story_line(const tank_t *t, uint16_t id) {
+    if (!id) return NULL;
+    for (int i = 0; i < t->n_fish; i++) if (t->polish.active[i].id == id) return &t->story.active[i];
+    for (int i = 0; i < t->bank_count; i++) if (t->polish.bank[i].id == id) return &t->story.bank[i];
+    if (t->companion.away && t->polish.traveler.id == id) return &t->story.traveler;
+    return NULL;
+}
+static int s_force_species = -1, s_force_season = -1;   /* serial debug only */
+static void season_tick(tank_t *t);
+void companion_debug_visit(tank_t *t, int species) {
+    s_force_species = species >= 0 && species < VISITOR_SPECIES ? species : -1;
+    t->polish.next_visit_s = t->polish.viewed_s;
+}
+void companion_debug_season(tank_t *t, int season) {
+    s_force_season = season >= 0 && season <= (SEASON_WINTER | SEASON_LIGHTS) ? season : -1;
+    season_tick(t);
+}
+int companion_visitor_pick(tank_t *t) {
+    tank_story_t *s = &t->story;
+    uint32_t h = (t->rng ^ (t->polish.visits * 0x85ebca6bu)) * 0x9e3779b1u;
+    h ^= h >> 15;
+    int total = 0, sp = VISITOR_DRIFTER;
+    for (int i = 0; i < VISITOR_SPECIES; i++) total += COMPANION_VISITORS[i].weight;
+    int roll = (int)(h % (uint32_t)total);
+    if (t->polish.visits > 1)                      /* the first sighting is always the drifter */
+        for (int i = 0; i < VISITOR_SPECIES; i++) { if (roll < COMPANION_VISITORS[i].weight) { sp = i; break; } roll -= COMPANION_VISITORS[i].weight; }
+    if (s_force_species >= 0) { sp = s_force_species; s_force_species = -1; }
+    if (s->version) {
+        if (s->seen[sp] < 0xffff) s->seen[sp]++;
+        if (!s->first_seen_s[sp]) s->first_seen_s[sp] = t->companion.powered_s == UINT32_MAX ? UINT32_MAX : t->companion.powered_s + 1;
+        s->last_species = (uint8_t)sp;
+    }
+    t->visitor_species = (uint8_t)sp;
+    return sp;
+}
+/* Northern seasons by month (meteorological); SOUTH swaps them. The holiday
+ * lights hang from mid-December to New Year's Day either way. */
+int companion_season_for(int64_t local_unix, uint8_t flags) {
+    if ((flags & STORY_SEASONS_OFF) || local_unix < 1600000000LL || local_unix > 4102444800LL) return SEASON_NONE;
+    int64_t days = local_unix / 86400 + 719468;
+    int64_t era = days / 146097, doe = days - era * 146097;
+    int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100), mp = (5 * doy + 2) / 153;
+    int day = (int)(doy - (153 * mp + 2) / 5 + 1), month = (int)(mp < 10 ? mp + 3 : mp - 9);
+    int season = month >= 3 && month <= 5 ? SEASON_SPRING : month >= 6 && month <= 8 ? SEASON_SUMMER :
+                 month >= 9 && month <= 11 ? SEASON_AUTUMN : SEASON_WINTER;
+    if (flags & STORY_SEASONS_SOUTH) season = (season + 1) % 4 + 1;
+    if ((month == 12 && day >= 15) || (month == 1 && day == 1)) season |= SEASON_LIGHTS;
+    return season;
+}
+static void season_tick(tank_t *t) {
+    int64_t now = clock_port_now_unix();
+    if (now > 0) now += (int64_t)t->aquariums.clock_utc_quarters * 900;
+    t->season = s_force_season >= 0 ? (uint8_t)s_force_season : (uint8_t)companion_season_for(now, t->story.version ? t->story.flags : 0);
+}
+bool companion_set_seasons(tank_t *t, uint8_t flags) {
+    if (!t->story.version || (flags & ~3u)) return false;
+    uint8_t old = t->story.flags;
+    t->story.flags = flags;
+    if (!progression_save(t)) { t->story.flags = old; return false; }
+    season_tick(t);
+    return true;
+}
+
 const char *companion_subtitle(unsigned value) {
     static const char *const names[] = {"", "A little ocean", "A quiet refuge", "A reef of friends", "Small wonders live here"};
     return names[value < 5 ? value : 0];
@@ -52,7 +175,7 @@ void companion_memory_text(const tank_memory_t *m, char *text, size_t size) {
         case MEMORY_DISCOVERY: snprintf(text, size, "Discovered: %s.", COMPANION_DISCOVERIES[m->detail]); break;
         case MEMORY_ADVENTURE: snprintf(text, size, "%s brought home a keepsake.", who); break;
         case MEMORY_HELPERS: snprintf(text, size, "Helpers quietly tended the tank."); break;
-        case MEMORY_VISITOR: snprintf(text, size, "An unknown drifter visited the reef."); break;
+        case MEMORY_VISITOR: snprintf(text, size, "%s visited the reef.", m->detail ? COMPANION_VISITORS[m->detail % VISITOR_SPECIES].memory : "An unknown drifter"); break;
         default: snprintf(text, size, "No observations yet."); break;
     }
 }
@@ -87,6 +210,9 @@ void companion_polish_init(tank_t *t, bool fresh) {
         p->traveler.stage = t->companion.traveler.fish.stage;
         p->traveler.milestones = t->companion.traveler.fish.ms_bits;
     }
+    companion_story_init(t);
+    tank_sync_traits(t);
+    season_tick(t);
     for (int i = 0; i < t->n_fish; i++) for (int j = 0; j < t->n_fish; j++) {
         if (i != j && p->active[i].buddy == p->active[j].id && p->active[i].friend_s >= 30) {
             t->fish[i].familiar_id[j] = t->fish[j].social_id;
@@ -131,7 +257,8 @@ bool companion_polish_valid(const tank_polish_t *p, int fish, int bank, bool awa
         const tank_memory_t *m = &p->recap[i];
         if (m->pad || !memchr(m->name, 0, sizeof m->name) ||
             (i < p->recap_count && (m->kind < MEMORY_ARRIVAL || m->kind > MEMORY_VISITOR ||
-             (m->kind == MEMORY_DISCOVERY && m->detail >= COMPANION_DISCOVERY_COUNT)))) return false;
+             (m->kind == MEMORY_DISCOVERY && m->detail >= COMPANION_DISCOVERY_COUNT) ||
+             (m->kind == MEMORY_VISITOR && m->detail >= VISITOR_SPECIES)))) return false;
     }
     return true;
 }
@@ -214,15 +341,17 @@ static void polish_tick(tank_t *t, uint32_t seconds) {
     if (p->viewed_s >= p->next_visit_s && !t->visitor_left && p->next_visit_s != UINT32_MAX) {
         t->visitor_left = 24;
         if (p->visits < UINT32_MAX) p->visits++;
+        int species = companion_visitor_pick(t);
         uint32_t wait = 28800 + (t->rng ^ p->visits * 0x9e3779b9u) % 57601;
         p->next_visit_s = UINT32_MAX - p->viewed_s < wait ? UINT32_MAX : p->viewed_s + wait;
-        companion_memory(t, MEMORY_VISITOR, -1, 0);
+        companion_memory(t, MEMORY_VISITOR, -1, species);
     }
 }
 void companion_polish_observe(tank_t *t) { polish_tick(t, 0); }
 void companion_init(tank_t *t) {
     memset(&t->companion, 0, sizeof t->companion);
     memset(&t->polish, 0, sizeof t->polish);
+    memset(&t->story, 0, sizeof t->story);
     t->visitor_left = 0;
     t->companion.version = COMPANION_VERSION;
     t->companion.cozy = t->companion.captions = 1;
@@ -298,7 +427,7 @@ void companion_tick(tank_t *t, float dt) {
     if (UINT32_MAX - s->powered_s < seconds) s->powered_s = UINT32_MAX;
     else s->powered_s += seconds;
     if (t->visitor_left > 0 && !t->ui_cover) t->visitor_left = fmaxf(0, t->visitor_left - dt);
-    if (seconds) polish_tick(t, seconds);
+    if (seconds) { polish_tick(t, seconds); season_tick(t); }
     if (s->adventure) {
         unsigned total = companion_adventure_total(s, s->adventure - 1);
         uint32_t travel_seconds = seconds;

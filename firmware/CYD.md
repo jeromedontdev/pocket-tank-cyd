@@ -240,6 +240,24 @@ total internal heap (which also counts instruction RAM).
 The director console uses UART0 through the board's USB-to-serial adapter
 at 115200 baud (for example, `python ..\tools\director.py -p COM4 milestones`).
 
+## Room light sensor, back LED, photos and daily backups
+
+The light-dependent resistor beside the display and the rear RGB LED are
+driven by `firmware/main/ambient.c`. **Settings > Display** selects
+ROOM LIGHT OFF / DIM / DIM+NIGHT (backlight scaled to 35-100% of the chosen
+brightness; DIM+NIGHT forces night after 20 s of darkness) and BACK LED
+OFF / GLOW / ALERTS (water-colored breathing glow; ALERTS adds hunger and
+visitor signals). Choices persist in NVS; the learned lit-room reading is
+saved at most every 30 minutes. **Settings > SD Backups** offers DAILY
+automatic backups (`auto-NNNN.json`, verified, newest seven kept, retried
+hourly on failure; requires a valid clock) and PHOTO TO SD
+(`pocket-tank/photos/photo-NNNN.bmp`).
+
+Serial console helpers: `ldr` (log), `ldr <mode>`, `ldr <dark> <lit>` (manual
+calibration), `led <mode>`, `led <r> <g> <b> [ms]`, `photo`,
+`autobackup [0|1]`, `visit [0-4]` (a visitor on the next tick),
+`season <0-4, +8 lights | -1>` and `genes` (every fish's shown and hidden alleles).
+
 ## Feature limitations
 
 - Fish goals use the rules advisor, not the upstream local LLM. This build
@@ -321,10 +339,11 @@ to reach 2000; the Journal appends 40 bytes to reach 2040; the 20-slot fish
 bank extends this to 3968; a 32-byte tail for aquarium collection identity,
 active slot, tank name and care-upgrade flags extends the prefix to 4000.
 The companion/traveler/color tail extends the prefix to 4520 bytes; the
-append-only 1.2 polish tail brings the full save to 5416 bytes. It holds stable
+append-only 1.2 polish tail brings the save to 5416 bytes, and the 432-byte 1.3
+story tail (lineage, genes, ancestor names, visitor log, seasons) to 5848. The polish tail holds stable
 fish identities/life records, a bounded recap, tank identity, visitor/backup
 records and six fixed-scenery ownership bits. The 24 KiB NVS partition remains
-unchanged; the new 5504-byte save ceiling budgets three copies and 64 settings
+unchanged; the 5856-byte save ceiling budgets three copies and 64 settings
 entries within the 630 usable entries, retaining the dedicated GC page.
 The four care flags reuse one reserved byte;
 they do not shift older fields.
@@ -439,10 +458,10 @@ Console examples: `buy shell`, `buy starfish`, `buy anchor`, `buy buoy`,
 Open **Settings > SD Backups** and tap **BACKUP TO SD**. Each successful backup creates a
 new file in the card's `pocket-tank` directory: `backup-0001.json`,
 `backup-0002.json`, and so on. Existing backups are not overwritten.
-New exports use JSON schema 11, including persistent fish stories/buddies, recaps,
+New exports use JSON schema 12, including family lineage, genes, the visitor log, persistent fish stories/buddies, recaps,
 tank identity, rare sightings, fixed scenery, backup status, Enlarged/Normal scale, creature/wardrobe colors, per-fish wearables, the traveling fish, companion progress, item ownership, placement,
 stacking, palette selections, fish appearance, Aquarium Journal progress
-and all stored fish. Schema 1 through 10 backups
+and all stored fish. Schema 1 through 11 backups
 still restore, defaulting absent additions to unowned decorations and
 Classic/Stripes fish (schema 1 also defaults the palettes to original).
 Older backups start with an empty Journal; existing care totals and current
@@ -658,7 +677,7 @@ follow SD tank switches and portable JSON restores, and clear on active-tank
 wipe. Old saves/backups default to OFF, large/centered and a 1-minute delay.
 Five reserved metadata bytes hold theme, format/style flags, signed UTC quarter-hours,
 size/position and packed delay/secondary color, keeping the original binary
-prefix at 4000 bytes (the companion/traveler/color prefix is 4520 bytes; the polish tail makes the full save 5416 bytes).
+prefix at 4000 bytes (the companion/traveler/color prefix is 4520 bytes; the polish and story tails make the full save 5848 bytes).
 Schema 5 adds optional `tank.clock_theme` (0..7),
 `tank.clock_flags` (0..255: bit 0 is 12-hour format, bit 1 is manual DST +1 hour,
 bits 2/3/4 hide seconds/panel/date; bits 5..7 select the primary color, 0 = theme colors),

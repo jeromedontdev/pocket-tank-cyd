@@ -119,6 +119,7 @@ static void replace_number(cJSON *object, const char *key, double value) {
     if (!strcmp(key, "schema") && value < 5) cJSON_DeleteItemFromObjectCaseSensitive(object, "bank");
     if (!strcmp(key, "schema") && value < 6) cJSON_DeleteItemFromObjectCaseSensitive(object, "companion");
     if (!strcmp(key, "schema") && value < 11) cJSON_DeleteItemFromObjectCaseSensitive(object, "polish");
+    if (!strcmp(key, "schema") && value < 12) cJSON_DeleteItemFromObjectCaseSensitive(object, "story");
     if (!strcmp(key, "schema") && value < 10)
         cJSON_DeleteItemFromObjectCaseSensitive(cJSON_GetObjectItemCaseSensitive(object, "companion"), "display_compact");
 }
@@ -2363,7 +2364,7 @@ static void test_tank_polish(void) {
         render_rect(edge, TANK_W, 0, 0, PAGE_W, PAGE_H, 0x102b36);
         render_rect_edge(edge, TANK_W, 3, 3, PAGE_W - 6, PAGE_H - 6, 0x83b8ac);
         fb[0] = fb[pixels + 1] = 0xa55a;
-        for (int page = 8; page <= 14; page++) {
+        for (int page = 8; page <= 16; page++) {
             companion_open_section(page);
             int cases = page == 11 ? SD_ITEM_COUNT : page == 13 ? COMPANION_DISCOVERY_COUNT : page == 9 ? 4 : page == 14 ? 2 : 1;
             for (int k = 0; k < cases; k++) {
@@ -2388,10 +2389,168 @@ static void test_tank_polish(void) {
     tank_resolution(false);
     puts("PASS: persistent unique fish stories/buddies through Bank/adventures/JSON, legacy migrations, bounded recap, view-only rare visitors, identity/backup rollback and polish menus at both scales");
 }
+static void test_story(void) {
+    tank_t t, loaded; char error[96];
+    saved_size = 0; tank_init(&t, 77); boot_enlarged(&t); progression_setup_done(&t);
+    assert(t.story.version == 1 && !t.story.births);
+    companion_polish_observe(&t);
+    uint32_t a = t.polish.active[0].id, b = t.polish.active[1].id;
+    char name_a[FISH_NAME_MAX + 1]; snprintf(name_a, sizeof name_a, "%s", t.fish[0].name);
+    int kid = tank_add_fish(&t, 0, 1); assert(kid == 2);
+    companion_polish_observe(&t);
+    uint32_t c = t.polish.active[kid].id; assert(c && c != a && c != b);
+    const uint16_t *pp = t.story.active[kid].parent;
+    assert((pp[0] == a && pp[1] == b) || (pp[0] == b && pp[1] == a));
+    assert(t.story.active[kid].generation == 1 && t.story.births == 1);
+    int grand = tank_add_fish(&t, kid, 0); assert(grand == 3);
+    companion_polish_observe(&t);
+    pp = t.story.active[grand].parent;
+    assert(t.story.active[grand].generation == 2 && (pp[0] == c || pp[1] == c) && (pp[0] == a || pp[1] == a));
+    /* a parent leaving keeps its name in the book; the lines shift with the slots */
+    assert(tank_remove_fish(&t, 0));
+    assert(t.story.active[1].generation == 1 && t.story.active[2].generation == 2);
+    assert(t.story.names[STORY_NAME_BOOK - 1].id == a && !strcmp(companion_story_name(&t, (uint16_t)a), name_a));
+    assert(!strcmp(companion_story_name(&t, (uint16_t)c), t.fish[1].name));
+    assert(companion_story_line(&t, (uint16_t)c) == &t.story.active[1]);
+    assert(companion_story_valid(&t.story, t.n_fish, t.bank_count, false, t.polish.next_id));
+    /* banked and travelling lines move with their fish; no name is booked while they live */
+    fish_lineage_t line = t.story.active[2];
+    assert(!progression_bank_move(&t, -1, 2) && !memcmp(&t.story.bank[0], &line, sizeof line));
+    assert(!memcmp(&t.story.active[2], &(fish_lineage_t){0}, sizeof line));
+    for (int i = 0; i < STORY_NAME_BOOK; i++) assert(t.story.names[i].id != t.polish.bank[0].id);
+    assert(!progression_bank_move(&t, 0, -1) && !memcmp(&t.story.active[2], &line, sizeof line) && !t.bank_count);
+    fish_lineage_t kid_line = t.story.active[1];
+    assert(progression_adventure_depart(&t, 0, 1) && !memcmp(&t.story.traveler, &kid_line, sizeof kid_line));
+    assert(companion_story_valid(&t.story, t.n_fish, t.bank_count, true, t.polish.next_id));
+    t.companion.adventure_s = companion_adventure_total(&t.companion, 0);
+    assert(progression_adventure_return(&t));
+    int back = t.n_fish - 1;
+    assert(!memcmp(&t.story.active[back], &kid_line, sizeof kid_line) && !t.story.traveler.generation);
+    /* visitors: the first is the drifter, then every species turns up and is counted */
+    t.polish.visits = 1; assert(companion_visitor_pick(&t) == VISITOR_DRIFTER);
+    unsigned total = 0;
+    for (int i = 0; i < 4000; i++) { t.polish.visits = 2 + i; t.rng = 0x1234567u * (i + 1); companion_visitor_pick(&t); }
+    for (int i = 0; i < VISITOR_SPECIES; i++) { assert(t.story.seen[i] && t.story.first_seen_s[i]); total += t.story.seen[i]; }
+    assert(total == 4001 && t.story.seen[VISITOR_DRIFTER] > t.story.seen[VISITOR_SQUID]);
+    tank_memory_t m = {0}; char text[96]; m.kind = MEMORY_VISITOR; m.detail = VISITOR_MANTA;
+    companion_memory_text(&m, text, sizeof text); assert(strstr(text, "manta"));
+    /* seasons: north by month, SOUTH swapped, holiday lights Dec 15 - Jan 1, invalid clock none */
+    assert(companion_season_for(1782907200LL, 0) == SEASON_SUMMER);
+    assert(companion_season_for(1782907200LL, STORY_SEASONS_SOUTH) == SEASON_WINTER);
+    assert(companion_season_for(1775779200LL, 0) == SEASON_SPRING && companion_season_for(1791590400LL, 0) == SEASON_AUTUMN);
+    assert(companion_season_for(1797768000LL, 0) == (SEASON_WINTER | SEASON_LIGHTS));
+    assert(companion_season_for(1797768000LL, STORY_SEASONS_SOUTH) == (SEASON_SUMMER | SEASON_LIGHTS));
+    assert(companion_season_for(1798804800LL, 0) == (SEASON_WINTER | SEASON_LIGHTS) && companion_season_for(1798891200LL, 0) == SEASON_WINTER);
+    assert(companion_season_for(1797768000LL, STORY_SEASONS_OFF) == SEASON_NONE && companion_season_for(0, 0) == SEASON_NONE);
+    assert(companion_set_seasons(&t, STORY_SEASONS_SOUTH) && t.story.flags == STORY_SEASONS_SOUTH);
+    assert(!companion_set_seasons(&t, 4) && t.story.flags == STORY_SEASONS_SOUTH);
+    reject_write = true; assert(!companion_set_seasons(&t, 0) && t.story.flags == STORY_SEASONS_SOUTH); reject_write = false;
+    /* save, JSON and the rejects */
+    assert(progression_save(&t));
+    tank_init(&loaded, 5); progression_boot(&loaded);
+    assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
+    char *json = progression_backup_json(&t); assert(json && strstr(json, "\"schema\":12") && strstr(json, "\"story\":{"));
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+    tank_init(&loaded, 6); progression_boot(&loaded);
+    assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
+    cJSON *root = cJSON_Parse(json); replace_number(cJSON_GetObjectItemCaseSensitive(root, "story"), "flags", 4); invalid_object(root);
+    root = cJSON_Parse(json); replace_number(cJSON_GetObjectItemCaseSensitive(root, "story"), "version", 2); invalid_object(root);
+    root = cJSON_Parse(json); cJSON_DeleteItemFromObjectCaseSensitive(root, "story"); invalid_object(root);
+    tank_story_t bad = t.story; bad.active[0].parent[0] = (uint16_t)t.polish.next_id;
+    assert(!companion_story_valid(&bad, t.n_fish, t.bank_count, false, t.polish.next_id));
+    bad = t.story; bad.bank[0].generation = 1;
+    assert(!companion_story_valid(&bad, t.n_fish, 0, false, t.polish.next_id));
+    bad = t.story; memset(bad.names[0].name, 'x', sizeof bad.names[0].name); bad.names[0].id = 1;
+    assert(!companion_story_valid(&bad, t.n_fish, t.bank_count, false, t.polish.next_id));
+    free(json);
+    /* a 1.2 save (no story tail) migrates: the drifter count comes from the old visits */
+    t.polish.visits = 9; assert(progression_save(&t)); saved_size = 5416;
+    tank_init(&loaded, 8); progression_boot(&loaded);
+    assert(loaded.story.version == 1 && loaded.story.seen[VISITOR_DRIFTER] == 9 && !loaded.story.births);
+    assert(loaded.n_fish == t.n_fish && companion_story_valid(&loaded.story, loaded.n_fish, loaded.bank_count, false, loaded.polish.next_id));
+    puts("PASS: 1.3 story - family lines through birth/sale/Bank/adventure, departed-name book, visitor bestiary, seasons, save/JSON/legacy");
+}
+static void test_genetics(void) {
+    static tank_t t, u, loaded;
+    saved_size = 0; tank_init(&t, 91); boot_enlarged(&t); progression_setup_done(&t);
+    while (t.n_fish > 2) assert(tank_remove_fish(&t, t.n_fish - 1));
+    /* founders carry seeded, valid genes */
+    for (int i = 0; i < 64; i++) {
+        fish_lineage_t l = {0}; tank_seed_line(&l, (uint32_t)i * 2654435761u);
+        assert(l.pattern2 <= FISH_PATTERN_COUNT && l.color2 <= FISH_COLOR_N && !(l.traits & 15) && !l.mutation);
+    }
+    t.fish[0].pattern = t.fish[1].pattern = PATTERN_PLAIN;
+    memset(&t.story.active[0].pattern2, 0, 4); memset(&t.story.active[1].pattern2, 0, 4);
+    t.story.active[0].pattern2 = PATTERN_SPOTS + 1;           /* a hidden SPOTS allele */
+    t.story.active[0].traits = t.story.active[1].traits = 16; /* both carry SHIMMER */
+    tank_sync_traits(&t); assert(!t.fish[0].traits && !t.fish[1].traits);
+    int spots = 0, shimmer = 0, carriers = 0, mutants = 0, plain_shimmer = 0;
+    for (int i = 0; i < 600; i++) {
+        u = t; u.rng = 0x9e3779b9u * (uint32_t)(i + 1); u.story.births = (uint16_t)i;
+        int kid = tank_add_fish(&u, 0, 1); assert(kid == 2);
+        const fish_lineage_t *l = &u.story.active[kid];
+        assert(u.fish[kid].pattern < FISH_PATTERN_COUNT && l->pattern2 <= FISH_PATTERN_COUNT && l->color2 <= FISH_COLOR_N);
+        assert(!(l->mutation & ~3u) && u.fish[kid].traits == (l->traits & 15));
+        assert(companion_story_valid(&u.story, u.n_fish, u.bank_count, false, u.polish.next_id));
+        spots += u.fish[kid].pattern == PATTERN_SPOTS; mutants += l->mutation != 0;
+        if (l->mutation & GENE_MUTANT_PATTERN) assert(u.fish[kid].pattern >= PATTERN_SADDLE);
+        if (!(l->mutation & GENE_MUTANT_TRAIT)) {
+            shimmer += (l->traits & TRAIT_SHIMMER) != 0; carriers += (l->traits & (16 * TRAIT_SHIMMER)) != 0;
+        }
+        /* parents with no shimmer allele never have a shimmering fry without a mutation */
+        u = t; u.rng = 0x85ebca6bu * (uint32_t)(i + 1); u.story.births = (uint16_t)i;
+        u.story.active[0].traits = u.story.active[1].traits = 0;
+        kid = tank_add_fish(&u, 0, 1);
+        if (!(u.story.active[kid].mutation & GENE_MUTANT_TRAIT)) plain_shimmer += u.fish[kid].traits != 0;
+    }
+    assert(spots > 60 && spots < 480);                        /* the hidden marking resurfaces */
+    assert(shimmer > 60 && shimmer < 300 && carriers > 150);  /* ~25% show, ~50% carry */
+    assert(mutants > 10 && mutants < 200 && !plain_shimmer);
+    /* save and reload keep the genes and the shown traits */
+    int kid = tank_add_fish(&t, 0, 1); assert(kid == 2);
+    t.story.active[kid].traits = TRAIT_GOLD_EYE | 16 * TRAIT_PALE_BELLY; tank_sync_traits(&t);
+    companion_polish_observe(&t);
+    assert(companion_story_valid(&t.story, t.n_fish, t.bank_count, false, t.polish.next_id));
+    assert(progression_save(&t));
+    tank_init(&loaded, 4); progression_boot(&loaded);
+    assert(!memcmp(&loaded.story, &t.story, sizeof t.story) && loaded.fish[kid].traits == TRAIT_GOLD_EYE);
+    tank_story_t bad = t.story; bad.active[0].pattern2 = FISH_PATTERN_COUNT + 1;
+    assert(!companion_story_valid(&bad, t.n_fish, t.bank_count, false, t.polish.next_id));
+    bad = t.story; bad.active[0].color2 = FISH_COLOR_N + 1;
+    assert(!companion_story_valid(&bad, t.n_fish, t.bank_count, false, t.polish.next_id));
+    bad = t.story; bad.active[0].mutation = 4;
+    assert(!companion_story_valid(&bad, t.n_fish, t.bank_count, false, t.polish.next_id));
+    /* every trait and every marking changes the portrait */
+    size_t px = (size_t)TANK_W * TANK_H * sizeof(uint16_t);
+    uint16_t *a = malloc(px), *c = malloc(px); assert(a && c);
+    fish_t portrait = t.fish[0]; portrait.stage = STAGE_ADULT; portrait.variety = 0; portrait.pattern = PATTERN_PLAIN;
+    portrait.traits = 0; portrait.accent = 0x203040; portrait.color = 0xe08040; portrait.fin = 0x80c0e0;
+    memset(a, 0, px); render_fish_portrait(a, TANK_W, 224, 180, 2, &portrait, 0);
+    for (int k = 0; k < TRAIT_COUNT; k++) {
+        portrait.traits = (uint8_t)(1u << k); memset(c, 0, px);
+        render_fish_portrait(c, TANK_W, 224, 180, 2, &portrait, 0); assert(memcmp(a, c, px));
+    }
+    portrait.variety = FISH_JELLYFISH; portrait.traits = 0;
+    memset(a, 0, px); render_fish_portrait(a, TANK_W, 224, 180, 2, &portrait, 0);
+    for (int k = 0; k < TRAIT_COUNT; k++) {
+        portrait.traits = (uint8_t)(1u << k); memset(c, 0, px);
+        render_fish_portrait(c, TANK_W, 224, 180, 2, &portrait, 0); assert(memcmp(a, c, px));
+    }
+    portrait.variety = 0; portrait.traits = 0;
+    memset(a, 0, px); render_fish_portrait(a, TANK_W, 224, 180, 2, &portrait, 0);
+    for (int p = PATTERN_SADDLE; p < FISH_PATTERN_COUNT; p++) {
+        portrait.pattern = (uint8_t)p; memset(c, 0, px);
+        render_fish_portrait(c, TANK_W, 224, 180, 2, &portrait, 0); assert(memcmp(a, c, px));
+    }
+    free(a); free(c);
+    puts("PASS: 1.3 genetics - hidden markings resurface, recessive traits show ~1 in 4, bounded mutations, saved genes and rendered traits/markings");
+}
 int main(int argc, char **argv) {
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
     test_tank_polish();
+    test_story();
+    test_genetics();
     test_social_and_preview();
     test_theme_detail_damage();
     if (argc == 2 && !strcmp(argv[1], "--clock-only")) {
@@ -2901,6 +3060,7 @@ int main(int argc, char **argv) {
     tank_init(&restored, 321); boot_enlarged(&restored);
     assert(restored.sd_unlocks == SD_ITEM_CHEST && restored.sand_style == 0 && restored.water_style == 0);
     for (int i = 0; i < 4; i++) assert(restored.ornament_x[i] == 0 && restored.decor_rank[i + 6] == 0);
+    settings_section(&restored, 4);
     render_settings_touch(&restored, render_frame_x(120), render_frame_y(SET_ROW4_Y), true, &value);
     assert(render_settings_touch(&restored, render_frame_x(120), render_frame_y(SET_ROW4_Y), false, &value) == SET_TAP_NONE);
     assert(restored.sand_style == 0);

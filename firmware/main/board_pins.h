@@ -23,4 +23,11 @@
 #define CYD_TOUCH_MIRROR_Y 0
 #define CYD_LCD_MIRROR_X   0
 #define CYD_LCD_MIRROR_Y   1
+/* the back RGB LED (active low) and the room-light sensor (LDR divider on an ADC1 pin) */
+#define CYD_PIN_LED_R      4
+#define CYD_PIN_LED_G      16
+#define CYD_PIN_LED_B      17
+#define CYD_PIN_LDR        34
+#define CYD_LDR_ADC_CHANNEL ADC_CHANNEL_6
+#define CYD_LDR_MIN_BASE     40      /* 0 dB ADC floor for the learned lit-room reading */
 #endif

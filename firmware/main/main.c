@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include "esp_ota_ops.h"
 #include "brightness.h"
+#include "ambient.h"
 #include "progression.h"
 #include "companion.h"
 #include "weather.h"
@@ -189,6 +190,7 @@ void device_clock_log(void) {
              net_saved() ? "saved" : "none", s_wall_clock_synced ? "yes" : "not yet");
 }
 static void deep_sleep_now(int wake_after_s) {
+    ambient_off_for_sleep();
     ESP_LOGI(TAG, "deep sleep: BOOT wakes%s", wake_after_s > 0 ? ", or the timer" : "");
     rtc_gpio_pullup_en(BTN_SLEEP);
     rtc_gpio_pulldown_dis(BTN_SLEEP);
@@ -204,6 +206,7 @@ static void enter_sleep_for(int wake_after_s) {
         ESP_LOGE(TAG, "sleep: save failed; the last good save stands");
     snapshot_fish();
     display_port_sleep();
+    ambient_led(0, 0, 0);
     while (!gpio_get_level(BTN_SLEEP)) vTaskDelay(pdMS_TO_TICKS(10));
     int64_t t0 = esp_timer_get_time();
     ESP_ERROR_CHECK(gpio_wakeup_enable(BTN_SLEEP, GPIO_INTR_LOW_LEVEL));
@@ -269,10 +272,20 @@ static void reset_tank(void) {
     }
     notice_sync(&tank);                         /* a fresh tank has nothing to announce */
     brightness_save();                          /* the erase took the setting with it */
+    ambient_save_all();
     ESP_LOGI(TAG, "fresh tank: %s + %s, both fry", tank.fish[0].name, tank.fish[1].name);
     setup_begin(&tank);                         /* welcome, names, colours - as on a fresh install */
 }
 
+/* photo mode (1.3): the page closes, the tank settles for a moment, then one
+ * full repaint is written tile by tile to the SD card */
+static float s_photo_delay = -1;
+static bool s_photo_reopen;
+void device_photo(bool from_settings) {
+    s_photo_reopen = from_settings;
+    if (from_settings) touch_port_show_settings(false);
+    s_photo_delay = 0.8f;
+}
 static void request_update(void);        /* below: CHECK FOR UPDATES */
 static void tank_task(void *arg);
 static void start_tank_task(void *arg) {
@@ -317,6 +330,20 @@ static void tank_task(void *arg) {
               device_wifi_setup();
           }
           else if (w == SET_TAP_BACKUP || w == SET_TAP_RESTORE) sd_port_backup_action(&tank, w == SET_TAP_RESTORE, v != 0);
+          else if (w == SET_TAP_ROOM) {
+              int m = (ambient_room_mode() + 1) % ROOM_LIGHT_MODES;
+              static const char *const names[] = {"ROOM LIGHT OFF", "ROOM LIGHT DIMS THE SCREEN", "DARK ROOM: SCREEN DIMS, TANK SLEEPS"};
+              render_backup_status(ambient_set_room_mode(m) ? names[m] : "ROOM LIGHT SAVE FAILED", false);
+          }
+          else if (w == SET_TAP_LED) {
+              int m = (ambient_led_mode() + 1) % BACK_LED_MODES;
+              static const char *const names[] = {"BACK LED OFF", "BACK LED GLOWS WITH THE WATER", "BACK LED: GLOW + HUNGER/VISITOR ALERTS"};
+              render_backup_status(ambient_set_led_mode(m) ? names[m] : "BACK LED SAVE FAILED", false);
+          }
+          else if (w == SET_TAP_AUTO_BACKUP)
+              render_backup_status(ambient_set_auto_backup(!ambient_auto_backup()) ?
+                  (ambient_auto_backup() ? "DAILY SD BACKUP ON - KEEPS 7" : "DAILY SD BACKUP OFF") : "SETTING SAVE FAILED", false);
+          else if (w == SET_TAP_PHOTO) device_photo(true);
 
           else if (w == SET_TAP_LIGHT) ESP_LOGI(TAG, "settings: lights out %s", v ? "AUTO (the idle rule)" : "MANUAL (double-tap the glass)");
           else if (w == SET_TAP_IDLE) ESP_LOGI(TAG, "settings: lights out after %d s still", v);
@@ -359,6 +386,12 @@ static void tank_task(void *arg) {
                       touch_port_show_shop(false); setup_begin_place(&tank, item);
                       ESP_LOGI(TAG, "shop: placement page up for the %s", SD_ITEMS[item].name); } }
               else ESP_LOGI(TAG, "shop: %s refused (balance %d, price %d)", SD_ITEMS[item].name, (int)tank.sd_balance, SD_ITEMS[item].price); } }
+        tank.room_dark = ambient_force_night();
+        ambient_tick(&tank, dt);
+        sd_port_auto_backup_tick(&tank, dt);
+        { render_device_t d = { (uint8_t)ambient_room_mode(), (uint8_t)ambient_led_mode(), ambient_auto_backup(),
+                                ambient_ldr_raw() < 0 ? -1 : ambient_room_pct() };
+          render_set_device(&d); }
         brightness_apply(tank.night && !render_clock_active(&tank) && !touch_port_games());
         render_work_caches(!weather_network_needed_after(dt));
         weather_tick(dt);
@@ -395,7 +428,13 @@ static void tank_task(void *arg) {
             render_set_backdrop_cache(tank.companion.display_compact ? (uint8_t *)fb[cur] + tile_bytes : NULL,
                                       tank.companion.display_compact ? PLAN_FB_BYTES - tile_bytes : 0);
             bool page = touch_port_milestones() || touch_port_settings() || touch_port_updates() || touch_port_shop();
-            render_damage_begin(&tank, !tank.companion.display_compact || page ||
+            bool photo = false; int photo_rows = 0;
+            if (s_photo_delay >= 0 && (s_photo_delay -= dt) < 0) {
+                s_photo_delay = -1;
+                photo = !page && sd_port_photo_begin(TANK_W, TANK_H);
+                if (!photo) render_backup_status(page ? "PHOTO CANCELED - CLOSE THE PAGE" : "PHOTO FAILED - CHECK SD", false);
+            }
+            render_damage_begin(&tank, photo || !tank.companion.display_compact || page ||
                 (touch_port_selected() >= 0 && !render_clock_active(&tank)) || setup_active() || touch_port_confirm_up() ||
                 touch_port_calibrating() || (!render_clock_active(&tank) && notice_current() != NULL));
             int damage_cursor = 0, left = 0, first = 0, width = TANK_W, height = tile_height;
@@ -450,12 +489,17 @@ static void tank_task(void *arg) {
                tick and a 1 ms sleep to hide behind - the next frame waited ~9 ms for it. The flush
                only reads this frame's buffer; the copy rides alongside it. */
             touch_port_render_calibration(fb[cur], TANK_W);
+            if (photo && width == TANK_W && sd_port_photo_rows(fb[cur], first, height, TANK_W)) photo_rows += height;
             display_port_flush(fb[cur]);
             pf_tail = esp_timer_get_time();
             render_us += t1 - t0; flush_us += pf_tail - t1;
             t0 = pf_tail;
             }
             render_tile(0, 0); render_region(0, 0);
+            if (photo) {
+                sd_port_photo_end(photo_rows == TANK_H);
+                if (s_photo_reopen) touch_port_show_settings(true);
+            }
             touch_port_poll(&tank);
             frames++;
         }
@@ -602,6 +646,7 @@ void app_main(void) {
     /* Network modes must run before SD/cache allocations consume Wi-Fi headroom. */
     render_clock_us = esp_timer_get_time;    /* per-stage frame profiling in the display log */
     display_port_init();
+    ambient_init();
     touch_port_init();
     weather_init();
     if (update_mode_pending()) { brightness_apply(false); update_mode_run(fb[0]); }
