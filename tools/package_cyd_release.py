@@ -57,7 +57,7 @@ only install files from a source you trust.
 
 USB APP-ONLY UPGRADE
 pocket-tank-cyd-app.bin is NOT a factory image.
-Browser option: https://jeromedontdev.github.io/pocket-tank-cyd/
+Browser option: https://jeromedontdev.github.io/pocket-tank-cyd/flash.html
 Choose save-preserving USB update, NOT the factory installer. It validates
 the live board/OTA layout and writes only the detected running application.
 Back up first, close serial monitors and keep USB power connected.
@@ -93,7 +93,7 @@ Release for **ESP32-2432S028 CYD only**.
 - Wrapped clock/weather captions, useful-only fish events, visible tank emblems, cleaner summaries and a redesigned Night Manta.
 - CYD Room Light/Back LED touch fixes, conservative light filtering, and a Wi-Fi screen that stays dark during startup and returns to Settings.
 - Append-only 5912-byte saves and schema-14 JSON, importing schemas 1-13 and older binary saves. Back up before upgrading; older firmware cannot restore schema-14 backups.
-- Refreshed illustrated documentation, actual-renderer screenshots, and Pocket Tank CYD branding across the installer and guides.
+- Refreshed illustrated documentation, actual-renderer screenshots, and Pocket Tank CYD branding across the installer and guides. The website now introduces the features and links to a separate USB flasher and local save viewer.
 
 ### New in 1.3.0
 - Genetics: every fish carries a hidden second marking and body color plus four recessive traits (Shimmer, Painted Fins, Pale Belly, Gold Eye). Bred fry inherit one allele from each parent, hidden looks can resurface generations later, and rare mutations add a new marking or trait. Existing fish receive hidden genes on upgrade.

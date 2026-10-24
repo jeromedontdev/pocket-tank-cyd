@@ -12,6 +12,10 @@ FACTORY = "pocket-tank-cyd-factory.bin"
 APP = "pocket-tank-cyd-app.bin"
 BOARD_MARKER = b"PTBOARD\0" + b"cyd2432s028".ljust(24, b"\0")
 SLOT_SIZE = 0x1e0000
+FEATURE_IMAGES = (
+    "tank-normal.png", "family-tree.png", "rpg-story.png",
+    "game-tide-tactics.png", "game-reef-architect.png", "games-page-two.png",
+)
 
 
 def stage_site(source, output, version, image, checksums, app):
@@ -29,6 +33,11 @@ def stage_site(source, output, version, image, checksums, app):
     if image[0x20000:0x20000 + len(app)] != app:
         raise ValueError("Factory and app images do not contain the same application")
     shutil.copytree(source, output)
+    media = output / "media"
+    media.mkdir()
+    for name in FEATURE_IMAGES:
+        shutil.copyfile(source.parent / "docs" / "media" / "cyd-features" / name,
+                        media / name)
     (output / FACTORY).write_bytes(image)
     (output / APP).write_bytes(app)
     manifest = {

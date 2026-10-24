@@ -1,12 +1,13 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import unittest
 import uuid
 
-from prepare_web_installer import APP, BOARD_MARKER, FACTORY, SLOT_SIZE, stage_site
+from prepare_web_installer import APP, BOARD_MARKER, FACTORY, FEATURE_IMAGES, SLOT_SIZE, stage_site
 
 
 class WebInstallerTests(unittest.TestCase):
@@ -16,7 +17,12 @@ class WebInstallerTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root)
         self.source = self.root / "web"
         self.source.mkdir()
-        (self.source / "index.html").write_text("installer")
+        (self.source / "index.html").write_text("features")
+        (self.source / "flash.html").write_text("installer")
+        media = self.root / "docs" / "media" / "cyd-features"
+        media.mkdir(parents=True)
+        for name in FEATURE_IMAGES:
+            (media / name).write_bytes(b"screenshot:" + name.encode())
         self.app = bytearray(0x200)
         self.app[0] = 0xe9
         self.app[0x120:0x140] = BOARD_MARKER
@@ -42,7 +48,11 @@ class WebInstallerTests(unittest.TestCase):
             {"chipFamily": "ESP32", "parts": [{"path": FACTORY, "offset": 0}]}])
         self.assertEqual((output / FACTORY).read_bytes(), self.image)
         self.assertEqual((output / APP).read_bytes(), self.app)
-        self.assertEqual((output / "index.html").read_text(), "installer")
+        self.assertEqual((output / "index.html").read_text(), "features")
+        self.assertEqual((output / "flash.html").read_text(), "installer")
+        for name in FEATURE_IMAGES:
+            self.assertEqual((output / "media" / name).read_bytes(),
+                             b"screenshot:" + name.encode())
         update = json.loads((output / "update.json").read_text())
         self.assertEqual(update, {
             "format": 1, "board": "cyd2432s028", "version": "1.0.0", "app": APP,
@@ -59,7 +69,30 @@ class WebInstallerTests(unittest.TestCase):
         for arguments in ({"image": self.image + b"x"}, {"app": self.app + b"x"}):
             with self.subTest(arguments=tuple(arguments)), self.assertRaises(ValueError):
                 self.stage(**arguments)
+            self.assertFalse((self.root / "site").exists())
 
+    def test_feature_home_and_flasher_navigation(self):
+        source = Path(__file__).resolve().parent.parent / "web"
+        home = (source / "index.html").read_text(encoding="utf-8")
+        flasher = (source / "flash.html").read_text(encoding="utf-8")
+        viewer = (source / "viewer.html").read_text(encoding="utf-8")
+        self.assertIn('href="./flash.html"', home)
+        self.assertIn('href="./viewer.html"', home)
+        self.assertIn('href="./"', flasher)
+        self.assertIn('href="./flash.html"', viewer)
+        self.assertIn("not yet included", home)
+        self.assertNotIn("usb-update.mjs", home)
+        self.assertNotIn("esp-web-install-button", home)
+        self.assertIn('src="./usb-update.mjs"', flasher)
+        self.assertIn('id="update-section"', flasher)
+        self.assertIn('id="factory-section"', flasher)
+        self.assertEqual(set(re.findall(r'src="./media/([^"]+)"', home)),
+                         set(FEATURE_IMAGES))
+        for text in (home, flasher, viewer):
+            for target in re.findall(r'(?:src|href)="(\./[^"#]*)"', text):
+                if target.startswith("./media/") or target == "./manifest.json":
+                    continue
+                self.assertTrue((source / target).exists(), target)
     def test_wrong_factory_board(self):
         self.image[0x20128] = 0
         with self.assertRaisesRegex(ValueError, "Factory"):

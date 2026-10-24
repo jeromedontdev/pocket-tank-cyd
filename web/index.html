@@ -3,135 +3,233 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pocket Tank CYD USB update and factory installer</title>
+  <meta name="description" content="A living pixel aquarium for your Cheap Yellow Display. Meet your fish, grow a family, play games, and install Pocket Tank CYD from your browser.">
+  <title>Pocket Tank CYD - a little aquarium with a life of its own</title>
   <link rel="icon" href="./logo.svg" type="image/svg+xml">
   <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #081c25; color: #e0f2f1; }
-    main { max-width: 46rem; margin: 3rem auto; padding: 0 1.25rem; line-height: 1.6; }
-    h1, a { color: #78e3cf; }
-    .warning { border: 2px solid #ffc26f; padding: 1rem; border-radius: .5rem; }
-    button { padding: .8rem 1.2rem; font: inherit; cursor: pointer; }
-    label { display: block; margin: 1.5rem 0; }
-    #status { min-height: 2rem; }
-    section { margin: 2rem 0; padding: 1.25rem; border: 1px solid #527782; border-radius: .5rem; }
-    button:disabled { cursor: not-allowed; opacity: .6; }
-    progress { width: 100%; }
-    [hidden] { display: none !important; }
-    .brand { display: flex; align-items: center; gap: 1rem; }
-    .brand img { width: clamp(6rem, 20vw, 10rem); height: auto; }
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #081c25; color: #e0f2f1; line-height: 1.65; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main, footer, nav { max-width: 72rem; margin: auto; padding: 1.25rem; }
+    nav { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; align-items: center; }
+    nav strong { margin-right: auto; color: #ffc26f; }
+    a { color: #78e3cf; text-underline-offset: .2em; }
+    a:hover { color: #fff; }
+    a:focus-visible { outline: 3px solid #ffc26f; outline-offset: 4px; }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { font-size: clamp(2.2rem, 5vw, 3.7rem); margin: .5rem 0 1.25rem; }
+    h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); color: #78e3cf; }
+    h3 { color: #ffc26f; }
+    p { max-width: 68ch; }
+    .hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 2rem; align-items: center; padding: 2rem 0; }
+    .logo { width: min(20rem, 85%); height: auto; }
+    .eyebrow { color: #ffc26f; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: .85rem; }
+    .lead { font-size: 1.15rem; color: #c3deda; }
+    .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1.5rem 0; }
+    .button { display: inline-block; border: 1px solid #78e3cf; border-radius: .6rem; padding: .7rem 1.1rem; font-weight: 700; text-decoration: none; }
+    .button.primary { color: #081c25; background: #78e3cf; }
+    .button.primary:hover { background: #b1ffed; }
+    .note { border-left: 3px solid #ffc26f; padding: .65rem 1rem; background: #102d37; }
+    .screen { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #527782; border-radius: .5rem; background: #000; }
+    figure { margin: 0; }
+    figcaption { font-size: .9rem; color: #adc8ca; margin-top: .5rem; }
+    section { scroll-margin-top: 1rem; margin: 3.5rem 0; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+    .card { border: 1px solid #355d68; background: #0e2630; border-radius: .8rem; padding: 1.25rem; min-width: 0; }
+    .card h3 { margin-top: .25rem; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: center; }
+    .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .badge { display: inline-block; border-radius: 1rem; padding: .15rem .65rem; background: #3c3320; color: #ffda9e; font-size: .85rem; font-weight: 700; }
+    ul, ol { padding-left: 1.35rem; }
+    footer { border-top: 1px solid #355d68; color: #adc8ca; }
+    @media (max-width: 48rem) {
+      .hero, .split { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+      .hero { padding-top: .5rem; }
+    }
+    @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
   </style>
 </head>
 <body>
+<nav aria-label="Main navigation">
+  <strong>Pocket Tank CYD</strong>
+  <a href="#features">Features</a>
+  <a href="#coming-next">Coming next</a>
+  <a href="./viewer.html">Save viewer</a>
+  <a class="button" href="./flash.html">USB flasher</a>
+</nav>
 <main>
-  <header class="brand"><img src="./logo.svg" alt="" width="128" height="96"><h1>Pocket Tank CYD</h1></header>
-  <p>For the <strong>ESP32-2432S028 Cheap Yellow Display only</strong>
-    (4 MB flash, 2.8-inch display). Not for other ESP32 boards.
-    The factory installer checks the ESP32 chip family, but cannot identify your display model.
-    The save-preserving updater additionally verifies Pocket Tank's CYD identity and layout.</p>
-  <p>Use desktop <strong>Chrome or Edge over HTTPS</strong> with a USB data cable.
-    Close all serial monitors first. Choose one of these separate operations;
-    a refused update never falls back to a factory install.</p>
-  <section id="update-section" aria-labelledby="update-heading">
-    <h2 id="update-heading">Existing tank: save-preserving USB update</h2>
-    <p>For Pocket Tank CYD <strong>1.0.0 or newer</strong>. Back up your aquarium
-      and SD card first. Wake your tank before connecting. This reads the firmware's
-      <code>ota</code> response, restarts to check the CYD board identity, and verifies
-      the installed partition layout. Only the reported <strong>running app slot</strong>
-      is replaced: <code>ota_0 / 0x20000</code> or <code>ota_1 / 0x200000</code>.
-      Saved tanks, Wi-Fi, calibration, OTA selection and partitions are not written.</p>
-    <p>Unknown firmware, other boards, pending slot changes, unexpected layouts and
-      downgrades are refused. No guessed offset, full-chip erase or factory image is used.
-      This preserves stored saves, not unsaved changes. Keep USB power connected:
-      an interrupted active-slot write can prevent booting and require expert
-      app-only USB recovery. The SD updater is safer if power is unreliable.</p>
-    <label><input id="update-acknowledge" type="checkbox">
-      I have backed up my tank, have the CYD board above, and will keep USB power connected.</label>
-    <button id="safe-update" disabled>Connect and check for save-preserving update</button>
-    <p id="update-status" role="status" aria-live="polite">The app download is checksum-verified before connecting to the bootloader. You will confirm the detected slot before writing.</p>
-    <progress id="update-progress" max="1" value="0" aria-label="App update progress" hidden></progress>
-    <p>Prefer SD? Use <strong>Settings &gt; Device &gt; SD Updates</strong> with
-      <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">update.ptu from the release</a>.</p>
+  <header class="hero">
+    <div>
+      <img class="logo" src="./logo.svg" width="320" height="240" alt="Pocket Tank CYD: a little aquarium inside a yellow display">
+      <p class="eyebrow">A tiny world for your desk</p>
+      <h1>A little aquarium.<br>A life of its own.</h1>
+      <p class="lead">Meet your fish, grow a family, decorate their home, and watch
+        a calm pixel world unfold on your Cheap Yellow Display. No cloud AI.
+        No subscriptions. Just your tank.</p>
+      <div class="actions">
+        <a class="button primary" href="./flash.html">Install or update your CYD</a>
+        <a class="button" href="#features">Explore the features</a>
+      </div>
+      <p>Made for <strong>ESP32-2432S028 CYD</strong>: 2.8-inch touchscreen,
+        4 MB flash, no PSRAM required.</p>
+    </div>
+    <figure>
+      <img class="screen" src="./media/tank-normal.png" width="320" height="240" alt="Pixel fish and planted scenery in a Pocket Tank aquarium">
+      <figcaption>Your aquarium is the main event. Stories and games are optional extras.</figcaption>
+    </figure>
+  </header>
+
+  <aside class="note" aria-label="Release information">
+    <strong>Published firmware: <span id="release-version">see the latest release</span>.</strong>
+    The flasher uses the latest stable
+    <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">GitHub release</a>.
+    The source-only additions below are not yet in those downloads.
+    Screenshots show the current source interface, which can differ from the published release.
+  </aside>
+
+  <section id="features" aria-labelledby="features-heading">
+    <p class="eyebrow">Already in the published tank</p>
+    <h2 id="features-heading">More than fish on a screen</h2>
+    <div class="grid">
+      <article class="card">
+        <h3>Living, growing fish</h3>
+        <p>Feed and watch your fish grow through life stages. Give them names,
+          discover different looks, choose colors and accessories, and get to know
+          their personalities.</p>
+      </article>
+      <article class="card">
+        <h3>Families &amp; inherited looks</h3>
+        <p>New generations inherit colors, markings, and traits. A family tree,
+          fish biographies, buddies, and keepsakes let your aquarium build a history.</p>
+      </article>
+      <article class="card">
+        <h3>Make it your aquarium</h3>
+        <p>Collect themes, place decorations, unlock scenic effects, and keep
+          multiple named aquariums. Snails, shrimp, seahorses, and urchins bring
+          more life to the sand and water.</p>
+      </article>
+      <article class="card">
+        <h3>Small adventures &amp; games</h3>
+        <p>Send fish on optional adventures and collect postcards. Play six touch
+          games, earn coins, and keep records without replacing the relaxed aquarium.</p>
+      </article>
+      <article class="card">
+        <h3>A useful desk companion</h3>
+        <p>Choose a clock face, check weather, enjoy seasons and rare visitors,
+          and use the CYD's room-light sensor and rear RGB LED. No built-in speaker
+          or audio setup needed.</p>
+      </article>
+      <article class="card">
+        <h3>Your tank stays yours</h3>
+        <p>Local saves, SD JSON backups, daily backup options, SD photos, and a
+          browser save viewer. Wi-Fi is optional for the aquarium; time and weather
+          use it when enabled.</p>
+      </article>
+    </div>
   </section>
-  <section id="factory-section" aria-labelledby="factory-heading">
-  <h2 id="factory-heading">New board / deliberate reset: factory installer</h2>
-  <p id="status" role="status">Loading the published factory release...</p>
-  <div class="warning">
-    <strong>This is NOT a save-preserving update.</strong>
-    Factory flashing overwrites saved tanks, Wi-Fi credentials, touch calibration
-    and aquarium collection identity. Back up your aquarium and the entire SD card first.
-    Use this only for a new board or a deliberate reset.
-    <p>Already using Pocket Tank CYD? Choose the save-preserving USB update above
-      or use SD Updates instead. This factory option writes a merged image at
-      <code>0x0</code>, including NVS and the partition table.</p>
-  </div>
-  <ol>
-    <li>Open this page in desktop <strong>Chrome or Edge</strong>. Firefox, Safari
-      and mobile browsers are not supported.</li>
-    <li>Connect your CYD with a USB data cable. Close serial monitors and other
-      programs using the board's serial port.</li>
-    <li>Confirm the warning below, click Connect, then choose the board's USB serial port.</li>
-    <li>Choose Install in the flashing dialog and keep the cable connected until finished.</li>
-    <li>Restart if needed and complete touch calibration and first-time setup.
-      All artwork is embedded; no SD icons are needed.</li>
-  </ol>
-  <label><input id="acknowledge" type="checkbox" disabled>
-    I have an ESP32-2432S028 CYD and understand this factory installation
-    overwrites my saved tanks and settings.</label>
-  <esp-web-install-button manifest="./manifest.json" hidden>
-    <button slot="activate">Connect for FACTORY RESET</button>
-    <span slot="unsupported">Use desktop Chrome or Edge with Web Serial support.</span>
-    <span slot="not-allowed">Open the HTTPS installer page in a supported browser.</span>
-  </esp-web-install-button>
+
+  <section class="split" aria-labelledby="family-heading">
+    <div>
+      <p class="eyebrow">Little fish, long memories</p>
+      <h2 id="family-heading">A family worth following</h2>
+      <p>A fish is more than its color. Follow its milestones, inherited markings,
+        relationships, and descendants. Names and family connections give each
+        generation a place in your tank's story.</p>
+      <p>Open an exported JSON backup in the save viewer to explore your fish,
+        family tree, and genes on a larger screen. The viewer reads it locally
+        in your browser; it does not upload your backup.</p>
+      <a class="button" href="./viewer.html">Open the save viewer</a>
+    </div>
+    <figure>
+      <img class="screen" src="./media/family-tree.png" loading="lazy" width="320" height="240" alt="Fish family tree showing ancestors and family connections">
+      <figcaption>Family connections live alongside your aquarium, not in a separate account.</figcaption>
+    </figure>
   </section>
-  <h2>Connection trouble?</h2>
-  <p>Try another data cable or USB port, and install the USB serial driver appropriate
-    to your board if no port appears. If connecting stalls, hold BOOT, briefly press
-    RESET, then release BOOT once flashing connects <strong>for factory installation only</strong>.
-    The save-preserving updater must first talk to running firmware: do not start it
-    in BOOT/download mode. Avoid USB hubs and keep power stable.</p>
-  <p>Firmware comes from the latest stable GitHub release. Its checksum is checked
-    before this site is deployed; the USB updater also checks the downloaded app's
-    SHA-256 and the written app's checksum. Checksums detect corruption, not authenticity:
-    these are trusted-release downloads, not signed updates.
-    USB flashing stays in your browser; this site
-    does not upload your tank or credentials. The flashing component is loaded from
-    pinned ESP Web Tools and esptool-js CDNs.</p>
-  <p><a href="./viewer.html">Save viewer</a> - see your fish, family tree and genes from an SD backup.</p>
-  <p><a href="https://github.com/jeromedontdev/pocket-tank-cyd">Source and documentation</a>
-    &middot; <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a></p>
+
+  <section id="coming-next" aria-labelledby="next-heading">
+    <span class="badge">Current source / not yet released</span>
+    <h2 id="next-heading">Deeper adventures. Still your quiet tank.</h2>
+    <p>These additions are committed on
+      <a href="https://github.com/jeromedontdev/pocket-tank-cyd">main</a>,
+      but are <strong>not yet included in the flasher's published firmware</strong>.</p>
+    <div class="split">
+      <div>
+        <h3>The Lost Current</h3>
+        <p>An optional six-chapter, 18-encounter story RPG. Choose a fish guide
+          and use courage, curiosity, or kindness to find your path to one of
+          three endings.</p>
+        <p>Your fish's bonds, inherited traits, family legacy, decorations,
+          visitors, and past adventures can offer help. No fish leaves home or
+          gets hurt, no purchases are required, and no deadlines or background
+          simulation change the aquarium you already love.</p>
+        <h3>Another page of games</h3>
+        <p>Reef Defender, Current Runner, Pearl Breaker, Tide Tactics,
+          Reef Architect, and Deep Expedition bring the total to twelve.
+          Help, pause, saved records, medals, and carefully saved rewards are included.</p>
+        <h3>Clearer menus &amp; finishing touches</h3>
+        <p>Consistent BACK navigation, easier-to-understand care and bonds,
+          brighter clock sparkles, better captions, a redesigned manta, and
+          steadier room-light controls.</p>
+      </div>
+      <div class="gallery">
+        <figure>
+          <img class="screen" src="./media/rpg-story.png" loading="lazy" width="320" height="240" alt="The Lost Current encounter with a fish guide and three choices">
+          <figcaption>The Lost Current</figcaption>
+        </figure>
+        <figure>
+          <img class="screen" src="./media/game-tide-tactics.png" loading="lazy" width="320" height="240" alt="Tide Tactics turn-based board with flags and creatures">
+          <figcaption>Tide Tactics</figcaption>
+        </figure>
+        <figure>
+          <img class="screen" src="./media/game-reef-architect.png" loading="lazy" width="320" height="240" alt="Reef Architect planting puzzle">
+          <figcaption>Reef Architect</figcaption>
+        </figure>
+        <figure>
+          <img class="screen" src="./media/games-page-two.png" loading="lazy" width="320" height="240" alt="Second game page showing the six new games">
+          <figcaption>Six more ways to play</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="install-heading">
+    <h2 id="install-heading">Ready to give your CYD a little world?</h2>
+    <ol>
+      <li>Check that your board is the supported <strong>ESP32-2432S028 CYD</strong>.</li>
+      <li>Use desktop Chrome or Edge and a USB data cable.</li>
+      <li>Open the flasher and choose a save-preserving update for an existing tank,
+        or a factory installation for a new board.</li>
+    </ol>
+    <p><strong>Back up first.</strong> Factory installation overwrites saved tanks
+      and settings. A save-preserving update is a separate operation with its own
+      board/layout checks and confirmation. Nothing flashes from this home page.</p>
+    <div class="actions">
+      <a class="button primary" href="./flash.html">Open the USB flasher</a>
+      <a class="button" href="https://github.com/jeromedontdev/pocket-tank-cyd/blob/main/docs/CYD-FEATURES.md">Full illustrated feature guide</a>
+    </div>
+  </section>
 </main>
-<script type="module" src="./usb-update.mjs"></script>
+<footer>
+  <p><a href="./flash.html">USB flasher</a> &middot;
+    <a href="./viewer.html">Save viewer</a> &middot;
+    <a href="https://github.com/jeromedontdev/pocket-tank-cyd">Source &amp; documentation</a> &middot;
+    <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases">Releases</a></p>
+  <p>Pocket Tank CYD is based on Pocket Tank. Built for a small display, with room for a big family.</p>
+</footer>
 <script type="module">
-  const status = document.querySelector("#status");
-  const acknowledge = document.querySelector("#acknowledge");
-  const installer = document.querySelector("esp-web-install-button");
-  const updateAcknowledgement = document.querySelector("#update-acknowledge");
-  updateAcknowledgement.addEventListener("change", () => {
-    acknowledge.disabled = updateAcknowledgement.checked || !factoryReady;
-    if (updateAcknowledgement.checked) {
-      acknowledge.checked = false;
-      installer.hidden = true;
-    }
-  });
-  let factoryReady = false;
+  const version = document.querySelector("#release-version");
   try {
-    if (!window.isSecureContext || !("serial" in navigator)) {
-      throw new Error("USB flashing requires desktop Chrome or Edge over HTTPS.");
-    }
     const response = await fetch("./manifest.json", { cache: "no-store" });
-    if (!response.ok) throw new Error(`Firmware manifest unavailable (${response.status}).`);
+    if (!response.ok) throw new Error(`Release information unavailable (${response.status}).`);
     const manifest = await response.json();
-    await import("https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module");
-    await customElements.whenDefined("esp-web-install-button");
-    status.textContent = `Ready to install Pocket Tank CYD ${manifest.version}.`;
-    factoryReady = true;
-    acknowledge.disabled = updateAcknowledgement.checked;
-    acknowledge.addEventListener("change", () => {
-      installer.hidden = !acknowledge.checked;
-      updateAcknowledgement.disabled = acknowledge.checked;
-    });
+    if (typeof manifest.version !== "string" || !manifest.version) {
+      throw new Error("Published release information is missing its version.");
+    }
+    version.textContent = manifest.version;
   } catch (error) {
-    status.textContent = `Installer unavailable: ${error.message} Use the GitHub release downloads instead.`;
+    version.textContent = "version unavailable - check the release link";
+    console.error("Could not load published firmware information:", error);
   }
 </script>
 </body>

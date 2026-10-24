@@ -4,7 +4,7 @@
 
 ## Save-preserving browser USB updates
 
-Open the [USB installer](https://jeromedontdev.github.io/pocket-tank-cyd/) in
+Open the [USB installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html) in
 desktop Chrome or Edge and choose **save-preserving USB update**. Make an SD backup first
 and close serial monitors. The updater normally resets the board, checks its
 CYD boot identity and exact `ota` partition report, and refuses unknown layouts

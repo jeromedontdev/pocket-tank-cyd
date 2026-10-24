@@ -158,7 +158,9 @@ replace the working RAM needed by the original model.
 
 ### Install from your browser
 
-**[Open the USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/)**
+**[Explore the website](https://jeromedontdev.github.io/pocket-tank-cyd/)**
+for a feature overview and screenshots, or
+**[open the USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html)**
 in desktop Chrome or Edge. Connect an ESP32-2432S028 CYD with a USB data cable;
 no ESP-IDF installation is needed.
 

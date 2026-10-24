@@ -62,7 +62,7 @@ These are independently versioned CYD-only releases, not upstream multi-board re
 Read the included `INSTALL.txt` and check `SHA256SUMS.txt`.
 
 **New-board browser flashing:** the
-[USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/) works in
+[USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html) works in
 desktop Chrome or Edge with a USB data cable. Choose **save-preserving USB update** for
 an existing CYD installation: the updater validates the live board and active OTA
 slot, then writes only the application. The **factory installer** remains separate and

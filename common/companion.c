@@ -540,7 +540,7 @@ bool companion_rpg_choose(tank_t *t, int fish, int choice) {
     unsigned power = s->skills[choice] + rpg_bonus(t, fish, choice);
     s->version = 1;
     s->participant = t->polish.active[fish].id;
-    s->outcome = (uint8_t)(choice + 1 + (power < s->chapter + s->step + 1 ? 3 : 0));
+    s->outcome = (uint8_t)(choice + 1 + (power < s->chapter + s->step + 1u ? 3 : 0));
     s->skills[choice]++;
     if (++s->step == 3) {
         unsigned chapter = s->chapter;

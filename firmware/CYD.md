@@ -25,7 +25,7 @@ for existing configured build directories.
 ## Downloadable releases
 
 For a new board or deliberate reset, the
-[USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/) works in
+[USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html) works in
 desktop Chrome/Edge without ESP-IDF. **Save-preserving USB update** validates a running CYD
 firmware's boot identity and `ota` response, detects its active slot and writes
 only the application, preserving NVS and the partition table. Back up first.

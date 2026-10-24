@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pocket Tank CYD USB update and factory installer</title>
+  <link rel="icon" href="./logo.svg" type="image/svg+xml">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #081c25; color: #e0f2f1; }
+    main { max-width: 46rem; margin: 3rem auto; padding: 0 1.25rem; line-height: 1.6; }
+    h1, a { color: #78e3cf; }
+    .warning { border: 2px solid #ffc26f; padding: 1rem; border-radius: .5rem; }
+    button { padding: .8rem 1.2rem; font: inherit; cursor: pointer; }
+    label { display: block; margin: 1.5rem 0; }
+    #status { min-height: 2rem; }
+    section { margin: 2rem 0; padding: 1.25rem; border: 1px solid #527782; border-radius: .5rem; }
+    button:disabled { cursor: not-allowed; opacity: .6; }
+    progress { width: 100%; }
+    [hidden] { display: none !important; }
+    .brand { display: flex; align-items: center; gap: 1rem; }
+    .brand img { width: clamp(6rem, 20vw, 10rem); height: auto; }
+  </style>
+</head>
+<body>
+<main>
+  <nav aria-label="Main navigation"><a href="./">Features &amp; home</a> &middot; <a href="./viewer.html">Save viewer</a></nav>
+  <header class="brand"><img src="./logo.svg" alt="" width="128" height="96"><h1>Pocket Tank CYD</h1></header>
+  <p>For the <strong>ESP32-2432S028 Cheap Yellow Display only</strong>
+    (4 MB flash, 2.8-inch display). Not for other ESP32 boards.
+    The factory installer checks the ESP32 chip family, but cannot identify your display model.
+    The save-preserving updater additionally verifies Pocket Tank's CYD identity and layout.</p>
+  <p id="release-status" role="status">This flasher installs the latest published stable release, not unreleased source features.</p>
+  <p>Use desktop <strong>Chrome or Edge over HTTPS</strong> with a USB data cable.
+    Close all serial monitors first. Choose one of these separate operations;
+    a refused update never falls back to a factory install.</p>
+  <section id="update-section" aria-labelledby="update-heading">
+    <h2 id="update-heading">Existing tank: save-preserving USB update</h2>
+    <p>For Pocket Tank CYD <strong>1.0.0 or newer</strong>. Back up your aquarium
+      and SD card first. Wake your tank before connecting. This reads the firmware's
+      <code>ota</code> response, restarts to check the CYD board identity, and verifies
+      the installed partition layout. Only the reported <strong>running app slot</strong>
+      is replaced: <code>ota_0 / 0x20000</code> or <code>ota_1 / 0x200000</code>.
+      Saved tanks, Wi-Fi, calibration, OTA selection and partitions are not written.</p>
+    <p>Unknown firmware, other boards, pending slot changes, unexpected layouts and
+      downgrades are refused. No guessed offset, full-chip erase or factory image is used.
+      This preserves stored saves, not unsaved changes. Keep USB power connected:
+      an interrupted active-slot write can prevent booting and require expert
+      app-only USB recovery. The SD updater is safer if power is unreliable.</p>
+    <label><input id="update-acknowledge" type="checkbox">
+      I have backed up my tank, have the CYD board above, and will keep USB power connected.</label>
+    <button id="safe-update" disabled>Connect and check for save-preserving update</button>
+    <p id="update-status" role="status" aria-live="polite">The app download is checksum-verified before connecting to the bootloader. You will confirm the detected slot before writing.</p>
+    <progress id="update-progress" max="1" value="0" aria-label="App update progress" hidden></progress>
+    <p>Prefer SD? Use <strong>Settings &gt; Device &gt; SD Updates</strong> with
+      <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">update.ptu from the release</a>.</p>
+  </section>
+  <section id="factory-section" aria-labelledby="factory-heading">
+  <h2 id="factory-heading">New board / deliberate reset: factory installer</h2>
+  <p id="status" role="status">Loading the published factory release...</p>
+  <div class="warning">
+    <strong>This is NOT a save-preserving update.</strong>
+    Factory flashing overwrites saved tanks, Wi-Fi credentials, touch calibration
+    and aquarium collection identity. Back up your aquarium and the entire SD card first.
+    Use this only for a new board or a deliberate reset.
+    <p>Already using Pocket Tank CYD? Choose the save-preserving USB update above
+      or use SD Updates instead. This factory option writes a merged image at
+      <code>0x0</code>, including NVS and the partition table.</p>
+  </div>
+  <ol>
+    <li>Open this page in desktop <strong>Chrome or Edge</strong>. Firefox, Safari
+      and mobile browsers are not supported.</li>
+    <li>Connect your CYD with a USB data cable. Close serial monitors and other
+      programs using the board's serial port.</li>
+    <li>Confirm the warning below, click Connect, then choose the board's USB serial port.</li>
+    <li>Choose Install in the flashing dialog and keep the cable connected until finished.</li>
+    <li>Restart if needed and complete touch calibration and first-time setup.
+      All artwork is embedded; no SD icons are needed.</li>
+  </ol>
+  <label><input id="acknowledge" type="checkbox" disabled>
+    I have an ESP32-2432S028 CYD and understand this factory installation
+    overwrites my saved tanks and settings.</label>
+  <esp-web-install-button manifest="./manifest.json" hidden>
+    <button slot="activate">Connect for FACTORY RESET</button>
+    <span slot="unsupported">Use desktop Chrome or Edge with Web Serial support.</span>
+    <span slot="not-allowed">Open the HTTPS installer page in a supported browser.</span>
+  </esp-web-install-button>
+  </section>
+  <h2>Connection trouble?</h2>
+  <p>Try another data cable or USB port, and install the USB serial driver appropriate
+    to your board if no port appears. If connecting stalls, hold BOOT, briefly press
+    RESET, then release BOOT once flashing connects <strong>for factory installation only</strong>.
+    The save-preserving updater must first talk to running firmware: do not start it
+    in BOOT/download mode. Avoid USB hubs and keep power stable.</p>
+  <p>Firmware comes from the latest stable GitHub release. Its checksum is checked
+    before this site is deployed; the USB updater also checks the downloaded app's
+    SHA-256 and the written app's checksum. Checksums detect corruption, not authenticity:
+    these are trusted-release downloads, not signed updates.
+    USB flashing stays in your browser; this site
+    does not upload your tank or credentials. The flashing component is loaded from
+    pinned ESP Web Tools and esptool-js CDNs.</p>
+  <p><a href="./viewer.html">Save viewer</a> - see your fish, family tree and genes from an SD backup.</p>
+  <p><a href="https://github.com/jeromedontdev/pocket-tank-cyd">Source and documentation</a>
+    &middot; <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a></p>
+</main>
+<script type="module" src="./usb-update.mjs"></script>
+<script type="module">
+  const status = document.querySelector("#status");
+  const acknowledge = document.querySelector("#acknowledge");
+  const installer = document.querySelector("esp-web-install-button");
+  const updateAcknowledgement = document.querySelector("#update-acknowledge");
+  updateAcknowledgement.addEventListener("change", () => {
+    acknowledge.disabled = updateAcknowledgement.checked || !factoryReady;
+    if (updateAcknowledgement.checked) {
+      acknowledge.checked = false;
+      installer.hidden = true;
+    }
+  });
+  let factoryReady = false;
+  try {
+    if (!window.isSecureContext || !("serial" in navigator)) {
+      throw new Error("USB flashing requires desktop Chrome or Edge over HTTPS.");
+    }
+    const response = await fetch("./manifest.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Firmware manifest unavailable (${response.status}).`);
+    const manifest = await response.json();
+    document.querySelector("#release-status").textContent =
+      `Published firmware: ${manifest.version}. Unreleased source features on the home page are not included.`;
+    await import("https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module");
+    await customElements.whenDefined("esp-web-install-button");
+    status.textContent = `Ready to install Pocket Tank CYD ${manifest.version}.`;
+    factoryReady = true;
+    acknowledge.disabled = updateAcknowledgement.checked;
+    acknowledge.addEventListener("change", () => {
+      installer.hidden = !acknowledge.checked;
+      updateAcknowledgement.disabled = acknowledge.checked;
+    });
+  } catch (error) {
+    status.textContent = `Installer unavailable: ${error.message} Use the GitHub release downloads instead.`;
+  }
+</script>
+</body>
+</html>

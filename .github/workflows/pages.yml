@@ -2,7 +2,7 @@ name: CYD web installer
 on:
   push:
     branches: [main]
-    paths: ["web/**", "tools/prepare_web_installer.py", ".github/workflows/pages.yml"]
+    paths: ["web/**", "docs/media/cyd-features/**", "tools/prepare_web_installer.py", ".github/workflows/pages.yml"]
   release:
     types: [published]
   workflow_dispatch:
