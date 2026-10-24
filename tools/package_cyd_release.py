@@ -158,7 +158,7 @@ while adding its own modes, shared progression, genetics, stories and games.
 - Corrected display scaling/colors, touch calibration and readable menus.
 - Flash-embedded menu artwork, verified JSON backups and offline firmware updates.
 - Fish customization, Aquarium Journal and a free 20-slot Fish Bank.
-- Six Keeper mini-games: Bubble Pop, Pearl Match, Fish Slalom, Treasure Cast, Feed Frenzy and Reef Puzzle.
+- Eighteen Keeper mini-games across three pages, including Bubble Pop, Pearl Match, Fish Slalom, Treasure Cast, Feed Frenzy and Reef Puzzle.
 - Real aquarium fish portraits, paused care and atomic sand-dollar plus Journal XP rewards.
 - Persistent challenge-mode game records/medals and untimed/slower relaxed play.
 - Home hub with fish care, bonds/tricks, collections and fish adventures.

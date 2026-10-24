@@ -347,7 +347,7 @@ set. **PHOTO TO SD** saves a BMP screenshot of the aquarium to
 
 ## Mini-games: play with your fish, not their care stats
 
-Open **Home > Games** for two pages of six games. The first page holds
+Open **Home > Games** for three pages of six games. The first page holds
 **Bubble Pop, Pearl Match, Fish Slalom, Treasure Cast, Feed Frenzy and Reef Puzzle**.
 The second page adds **Reef Defender, Current Runner, Pearl Breaker, Tide Tactics,
 Reef Architect and Deep Expedition**. Tap PLAY AS to choose an active

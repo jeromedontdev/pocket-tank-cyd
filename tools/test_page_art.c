@@ -3,6 +3,7 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <limits.h>
 #include <string.h>
 #include "../common/render.c"
 
