@@ -1,10 +1,65 @@
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include "render.h"
 #include "weather.h"
+#include "update.h"
 #undef NDEBUG
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
+
+extern void net_sim_advance(float dt);
+static void capture(const char *name, const uint16_t *pixels, int stride) {
+    const char *directory = getenv("POCKET_TANK_SCREENSHOTS");
+    if (!directory) return;
+    char path[1024]; snprintf(path, sizeof path, "%s/%s.ppm", directory, name);
+    FILE *file = fopen(path, "wb"); assert(file);
+    fprintf(file, "P6\n%d %d\n255\n", TANK_W, TANK_H);
+    for (int y = 0; y < TANK_H; y++) for (int x = 0; x < TANK_W; x++) {
+        uint16_t color = pixels[y * stride + x];
+        unsigned char rgb[] = {(unsigned char)((color >> 11) * 255 / 31),
+            (unsigned char)(((color >> 5) & 63) * 255 / 63), (unsigned char)((color & 31) * 255 / 31)};
+        assert(fwrite(rgb, 1, 3, file) == 3);
+    }
+    assert(!fclose(file));
+}
+static void load_weather_reading(const char *path) {
+    char fixture[1024];
+    snprintf(fixture, sizeof fixture, "%s-current.json", path);
+    FILE *file = fopen(fixture, "wb"); assert(file);
+    fputs("{\"current\":{\"temperature_2m\":22,\"weather_code\":61,\"time\":1792760400},"
+          "\"current_units\":{\"temperature_2m\":\"\\u00b0C\"}}", file);
+    assert(!fclose(file));
+#ifdef _WIN32
+    assert(!_putenv_s("POCKET_TANK_WEATHER_CURRENT_FIXTURE", fixture));
+#else
+    assert(!setenv("POCKET_TANK_WEATHER_CURRENT_FIXTURE", fixture, 1));
+#endif
+    assert(net_port_creds_set("Renderer weather test", "synthetic"));
+    for (int i = 0; i < 3000 && weather_icon_code() < 0; i++) {
+        net_sim_advance(.1f); weather_tick(.001f);
+#ifdef _WIN32
+        Sleep(1);
+#else
+        struct timespec pause = {0, 1000000};
+        nanosleep(&pause, NULL);
+#endif
+    }
+    assert(weather_icon_code() == 61);
+    assert(!remove(fixture));
+#ifdef _WIN32
+    assert(!_putenv_s("POCKET_TANK_WEATHER_CURRENT_FIXTURE", ""));
+#else
+    assert(!unsetenv("POCKET_TANK_WEATHER_CURRENT_FIXTURE"));
+#endif
+}
 
 void test_clock_weather(void) {
     tank_t tank;
@@ -208,6 +263,34 @@ void test_clock_weather(void) {
     file = fopen(path, "wb"); assert(file);
     assert(fwrite(&config, 1, sizeof config, file) == sizeof config && !fclose(file));
     weather_init(); tank.companion.captions = 1;
+    weather_config_t long_config = config;
+    strcpy(config.city.name, "Paris");
+    strcpy(config.city.region, "Ile-de-France");
+    strcpy(config.city.country, "France");
+    file = fopen(path, "wb"); assert(file);
+    assert(fwrite(&config, 1, sizeof config, file) == sizeof config && !fclose(file));
+    weather_init(); load_weather_reading(path);
+    render_work_caches(false);
+    tank_resolution(true);
+    tank.aquariums.clock_theme = CLOCK_DIGITAL;
+    tank.aquariums.clock_layout = CLOCK_JUMBO;
+    tank.aquariums.clock_flags = 0;
+    tank.aquariums.clock_delay = 2 << CLOCK_CAPTION_SHIFT;
+    size_t shot_bytes = (size_t)TANK_W * TANK_H * sizeof(uint16_t);
+    uint16_t *shot = calloc(1, shot_bytes); assert(shot);
+    render_clock_overlay(&tank, shot, TANK_W, INT64_C(1735745662));
+    capture("clock-weather-large", shot, TANK_W);
+    weather_open(); weather_render(shot, TANK_W, 3);
+    capture("weather-conditions-large", shot, TANK_W);
+    memset(shot, 0, shot_bytes);
+    const int sample_codes[] = {0, 1, 3, 45, 61, 71, 95};
+    for (int i = 0; i < 7; i++) render_weather_icon(shot, TANK_W, 8 + i * 62, 140, 56, sample_codes[i]);
+    capture("weather-icons", shot, TANK_W);
+    free(shot);
+    config = long_config;
+    file = fopen(path, "wb"); assert(file);
+    assert(fwrite(&config, 1, sizeof config, file) == sizeof config && !fclose(file));
+    weather_init(); load_weather_reading(path);
     int enlarged_details = 0, enlarged_captions = 0;
     for (int compact = 0; compact < 2; compact++) {
         tank_resolution(compact != 0);
@@ -215,6 +298,20 @@ void test_clock_weather(void) {
         size_t n = (size_t)stride * TANK_H;
         uint16_t *pixels = calloc(n, sizeof *pixels), *reference = calloc(n, sizeof *reference);
         assert(pixels && reference);
+        const int codes[] = {0, 1, 3, 45, 51, 71, 95};
+        for (unsigned icon = 0; icon < sizeof codes / sizeof *codes; icon++) {
+            memset(pixels, 0, n * sizeof *pixels);
+            render_weather_icon(pixels, stride, 32, 64, 32, codes[icon]);
+            int painted = 0;
+            for (int y = 0; y < TANK_H; y++) for (int x = 0; x < stride; x++) if (pixels[y * stride + x]) {
+                assert(x >= render_frame_x(32) - 1 && x <= render_frame_x(64) &&
+                       y >= render_frame_y(64) - 1 && y <= render_frame_y(96));
+                painted++;
+            }
+            assert(painted > 10);
+            if (icon) assert(memcmp(pixels, reference, n * sizeof *pixels));
+            memcpy(reference, pixels, n * sizeof *pixels);
+        }
         for (int theme = CLOCK_COMPACT; theme < CLOCK_THEME_COUNT; theme++)
             for (int size = 0; size < CLOCK_SIZE_COUNT; size++)
                 for (int position = 0; position < CLOCK_POSITION_COUNT; position++)

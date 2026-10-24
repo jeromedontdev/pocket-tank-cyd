@@ -245,10 +245,11 @@ void weather_clock_lines(char *city, size_t city_cap, char *detail, size_t detai
     }
 }
 
-#define BG 0x101c29
+static bool forget_confirm;
+#define BG 0x0c1720
 #define INK 0xe3edf2
 #define MUTED 0xa8bcc9
-#define BUTTON 0x244057
+#define BUTTON 0x1c2f36
 static void text(uint16_t *fb, int st, int x, int y, const char *s) {
     render_text(fb, st, x, y, 2, INK, s);
 }
@@ -266,34 +267,44 @@ static void button(uint16_t *fb, int st, int x, int y, int w, int h, const char 
     render_rect(fb, st, x, y, w, h, BUTTON);
     text(fb, st, x + (w - render_text_w(s, 2)) / 2, y + (h - 14) / 2, s);
 }
-void weather_open(void) { page = 0; message[0] = 0; }
-void weather_render(uint16_t *fb, int st) {
+void weather_open(void) { page = 0; forget_confirm = false; message[0] = 0; }
+int weather_icon_code(void) { return cfg.enabled && cfg.located && have ? reading.code : -1; }
+void weather_size_status(bool saved) {
+    snprintf(message, sizeof message, "%s", saved ? "Weather/event text size saved" : "Text size save failed - retry");
+}
+bool weather_size_hit(float x, float y) {
+    x = render_page_x(x); y = render_page_y(y);
+    return page == 0 && x >= 232 && x < 416 && y >= 268 && y < 308;
+}
+void weather_render(uint16_t *fb, int st, int text_size) {
     render_rect(fb, st, 0, 0, PAGE_W, PAGE_H, BG);
-    text(fb, st, 12, 10, page == 1 ? "City search" : page == 2 ? "Choose a city" : "Desk weather");
-    button(fb, st, 350, 4, 88, 32, "BACK");
+    text(fb, st, 24, 18, page == 1 ? "CITY SEARCH" : page == 2 ? "CHOOSE CITY" : "WEATHER");
+    button(fb, st, 326, 8, 112, 40, "BACK");
     if (page == 0) {
         char line[100];
-        button(fb, st, 12, 48, 204, 40, cfg.enabled ? "Weather: ON" : "Weather: OFF");
-        button(fb, st, 230, 48, 206, 40, cfg.fahrenheit ? "Units: F" : "Units: C");
-        bounded_text(fb, st, 12, 100, 424, 2, INK, cfg.located ? cfg.city.name : "City: not set");
+        button(fb, st, 32, 64, 184, 40, cfg.enabled ? "WEATHER: ON" : "WEATHER: OFF");
+        button(fb, st, 232, 64, 184, 40, cfg.fahrenheit ? "UNITS: F" : "UNITS: C");
+        bounded_text(fb, st, 32, 124, 384, 2, INK, cfg.located ? cfg.city.name : "NO CITY SELECTED");
         if (cfg.located) {
-            bounded_text(fb, st, 12, 120, 424, 2, MUTED, cfg.city.region);
-            bounded_text(fb, st, 12, 140, 424, 2, MUTED, cfg.city.country);
+            snprintf(line, sizeof line, "%.45s / %.45s", cfg.city.region, cfg.city.country);
+            bounded_text(fb, st, 32, 148, 384, 1, MUTED, line);
         }
-        button(fb, st, 12, 180, 274, 40, "Search / change city");
-        button(fb, st, 300, 180, 136, 40, "Forget");
+        button(fb, st, 32, 212, 384, 44, cfg.located ? "CHANGE CITY" : "CHOOSE CITY");
+        if (cfg.located) button(fb, st, 32, 268, 184, 40, forget_confirm ? "CONFIRM" : "FORGET CITY");
+        static const char *const sizes[] = {"TEXT: SMALL", "TEXT: MEDIUM", "TEXT: LARGE"};
+        button(fb, st, 232, 268, 184, 40, sizes[text_size >= 1 && text_size <= 3 ? text_size - 1 : 0]);
         char city[40];
         weather_clock_lines(city, sizeof city, line, sizeof line);
         if (!cfg.enabled) snprintf(line, sizeof line, "Weather disabled (no requests)");
-        bounded_text(fb, st, 12, 230, 424, 2, INK, line);
-        render_text(fb, st, 12, 252, 1, MUTED, "Refresh 15m / stale after 30m");
-        render_text(fb, st, 12, 276, 1, MUTED, "Sends city query or coordinates");
-        render_text(fb, st, 12, 300, 1, MUTED, "Optional. No automatic location.");
-        render_text(fb, st, 12, 324, 1, MUTED, "Open-Meteo.com / GeoNames");
+        if (weather_icon_code() >= 0) render_weather_icon(fb, st, 32, 172, 28, reading.code);
+        bounded_text(fb, st, weather_icon_code() >= 0 ? 72 : 32, 180, weather_icon_code() >= 0 ? 344 : 384,
+                     text_size >= 1 && text_size <= 3 ? text_size : 1, INK, line);
+        render_text(fb, st, 32, 320, 1, MUTED, "OPTIONAL CITY LOOKUP - NO AUTO LOCATION");
+        render_text(fb, st, 32, 334, 1, MUTED, "OPEN-METEO / GEONAMES - REFRESH EVERY 15M");
     } else if (page == 1) {
-        render_rect(fb, st, 12, 46, 424, 36, BUTTON);
-        bounded_text(fb, st, 20, 57, 408, 2, INK, query[0] ? query : "Type a city name");
-        text(fb, st, 12, 94, searching ? net_port_connected() ? "Searching..." : "Connecting to Wi-Fi..." :
+        render_rect(fb, st, 12, 56, 424, 32, BUTTON);
+        bounded_text(fb, st, 20, 65, 408, 2, INK, query[0] ? query : "Type a city name");
+        bounded_text(fb, st, 12, 100, 424, 2, INK, searching ? net_port_connected() ? "Searching..." : "Connecting to Wi-Fi..." :
             busy ? "Working..." : message[0] ? message : "City letters, space, - or '");
         static const char *rows[] = {"QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
         for (int row = 0; row < 3; ++row) {
@@ -307,11 +318,10 @@ void weather_render(uint16_t *fb, int st) {
         button(fb, st, 80, 272, 64, 40, "'");
         button(fb, st, 150, 272, 134, 40, "Space");
         button(fb, st, 290, 272, 148, 40, "Delete");
-        button(fb, st, 12, 320, 180, 40, "Clear");
-        button(fb, st, 206, 320, 230, 40, "Search");
+        button(fb, st, 12, 320, 424, 40, "SEARCH");
     } else {
         for (int i = 0; i < city_count; ++i) {
-            int y = 44 + i * 56;
+            int y = 56 + i * 56;
             char line[80];
             render_rect(fb, st, 10, y, 428, 52, BUTTON);
             bounded_text(fb, st, 18, y + 5, 412, 2, INK, cities[i].name);
@@ -319,34 +329,39 @@ void weather_render(uint16_t *fb, int st) {
             bounded_text(fb, st, 18, y + 29, 412, 1, MUTED, line);
         }
     }
-    if (message[0] && page != 1) render_text(fb, st, 12, 354, 1, INK, message);
+    if (message[0] && page != 1) bounded_text(fb, st, 24, 354, 400, 1, INK, message);
 }
 bool weather_tap(float fx, float fy) {
     if (!isfinite(fx) || !isfinite(fy) || fx < 0 || fy < 0 || fx >= TANK_W || fy >= TANK_H) return false;
     int x = (int)render_page_x(fx), y = (int)render_page_y(fy);
-    if (x >= 350 && y < 38) {
+    if (x >= 326 && x < 438 && y >= 8 && y < 48) {
         if (page) {
-            page = 0;
+            page = page == 2 ? 1 : 0;
+            message[0] = 0; forget_confirm = false;
             if (searching) { searching = false; ++generation; }
         } else return true;
         return false;
     }
     if (page == 0) {
-        if (y >= 48 && y < 88) {
-            if (x >= 12 && x < 216) cfg.enabled = !cfg.enabled;
-            else if (x >= 230 && x < 436) cfg.fahrenheit = !cfg.fahrenheit;
+        if (y >= 64 && y < 104) {
+            if (x >= 32 && x < 216) cfg.enabled = !cfg.enabled;
+            else if (x >= 232 && x < 416) cfg.fahrenheit = !cfg.fahrenheit;
             else return false;
+            forget_confirm = false;
             changed();
-        } else if (y >= 180 && y < 220) {
-            if (x >= 12 && x < 286) { page = 1; query[0] = message[0] = 0; }
-            else if (x >= 300 && x < 436) {
+        } else if (y >= 212 && y < 256 && x >= 32 && x < 416) {
+            page = 1; forget_confirm = false; query[0] = message[0] = 0;
+        } else if (y >= 268 && y < 308 && x >= 32 && x < 216 && cfg.located) {
+            if (!forget_confirm) {
+                forget_confirm = true; snprintf(message, sizeof message, "Tap CONFIRM to forget the saved city");
+            } else {
                 memset(&cfg.city, 0, sizeof cfg.city); cfg.located = 0;
-                have = failed = false; changed();
+                have = failed = forget_confirm = false; changed();
             }
         }
     } else if (page == 2) {
-        int i = (y - 44) / 56;
-        if (x >= 10 && x < 438 && y >= 44 && i < city_count && (y - 44) % 56 < 52) {
+        int i = (y - 56) / 56;
+        if (x >= 10 && x < 438 && y >= 56 && i < city_count && (y - 56) % 56 < 52) {
             cfg.city = cities[i]; cfg.located = 1; have = failed = false;
             changed(); page = 0;
         }
@@ -364,10 +379,9 @@ bool weather_tap(float fx, float fy) {
             else if (x >= 150 && x < 284) c = ' ';
             else if (x >= 290 && x < 438 && n) query[n - 1] = 0;
         } else if (y >= 320 && y < 360) {
-            if (x >= 12 && x < 192) query[0] = 0;
-            else if (x >= 206 && x < 436) {
+            if (x >= 12 && x < 436) {
                 if (n >= 2) { searching = true; search_wait = 0; city_count = 0; message[0] = 0; }
-                else { snprintf(message, sizeof message, "Enter at least two letters"); page = 0; }
+                else snprintf(message, sizeof message, "Enter at least two letters");
             }
         }
         if (c && n < sizeof query - 1) { query[n] = c; query[n + 1] = 0; message[0] = 0; }

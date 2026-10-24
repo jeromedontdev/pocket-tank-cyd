@@ -19,9 +19,7 @@ $("touch-hints").addEventListener("click", () => {
 function foodMode(enabled) {
   placingFood = enabled;
   $("feed").setAttribute("aria-pressed", String(enabled));
-  $("feed").setAttribute("aria-expanded", String(enabled));
-  $("feed-options").hidden = !enabled;
-  $("game-message").textContent = enabled ? "Tap the tank where food should fall, or choose Left / Middle / Right. Place food again cancels." : "";
+  $("game-message").textContent = enabled ? "Tap the tank where food should fall. Place food again cancels." : "";
 }
 function dropFood(x) {
   if (game._sim_feed_at(x)) {
@@ -30,11 +28,6 @@ function dropFood(x) {
   } else $("game-message").textContent = "No food placed: the tank may already have its maximum pellets. Wait for fish to eat, or finish any open tool/setup.";
   save();
 }
-document.querySelectorAll("[data-feed]").forEach(button => {
-  button.addEventListener("click", () => {
-    if (initialized && !paused && placingFood) dropFood(Number(button.dataset.feed) * game._sim_width());
-  });
-});
 $("feed").addEventListener("click", () => {
   if (!initialized || paused || !game._sim_mode_chosen()) return;
   if (!placingFood) game._sim_action(0);
@@ -158,7 +151,6 @@ function refreshControls() {
   document.querySelectorAll("[data-action]").forEach(button => { button.disabled = setup || paused; });
   $("save").disabled = paused;
   $("feed").disabled = setup || paused;
-  document.querySelectorAll("[data-feed]").forEach(button => { button.disabled = setup || paused; });
 }
 function point(event) {
   const rect = canvas.getBoundingClientRect();

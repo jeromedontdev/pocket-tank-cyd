@@ -15,6 +15,11 @@
 
 int tank_width = 320, tank_height = 240;
 static int draw_calls;
+void render_weather_icon(uint16_t *fb, int st, int x, int y, int size, int code) {
+    (void)fb; (void)st;
+    assert(x >= 0 && y >= 0 && x + size <= PAGE_W && y + size <= PAGE_H && weather_condition(code));
+    ++draw_calls;
+}
 static bool saw_search_failed, saw_ellipsis;
 void render_text(uint16_t *f, int s, int x, int y, int z, uint32_t c, const char *t) {
     (void)f; (void)s; (void)c; assert(t); ++draw_calls;
@@ -83,7 +88,9 @@ static weather_result_t await(void) {
     return r;
 }
 static void tap(int x, int y) {
-    assert(!weather_tap(render_frame_x((float)x), render_frame_y((float)y)));
+    bool closed = weather_tap(render_frame_x((float)x), render_frame_y((float)y));
+    if (closed) fprintf(stderr, "Unexpected weather exit at %d,%d\n", x, y);
+    assert(!closed);
 }
 static const char *current =
     "{\"current\":{\"temperature_2m\":25,\"weather_code\":0,\"time\":1792760400},"
@@ -161,7 +168,7 @@ int main(int argc, char **argv) {
     weather_caption(caption, sizeof caption); assert(!caption[0]);
     weather_tick(NAN); weather_tick(-1); weather_caption(NULL, 0);
     assert(!weather_tap(NAN, 1) && !weather_tap(-1, 1));
-    weather_open(); weather_render(NULL, TANK_W); assert(draw_calls > 10);
+    weather_open(); weather_render(NULL, TANK_W, 1); assert(draw_calls > 10);
     assert(weather_tap(render_frame_x(390), render_frame_y(20)));
     tap(100, 68); pump();
     assert(!weather_network_needed() && !net_sim_radio_on());
@@ -173,20 +180,21 @@ int main(int argc, char **argv) {
     net_sim_advance(2);
     assert(net_port_connected());
     net_port_off(); /* weather searches must acquire their own temporary lease */
-    tap(140, 200); weather_render(NULL, TANK_W);
+    tap(140, 234); weather_render(NULL, TANK_W, 1);
+    tap(320, 340); weather_render(NULL, TANK_W, 1); /* Short searches stay on the keyboard. */
     /* A failed search stays on the keyboard and says so (not the idle hint). */
     remove(getenv("POCKET_TANK_WEATHER_SEARCH_FIXTURE"));
     tap(418, 150); tap(52, 196); tap(320, 340); pump();
-    saw_search_failed = false; weather_render(NULL, TANK_W); assert(saw_search_failed);
+    saw_search_failed = false; weather_render(NULL, TANK_W, 1); assert(saw_search_failed);
     assert(!weather_network_needed() && !net_sim_radio_on());
     write_fixture("POCKET_TANK_WEATHER_SEARCH_FIXTURE", search);
-    tap(100, 340); /* Clear */
+    tap(360, 290); tap(360, 290); /* Delete the previous two letters. */
     tap(418, 150); /* P */
     tap(52, 196);  /* A */
     tap(160, 150); /* R */
     tap(332, 150); /* I */
     tap(95, 196);  /* S */
-    tap(320, 340); pump(); weather_render(NULL, TANK_W);
+    tap(320, 340); pump(); weather_render(NULL, TANK_W, 1);
     tap(150, 65); pump();
     weather_caption(caption, sizeof caption);
     assert(strstr(caption, "Paris") && strstr(caption, "77F") && strlen(caption) <= 38);
@@ -254,18 +262,19 @@ int main(int argc, char **argv) {
     assert(weather_port_load(&saved) && !saved.enabled && saved.fahrenheit);
     assert(!net_sim_radio_on());
     /* Search also works while disabled, then relinquishes its lease. */
-    tap(140, 200); tap(418, 150); tap(52, 196); tap(320, 340);
+    tap(140, 234); tap(418, 150); tap(52, 196); tap(320, 340);
     assert(weather_network_needed()); pump();
     assert(!weather_network_needed() && !net_sim_radio_on());
     tap(390, 20);
+    tap(390, 20); /* Results -> query -> weather, one level at a time. */
     /* Cancelling a pending search must stop background reconnect too. */
-    tap(140, 200); tap(418, 150); tap(52, 196); tap(320, 340);
+    tap(140, 234); tap(418, 150); tap(52, 196); tap(320, 340);
     weather_tick(0); assert(weather_network_needed());
     tap(390, 20); weather_tick(0);
     assert(!weather_network_needed() && !net_sim_radio_on());
     /* A search that cannot connect times out and releases the radio lease. */
     assert(net_port_creds_forget());
-    tap(140, 200); tap(418, 150); tap(52, 196); tap(320, 340);
+    tap(140, 234); tap(418, 150); tap(52, 196); tap(320, 340);
     weather_tick(31);
     assert(!weather_network_needed() && !net_sim_radio_on());
     assert(net_port_creds_set("Fishbowl", "password"));
@@ -275,7 +284,9 @@ int main(int argc, char **argv) {
     assert(weather_port_start(&request)); assert(!weather_port_start(&request));
     weather_result_t result = await();
     assert(result.ok && result.count == 2 && result.generation == 123);
-    tap(360, 200); pump();
+    tap(100, 288); pump();
+    assert(weather_port_load(&saved) && saved.located); /* Forget requires confirmation. */
+    tap(100, 288); pump();
     assert(weather_port_load(&saved) && !saved.located && !saved.city.name[0]);
     FILE *f = fopen(getenv("POCKET_TANK_WEATHER"), "wb"); assert(f);
     fputs("corrupt", f); fclose(f);
@@ -292,7 +303,7 @@ int main(int argc, char **argv) {
     strcpy(request.config.city.country, "A country with a long name");
     assert(weather_port_start(&request)); result = await(); assert(result.ok);
     weather_init(); saw_ellipsis = false;
-    weather_render(NULL, TANK_W); assert(saw_ellipsis);
+    weather_render(NULL, TANK_W, 3); assert(saw_ellipsis);
     weather_clock_lines(city, sizeof city, detail, sizeof detail);
     assert(!strcmp(city, request.config.city.name) && detail[0]);
     weather_clock_lines(NULL, 0, NULL, 0);
@@ -301,10 +312,10 @@ int main(int argc, char **argv) {
         "\"admin1\":\"A region with a very long display name\",\"country\":\"A country with a long name\","
         "\"latitude\":48,\"longitude\":2}]}";
     write_fixture("POCKET_TANK_WEATHER_SEARCH_FIXTURE", long_search);
-    tap(140, 200); tap(418, 150); tap(52, 196);
+    tap(140, 234); tap(418, 150); tap(52, 196);
     tap(320, 340); pump(); saw_ellipsis = false;
-    weather_render(NULL, TANK_W); assert(saw_ellipsis);
-    tap(390, 20); tap(100, 68); pump();
+    weather_render(NULL, TANK_W, 3); assert(saw_ellipsis);
+    tap(390, 20); tap(390, 20); tap(100, 68); pump();
     puts("Weather: parser, config, threaded mailbox, QWERTY, units, sleeping refresh/backoff and Wi-Fi ownership tests passed");
     return 0;
 }

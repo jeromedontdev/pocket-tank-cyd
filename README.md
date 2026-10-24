@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.1.2
+# Pocket Tank CYD 2.1.3
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.1.2**; firmware, update
+now versioned independently. This is **release 2.1.3**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,25 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.1.2: working browser fish-card tools
+## New in 2.1.3: cleaner settings and readable weather
+
+- One **Clock/Weather** hub: **Clock Face**, **Colors**, **Text / Effects**,
+  **Time / Zone**, **Weather**, and one **Show Clock** action. BACK always
+  returns one level; no nested Style/Text tabs or repeated preview buttons.
+- **Weather > Text: Small/Medium/Large** resizes the weather reading and clock
+  weather/event captions. The same saved control is **Weather Size** under
+  **Text / Effects**. Clock text adapts to avoid overlap.
+- Simple sun, partly cloudy, cloud, fog, rain, snow and thunderstorm icons
+  accompany cached conditions in Weather and the clock. Unknown readings have
+  no invented icon; stale/offline labels remain.
+- One Auto Feed toggle, full-width SD actions, simpler city search, and a
+  confirmation before forgetting a city. No save-format changes.
+- Browser feeding is just **Place food > tap a column**; the extra
+  Left/Middle/Right buttons have been removed.
+- This version's browser, installer and documentation consistently identify it
+  as **Pocket Tank CYD**; original upstream attribution is retained.
+
+## Previously in 2.1.2: working browser fish-card tools
 
 The fish-card padlock, sponge, scissors and DONE controls now work in the
 browser. The lock prevents bare-hand cleaning/trimming; selected tools still
@@ -33,8 +51,7 @@ Hardware touchscreen behavior and the save format are unchanged.
 ## Previously in 2.1.1: fullscreen browser play and food placement
 
 - Fullscreen/Exit fullscreen enlarges the game while keeping its controls.
-- **Place food** lets you tap a column anywhere in the tank, or choose
-  **Left / Middle / Right**. Pellets still enter at the water surface.
+- **Place food** lets you tap a column anywhere in the tank. Pellets still enter at the water surface.
   Plain surface taps also feed; the tank's existing pellet limit still applies.
 - Optional **Touch hints** show where taps/drags land. Letterbox margins do
   not activate the tank.
@@ -49,7 +66,7 @@ Hardware touchscreen behavior and the save format are unchanged.
   the actual game simulation, mouse/touch controls and a separate local browser
   save. No CYD, account or upload required. Browser storage is not a backup:
   clearing site data, private browsing or eviction can remove progress.
-- **Tiny** joins Large, Medium, Small and Jumbo. Under **Clock > Style > Text**,
+- **Tiny** joins Large, Medium, Small and Jumbo. Under **Clock/Weather > Text / Effects**,
   choose Small/Medium/Large separately for date/AM-PM/seconds and for
   weather/activity. Text wraps and fits down only when needed; all seven
   themes, five positions and both resolutions are covered by overlap tests.
@@ -126,7 +143,7 @@ This release adds:
   saved records, medals, and transactional rewards are included.
 - Consistent **BACK** navigation; separate Fish Life, Family, Genes, Visitor Log,
   tank recaps, and display rewards; clearer care and bond explanations.
-- Visible clock sparkles under **Clock/Weather > Effects**, useful wrapped
+- Visible clock sparkles under **Clock/Weather > Text / Effects**, useful wrapped
   event captions, steady Frame-selector typography, and a redesigned manta.
 - Working CYD room-light/LED touch controls, steadier ambient-light filtering,
   and a non-flashing Wi-Fi flow that returns to Settings.
@@ -231,9 +248,9 @@ This release adds:
   design and colors with weather/activity beneath it. Other sizes are unchanged.
   Choose **15 sec, 30 sec, 1, 2, 5 or 10 min** of inactivity, or **Manual Only**;
   **SHOW CLOCK** opens it immediately. The first touch only dismisses the clock.
-  **STYLE** offers separate primary and secondary colors: theme defaults or
-  white, amber, mint, cyan, rose, lavender and red, plus independent seconds,
-  panel/border and date toggles.
+  **Colors** offers primary and secondary colors: theme defaults or
+  white, amber, mint, cyan, rose, lavender and red, plus the background toggle.
+  **Text / Effects** holds seconds/date visibility and supporting text sizes.
   Visible panels are opaque. Normal skips hidden aquarium drawing and reduces
   ambient bubbles, grass sway updates and visible shrimp representatives
   (10 real shrimp display as 5); population and care/progression rules stay intact.
@@ -338,14 +355,14 @@ commands, JSON backup/restore and hardware limitations.
 
 ## Playable website
 
-[Play Pocket Tank in your browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html).
+[Play Pocket Tank CYD in your browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html).
 It runs the shared C simulation and renderer as WebAssembly, with mouse/touch
 input and Normal, Creative or Hard first-run profiles. Local browser storage
 keeps a complete archive of profiles, Bank, aquariums and preferences across
 reloads and browser restarts. Autosaves run every five seconds, after actions,
 when hidden and on exit; failures remain visible with retry/export controls.
 Only one tab can write the save at a time. Fullscreen keeps shortcuts visible;
-Place food offers tap-to-place or Left/Middle/Right choices. Touch hints show
+Place food offers tap-to-place feeding. Touch hints show
 tap/drag positions. A plain tank tap feeds only near the surface; food falls
 from the surface at the selected horizontal position, not at the tapped depth.
 
@@ -715,10 +732,10 @@ care assist. Existing saved size/detail choices are respected.
   this alongside **trust**, the separate 0–10 confidence built through food
   and calm care. Bond is permanent friendship, not another trust multiplier
   or a source of care XP. Bonds/tricks travel with banked and adventuring fish.
-- **Settings > Clock/Weather > Effects > Event Captions** shows useful adventures, ready postcards,
+- **Settings > Clock/Weather > Text / Effects > Event Captions** shows useful adventures, ready postcards,
   visitors, hunger or stress beside the idle clock. Routine exploration is silent.
   Weather and events wrap to fit; even Enlarged mode with a long city name is bounded.
-  **Settings > Clock/Weather > Effects > Sparkles** controls eight bright cyan/gold
+  **Settings > Clock/Weather > Text / Effects > Sparkles** controls eight bright cyan/gold
   drifting stars beside the clock, not fish mood. They remain visible without
   captions and never cover the clock face or its weather panel.
 - **Collections > Discoveries** automatically records bubble watching, exploration, seagrass naps,

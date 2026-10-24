@@ -2,7 +2,7 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.1.2**
+**An illustrated tour of Pocket Tank CYD 2.1.3**
 
 **[Play the actual game in your browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html)**,
 using mouse/touch controls and a separate local save. It needs no CYD or account,
@@ -12,7 +12,7 @@ browsing or browser storage eviction can remove progress.
 
 Browser controls in **2.1.1** add Fullscreen/Exit fullscreen, optional Touch
 hints, and Place food: tap anywhere to choose the feeding column, or choose
-Left/Middle/Right. Food drops from the surface; the pellet cap still applies.
+Left/Middle/Right (removed in 2.1.3 in favor of tap-to-place only). Food drops from the surface; the pellet cap still applies.
 The public simulator is compiled from the latest stable release tag, not the
 ESP32 binary or unreleased main. Its release tag and source commit appear above
 the game and must match the installer's release before deployment.
@@ -20,6 +20,17 @@ the game and must match the installer's release before deployment.
 **2.1.2** fixes browser fish-card controls: the padlock toggles and saves the
 tank-wide tool safety lock, sponge/scissors select their tools, and DONE returns
 to bare hands. Locked bare-hand drags cannot clean or trim; explicit tools can.
+
+**2.1.3** simplifies Settings with one Clock/Weather hub: Clock Face, Colors,
+Text / Effects, Time / Zone, Weather and one Show Clock action. BACK goes one
+level up. Weather has a visible **Text: Small/Medium/Large** control, also called
+**Weather Size** in Text / Effects; it sizes the weather reading and saved clock
+weather/event captions. Condition icons show sun, partly cloudy, cloud, fog,
+rain, snow or storms when a cached reading exists. Stale/error text remains.
+Auto Feed is one toggle, SD actions are full-width, and forgetting a city needs
+confirmation. No saved aquarium fields were added.
+
+![Simple cached-condition icons: sun, partly cloudy, cloud, fog, rain, snow and storm](media/cyd-features/weather-icons.png)
 Updated October 24, 2026
 
 This release also separates games from aquarium rendering, names companion
@@ -522,13 +533,13 @@ Weather belongs to **Settings > CLOCK/WEATHER > WEATHER**.
 Comfort Assist caps hunger/stress and keeps energy up;
 it does not fabricate feeding, cleaning or training achievements. Existing tanks
 retain their previous care setting.
-**Settings > Clock/Weather > Effects > Sparkles** adds eight brighter cyan/gold
+**Settings > Clock/Weather > Text / Effects > Sparkles** adds eight brighter cyan/gold
 drifting stars beside the clock, independently of captions. Stars do not cover the
 clock face or weather panel and have no effect on fish care.
-![Clock Effects keeps cosmetics and event captions together](media/cyd-features/clock-effects.png)
+![Text and Effects keeps weather sizing and clock options together](media/cyd-features/clock-effects.png)
 ![Bright cyan and gold sparkles beside an idle clock](media/cyd-features/clock-sparkles.png)
 
-**Settings > Clock/Weather > Effects > Event Captions** enables useful clock messages: adventures,
+**Settings > Clock/Weather > Text / Effects > Event Captions** enables useful clock messages: adventures,
 ready postcards, visitors, hunger or stress. Calm swimming produces no filler
 caption. Messages and weather wrap to fit rather than being cut off with ellipses.
 Wi-Fi/Sync uses a memory-safe restart, keeps the backlight dark until its first
@@ -1147,9 +1158,10 @@ for each tank, and follows its SD snapshots and JSON restores.
 Analog hands, Neon glow, Flip tiles, Binary dots and Orbit rings. Primary and
 secondary colors, seconds/date options and weather/activity captions remain.
 Large, Medium and Small retain their default appearance. **Tiny** uses a smaller
-face, with quarter-hour numerals on its Analog dial. **Clock > Style > Text**
+face, with quarter-hour numerals on its Analog dial. **Clock/Weather > Text / Effects**
 offers separate Small/Medium/Large controls for date/AM-PM/seconds and for
-weather/activity. Captions wrap, the face adapts, and text fits down when needed
+weather/activity. **Weather > Text** is a second entry to the same saved weather
+size, and also changes the weather settings reading. Captions wrap, the face adapts, and text fits down when needed
 to keep every enabled element on screen without overlap. Choices save per tank;
 both resolutions, every theme/position and long captions are regression tested.
 Without captions and with default supporting text, Jumbo Minimal time
@@ -1159,16 +1171,16 @@ round clock faces retain their proportions.
 | Jumbo Digital | Jumbo Flip | Jumbo Analog |
 |---|---|---|
 | ![Jumbo seven-segment clock](media/cyd-features/clock-jumbo-digital.png) | ![Jumbo split-flap clock](media/cyd-features/clock-jumbo-flip.png) | ![Jumbo analog clock](media/cyd-features/clock-jumbo-analog.png) |
-**ACTIVATE** offers **15 sec, 30 sec, 1, 2, 5 or 10 min**, or **Manual Only**.
+**Time / Zone > IDLE CLOCK** offers **15 sec, 30 sec, 1, 2, 5 or 10 min**, or **Manual Only**.
 **SHOW CLOCK** enters immediately; the first touch only dismisses it, without
 affecting fish or tools. Menus do not count as inactivity. Fish keep swimming
 behind the solid panel, without drawing the hidden scene in Normal mode.
 Set your standard-time UTC offset, then use
-**DST: +1 HOUR** during daylight saving; turn it OFF for standard time. This
+**DAYLIGHT SAVING: +1H** during daylight saving; turn it OFF for standard time. This
 manual toggle changes the time and date together and saves per tank. It does
 not select regional rules or switch automatically.
 
-**STYLE** offers separate **PRIMARY** and **SECONDARY** selectors, each with
+**Colors** offers separate **PRIMARY** and **SECONDARY** selectors, each with
 theme defaults plus **white, amber, mint, cyan, rose, lavender and red**.
 Primary colors the numerals/hour indicators; secondary colors the captions,
 date, border and minute/second indicators. Theme defaults keep the original
@@ -1177,7 +1189,8 @@ Independently hide **seconds**, the **background panel
 and border**, or the **date**. Seconds visibility also controls the analog
 second hand, Binary seconds columns and Orbit seconds ring. A missing time sync
 still shows **SYNC NEEDED**. Preferences save per tank, and **SHOW CLOCK** previews
-the result from either settings page.
+the result from the Clock/Weather hub. Text / Effects holds seconds/date
+visibility; Colors holds the background toggle.
 
 | Minimal | Digital |
 |---|---|

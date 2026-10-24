@@ -45,9 +45,12 @@ bool weather_network_needed(void); /* current/upcoming lease or backend still ac
 bool weather_network_needed_after(float dt);
 void weather_caption(char *out, size_t cap);
 void weather_clock_lines(char *city, size_t city_cap, char *detail, size_t detail_cap);
+int weather_icon_code(void); /* -1 without an enabled, located cached reading */
 void weather_open(void);
-void weather_render(uint16_t *fb, int stride);
+void weather_render(uint16_t *fb, int stride, int text_size);
 bool weather_tap(float x, float y); /* frame coordinates; true = close */
+bool weather_size_hit(float x, float y);
+void weather_size_status(bool saved);
 
 /* Shared, bounded validators, also used by native tests. */
 bool weather_config_valid(const weather_config_t *config);

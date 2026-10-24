@@ -16,6 +16,7 @@ FEATURE_IMAGES = (
     "tank-normal.png", "family-tree.png", "rpg-story.png",
     "game-tide-tactics.png", "game-reef-architect.png", "games-page-two.png",
     "clock-jumbo-digital.png", "clock-jumbo-flip.png", "clock-jumbo-analog.png",
+    "clock-settings.png", "weather-settings.png",
 )
 
 

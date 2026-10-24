@@ -196,49 +196,55 @@ def main():
                 assert simple != ctypes.string_at(pixels, lib.sim_width() * lib.sim_height() * 2)
                 print("PASS: Normal/Balanced defaults and three scene details through real simulator touch, changed rendering and unchanged aquarium save")
                 lib.sim_action(2)
-                tap(330, 100)  # Clock subpage.
-                tap(220, 69); tap(220, 109); tap(220, 149); tap(120, 189); tap(220, 229); tap(380, 270)
+                tap(330, 100); tap(100, 100)  # Clock hub -> Face.
+                tap(220, 84); tap(220, 132); tap(220, 180)
+                tap(380, 28); tap(330, 180)  # Time & Zone.
+                tap(220, 84); tap(220, 180); tap(380, 272)
                 options = json.loads(backup(lib))["tank"]
                 assert (options["clock_theme"], options["clock_flags"], options["clock_utc_quarters"], options["clock_layout"], options["clock_delay"]) == (1, 1, 4, 5, 1)
-                tap(220, 109); tap(220, 109)
+                tap(380, 28); tap(100, 100)
+                tap(220, 132); tap(220, 132)
                 assert json.loads(backup(lib))["tank"]["clock_layout"] == 7, "Jumbo size preserves corner placement"
-                tap(220, 109)
+                tap(220, 132)
                 assert json.loads(backup(lib))["tank"]["clock_layout"] == 36, "Tiny size preserves corner placement"
-                tap(220, 109); tap(220, 109)
+                tap(220, 132); tap(220, 132)
                 assert json.loads(backup(lib))["tank"]["clock_layout"] == 5, "Five sizes wrap without changing saved position"
-                tap(330, 189)
+                tap(380, 28); tap(330, 180)
+                tap(220, 132)
                 assert json.loads(backup(lib))["tank"]["clock_flags"] == 3, "DST must preserve 12-hour format"
-                tap(330, 189)
-                tap(220, 282); tap(380, 270)
+                tap(220, 132)
+                tap(220, 272); tap(380, 272)
                 assert json.loads(backup(lib))["tank"]["clock_utc_quarters"] == 6
-                tap(220, 282); tap(380, 270)
+                tap(220, 272); tap(380, 272)
                 assert json.loads(backup(lib))["tank"]["clock_utc_quarters"] == 7
-                tap(220, 282)
-                tap(220, 20)  # Appearance subpage.
-                tap(220, 80); tap(220, 119); tap(220, 163); tap(220, 207); tap(220, 251)
+                tap(220, 272)
+                tap(380, 28); tap(330, 100)  # Colors.
+                tap(220, 84); tap(220, 132); tap(220, 180)
+                tap(380, 28); tap(100, 180)  # Text & Effects.
+                tap(220, 180); tap(220, 228)
                 assert json.loads(backup(lib))["tank"]["clock_flags"] == 61
                 assert json.loads(backup(lib))["tank"]["clock_secondary"] == 1
-                tap(224, 300)
+                tap(380, 28); tap(330, 260)
                 assert lib.sim_clock_active(), "Appearance preview must enter clock mode"
                 tap(160, 90)
-                lib.sim_action(2); tap(330, 100); tap(220, 20)
+                lib.sim_action(2); tap(330, 100); tap(330, 100)
                 for _ in range(7):
-                    tap(220, 80)
-                    tap(220, 119)
-                tap(220, 163); tap(220, 207); tap(220, 251)
+                    tap(220, 84)
+                    tap(220, 132)
+                tap(220, 180)
+                tap(380, 28); tap(100, 180)
+                tap(220, 180); tap(220, 228)
                 assert json.loads(backup(lib))["tank"]["clock_flags"] == 1, "Color wrapping/detail toggles must preserve format and DST"
                 assert json.loads(backup(lib))["tank"]["clock_secondary"] == 0
-                tap(276, 24)  # Text subpage.
                 for step in range(3):
-                    tap(220, 88); tap(220, 186)
+                    tap(220, 84); tap(220, 132)
                     text = json.loads(backup(lib))["tank"]
                     assert text["clock_layout"] == 5 + ((step + 1) % 3) * 64
                     assert text["clock_delay"] == 1 + ((step + 1) % 3) * 8
                     assert text["clock_secondary"] == 0
-                tap(380, 20)  # Back to Style.
-                tap(380, 20)
+                tap(380, 28)  # One BACK always returns to Clock & Weather.
                 options = json.loads(backup(lib))["tank"]
-                tap(120, 318)
+                tap(330, 260)
                 assert lib.sim_page() == 0 and lib.sim_clock_active(), "SHOW CLOCK must enter clock mode"
                 tap(160, 90)
                 assert not lib.sim_clock_active() and json.loads(backup(lib))["tank"] == options, "Wake tap must not feed, select, or change settings"
@@ -248,22 +254,22 @@ def main():
                 lib.sim_frame(0.25)
                 assert lib.sim_clock_active(), "15-second clock must activate at the configured delay"
                 tap(160, 90)
-                lib.sim_action(2); tap(330, 100)
+                lib.sim_action(2); tap(330, 100); tap(330, 180)
                 for _ in range(5):
-                    tap(220, 229)
+                    tap(220, 180)
                 assert json.loads(backup(lib))["tank"]["clock_delay"] == 6
-                tap(120, 318)
+                tap(380, 28); tap(330, 260)
                 assert lib.sim_clock_active(), "Manual-only clock must support SHOW CLOCK"
                 tap(160, 90)
                 advance()
                 assert not lib.sim_clock_active()
-                lib.sim_action(2); tap(330, 100)
+                lib.sim_action(2); tap(330, 100); tap(100, 100)
                 for _ in range(7):
-                    tap(220, 69)
+                    tap(220, 84)
                 assert json.loads(backup(lib))["tank"]["clock_theme"] == 0
-                tap(120, 318)
+                tap(380, 28); tap(330, 260)
                 assert lib.sim_page() == 2 and not lib.sim_clock_active(), "OFF must disable manual entry too"
-                tap(220, 69)
+                tap(100, 100); tap(220, 84)
                 options = json.loads(backup(lib))["tank"]
                 lib.sim_action(2); tap(100, 180)  # Enter Wi-Fi through the actual Settings route.
                 advance()

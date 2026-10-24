@@ -89,7 +89,17 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.1.2: browser fish-card tool controls
+### New in 2.1.3: clean settings, readable weather and CYD naming
+
+- One Clock/Weather hub with Face, Colors, Text / Effects, Time / Zone, Weather and one Show Clock preview. BACK returns one level; nested Style/Text tabs and repeated preview buttons are removed.
+- Visible Small/Medium/Large weather text sizing in Weather and Text / Effects; the saved size also controls clock weather/event captions. Adaptive layout keeps the face, supporting text and icons separate.
+- Simple sun, partly cloudy, cloud, fog, rain, snow and storm icons from actual cached weather codes. Unknown readings do not invent conditions; stale/offline text remains.
+- One Auto Feed toggle, full-width SD actions, simpler city search and confirmed city removal.
+- Browser feeding keeps Place food > tap a column and removes the extra Left/Middle/Right buttons.
+- Browser title/headings and this version's documentation consistently say Pocket Tank CYD. Original Pocket Tank attribution and compatibility identifiers remain.
+- Existing aquarium/save bytes are reused; no schema change. Shared renderer/navigation tested at both resolutions, including actual browser input and cache/tile equality.
+
+### Previously in 2.1.2: browser fish-card tool controls
 
 - Wire the displayed padlock, sponge, scissors and DONE controls into browser/simulator input. The padlock toggles and saves the tank-wide tool safety lock without closing the fish card.
 - Explicit tools own tank interaction until DONE; tool/lock control presses do not accidentally start cleaning/trimming strokes.

@@ -6397,7 +6397,6 @@ void render_backup_status(const char *message, bool arm_restore) {
     snprintf(s_backup_message, sizeof s_backup_message, "%s", message);
     s_restore_until = arm_restore ? s_backup_clock + 10 : 0;
 }
-static const char *const SET_FEED[2]   = { "ON", "OFF" };          /* the default first */
 static const char *const SAND_NAMES[SAND_STYLE_COUNT] = { "ORIGINAL", "GOLD", "PEARL", "VOLCANIC", "RAINBOW", "HOT PINK", "ELECTRIC CYAN", "NEON LIME" };
 static const char *const WATER_NAMES[WATER_STYLE_COUNT] = { "ORIGINAL", "BLUE", "TEAL", "VIOLET", "AMBER", "RAINBOW", "HOT PINK", "NEON LIME" };
 
@@ -6429,11 +6428,43 @@ bool render_clock_active(const tank_t *t) {
     return t->clock_requested || (delay >= 0 && t->clock_idle_s >= delay);
 }
 #define CLOCK_CAPTION_ROWS 9
+static void weather_icon(ctx_t *c, int x, int y, int size, int code) {
+    if (code < 0 || !weather_condition(code)) return;
+    bool sun = code <= 2, cloud = code > 0, fog = code == 45 || code == 48;
+    bool snow = (code >= 71 && code <= 77) || code == 85 || code == 86;
+    bool storm = code >= 95;
+    bool rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82);
+    for (int yy = 0; yy < 16; yy++) for (int xx = 0; xx < 16; xx++) {
+        uint32_t color = 0;
+        int dx = xx - (cloud ? 5 : 8), dy = yy - (cloud ? 5 : 7);
+        if (sun && (dx * dx + dy * dy <= 10 ||
+            ((abs(dx) <= 1 || abs(dy) <= 1 || abs(dx) == abs(dy)) && dx * dx + dy * dy <= 38)))
+            color = 0xffd46b;
+        if (cloud && !fog && ((xx >= 2 && xx <= 13 && yy >= 7 && yy <= 10) ||
+            (xx - 6) * (xx - 6) + (yy - 7) * (yy - 7) <= 13 ||
+            (xx - 11) * (xx - 11) + (yy - 8) * (yy - 8) <= 8)) color = 0xe1f1eb;
+        if (fog && yy >= 4 && yy <= 12 && yy % 3 == 1 && xx >= (yy % 2 ? 2 : 4) && xx <= 13) color = 0xb2c8ca;
+        if (rain && yy >= 12 && yy <= 15 && (xx + yy) % 5 == 0) color = 0x78caff;
+        if (snow && yy >= 12 && ((yy % 2 == 0 && (xx == 4 || xx == 11)) ||
+            (yy == 13 && ((xx >= 3 && xx <= 5) || (xx >= 10 && xx <= 12))))) color = 0xd4eeff;
+        if (storm && yy >= 10 && ((yy <= 12 && xx >= 8 && xx <= 10) ||
+            (yy >= 12 && xx == 7 + (15 - yy) / 2))) color = 0xffd46b;
+        if (color) {
+            int left = x + xx * size / 16, top = y + yy * size / 16;
+            rect_fill(c, left, top, (xx + 1) * size / 16 - xx * size / 16,
+                      (yy + 1) * size / 16 - yy * size / 16, color);
+        }
+    }
+}
+void render_weather_icon(uint16_t *fb, int stride, int x, int y, int size, int code) {
+    ctx_t c = ctx_page(fb, stride);
+    weather_icon(&c, x, y, size, code);
+}
 static int clock_caption_lines(const tank_t *t, char lines[CLOCK_CAPTION_ROWS][64], int width, int scale) {
     char source[3][64] = {{0}};
     weather_clock_lines(source[0], 64, source[1], 64);
     if (companion_captions(t)) companion_status(t, source[2], 64);
-    int count = 0;
+    int count = weather_icon_code() >= 0 ? 1 : 0;
     size_t capacity = (size_t)(width - 12 + scale) / (6 * scale);
     if (capacity < 1) capacity = 1;
     if (capacity > 63) capacity = 63;
@@ -6772,9 +6803,13 @@ static void clock_overlay_live(const tank_t *t, uint16_t *fb, int stride, int64_
         int count = clock_caption_lines(t, lines, layout.w, layout.caption_scale);
         rect_fill(&c, layout.x, layout.caption_y, layout.w, layout.caption_h, 0x04141a);
         rect_edge(&c, layout.x, layout.caption_y, layout.w, layout.caption_h, edge);
+        if (weather_icon_code() >= 0) {
+            int size = layout.caption_pitch - 2;
+            weather_icon(&c, layout.x + (layout.w - size) / 2, layout.caption_y + 2, size, weather_icon_code());
+        }
         for (int row = 0; row < count; row++) {
             clock_text_center(&c, layout.x, layout.caption_y + 4 + row * layout.caption_pitch, layout.w, layout.caption_scale,
-                              row == 0 ? ink : edge, lines[row]);
+                              row <= (weather_icon_code() >= 0 ? 1 : 0) ? ink : edge, lines[row]);
         }
     }
 }
@@ -6782,7 +6817,7 @@ typedef struct {
         aquarium_state_t settings;
         render_clock_layout_t layout;
         int64_t time;
-        int width, height, cosmetic, valid_time;
+        int width, height, cosmetic, valid_time, weather_code;
         unsigned epoch;
         char lines[CLOCK_CAPTION_ROWS][64];
 } clock_key_t;
@@ -6790,6 +6825,7 @@ static clock_key_t clock_key(const tank_t *t, int64_t unix_time) {
     clock_key_t key; memset(&key, 0, sizeof key);
     key.settings = t->aquariums; key.width = TANK_W; key.height = TANK_H;
     key.cosmetic = t->companion.cosmetic; key.epoch = g_work_epoch;
+    key.weather_code = weather_icon_code();
     key.valid_time = unix_time >= INT64_C(1609459200) && unix_time <= INT64_C(4102444800);
     key.time = t->aquariums.clock_flags & CLOCK_HIDE_SECONDS ? unix_time / 60 : unix_time;
     render_clock_layout(t, &key.layout); clock_caption_lines(t, key.lines, key.layout.w, key.layout.caption_scale);
@@ -6855,7 +6891,9 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
         }
     }
 }
-static bool g_clock_settings, g_clock_style, g_clock_weather, g_clock_effects, g_clock_text;
+static bool g_clock_settings, g_clock_weather;
+enum { CLOCK_MENU, CLOCK_FACE, CLOCK_COLORS, CLOCK_TEXT, CLOCK_TIME };
+static int g_clock_page;
 static int g_settings_section;
 static render_device_t g_device = {0, 1, 1, -1, SCENE_BALANCED};
 void render_set_device(const render_device_t *d) { g_device = *d; }
@@ -6878,7 +6916,7 @@ void render_tank_emblem(uint16_t *fb, int stride, int x, int y, unsigned emblem)
 }
 static char g_mode_message[96];
 void render_settings_open(void) {
-    g_settings_section = 0; g_clock_settings = g_clock_style = g_clock_weather = g_clock_effects = g_clock_text = false;
+    g_settings_section = 0; g_clock_settings = g_clock_weather = false; g_clock_page = CLOCK_MENU;
     g_mode_message[0] = 0;
 }
 void render_settings_open_care(void) {
@@ -6894,99 +6932,71 @@ static const char *const MODE_NAMES[] = {"NORMAL", "CREATIVE", "HARD"};
 static int g_clock_step;
 static const int CLOCK_STEPS[] = {4, 2, 1};
 static const char *const CLOCK_STEP_NAMES[] = {"1H", "30M", "15M"};
-enum { CLOCK_HIT_PAGE = 100, CLOCK_HIT_THEME, CLOCK_HIT_FORMAT, CLOCK_HIT_POSITION, CLOCK_HIT_PREVIOUS, CLOCK_HIT_NEXT, CLOCK_HIT_SIZE, CLOCK_HIT_DELAY, CLOCK_HIT_DST, CLOCK_HIT_STEP, CLOCK_HIT_STYLE, CLOCK_HIT_COLOR, CLOCK_HIT_SECONDS, CLOCK_HIT_PANEL, CLOCK_HIT_DATE, CLOCK_HIT_SECONDARY, CLOCK_HIT_WEATHER, CLOCK_HIT_EFFECTS, CLOCK_HIT_TEXT, CLOCK_HIT_DETAIL_SIZE, CLOCK_HIT_CAPTION_SIZE };
+enum { CLOCK_HIT_PAGE = 100, CLOCK_HIT_THEME, CLOCK_HIT_FORMAT, CLOCK_HIT_POSITION, CLOCK_HIT_PREVIOUS, CLOCK_HIT_NEXT, CLOCK_HIT_SIZE, CLOCK_HIT_DELAY, CLOCK_HIT_DST, CLOCK_HIT_STEP, CLOCK_HIT_STYLE, CLOCK_HIT_COLOR, CLOCK_HIT_SECONDS, CLOCK_HIT_PANEL, CLOCK_HIT_DATE, CLOCK_HIT_SECONDARY, CLOCK_HIT_WEATHER, CLOCK_HIT_FACE, CLOCK_HIT_TEXT, CLOCK_HIT_DETAIL_SIZE, CLOCK_HIT_CAPTION_SIZE, CLOCK_HIT_TIME };
 static const char *const CLOCK_NAMES[CLOCK_THEME_COUNT] = {"OFF", "MINIMAL", "DIGITAL", "ANALOG", "NEON", "FLIP", "BINARY", "ORBIT"};
 static const char *const CLOCK_SIZES[] = {"LARGE", "MEDIUM", "SMALL", "JUMBO", "TINY"};
 static const char *const CLOCK_TEXT_SIZES[] = {"SMALL", "MEDIUM", "LARGE"};
 static const char *const CLOCK_POSITIONS[] = {"CENTER", "TOP LEFT", "TOP RIGHT", "BOTTOM LEFT", "BOTTOM RIGHT"};
 static const char *const CLOCK_DELAY_NAMES[] = {"1 MIN", "15 SEC", "30 SEC", "2 MIN", "5 MIN", "10 MIN", "MANUAL ONLY"};
 static void clock_settings_draw(ctx_t *c, const tank_t *t) {
-    if (g_clock_text) {
-        draw_text(c, 24, 18, 2, MSP_TEAL, "CLOCK TEXT");
-        button(c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
-        char label[40];
-        snprintf(label, sizeof label, "DETAIL SIZE: %s", CLOCK_TEXT_SIZES[t->aquariums.clock_layout >> CLOCK_DETAIL_SHIFT]);
-        button(c, 32, 68, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
-        draw_text_wrap(c, 32, 120, 384, MSP_TEAL, "Date, AM/PM and seconds.");
-        snprintf(label, sizeof label, "CAPTION SIZE: %s", CLOCK_TEXT_SIZES[(t->aquariums.clock_delay & CLOCK_CAPTION_MASK) >> CLOCK_CAPTION_SHIFT]);
-        button(c, 32, 166, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
-        draw_text_wrap(c, 32, 218, 384, MSP_TEAL, "Weather and activity. Text wraps and sizes fit down when needed to prevent overlaps.");
-        button(c, 32, 282, 384, 40, 0x1c2f36, MSP_TEAL, "SHOW CLOCK", 2);
-        draw_text_wrap(c, 32, 340, 384, MSP_TEAL, s_backup_message);
-        return;
-    }
-    if (g_clock_effects) {
-        draw_text(c, 24, 18, 2, MSP_TEAL, "CLOCK EFFECTS");
-        button(c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
-        button(c, 32, 76, 384, 40, 0x1c2f36, MSP_TEAL,
-               t->companion.lively ? "SPARKLES: ON" : "SPARKLES: OFF", 2);
-        draw_text_wrap(c, 32, 136, 384, MSP_TEAL, "Bright drifting stars beside the clock. Cosmetic only; no fish mood or care changes.");
-        button(c, 32, 222, 384, 40, 0x1c2f36, MSP_TEAL,
-               t->companion.captions ? "EVENT CAPTIONS: ON" : "EVENT CAPTIONS: OFF", 2);
-        button(c, 32, 282, 384, 40, 0x1c2f36, MSP_TEAL, "SHOW CLOCK", 2);
-        draw_text_wrap(c, 32, 340, 384, MSP_TEAL, s_backup_message);
-        return;
-    }
-    if (g_clock_style) {
-        draw_text(c, 32, 14, 3, 0xffffff, "CLOCK STYLE");
-        button(c, 238, 8, 80, 36, 0x1c2f36, MSP_TEAL, "TEXT", 2);
-        button(c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
-        char label[40];
+    static const char *const titles[] = {"CLOCK / WEATHER", "CLOCK FACE", "CLOCK COLORS", "TEXT / EFFECTS", "TIME / ZONE"};
+    draw_text(c, 24, 18, 2, 0xffffff, titles[g_clock_page]);
+    button(c, 326, 8, 112, 40, 0x1c2f36, MSP_TEAL, "BACK", 2);
+    char label[48];
+    if (g_clock_page == CLOCK_MENU) {
+        static const char *const names[] = {"CLOCK FACE", "COLORS", "TEXT / EFFECTS", "TIME / ZONE", "WEATHER", "SHOW CLOCK"};
+        for (int i = 0; i < 6; i++)
+            button(c, 24 + i % 2 * 212, 68 + i / 2 * 80, 188, 64,
+                   i == 5 ? 0x28535b : 0x1c2f36, MSP_TEAL, names[i], 2);
+        draw_text(c, 24, 324, 1, MSP_TEAL, g_clock_synchronized ?
+                  "TIME SYNCED - OPTIONS SAVE WHEN TAPPED" : "TIME SYNC: CONNECT WI-FI IN SETTINGS");
+    } else if (g_clock_page == CLOCK_FACE) {
+        snprintf(label, sizeof label, "THEME: %s", CLOCK_NAMES[t->aquariums.clock_theme < CLOCK_THEME_COUNT ? t->aquariums.clock_theme : 0]);
+        button(c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
+        int size = clock_layout_size(t->aquariums.clock_layout), position = clock_layout_position(t->aquariums.clock_layout);
+        snprintf(label, sizeof label, "TIME SIZE: %s", CLOCK_SIZES[size < CLOCK_SIZE_COUNT ? size : 0]);
+        button(c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
+        snprintf(label, sizeof label, "POSITION: %s", CLOCK_POSITIONS[position < CLOCK_POSITION_COUNT ? position : 0]);
+        button(c, 32, 160, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
+        draw_text_wrap(c, 32, 228, 384, MSP_TEAL, "Choose a face, then its time size and placement. OFF disables the clock.");
+        draw_text_wrap(c, 32, 290, 384, MSP_TEAL, "Use SHOW CLOCK on the previous screen to preview.");
+    } else if (g_clock_page == CLOCK_COLORS) {
         snprintf(label, sizeof label, "PRIMARY: %s", CLOCK_COLOR_NAMES[t->aquariums.clock_flags >> CLOCK_COLOR_SHIFT]);
-        button(c, 32, 56, 396, 38, 0x1c2f36, MSP_TEAL, label, 2);
+        button(c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
         snprintf(label, sizeof label, "SECONDARY: %s", CLOCK_COLOR_NAMES[t->aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT]);
-        button(c, 32, 100, 396, 38, 0x1c2f36, MSP_TEAL, label, 2);
-        button(c, 32, 144, 396, 38, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_SECONDS ? "SECONDS: HIDDEN" : "SECONDS: SHOWN", 2);
-        button(c, 32, 188, 396, 38, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_PANEL ? "PANEL: HIDDEN" : "PANEL: SOLID", 2);
-        button(c, 32, 232, 396, 38, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_DATE ? "DATE: HIDDEN" : "DATE: SHOWN", 2);
-        button(c, 32, 282, 396, 42, 0x1c2f36, MSP_TEAL, "SHOW CLOCK", 2);
-        draw_text_wrap(c, 32, 344, 396, MSP_TEAL, s_backup_message);
-        return;
+        button(c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
+        button(c, 32, 160, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_PANEL ? "BACKGROUND: CLEAR" : "BACKGROUND: SOLID", 2);
+        draw_text_wrap(c, 32, 228, 384, MSP_TEAL, "AUTO uses the face's own palette. Secondary colors add contrast without changing the theme.");
+    } else if (g_clock_page == CLOCK_TEXT) {
+        snprintf(label, sizeof label, "DETAIL SIZE: %s", CLOCK_TEXT_SIZES[t->aquariums.clock_layout >> CLOCK_DETAIL_SHIFT]);
+        button(c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
+        snprintf(label, sizeof label, "WEATHER SIZE: %s", CLOCK_TEXT_SIZES[(t->aquariums.clock_delay & CLOCK_CAPTION_MASK) >> CLOCK_CAPTION_SHIFT]);
+        button(c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
+        button(c, 32, 160, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_SECONDS ? "SECONDS: HIDDEN" : "SECONDS: SHOWN", 2);
+        button(c, 32, 208, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_DATE ? "DATE: HIDDEN" : "DATE: SHOWN", 2);
+        button(c, 32, 256, 384, 40, 0x1c2f36, MSP_TEAL, t->companion.lively ? "SPARKLES: ON" : "SPARKLES: OFF", 2);
+        button(c, 32, 304, 384, 40, 0x1c2f36, MSP_TEAL, t->companion.captions ? "EVENT CAPTIONS: ON" : "EVENT CAPTIONS: OFF", 2);
+    } else if (g_clock_page == CLOCK_TIME) {
+        button(c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_12H ? "FORMAT: 12 HOUR" : "FORMAT: 24 HOUR", 2);
+        button(c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_DST ? "DAYLIGHT SAVING: +1H" : "DAYLIGHT SAVING: OFF", 2);
+        int delay = t->aquariums.clock_delay & CLOCK_DELAY_MASK;
+        snprintf(label, sizeof label, "IDLE CLOCK: %s", CLOCK_DELAY_NAMES[delay < CLOCK_DELAY_COUNT ? delay : 0]);
+        button(c, 32, 160, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
+        int offset = t->aquariums.clock_utc_quarters, absolute = abs(offset);
+        snprintf(label, sizeof label, "UTC %c%02d:%02d", offset < 0 ? '-' : '+', absolute / 4, absolute % 4 * 15);
+        draw_text(c, (PAGE_W - text_w(label, 2)) / 2, 218, 2, 0xffffff, label);
+        button(c, 32, 250, 80, 44, 0x1c2f36, MSP_TEAL, "-", 2);
+        snprintf(label, sizeof label, "STEP: %s", CLOCK_STEP_NAMES[g_clock_step]);
+        button(c, 124, 250, 200, 44, 0x1c2f36, MSP_TEAL, label, 2);
+        button(c, 336, 250, 80, 44, 0x1c2f36, MSP_TEAL, "+", 2);
+        draw_text(c, 32, 316, 1, MSP_TEAL, "SET UTC OFFSET, THEN ENABLE DST IF NEEDED.");
     }
-    draw_text(c, 32, 14, 3, 0xffffff, "CLOCK");
-    button(c, 140, 8, 84, 36, 0x1c2f36, MSP_TEAL, "STYLE", 2);
-    button(c, 230, 8, 88, 36, 0x1c2f36, MSP_TEAL, "WEATHER", 2);
-    button(c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
-    char label[40];
-    snprintf(label, sizeof label, "THEME: %s", CLOCK_NAMES[t->aquariums.clock_theme < CLOCK_THEME_COUNT ? t->aquariums.clock_theme : 0]);
-    button(c, 32, 52, 396, 34, 0x1c2f36, MSP_TEAL, label, 2);
-    int size = clock_layout_size(t->aquariums.clock_layout), position = clock_layout_position(t->aquariums.clock_layout);
-    snprintf(label, sizeof label, "SIZE: %s", CLOCK_SIZES[size < CLOCK_SIZE_COUNT ? size : 0]);
-    button(c, 32, 92, 396, 34, 0x1c2f36, MSP_TEAL, label, 2);
-    snprintf(label, sizeof label, "POSITION: %s", CLOCK_POSITIONS[position < CLOCK_POSITION_COUNT ? position : 0]);
-    button(c, 32, 132, 396, 34, 0x1c2f36, MSP_TEAL, label, 2);
-    button(c, 32, 172, 190, 34, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_12H ? "12 HOUR" : "24 HOUR", 2);
-    button(c, 238, 172, 190, 34, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_DST ? "DST: +1 HOUR" : "DST: OFF", 2);
-    int delay = t->aquariums.clock_delay & CLOCK_DELAY_MASK;
-    snprintf(label, sizeof label, "ACTIVATE: %s", CLOCK_DELAY_NAMES[delay < CLOCK_DELAY_COUNT ? delay : 0]);
-    button(c, 32, 212, 396, 34, 0x1c2f36, MSP_TEAL, label, 2);
-    int offset = t->aquariums.clock_utc_quarters, absolute = abs(offset);
-    snprintf(label, sizeof label, "UTC %c%02d:%02d", offset < 0 ? '-' : '+', absolute / 4, absolute % 4 * 15);
-    draw_text(c, (PAGE_W - text_w(label, 2)) / 2, 252, 2, 0xffffff, label);
-    snprintf(label, sizeof label, "STEP: %s", CLOCK_STEP_NAMES[g_clock_step]);
-    button(c, 116, 270, 228, 24, 0x1c2f36, MSP_TEAL, label, 2);
-    snprintf(label, sizeof label, "-%s", CLOCK_STEP_NAMES[g_clock_step]);
-    button(c, 32, 252, 76, 36, 0x1c2f36, MSP_TEAL, label, 2);
-    snprintf(label, sizeof label, "+%s", CLOCK_STEP_NAMES[g_clock_step]);
-    button(c, 352, 252, 76, 36, 0x1c2f36, MSP_TEAL, label, 2);
-    button(c, 238, 300, 190, 36, 0x1c2f36, MSP_TEAL, "EFFECTS", 2);
-    button(c, 32, 300, 190, 36, 0x1c2f36, MSP_TEAL, "SHOW CLOCK", 2);
-    draw_text_wrap(c, 32, 344, 396, MSP_TEAL, s_backup_message);
-}
-static void set_row(ctx_t *c, int row_y, const char *label, const char *const names[], int n, int chosen) {
-    draw_text(c, SET_LABEL_X, row_y, 2, MSP_TEAL, label);
-    for (int i = 0; i < n; i++) {
-        int x = SET_SEG_X + i * SET_SEG_DX, y = SET_SEG_Y(row_y);
-        if (i == chosen) {                       /* lit: teal, ink lettering */
-            button(c, x, y, SET_SEG_W, SET_SEG_H, MSP_TEAL, MSP_TEAL, names[i], 2);
-            draw_text(c, x + (SET_SEG_W - text_w(names[i], 2)) / 2, y + (SET_SEG_H - 14) / 2, 2, MSP_INK, names[i]);
-        } else button(c, x, y, SET_SEG_W, SET_SEG_H, 0x1c2f36, MSP_DIM, names[i], 2);
-    }
+    draw_text(c, 24, 354, 1, MSP_TEAL, s_backup_message);
 }
 void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) {
     ctx_t c = ctx_page(fb, stride);
     rect_fill(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, MSP_INK);
-    if (g_clock_weather) { weather_render(fb, stride); return; }
+    if (g_clock_weather) { weather_render(fb, stride, 1 + ((t->aquariums.clock_delay & CLOCK_CAPTION_MASK) >> CLOCK_CAPTION_SHIFT)); return; }
     if (g_clock_settings) { clock_settings_draw(&c, t); return; }
     button(&c, SET_CLOSE_X, SET_CLOSE_Y, SET_CLOSE_W, SET_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
     static const char *const names[] = {"DISPLAY", "CLOCK/WEATHER", "WI-FI / SYNC", "SD BACKUPS", "AQUARIUM CARE", "DEVICE"};
@@ -7007,22 +7017,22 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
         draw_text(&c, 32, 326, 2, MSP_TEAL, ver); return;
     }
     if (g_settings_section == 5) {
-        set_row(&c, SET_ROW3_Y, "AUTO FEED", SET_FEED, 2, t->autofeed_off ? 1 : 0);
+        button(&c, 32, 176, 384, 44, 0x1c2f36, MSP_TEAL, t->autofeed_off ? "AUTO FEED: OFF" : "AUTO FEED: ON", 2);
         draw_text(&c, 32, 66, 1, MSP_TEAL, "AUTO FEED OFF: YOU PROVIDE MEALS.");
         draw_text(&c, 32, 90, 1, MSP_TEAL,
                   progression_hard(t) ? "HARD: STARVATION CAN KILL FISH." : "NO FISH DIES IN THIS GAME MODE.");
         const char *status = progression_hard_status(t);
         draw_text_wrap(&c, 32, 120, 384, MSP_TEAL, status ? status : s_backup_message);
-        button(&c, 32, 234, 384, 30, 0x1c2f36, MSP_TEAL,
+        button(&c, 32, 232, 384, 40, 0x1c2f36, MSP_TEAL,
                progression_hard(t) ? "HARD: COMFORT ASSIST OFF" :
                t->companion.cozy ? "COMFORT ASSIST: ON" : "COMFORT ASSIST: OFF", 2);
         if (progression_hard(t)) {
-            draw_text(&c, 32, 270, 1, MSP_TEAL, "6H STARVING WHILE RUNNING CAN KILL.");
+            draw_text(&c, 32, 278, 1, MSP_TEAL, "6H STARVING WHILE RUNNING CAN KILL.");
             if (!t->n_fish) button(&c, 32, 292, 384, 34, 0x1c2f36, MSP_TEAL, "RECOVER 2 FRY - FREE", 2);
             draw_text_wrap(&c, 32, 336, 384, 0xffffff, g_mode_message);
         } else {
-            draw_text(&c, 32, 270, 1, MSP_TEAL, "LIMITS HUNGER AND STRESS.");
-            draw_text(&c, 32, 286, 1, MSP_TEAL, "KEEPS ENERGY UP. NO XP BONUS.");
+            draw_text(&c, 32, 284, 1, MSP_TEAL, "LIMITS HUNGER AND STRESS.");
+            draw_text(&c, 32, 300, 1, MSP_TEAL, "KEEPS ENERGY UP. NO XP BONUS.");
         }
         return;
     }
@@ -7054,14 +7064,13 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     }
     s_backup_clock = t->clock;
     if (s_restore_until > 0 && t->clock >= s_restore_until) render_backup_status("RESTORE CONFIRMATION EXPIRED", false);
-    button(&c, SET_LABEL_X, SET_SEG_Y(SET_ROW2_Y), 170, SET_SEG_H, 0x1c2f36, MSP_TEAL, "BACKUP TO SD", 2);
-    button(&c, 218, SET_SEG_Y(SET_ROW2_Y), 198, SET_SEG_H, 0x1c2f36, MSP_TEAL, s_restore_until > 0 ? "CONFIRM RESTORE" : "RESTORE FROM SD", 2);
-    draw_text_wrap(&c, SET_LABEL_X, SET_NOTE_Y, SET_COLOR_W, MSP_TEAL, s_backup_message);
-    button(&c, SET_LABEL_X, 212, 170, 40, 0x1c2f36, MSP_TEAL, g_device.auto_backup ? "DAILY: ON" : "DAILY: OFF", 2);
-    button(&c, 218, 212, 198, 40, 0x1c2f36, MSP_TEAL, "PHOTO TO SD", 2);
-    draw_text(&c, 32, 278, 2, MSP_TEAL, "BACKUP: ACTIVE TANK + WALLET");
-    draw_text(&c, 32, 302, 2, MSP_TEAL, "INCLUDES GLOBAL BANK / TRAVELER.");
-    draw_text(&c, 32, 326, 2, MSP_TEAL, "OTHER SD TANKS NOT INCLUDED.");
+    button(&c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, "BACKUP TO SD", 2);
+    button(&c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, s_restore_until > 0 ? "CONFIRM RESTORE" : "RESTORE FROM SD", 2);
+    button(&c, 32, 160, 384, 40, 0x1c2f36, MSP_TEAL, g_device.auto_backup ? "DAILY BACKUP: ON" : "DAILY BACKUP: OFF", 2);
+    button(&c, 32, 208, 384, 40, 0x1c2f36, MSP_TEAL, "PHOTO TO SD", 2);
+    draw_text_wrap(&c, 32, 264, 384, MSP_TEAL, s_backup_message);
+    draw_text(&c, 32, 308, 1, MSP_TEAL, "ACTIVE TANK, WALLET, GLOBAL BANK / TRAVELER.");
+    draw_text(&c, 32, 324, 1, MSP_TEAL, "OTHER SD TANKS NOT INCLUDED.");
     char backup_date[40], backup_line[64];
     companion_date_text(t->polish.backup_unix, backup_date, sizeof backup_date);
     snprintf(backup_line, sizeof backup_line, "LAST BACKUP: %s", t->polish.backups ? backup_date : "NOT RECORDED");
@@ -7744,62 +7753,33 @@ void render_life(const tank_t *t, uint16_t *fb, int stride) {
     } else draw_text(&c, 24, 332, 2, MSP_TEAL, "NO STREAKS. NO DEADLINES.");
 }
 
-static int set_segment(float x, int n) {
-    if (x < SET_SEG_X - 10) return -1;
-    int i = (int)((x - SET_SEG_X + 3) / SET_SEG_DX);
-    return i < 0 ? 0 : i >= n ? n - 1 : i;
-}
 /* *value: BRIGHT the percent, FEED 1 = ON. */
 int render_settings_tap(float x, float y, int *value) {
     x = render_page_x(x); y = render_page_y(y);
     if (g_clock_settings) {
-        if (g_clock_text) {
-            if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_TEXT;
-            if (x >= 32 && x < 416) {
-                if (y >= 68 && y < 108) return CLOCK_HIT_DETAIL_SIZE;
-                if (y >= 166 && y < 206) return CLOCK_HIT_CAPTION_SIZE;
-                if (y >= 282 && y < 322) return SET_TAP_CLOCK_SHOW;
-            }
-            return SET_TAP_NONE;
+        if (x >= 326 && x < 438 && y >= 8 && y < 48) return CLOCK_HIT_PAGE;
+        if (g_clock_page == CLOCK_MENU) {
+            static const int hits[] = {CLOCK_HIT_FACE, CLOCK_HIT_STYLE, CLOCK_HIT_TEXT, CLOCK_HIT_TIME, CLOCK_HIT_WEATHER, SET_TAP_CLOCK_SHOW};
+            if (x < 24 || x >= 424 || y < 68 || y >= 292 || (int)(y - 68) % 80 >= 64) return SET_TAP_NONE;
+            int col = x >= 236;
+            if (!col && x >= 212) return SET_TAP_NONE;
+            return hits[(int)(y - 68) / 80 * 2 + col];
         }
-        if (g_clock_effects) {
-            if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_EFFECTS;
-            if (x >= 32 && x < 416) {
-                if (y >= 76 && y < 116) return SETTINGS_SPARKLES;
-                if (y >= 222 && y < 262) return SETTINGS_CAPTIONS;
-                if (y >= 282 && y < 322) return SET_TAP_CLOCK_SHOW;
-            }
-            return SET_TAP_NONE;
+        if (g_clock_page == CLOCK_TIME && y >= 250 && y < 294) {
+            if (x >= 32 && x < 112) return CLOCK_HIT_PREVIOUS;
+            if (x >= 124 && x < 324) return CLOCK_HIT_STEP;
+            if (x >= 336 && x < 416) return CLOCK_HIT_NEXT;
         }
-        if (g_clock_style) {
-            if (x >= 238 && x < 318 && y >= 8 && y < 44) return CLOCK_HIT_TEXT;
-            if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_STYLE;
-            if (x >= 32 && x < 428) {
-                if (y >= 56 && y < 94) return CLOCK_HIT_COLOR;
-                if (y >= 100 && y < 138) return CLOCK_HIT_SECONDARY;
-                if (y >= 144 && y < 182) return CLOCK_HIT_SECONDS;
-                if (y >= 188 && y < 226) return CLOCK_HIT_PANEL;
-                if (y >= 232 && y < 270) return CLOCK_HIT_DATE;
-                if (y >= 282 && y < 324) return SET_TAP_CLOCK_SHOW;
-            }
-            return SET_TAP_NONE;
-        }
-        if (x >= 140 && x < 224 && y >= 8 && y < 44) return CLOCK_HIT_STYLE;
-        if (x >= 230 && x < 318 && y >= 8 && y < 44) return CLOCK_HIT_WEATHER;
-        if (x >= 32 && x < 222 && y >= 300 && y < 336) return SET_TAP_CLOCK_SHOW;
-        if (x >= 238 && x < 428 && y >= 300 && y < 336) return CLOCK_HIT_EFFECTS;
-        if (x >= 326 && x < 438 && y >= 8 && y < 44) return CLOCK_HIT_PAGE;
-        if (x >= 32 && x < 428) {
-            if (y >= 52 && y < 86) return CLOCK_HIT_THEME;
-            if (y >= 92 && y < 126) return CLOCK_HIT_SIZE;
-            if (y >= 132 && y < 166) return CLOCK_HIT_POSITION;
-            if (y >= 172 && y < 206 && x < 222) return CLOCK_HIT_FORMAT;
-            if (y >= 172 && y < 206 && x >= 238) return CLOCK_HIT_DST;
-            if (y >= 212 && y < 246) return CLOCK_HIT_DELAY;
-            if (y >= 252 && y < 288 && x < 108) return CLOCK_HIT_PREVIOUS;
-            if (y >= 252 && y < 288 && x >= 352) return CLOCK_HIT_NEXT;
-            if (y >= 270 && y < 294 && x >= 116 && x < 344) return CLOCK_HIT_STEP;
-        }
+        if (x < 32 || x >= 416 || y < 64 || y >= 344 || (int)(y - 64) % 48 >= 40) return SET_TAP_NONE;
+        int row = (int)(y - 64) / 48;
+        static const int face[] = {CLOCK_HIT_THEME, CLOCK_HIT_SIZE, CLOCK_HIT_POSITION};
+        static const int colors[] = {CLOCK_HIT_COLOR, CLOCK_HIT_SECONDARY, CLOCK_HIT_PANEL};
+        static const int text[] = {CLOCK_HIT_DETAIL_SIZE, CLOCK_HIT_CAPTION_SIZE, CLOCK_HIT_SECONDS, CLOCK_HIT_DATE, SETTINGS_SPARKLES, SETTINGS_CAPTIONS};
+        static const int time[] = {CLOCK_HIT_FORMAT, CLOCK_HIT_DST, CLOCK_HIT_DELAY};
+        if (g_clock_page == CLOCK_FACE && row < 3) return face[row];
+        if (g_clock_page == CLOCK_COLORS && row < 3) return colors[row];
+        if (g_clock_page == CLOCK_TEXT) return text[row];
+        if (g_clock_page == CLOCK_TIME && row < 3) return time[row];
         return SET_TAP_NONE;
     }
     if (x >= SET_CLOSE_X - 4 && x < SET_CLOSE_X + SET_CLOSE_W + 4 &&
@@ -7834,24 +7814,34 @@ int render_settings_tap(float x, float y, int *value) {
         return SET_TAP_NONE;
     }
     if (g_settings_section == 5) {
-        int two = set_segment(x, 2);
-        if (x >= 32 && x < 416 && y >= 234 && y < 264) return SETTINGS_COMFORT;
-        if (y >= SET_SEG_Y(SET_ROW3_Y) - 4 && y < SET_SEG_Y(SET_ROW4_Y) - 4 &&
-            two >= 0 && x < SET_SEG_X + 2 * SET_SEG_DX) { *value = two == 0; return SET_TAP_FEED; }
+        if (x >= 32 && x < 416 && y >= 232 && y < 272) return SETTINGS_COMFORT;
+        if (x >= 32 && x < 416 && y >= 176 && y < 220) return SET_TAP_FEED;
         return SET_TAP_NONE;
     }
     if (g_settings_section == 4) {
-        if (y >= SET_SEG_Y(SET_ROW2_Y) - 8 && y < SET_SEG_Y(SET_ROW2_Y) + SET_SEG_H + 4) {
-            if (x >= SET_LABEL_X && x < 202) return SET_TAP_BACKUP;
-            if (x >= 218 && x < 416) return SET_TAP_RESTORE;
-        }
-        if (y >= 212 && y < 252) {
-            if (x >= SET_LABEL_X && x < 202) return SET_TAP_AUTO_BACKUP;
-            if (x >= 218 && x < 416) return SET_TAP_PHOTO;
+        if (x >= 32 && x < 416) {
+            if (y >= 64 && y < 104) return SET_TAP_BACKUP;
+            if (y >= 112 && y < 152) return SET_TAP_RESTORE;
+            if (y >= 160 && y < 200) return SET_TAP_AUTO_BACKUP;
+            if (y >= 208 && y < 248) return SET_TAP_PHOTO;
         }
         return SET_TAP_NONE;
     }
     return SET_TAP_NONE;
+}
+static bool clock_settings_save(tank_t *t, aquarium_state_t before) {
+    if (!progression_save(t)) {
+        t->aquariums = before;
+        fprintf(stderr, "Clock setting save failed; change rolled back\n");
+        render_backup_status("CLOCK SAVE FAILED - RETRY", false);
+        return false;
+    }
+    render_backup_status("CLOCK SAVED FOR THIS TANK", false);
+    return true;
+}
+static void clock_weather_size_next(tank_t *t) {
+    t->aquariums.clock_delay = (uint8_t)((t->aquariums.clock_delay & ~CLOCK_CAPTION_MASK) |
+        ((((t->aquariums.clock_delay & CLOCK_CAPTION_MASK) >> CLOCK_CAPTION_SHIFT) + 1) % CLOCK_TEXT_SIZE_COUNT << CLOCK_CAPTION_SHIFT));
 }
 int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
     static bool s_down; static float s_px, s_py; static int s_hit, s_hv;
@@ -7860,8 +7850,12 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
     s_backup_clock = t->clock;
     if (g_clock_weather) {
         if (down && !s_down) { s_px = x; s_py = y; }
-        if (!down && s_down && hypotf(x - s_px, y - s_py) < 24 && weather_tap(x, y))
-            g_clock_weather = false;
+        if (!down && s_down && hypotf(x - s_px, y - s_py) < 24) {
+            if (weather_size_hit(s_px, s_py) && weather_size_hit(x, y)) {
+                aquarium_state_t before = t->aquariums;
+                clock_weather_size_next(t); weather_size_status(clock_settings_save(t, before));
+            } else if (weather_tap(x, y)) { g_clock_weather = false; render_backup_status("", false); }
+        }
         s_down = down;
         return SET_TAP_NONE;
     }
@@ -7883,7 +7877,7 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
         if (h == s_hit && dx * dx + dy * dy < 24 * 24) {
             if (h >= SETTINGS_NAV && h < SETTINGS_NAV + 6) {
                 int item = h - SETTINGS_NAV;
-                if (item == 1) g_clock_settings = true;
+                if (item == 1) { g_clock_settings = true; g_clock_page = CLOCK_MENU; render_backup_status("", false); }
                 else if (item == 2) r = SET_TAP_WIFI;
                 else {
                     g_settings_section = item + 1;
@@ -7910,17 +7904,19 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
                     h == SETTINGS_SPARKLES ? !t->companion.lively : t->companion.lively);
                 render_backup_status(ok ? "OPTION SAVED" : "SAVE FAILED - OPTION UNCHANGED", false);
             } else if (h == CLOCK_HIT_PAGE) {
-                g_clock_settings = !g_clock_settings;
-                g_clock_style = g_clock_effects = false;
-                render_backup_status(g_clock_settings ? (g_clock_synchronized ? "NTP READY - CHANGES SAVE AUTO" : "SYNC NEEDED - SET UP WI-FI") : "JSON BACKUP / RESTORE FROM SD", false);
+                if (g_clock_page == CLOCK_MENU) g_clock_settings = false;
+                else g_clock_page = CLOCK_MENU;
+                render_backup_status("", false);
             } else if (h == CLOCK_HIT_STEP) {
                 g_clock_step = (g_clock_step + 1) % 3;
             } else if (h == CLOCK_HIT_STYLE) {
-                g_clock_style = !g_clock_style;
+                g_clock_page = CLOCK_COLORS;
             } else if (h == CLOCK_HIT_TEXT) {
-                g_clock_text = !g_clock_text;
-            } else if (h == CLOCK_HIT_EFFECTS) {
-                g_clock_effects = !g_clock_effects;
+                g_clock_page = CLOCK_TEXT;
+            } else if (h == CLOCK_HIT_FACE) {
+                g_clock_page = CLOCK_FACE;
+            } else if (h == CLOCK_HIT_TIME) {
+                g_clock_page = CLOCK_TIME;
             } else if (h == CLOCK_HIT_WEATHER) {
                 weather_open(); g_clock_weather = true;
             } else if ((h >= CLOCK_HIT_THEME && h <= CLOCK_HIT_SECONDARY) ||
@@ -7940,7 +7936,7 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
                     t->aquariums.clock_layout = clock_layout_set_size(t->aquariums.clock_layout, size);
                 }
                 if (h == CLOCK_HIT_DETAIL_SIZE) t->aquariums.clock_layout = (uint8_t)((t->aquariums.clock_layout & ~CLOCK_DETAIL_MASK) | (((t->aquariums.clock_layout >> CLOCK_DETAIL_SHIFT) + 1) % CLOCK_TEXT_SIZE_COUNT << CLOCK_DETAIL_SHIFT));
-                if (h == CLOCK_HIT_CAPTION_SIZE) t->aquariums.clock_delay = (uint8_t)((t->aquariums.clock_delay & ~CLOCK_CAPTION_MASK) | ((((t->aquariums.clock_delay & CLOCK_CAPTION_MASK) >> CLOCK_CAPTION_SHIFT) + 1) % CLOCK_TEXT_SIZE_COUNT << CLOCK_CAPTION_SHIFT));
+                if (h == CLOCK_HIT_CAPTION_SIZE) clock_weather_size_next(t);
                 if (h == CLOCK_HIT_DELAY) t->aquariums.clock_delay = (uint8_t)((t->aquariums.clock_delay & ~CLOCK_DELAY_MASK) | (((t->aquariums.clock_delay & CLOCK_DELAY_MASK) + 1) % CLOCK_DELAY_COUNT));
                 if (h == CLOCK_HIT_PREVIOUS || h == CLOCK_HIT_NEXT) {
                     int offset = t->aquariums.clock_utc_quarters;
@@ -7949,17 +7945,13 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
                     if (offset > 56) offset = t->aquariums.clock_utc_quarters == 56 ? -48 : 56;
                     t->aquariums.clock_utc_quarters = (int8_t)offset;
                 }
-                if (!progression_save(t)) {
-                    t->aquariums = before;
-                    fprintf(stderr, "Clock setting save failed; change rolled back\n");
-                    render_backup_status("CLOCK SAVE FAILED - RETRY", false);
-                } else render_backup_status("CLOCK SAVED FOR THIS TANK", false);
+                clock_settings_save(t, before);
             } else if (h == SET_TAP_CLOCK_SHOW) {
                 if (t->aquariums.clock_theme == CLOCK_OFF) render_backup_status("CHOOSE A CLOCK THEME FIRST", false);
-                else { g_clock_settings = g_clock_style = g_clock_effects = g_clock_text = false; r = h; }
+                else { g_clock_settings = false; g_clock_page = CLOCK_MENU; r = h; }
             } else if (h == SET_TAP_FEED) {                    /* ON (1, the default) / OFF */
-                if ((v == 0) != t->autofeed_off) { t->autofeed_off = v == 0; progression_settings_changed(); }
-                r = SET_TAP_FEED; *value = v;
+                t->autofeed_off = !t->autofeed_off; progression_settings_changed();
+                r = SET_TAP_FEED; *value = !t->autofeed_off;
             } else if (h == SET_TAP_SAND || h == SET_TAP_WATER) {
                 bool sand = h == SET_TAP_SAND;
                 if (!(t->sd_unlocks & (sand ? SD_ITEM_SAND : SD_ITEM_LIGHTS))) {

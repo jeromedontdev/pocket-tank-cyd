@@ -277,15 +277,15 @@ def exercise(lib, backup):
         assert lib.sim_page() == 7, "Identity Back returns to Aquariums"
         lib.sim_action(2); tap(330, 100)
         clock_frame = frame()
-        tap(330, 318)
+        tap(100, 180)
         assert lib.sim_network_page() == 0 and frame() != clock_frame, "EFFECTS opens clock-only options, never Wi-Fi"
-        tap(200, 242)
+        tap(200, 324)
         assert json.loads(backup(lib))["companion"]["captions"] != identity["companion"]["captions"]
         effects_before = json.loads(backup(lib))
-        tap(200, 96)
+        tap(200, 276)
         assert json.loads(backup(lib))["companion"]["lively"] != effects_before["companion"]["lively"]
         os.environ["POCKET_TANK_SAVE"] = str(Path(save_path).parent / "missing-effects" / "save.sav")
-        tap(200, 96)
+        tap(200, 276)
         assert json.loads(backup(lib))["companion"]["lively"] != effects_before["companion"]["lively"], "Failed sparkle save must roll back"
         os.environ["POCKET_TANK_SAVE"] = save_path
         tap(380, 24)

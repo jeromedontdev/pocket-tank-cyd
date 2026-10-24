@@ -8,7 +8,16 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.1.0 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.1.3 is a distinct aquarium game, not just a board port.**
+
+Settings now uses a Clock/Weather hub with Face, Colors, Text / Effects,
+Time / Zone, Weather and one Show Clock action. BACK returns one level.
+Weather's **Text: Small/Medium/Large** control (also **Weather Size** under
+Text / Effects) resizes its reading and saved clock weather/event text.
+Simple condition icons use the cached weather code; unavailable readings do
+not invent conditions. Clock layout reserves icon/text space and fits down
+when needed. Auto Feed is one toggle, SD actions are full-width, and forgetting
+a city is confirmed. Existing settings/save bytes are reused.
 
 You can also [play the actual simulation in a browser](https://jeromedontdev.github.io/pocket-tank-cyd/play.html).
 That game uses a separate browser-local save; it is not a device connection,
@@ -859,7 +868,7 @@ without inventing player meals, trust, or care achievements. Existing binary
 saves and schema 1–5 JSON backups remain **CLASSIC**, with captions and trophy
 decorations OFF. **Settings > Aquarium Care** holds Comfort Assist (the saved
 Cozy/Classic option) and auto feeding.
-**Settings > Clock/Weather > Effects** holds cosmetic **Sparkles** (formerly
+**Settings > Clock/Weather > Text / Effects** holds cosmetic **Sparkles** (formerly
 Calm/Lively) and **Event Captions**. Sparkles are eight bright drifting stars
 beside the clock, not a fish-care setting.
 **Collections > Display Rewards > TROPHIES** shows/hides earned sand ornaments.

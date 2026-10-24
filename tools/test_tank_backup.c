@@ -838,42 +838,57 @@ static void test_clock(void) {
     }
     t.aquariums.clock_theme = CLOCK_OFF; t.aquariums.clock_flags = 0; t.aquariums.clock_utc_quarters = 0;
     t.aquariums.clock_layout = t.aquariums.clock_delay = 0;
-    render_settings_open(); clock_tap(&t, 330, 100); clock_tap(&t, 220, 78);
+    render_settings_open(); clock_tap(&t, 330, 100); clock_tap(&t, 100, 100); clock_tap(&t, 220, 84);
     assert(t.aquariums.clock_theme == CLOCK_COMPACT);
-    reject_write = true; clock_tap(&t, 220, 78); reject_write = false;
+    reject_write = true; clock_tap(&t, 220, 84); reject_write = false;
     assert(t.aquariums.clock_theme == CLOCK_COMPACT);
-    clock_tap(&t, 220, 109); clock_tap(&t, 220, 149); clock_tap(&t, 120, 189);
-    reject_write = true; clock_tap(&t, 330, 189); clock_tap(&t, 380, 270); reject_write = false;
+    clock_tap(&t, 220, 132); clock_tap(&t, 220, 180);
+    clock_tap(&t, 380, 28); clock_tap(&t, 330, 180); clock_tap(&t, 220, 84);
+    reject_write = true; clock_tap(&t, 220, 132); clock_tap(&t, 380, 270); reject_write = false;
     assert(t.aquariums.clock_flags == CLOCK_12H && !t.aquariums.clock_utc_quarters);
-    clock_tap(&t, 330, 189); clock_tap(&t, 220, 229);
+    clock_tap(&t, 220, 132); clock_tap(&t, 220, 180);
     t.aquariums.clock_utc_quarters = 55;
     clock_tap(&t, 380, 270); assert(t.aquariums.clock_utc_quarters == 56);
     clock_tap(&t, 380, 270); assert(t.aquariums.clock_utc_quarters == -48);
     clock_tap(&t, 70, 270); assert(t.aquariums.clock_utc_quarters == 56);
     t.aquariums.clock_utc_quarters = 0;
     clock_tap(&t, 380, 270); assert(t.aquariums.clock_utc_quarters == 4);
-    clock_tap(&t, 220, 282); clock_tap(&t, 70, 270); assert(t.aquariums.clock_utc_quarters == 2);
-    clock_tap(&t, 220, 282); clock_tap(&t, 70, 270); assert(t.aquariums.clock_utc_quarters == 1);
-    clock_tap(&t, 220, 282);
+    clock_tap(&t, 220, 272); clock_tap(&t, 70, 270); assert(t.aquariums.clock_utc_quarters == 2);
+    clock_tap(&t, 220, 272); clock_tap(&t, 70, 270); assert(t.aquariums.clock_utc_quarters == 1);
+    clock_tap(&t, 220, 272);
     assert(t.aquariums.clock_flags == (CLOCK_12H | CLOCK_DST) && t.aquariums.clock_utc_quarters == 1);
     assert(t.aquariums.clock_layout == 5 && t.aquariums.clock_delay == CLOCK_DELAY_15_SEC);
-    for (int i = 0; i < 6; i++) clock_tap(&t, 220, 78);
+    clock_tap(&t, 380, 28); clock_tap(&t, 100, 100);
+    for (int i = 0; i < 6; i++) clock_tap(&t, 220, 84);
     assert(t.aquariums.clock_theme == CLOCK_ORBIT);
-    clock_tap(&t, 220, 20);
-    reject_write = true; clock_tap(&t, 220, 80); reject_write = false;
+    clock_tap(&t, 380, 28); clock_tap(&t, 330, 100);
+    reject_write = true; clock_tap(&t, 220, 84); reject_write = false;
     assert(t.aquariums.clock_flags == (CLOCK_12H | CLOCK_DST));
-    for (int i = 0; i < 7; i++) clock_tap(&t, 220, 80);
-    reject_write = true; clock_tap(&t, 220, 119); reject_write = false;
+    for (int i = 0; i < 7; i++) clock_tap(&t, 220, 84);
+    reject_write = true; clock_tap(&t, 220, 132); reject_write = false;
     assert(t.aquariums.clock_delay == CLOCK_DELAY_15_SEC);
-    for (int i = 0; i < 8; i++) clock_tap(&t, 220, 119);
+    for (int i = 0; i < 8; i++) clock_tap(&t, 220, 132);
     assert(t.aquariums.clock_delay == CLOCK_DELAY_15_SEC);
-    for (int i = 0; i < 4; i++) clock_tap(&t, 220, 119);
-    clock_tap(&t, 220, 163); clock_tap(&t, 220, 207); clock_tap(&t, 220, 251);
+    for (int i = 0; i < 4; i++) clock_tap(&t, 220, 132);
+    clock_tap(&t, 220, 180);
+    clock_tap(&t, 380, 28); clock_tap(&t, 100, 180);
+    clock_tap(&t, 220, 180); clock_tap(&t, 220, 228);
     assert(t.aquariums.clock_flags == CLOCK_FLAGS_MASK);
     clock_tap(&t, 380, 20);
-    clock_tap(&t, 220, 229);
+    clock_tap(&t, 330, 180); clock_tap(&t, 220, 180);
     assert(t.aquariums.clock_delay == ((4 << CLOCK_SECONDARY_SHIFT) | CLOCK_DELAY_30_SEC));
     assert(clock_tap(&t, 330, 318) != SET_TAP_WIFI);
+    clock_tap(&t, 380, 20);
+    clock_tap(&t, 100, 260);
+    uint8_t weather_size_before = t.aquariums.clock_delay;
+    reject_write = true; clock_tap(&t, 320, 288); reject_write = false;
+    assert(t.aquariums.clock_delay == weather_size_before);
+    for (int i = 0; i < CLOCK_TEXT_SIZE_COUNT; i++) {
+        clock_tap(&t, 320, 288);
+        assert((t.aquariums.clock_delay & ~CLOCK_CAPTION_MASK) == (weather_size_before & ~CLOCK_CAPTION_MASK));
+        assert(((t.aquariums.clock_delay & CLOCK_CAPTION_MASK) >> CLOCK_CAPTION_SHIFT) == (i + 1) % CLOCK_TEXT_SIZE_COUNT);
+    }
+    assert(t.aquariums.clock_delay == weather_size_before);
     clock_tap(&t, 380, 20);
     tank_init(&loaded, 3); boot_enlarged(&loaded);
     assert(loaded.aquariums.clock_theme == CLOCK_ORBIT && loaded.aquariums.clock_flags == CLOCK_FLAGS_MASK && loaded.aquariums.clock_utc_quarters == 1);
@@ -2258,14 +2273,14 @@ static void test_solid_clock(void) {
     tank_init(&loaded, 1); boot_enlarged(&loaded);
     assert(loaded.aquariums.clock_delay == t.aquariums.clock_delay);
     free(json);
-    render_settings_open(); clock_tap(&t, 330, 100); clock_tap(&t, 220, 20);
-    reject_write = true; clock_tap(&t, 220, 207); reject_write = false;
+    render_settings_open(); clock_tap(&t, 330, 100); clock_tap(&t, 330, 100);
+    reject_write = true; clock_tap(&t, 220, 180); reject_write = false;
     assert(!(t.aquariums.clock_flags & CLOCK_HIDE_PANEL));
-    clock_tap(&t, 220, 207); assert(t.aquariums.clock_flags & CLOCK_HIDE_PANEL);
-    clock_tap(&t, 220, 207); assert(!(t.aquariums.clock_flags & CLOCK_HIDE_PANEL));
-    clock_tap(&t, 220, 119);
+    clock_tap(&t, 220, 180); assert(t.aquariums.clock_flags & CLOCK_HIDE_PANEL);
+    clock_tap(&t, 220, 180); assert(!(t.aquariums.clock_flags & CLOCK_HIDE_PANEL));
+    clock_tap(&t, 220, 132);
     assert(t.aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT == 5);
-    clock_tap(&t, 380, 20); clock_tap(&t, 220, 229);
+    clock_tap(&t, 380, 20); clock_tap(&t, 330, 180); clock_tap(&t, 220, 180);
     assert((t.aquariums.clock_delay & CLOCK_DELAY_MASK) == CLOCK_DELAY_2_MIN);
     render_settings_open(); render_work_caches(false);
     free(reference); free(actual); free(retained); free(tile); tank_resolution(false);
@@ -3049,9 +3064,9 @@ int main(int argc, char **argv) {
     settings_section(&tank, 3);
     render_settings(&tank, fb, TANK_W, 100);
     int value = 0;
-    float bx = render_frame_x(100), rx = render_frame_x(300), y = render_frame_y(115);
+    float bx = render_frame_x(224), rx = render_frame_x(224), y = render_frame_y(84);
     assert(render_settings_tap(bx, y, &value) == SET_TAP_BACKUP);
-    assert(render_settings_tap(rx, y, &value) == SET_TAP_RESTORE);
+    assert(render_settings_tap(rx, render_frame_y(132), &value) == SET_TAP_RESTORE);
     render_settings_open();
     assert(render_settings_tap(render_frame_x(392), render_frame_y(19), &value) == SET_TAP_CLOSE);
     settings_section(&tank, 5);
@@ -3095,10 +3110,10 @@ int main(int argc, char **argv) {
     assert(render_confirm_hit(render_frame_x(RENDER_CONFIRM_YES_X + 30), render_frame_y(RENDER_CONFIRM_BTN_Y + 25)) == 1);
     assert(render_confirm_hit(cx, cy) == 0);
     settings_section(&tank, 4);
-    cx = render_frame_x(SET_SEG_X + SET_SEG_DX + 20); cy = render_frame_y(SET_ROW3_Y);
+    tank.autofeed_off = false;
+    cx = render_frame_x(224); cy = render_frame_y(198);
     render_settings_touch(&tank, cx, cy, true, &value);
     assert(render_settings_touch(&tank, cx, cy, false, &value) == SET_TAP_FEED && value == 0 && tank.autofeed_off);
-    cx = render_frame_x(SET_SEG_X + 20);
     render_settings_touch(&tank, cx, cy, true, &value);
     assert(render_settings_touch(&tank, cx, cy, false, &value) == SET_TAP_FEED && value == 1 && !tank.autofeed_off);
     tank.orient_lock = true; tank.orient_inv = true;
@@ -3106,6 +3121,7 @@ int main(int argc, char **argv) {
     tank.orient_lock = false;
     assert(!tank_orient(&tank, true));
     settings_section(&tank, 3);
+    y = render_frame_y(132);
     render_settings_touch(&tank, rx, y, true, &value);
     assert(render_settings_touch(&tank, rx, y, false, &value) == SET_TAP_RESTORE && value == 0);
     render_backup_status("confirm", true);
@@ -3116,7 +3132,7 @@ int main(int argc, char **argv) {
     assert(render_settings_touch(&tank, rx, y, false, &value) == SET_TAP_RESTORE && value == 0);
     const struct { int section, x, y, action; } device_taps[] = {
         {0, 200, 190, SET_TAP_DETAIL}, {0, 200, 232, SET_TAP_ROOM}, {0, 200, 272, SET_TAP_LED},
-        {3, 100, 232, SET_TAP_AUTO_BACKUP}, {3, 300, 232, SET_TAP_PHOTO}
+        {3, 224, 180, SET_TAP_AUTO_BACKUP}, {3, 224, 228, SET_TAP_PHOTO}
     };
     for (int scale = 0; scale < 2; scale++) {
         tank_resolution(scale != 0);

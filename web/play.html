@@ -4,37 +4,32 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102c35">
-  <title>Play Pocket Tank · Browser simulator</title>
+  <title>Pocket Tank CYD · Browser simulator</title>
   <link rel="stylesheet" href="play.css">
 </head>
 <body>
   <main>
-    <header><a href="./">← Pocket Tank CYD</a><h1>Play Pocket Tank</h1>
+    <header><a href="./">← Pocket Tank CYD</a><h1>Pocket Tank CYD</h1>
       <p>The real game and pixel renderer, running locally in your browser. Choose Normal, Hard or Creative on your first visit.</p>
       <p id="build-info"></p>
     </header>
     <div id="status" role="status" aria-live="polite">Loading the game…</div>
     <section aria-label="Game" class="game" id="game-panel">
-      <canvas id="screen" width="320" height="240" tabindex="0" aria-label="Pocket Tank touchscreen. Click, tap, drag or hold to play."></canvas>
+      <canvas id="screen" width="320" height="240" tabindex="0" aria-label="Pocket Tank CYD touchscreen. Click, tap, drag or hold to play."></canvas>
       <div id="actions" class="buttons" aria-label="Game shortcuts">
         <button data-action="0" disabled>Tank</button>
         <button data-action="1" disabled>Keeper</button>
         <button data-action="7" disabled>Life</button>
         <button data-action="2" disabled>Settings</button>
         <button data-action="3" disabled>Shop</button>
-        <button id="feed" aria-pressed="false" aria-expanded="false" aria-controls="feed-options" disabled>Place food</button>
+        <button id="feed" aria-pressed="false" disabled>Place food</button>
         <button data-action="6" disabled>Light</button>
         <button id="fullscreen" aria-pressed="false">Fullscreen</button>
         <button id="touch-hints" aria-pressed="false">Touch hints</button>
       </div>
-      <div id="feed-options" class="buttons" aria-label="Food placement" hidden>
-        <button data-feed="0.2">Left</button>
-        <button data-feed="0.5">Middle</button>
-        <button data-feed="0.8">Right</button>
-      </div>
       <p id="game-message" role="status" aria-live="polite"></p>
     </section>
-    <p>Mouse or touchscreen: tap, drag and hold directly on the screen. Tap near the water surface to feed, or choose <strong>Place food</strong> and tap anywhere in the tank, or choose <strong>Left / Middle / Right</strong>, to drop food from the surface at that horizontal position. Choose Fullscreen to enlarge the game; Escape or Exit fullscreen returns to this page. Touch hints show tap/drag positions. Use Keeper → Games to play the mini-games. Shortcuts unlock after choosing a first-run profile. The page can scroll normally outside the game screen.</p>
+    <p>Mouse or touchscreen: tap, drag and hold directly on the screen. Tap near the water surface to feed, or choose <strong>Place food</strong> and tap anywhere in the tank to drop food from the surface at that horizontal position. Choose Fullscreen to enlarge the game; Escape or Exit fullscreen returns to this page. Touch hints show tap/drag positions. Use Keeper → Games to play the mini-games. Shortcuts unlock after choosing a first-run profile. The page can scroll normally outside the game screen.</p>
     <section aria-labelledby="saves-title">
       <h2 id="saves-title">Your browser save</h2>
       <p>All profiles, Bank, aquariums and preferences stay in this browser on this site. Autosaved every 5 seconds, after actions, when hidden and on exit. Keep an export: clearing site data, private browsing or browser eviction can remove saves. Only one tab can play at a time.</p>

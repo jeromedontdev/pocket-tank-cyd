@@ -183,7 +183,7 @@ function card(f, line, life, names, extra) {
 }
 
 function show(save) {
-  if (!save || save.format !== "pocket-tank" || typeof save.schema !== "number" || !save.tank) throw new Error("This is not a Pocket Tank backup.");
+  if (!save || save.format !== "pocket-tank" || typeof save.schema !== "number" || !save.tank) throw new Error("This is not a Pocket Tank CYD backup.");
   if (save.schema < 9) throw new Error(`Schema ${save.schema} is too old to view - restore it on the tank and back up again.`);
   const t = save.tank, comp = save.companion || {}, pol = save.polish || {}, story = save.story || null;
   const life = { active: lives(hex(pol.active)), bank: lives(hex(pol.bank)), traveler: lives(hex(pol.traveler))[0] };

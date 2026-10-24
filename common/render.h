@@ -30,6 +30,7 @@ int render_tile_bottom(void);
 const char *render_palette_name(bool sand, int index);
 void render_settings_open(void);
 void render_settings_open_care(void);
+void render_weather_icon(uint16_t *fb, int stride, int x, int y, int size, int code);
 static inline float render_page_x(float x) {
     return x * PAGE_W / TANK_W;
 }

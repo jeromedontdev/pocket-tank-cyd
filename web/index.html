@@ -81,7 +81,7 @@
         4 MB flash, no PSRAM required.</p>
     </div>
     <figure>
-      <img class="screen" src="./media/tank-normal.png" width="320" height="240" alt="Pixel fish and planted scenery in a Pocket Tank aquarium">
+      <img class="screen" src="./media/tank-normal.png" width="320" height="240" alt="Pixel fish and planted scenery in a Pocket Tank CYD aquarium">
       <figcaption>Your aquarium is the main event. Stories and games are optional extras.</figcaption>
     </figure>
   </header>
@@ -94,6 +94,8 @@
     shared progression and global Fish Bank require <strong>2.0.0 or newer</strong>.
     Three scene-detail levels, Tiny/Jumbo clocks, resizable supporting text and linked screen/LED dimming
     require <strong>2.1.0 or newer</strong>.
+    Cleaner settings, visible weather text sizing and condition icons require
+    <strong>2.1.3 or newer</strong>.
     Check the published version above before installing. Older releases remain
     available, but cannot load the expanded current save format.
   </aside>
@@ -146,7 +148,7 @@
       account is needed. Your browser game is separate from a physical CYD;
       it does not automatically synchronize device saves.</p>
     <p>Fullscreen keeps the controls handy. Choose Place food and tap a feeding
-      column, or use Left / Middle / Right; Touch hints show your taps.
+      column; Touch hints show your taps.
       These browser controls require 2.1.1. Version 2.1.2 also fixes the
       fish-card padlock, sponge/scissors and DONE controls: lock bare-hand
       cleaning/trimming without disabling explicit tools.
@@ -154,6 +156,11 @@
       the latest stable release source, not the ESP32 binary. Its release tag
       and source commit are shown above the game and checked against the USB
       installer's version before deployment.</p>
+    <p>In 2.1.3, a simpler Clock/Weather hub groups Face, Colors, Text / Effects,
+      Time / Zone and Weather, with one Show Clock preview. Weather has its own
+      Small/Medium/Large text control, plus simple condition icons. BACK returns
+      one level, and city removal requires confirmation. Live weather remains a
+      CYD hardware feature; the browser does not contact weather services.</p>
     <p>Progress stays in this browser on this device. Clearing site data,
       private browsing or browser storage eviction can remove it. Hardware-only
       features are not emulated.</p>
@@ -179,6 +186,22 @@
   </section>
 
   <section id="latest-features" aria-labelledby="latest-heading">
+    <span class="badge">Settings refresh: 2.1.3</span>
+    <h2>Clearer menus. Weather you can read.</h2>
+    <p>Clock/Weather now has one clean hub and one preview action. Weather text
+      has a visible Small/Medium/Large control, with simple icons for actual
+      cached conditions. City search goes back one level, and forgetting a city
+      needs confirmation.</p>
+    <div class="gallery">
+      <figure>
+        <img class="screen" src="./media/clock-settings.png" loading="lazy" width="320" height="240" alt="Pocket Tank CYD Clock and Weather hub with six clear actions">
+        <figcaption>One hub; one BACK path.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/weather-settings.png" loading="lazy" width="320" height="240" alt="Weather settings showing a rain icon, large temperature text and visible Text Large control">
+        <figcaption>Native renderer with fixture weather: visible sizing and a condition icon.</figcaption>
+      </figure>
+    </div>
     <span class="badge">New in 2.1.0</span>
     <h2 id="latest-heading">Your scene. Your clock. Comfortable light.</h2>
     <p>Available in <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v2.1.0">Pocket Tank CYD 2.1.0</a>,
@@ -195,7 +218,7 @@
       </article>
       <article class="card">
         <h3>Jumbo clocks that keep their style</h3>
-        <p>Tiny also joins the size choices. Clock &gt; Style &gt; Text has separate
+        <p>Tiny also joins the size choices. Clock/Weather &gt; Text / Effects has separate
           Small/Medium/Large controls for date/AM-PM/seconds and weather/activity.
           Captions wrap and sizes fit down when necessary to prevent overlap
           at either screen resolution.</p>

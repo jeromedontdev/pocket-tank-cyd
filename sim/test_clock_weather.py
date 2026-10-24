@@ -37,10 +37,10 @@ def main():
         original = json.loads(backup(lib))
         tap(330, 100)
         clock = frame()
-        tap(274, 20)
+        tap(100, 260)
         weather = frame()
         assert weather not in (settings, clock)
-        tap(140, 200)
+        tap(140, 234)
         keyboard = frame()
         assert keyboard != weather
         tap(390, 20)

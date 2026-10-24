@@ -59,6 +59,8 @@ async function main() {
       await page.mouse.click(position.x, position.y);
     }
     await page.goto(url); await ready();
+    assert.equal(await page.title(), "Pocket Tank CYD · Browser simulator");
+    assert.equal(await page.locator("h1").textContent(), "Pocket Tank CYD");
     const build = await page.evaluate(async () => (await fetch("play-build.json", {cache:"no-store"})).json());
     assert.match(build.commit, /^[0-9a-f]{40}$/);
     const info = await page.locator("#build-info").textContent();
@@ -148,21 +150,15 @@ async function main() {
     await page.locator('[data-action="0"]').click();
     for (const fraction of [.2, .5, .8]) {
       await page.reload(); await ready();
-      const before = await native("return Array.from({length:256}, (_,i) => game._sim_food_x(i))");
-      await page.locator("#feed").click();
-      await page.locator(`[data-feed="${fraction}"]`).click();
-      const after = await native("return Array.from({length:256}, (_,i) => game._sim_food_x(i))");
-      const pellets = after.filter((x, i) => x >= 0 && before[i] < 0);
-      assert.equal(pellets.length, 3);
-      for (const x of pellets) assert.ok(Math.abs(x - fraction * 320) <= 15);
-      assert.equal(await page.locator("#feed-options").isVisible(), false);
+      await feedAt(fraction);
     }
+    assert.equal(await page.locator("[data-feed], #feed-options").count(), 0, "No redundant feeding-position buttons");
     assert.equal(await native("return game._sim_feed_at(NaN) + game._sim_feed_at(-1) + game._sim_feed_at(game._sim_width())"), 0);
     await native("for(let i=0;i<8;i++) game._sim_feed_at(160)");
     await page.locator("#feed").click();
-    await page.locator('[data-feed="0.5"]').click();
+    await tap(224,200);
     assert.ok((await page.locator("#game-message").textContent()).includes("maximum pellets"));
-    assert.equal(await page.locator("#feed-options").isVisible(), true);
+    assert.equal(await page.locator("#feed").getAttribute("aria-pressed"), "true");
     await page.locator("#feed").click();
     await page.evaluate(() => { document.querySelector("#game-panel").requestFullscreen = undefined; });
     await page.locator("#fullscreen").click();
@@ -216,6 +212,64 @@ async function main() {
     assert.equal((await snapshot()).tank.tools_locked, savedLock ? 0 : 1, "Lock must survive reload");
     await selectFish(); await tap(172, 315);
     await page.locator('[data-action="0"]').click();
+    async function menuImage(name) {
+      await page.waitForTimeout(60);
+      const image = await page.locator("#screen").evaluate(canvas => canvas.toDataURL());
+      if (process.env.POCKET_TANK_SCREENSHOTS) {
+        fs.mkdirSync(process.env.POCKET_TANK_SCREENSHOTS, {recursive:true});
+        fs.writeFileSync(path.join(process.env.POCKET_TANK_SCREENSHOTS, name + ".png"), Buffer.from(image.split(",")[1], "base64"));
+      }
+      return image;
+    }
+    for (let scale = 0; scale < 2; scale++) {
+      await page.locator('[data-action="2"]').click();
+      await menuImage(`settings-${scale}`);
+      await tap(330, 100);
+      const hub = await menuImage(`clock-hub-${scale}`);
+      const beforeMenus = (await snapshot()).tank;
+      for (const [x,y,name] of [[100,100,"face"], [330,100,"colors"], [100,180,"text"], [330,180,"time"]]) {
+        await tap(x,y);
+        const child = await menuImage(`clock-${name}-${scale}`);
+        assert.notEqual(child, hub, `${name} must have its own screen`);
+        await tap(220, 108); // Row gap is not a control.
+        assert.equal(await menuImage(`clock-${name}-gap-${scale}`), child);
+        await tap(380,28);
+        assert.equal(await menuImage(`clock-back-${scale}`), hub, "One BACK returns to the hub");
+      }
+      await tap(100,260);
+      const captionBefore = (await snapshot()).tank.clock_delay;
+      for (let textSize = 0; textSize < 3; textSize++) {
+        await tap(320,288);
+        const delay = (await snapshot()).tank.clock_delay;
+        assert.equal(delay & ~24, captionBefore & ~24);
+        assert.equal((delay & 24) >> 3, ((((captionBefore & 24) >> 3) + textSize + 1) % 3));
+        await menuImage(`weather-size-${scale}-${textSize}`);
+      }
+      await tap(390,28); await tap(100,260); // Reopen with a clear status message.
+      const weather = await menuImage(`weather-${scale}`);
+      await tap(140,234);
+      const keyboard = await menuImage(`city-search-${scale}`);
+      assert.notEqual(keyboard, weather);
+      await tap(220,340); // Empty search must remain on the keyboard.
+      await tap(390,28);
+      assert.equal(await menuImage(`weather-back-${scale}`), weather);
+      await tap(390,28);
+      assert.equal(await menuImage(`weather-hub-${scale}`), hub);
+      const afterMenus = (await snapshot()).tank;
+      for (const key of ["clock_theme","clock_flags","clock_layout","clock_delay","clock_secondary","clock_utc_quarters"])
+        assert.equal(afterMenus[key], beforeMenus[key], `Browsing must preserve ${key}`);
+      await tap(380,28); await tap(100,260); // Settings -> Care.
+      const autofeed = (await snapshot()).tank.autofeed_off;
+      await tap(224,198);
+      assert.equal((await snapshot()).tank.autofeed_off, autofeed ? 0 : 1);
+      await tap(224,198);
+      assert.equal((await snapshot()).tank.autofeed_off, autofeed);
+      await menuImage(`care-${scale}`);
+      await tap(380,28); await tap(330,180);
+      await menuImage(`backups-${scale}`);
+      await tap(380,28); await tap(100,100); await tap(200,138);
+      await page.locator('[data-action="0"]').click();
+    }
     // Launch a real mini-game from the visible Life hub, then pop rendered bubbles.
     await page.locator('[data-action="7"]').click(); await tap(100, 260);
     assert.equal(await native("return game._sim_page()"), 8);
@@ -236,7 +290,7 @@ async function main() {
     await tap(100, 100); await tap(200, 192);
     assert.equal(await native("return game._sim_scene_detail()"), 1);
     await page.locator('[data-action="2"]').click();
-    await tap(330, 100); await tap(220, 69);
+    await tap(330, 100); await tap(100, 100); await tap(220, 84);
     assert.equal((await snapshot()).tank.clock_theme, 1);
     await page.locator('[data-action="0"]').click();
     // Real Bank grant API, through the same native sim_action used by desktop tests.
@@ -385,13 +439,16 @@ async function main() {
     await phone.locator("#fullscreen").click();
     await phone.waitForFunction(() => document.fullscreenElement?.id === "game-panel");
     await phone.locator("#feed").click();
-    const visibleButtons = await phone.locator("#feed-options button").evaluateAll(buttons =>
+    const visibleButtons = await phone.locator("#feed, #fullscreen").evaluateAll(buttons =>
       buttons.every(button => {
         const r = button.getBoundingClientRect();
         return r.width >= 44 && r.height >= 44 && r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
       }));
-    assert.ok(visibleButtons, "Fullscreen portrait feeding buttons must be usable 44px targets");
-    await phone.locator('[data-feed="0.2"]').click();
+    assert.ok(visibleButtons, "Fullscreen portrait controls must be usable 44px targets");
+    box = await phone.locator("#screen").boundingBox();
+    const imageWidth = await phone.locator("#screen").evaluate(canvas => Math.min(canvas.clientWidth, canvas.clientHeight * canvas.width / canvas.height));
+    const imageHeight = imageWidth * 240 / 320;
+    await phone.touchscreen.tap(box.x + box.width / 2 - imageWidth * .3, box.y + (box.height - imageHeight) / 2 + imageHeight * .6);
     assert.ok((await phone.locator("#game-message").textContent()).includes("Food dropped"));
     await phone.locator("#fullscreen").click();
     await mobile.close();
@@ -422,7 +479,7 @@ async function main() {
       fs.rmSync(profile, {recursive: true, force: true});
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: fish-card lock toggle/persistence and sponge/scissors/DONE at both scales; fullscreen entry/exit, exact food columns at both resolutions and letterboxed sizes, ignored margins, Left/Middle/Right, touch hints/mobile feeding; real WASM gameplay, all modes, durable saves/restart, exclusive tabs and corruption/quota recovery.");
+    console.log("PASS: organized Settings/Clock/Weather navigation, weather sizing, row gaps, single-level BACK, query validation and Auto Feed at both scales; fish-card lock persistence/tools; fullscreen, tap-to-place without presets, mobile; gameplay, all modes, durable saves/restart, exclusive tabs and corruption/quota recovery.");
   } finally {
     await browser.close();
   }
