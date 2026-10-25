@@ -70,9 +70,9 @@ or deployment is published. Update this file when its contracts change.
   still needs checking; do not erase the user's working calibration to test it.
   Do not leave
   diagnostic bars, startup delays or alternate-controller tests enabled.
-  Do not tag/publish 2.3.6 as verified support until display/touch pass.
-  Public release remains 2.3.5; local unified testing is not a published
-  installer or release.
+  Physical display and the user's calibrated touch passed; fresh-default touch
+  is covered by native coordinate tests, not a claimed physical fresh-board test.
+  Check actual release/tag/Pages status before claiming publication.
 - User's requested direction after COM8 is fixed: prefer one binary for
   compatible ESP32/4MiB CYDs, with saved runtime hardware profiles for panel
   initialization/order/inversion, touch and peripheral capabilities. Keep an
@@ -95,12 +95,26 @@ or deployment is published. Update this file when its contracts change.
   projects (Pocket Terrarium, etc.) should reuse this hardware/persistence
   boundary rather than put species/game logic in board profiles. Keep
   capabilities explicit and test native/browser fallback builds.
-  Production USB provisioning, safe legacy migration and unified website/
-  release packaging remain unfinished: build_cyd.ps1 permits unified builds
-  but explicitly refuses unified flashing. Do not publish a nonfunctional
-  universal installer or disable marker checks. `unified-ota.json` is the
-  development image's channel but is not published. Board-specific tooling
-  remains available for its existing identities.
+  Production migration is tools/flash_unified.py via build_cyd.ps1
+  -Board unified -HardwareProfile cyd|elegoo -Port ACTUAL_PORT -Flash
+  -Backup NEW_FILE. It requires a new full 4 MiB backup, live/fresh identity
+  and matching OTA slots, validates partition/OTA metadata and family marker,
+  refuses downgrade, reads back the full app, verifies profile persistence and
+  restores the backed-up app if verification fails. Do not accept guessed
+  slots or a generic migration bypass here.
+  Website hardware choices use one shared app. Their update manifests bind
+  `board=cydesp32profiles` plus explicit `hardware=cyd2432s028|elegoo28`.
+  Legacy migration accepts only that hardware's old marker/banner. Existing
+  unified images must report the selected saved profile; wrong profiles are
+  refused, not silently changed. Only missing profiles are provisioned after
+  verified app-only flashing. Factory images differ only in blank NVS, generated
+  with Espressif's nvs generator; never flash them onto existing aquariums.
+  Unified SD/Wi-Fi channels use unified-update.ptu / unified-ota.json;
+  legacy channels retain their board-specific assets and require USB to migrate.
+  Release packaging retains all three families. Installer browser tests exercise
+  both actual legacy/unified handlers with simulated serial/bootloader devices;
+  hardware readback/profile/reboot tests passed on both local boards. Public
+  status still requires actual GitHub/Pages verification, not these local facts.
 - 2.3.4 moves all eight aquarium archives to internal SPIFFS; SD is only for
   legacy import, backups, screenshots and offline updates. Firmware owns this
   policy in `persist_port_esp.c`; `sd_port_cyd.c` exposes read-only legacy import.

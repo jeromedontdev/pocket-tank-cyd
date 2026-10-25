@@ -18,8 +18,7 @@ battery/PMIC and IMU drivers have been removed from the source tree.
 | `elegoo` | `elegoo28` | ELEGOO ILI9341V power/gamma sequence, BGR | 22 | Battery sensing, never read as light |
 | `unified` | `cydesp32profiles` | Saved `cyd` or `elegoo` runtime profile | Profile-specific | Profile-specific |
 
-**Development status:** ELEGOO integration is not yet a verified public
-release. Physical testing identified the white/striped-screen cause: after
+**Hardware validation:** physical testing identified the white/striped-screen cause: after
 an absent/failed SD card, freeing SPI3 disrupted the already-running SPI2
 LCD DMA on the tested ESP32/ESP-IDF stack. The SD failure path now logs its
 error without formatting the card and retains the SPI3 bus for the boot's
@@ -33,11 +32,11 @@ The user corrected backwards touch using calibration. ELEGOO's uncalibrated
 default now reverses logical Y to match the upright panel; saved affine
 calibration overrides that default using the unchanged raw coordinate basis.
 Existing calibrations are not erased or invalidated. The fresh-board default
-still needs physical verification before release; successful unit tests alone
-are not enough.
-The latest verified public release remains 2.3.5 for the original board.
+has native coordinate tests; physical touch was confirmed using the user's
+saved calibration, not by erasing it to retest the fresh-board default.
+Use the built-in calibration tool if your individual panel needs adjustment.
 
-The `unified` development image implements saved hardware profiles for these
+The `unified` image implements saved hardware profiles for these
 two compatible ESP32/4 MiB boards. The same application bytes have been
 installed on both local boards and checked by full app readback and reboot,
 with their aquariums preserved. On first boot it waits for `hardware cyd` or
@@ -57,13 +56,34 @@ No automatic controller probing is used: the ELEGOO test board returns zero
 IDs even though status/GRAM reads work. Different ESP32 families, display
 buses, pins or framebuffer budgets may still require separate builds.
 
-**Not yet released:** production USB provisioning, legacy-to-unified update
-migration and unified release/website assets. `build_cyd.ps1 -Board unified`
-is build-only and deliberately refuses `-Flash` until that save-preserving
-installer path is ready. Do not bypass board markers or factory-flash an
-existing aquarium. The unified default Wi-Fi manifest name is
-`unified-ota.json`; that release asset is not published yet. Existing
-board-specific release/update paths are unchanged.
+**Save-preserving migration:** the website selects the real hardware while
+downloading `pocket-tank-unified-app.bin` for either board. A fresh boot banner,
+live OTA report, partition table, OTA metadata and app marker must agree.
+For legacy firmware only that selected hardware's identity is accepted;
+existing unified firmware must report the matching saved profile. After
+writing/checksumming only the active app, the updater reboots, provisions a
+missing profile, and confirms it over serial. It never falls back to factory
+flashing. Existing calibration, aquariums, Wi-Fi and partition layout remain.
+
+The local tool additionally creates a new full 4 MiB backup, validates the
+layout/OTA metadata and full app readback, and restores the old app on failed
+verification. It refuses explicit slot guesses or a generic migration bypass:
+
+```powershell
+.\tools\build_cyd.ps1 -Board unified -HardwareProfile cyd -Port COM4 -Flash -Backup .\before-unified-com4.bin
+.\tools\build_cyd.ps1 -Board unified -HardwareProfile elegoo -Port COM8 -Flash -Backup .\before-unified-com8.bin
+```
+
+Use the actual port and a new backup filename. Profiled factory images
+`pocket-tank-unified-cyd-factory.bin` / `pocket-tank-unified-elegoo-factory.bin`
+are for blank boards or deliberate resets only; their app bytes are identical,
+and only the blank NVS hardware profile differs. Packaging uses Espressif's
+`esp-idf-nvs-partition-gen==0.1.9`.
+
+Legacy SD/Wi-Fi firmware remains on its board-specific channel; migrate to
+unified by USB once. Thereafter use `unified-ota.json` or rename
+`unified-update.ptu` to `pocket-tank/update.ptu` on SD. Subsequent updates retain
+the NVS profile and existing family checks. No schema/partition change.
 
 The ELEGOO ESP32-32E 2.8-inch resistive-touch board is documented by
 [ELEGOO](https://wiki.elegoo.com/oshw-parts-&-accessories/esp32-dispaly-introduction).

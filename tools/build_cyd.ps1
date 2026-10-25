@@ -4,14 +4,19 @@ param(
     [string]$Port = 'COM4',
     [switch]$Flash,
     [switch]$AllowBoardMigration,
+    [ValidateSet('cyd', 'elegoo')]
+    [string]$HardwareProfile,
+    [string]$Backup,
     [ValidateSet('auto', 'ota_0', 'ota_1')]
     [string]$AppSlot = 'auto'
 )
 $ErrorActionPreference = 'Stop'
 if (-not $env:IDF_PATH) { throw 'Run this script from an ESP-IDF PowerShell terminal.' }
-if ($Board -eq 'unified' -and $Flash) {
-    throw 'Unified profile provisioning/migration is still under development. Build-only is supported; use the verified board-specific flash path until migration tooling is ready.'
+if ($Board -eq 'unified' -and $Flash -and
+    (-not $HardwareProfile -or -not $Backup -or $AppSlot -ne 'auto' -or $AllowBoardMigration)) {
+    throw 'Unified flashing requires -HardwareProfile cyd|elegoo and -Backup NEW_FILE. Slot detection and family validation are mandatory; no migration bypass or explicit slot is accepted.'
 }
+$backupPath = if ($Backup) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Backup) }
 $firmware = Join-Path (Split-Path $PSScriptRoot -Parent) 'firmware'
 $build = "build_$Board"
 Push-Location $firmware
@@ -21,6 +26,11 @@ try {
     & ninja -C $build
     if ($LASTEXITCODE -ne 0) { throw 'CYD build failed.' }
     if ($Flash) {
+        if ($Board -eq 'unified') {
+            & python (Join-Path $PSScriptRoot 'flash_unified.py') --port $Port --hardware $HardwareProfile --image "$build\pocket_tank.bin" --backup $backupPath
+            if ($LASTEXITCODE -ne 0) { throw 'Unified app-only update failed; inspect recovery output.' }
+            return
+        }
         if ($AllowBoardMigration -and $AppSlot -eq 'auto') {
             throw 'Deliberate board recovery requires an explicit -AppSlot and a full-flash backup. No flash written.'
         }

@@ -152,6 +152,34 @@ class WebInstallerTests(unittest.TestCase):
                 self.stage(app=app, checksums=self.checksums(app=app))
             self.assertFalse((self.root / "site").exists())
 
+    def test_same_unified_app_with_profile_specific_factories(self):
+        shared = bytearray(self.app)
+        shared[0x120:0x140] = BOARDS["unified"].marker
+        factory = bytearray(0x20000) + shared
+        factories = {}
+        for hardware in ("cyd", "elegoo"):
+            factories[hardware] = bytearray(factory)
+            factories[hardware][0x9000] = 1 if hardware == "cyd" else 2
+        assets = {"pocket-tank-unified-app.bin": shared,
+                  "pocket-tank-unified-factory.bin": factory,
+                  **{f"pocket-tank-unified-{key}-factory.bin": value for key, value in factories.items()}}
+        sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in assets.items())
+        stage_site(self.source, self.root / "site", "2.3.6", self.image, self.checksums(), self.app,
+                   unified=(factory, sums, shared, factories))
+        output = self.root / "site"
+        a = json.loads((output / "update.json").read_text())
+        b = json.loads((output / "elegoo-update.json").read_text())
+        self.assertEqual(a["board"], "cydesp32profiles")
+        self.assertEqual(a["app"], b["app"])
+        self.assertEqual(a["sha256"], b["sha256"])
+        self.assertEqual(a["hardware"], "cyd2432s028")
+        self.assertEqual(b["hardware"], "elegoo28")
+        self.assertEqual((output / a["app"]).read_bytes(), shared)
+        for hardware, prefix in (("cyd", ""), ("elegoo", "elegoo-")):
+            manifest = json.loads((output / f"{prefix}manifest.json").read_text())
+            self.assertEqual(manifest["builds"][0]["parts"][0]["path"],
+                             f"pocket-tank-unified-{hardware}-factory.bin")
+
     def test_factory_app_must_match(self):
         self.app[0x150] = 42
         with self.assertRaisesRegex(ValueError, "same application"):

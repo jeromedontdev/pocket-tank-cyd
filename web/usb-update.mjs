@@ -1,5 +1,5 @@
 import {
-  cleanLines, parseOTA, identifyFirmware, validateManifest, verifyApp,
+  cleanLines, parseOTA, identifyForHardware, validateManifest, verifyApp,
   matchesMarker, validatePartitions, validateOTAData, flashOptions,
 } from "./update-core.mjs";
 import { boardProfile } from "./board-profiles.mjs";
@@ -50,7 +50,7 @@ async function inspectFirmware(port, version, board) {
   })();
   async function sendOTA() {
     const writer = port.writable.getWriter();
-    try { await writer.write(new TextEncoder().encode("\nota\n")); }
+    try { await writer.write(new TextEncoder().encode("\nota\nhardware\n")); }
     finally { writer.releaseLock(); }
   }
   async function waitUntil(predicate, timeout, message, retry) {
@@ -81,12 +81,76 @@ async function inspectFirmware(port, version, board) {
     await port.setSignals({ requestToSend: false });
     await waitUntil(complete => cleanLines(complete).some(line => line.startsWith("pocket-tank ")),
       15000, "CYD boot identity was not received after reset. Nothing was flashed.");
-    const identity = identifyFirmware(await waitUntil(hasOTA, 12000,
-      "The rebooted firmware did not answer ota. Nothing was flashed.", true), version, board);
+    let complete = await waitUntil(hasOTA, 12000,
+      "The rebooted firmware did not answer ota. Nothing was flashed.", true);
+    if (complete.includes("for cydesp32profiles boot")) {
+      complete = await waitUntil(lines => cleanLines(lines).some(line =>
+        line.startsWith("hardware profile ") && line.includes(" | image ")), 12000,
+        "Saved hardware profile was not received. Nothing was flashed.", true);
+    }
+    const identity = identifyForHardware(complete, version, board);
     if (identity.slot !== before.slot || identity.version !== before.version || identity.build !== before.build) {
       throw new Error("Firmware/slot changed during detection. No flash was written; finish pending updates first.");
     }
     return identity;
+  } finally {
+    closing = true;
+    await reader.cancel().catch(() => {});
+    await reading;
+    await port.close();
+  }
+}
+
+async function confirmProfile(port, hardware) {
+  await port.open({ baudRate: 115200, bufferSize: 65536 });
+  const reader = port.readable.getReader();
+  let text = "", closing = false, readError;
+  const reading = (async () => {
+    const decoder = new TextDecoder();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+        if (text.length > 98304) throw new Error("Excessive serial output during profile setup.");
+      }
+      if (!closing) readError = new Error("Serial port disconnected during profile setup.");
+    } catch (error) { readError = error; }
+    finally { reader.releaseLock(); }
+  })();
+  try {
+    await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+    await port.setSignals({ requestToSend: true });
+    await pause(100);
+    await port.setSignals({ requestToSend: false });
+    const end = Date.now() + 45000;
+    let sent = false, nextQuery = 0;
+    while (Date.now() < end) {
+      if (readError) throw readError;
+      const complete = cleanLines(text.slice(0, text.lastIndexOf("\n") + 1));
+      if (complete.some(line => line === `hardware profile ${hardware} | image cydesp32profiles`)) return;
+      if (complete.some(line => line.includes("hardware profile ") && line.includes(" | image ") &&
+        line !== `hardware profile ${hardware} | image cydesp32profiles`)) {
+        throw new Error("Installed firmware reports a different hardware profile.");
+      }
+      const needsProfile = complete.some(line => line.includes("profile required:"));
+      if ((!sent && needsProfile) || (!needsProfile && Date.now() >= nextQuery)) {
+        const writer = port.writable.getWriter();
+        try {
+          await writer.write(new TextEncoder().encode(needsProfile ?
+            `hardware ${hardware === "elegoo28" ? "elegoo" : "cyd"}\n` : "\nhardware\n"));
+        } finally { writer.releaseLock(); }
+        if (needsProfile) sent = true;
+        nextQuery = Date.now() + 1500;
+      } else if (sent && Date.now() >= nextQuery) {
+        const writer = port.writable.getWriter();
+        try { await writer.write(new TextEncoder().encode("\nhardware\n")); }
+        finally { writer.releaseLock(); }
+        nextQuery = Date.now() + 1500;
+      }
+      await pause(50);
+    }
+    throw new Error("Profile setup was not confirmed. Reconnect at 115200 baud and send hardware cyd or hardware elegoo for the actual board.");
   } finally {
     closing = true;
     await reader.cancel().catch(() => {});
@@ -116,7 +180,9 @@ button.addEventListener("click", async () => {
     identity = await inspectFirmware(port, manifest.version, board);
     if (!window.confirm(`Verified ${boardProfile(board).name}, Pocket Tank ${identity.version}, ${identity.slot}.\n\n` +
         `Update to ${manifest.version} at 0x${identity.address.toString(16)}?\n` +
-        "Only the running app will be replaced. NVS, saved tanks and the partition table will not be written.\n\n" +
+        "Only the running app will be replaced. Saved tanks and the partition table will not be erased. " +
+        (manifest.board === "cydesp32profiles" ? "First migration also saves the selected hardware-profile key; calibration and other settings stay intact.\n\n" :
+          "NVS will not be written.\n\n") +
         "Keep USB power connected. An interrupted active-slot write may require USB recovery. Continue?")) {
       status.textContent = "Update cancelled. No flash was written.";
       return;
@@ -131,7 +197,7 @@ button.addEventListener("click", async () => {
     if (loader.chip?.CHIP_NAME !== "ESP32") throw new Error("Wrong chip family. No flash was written.");
     validatePartitions(await loader.readFlash(0x8000, 0x1000));
     validateOTAData(await loader.readFlash(0xf000, 0x2000), identity);
-    if (!matchesMarker(await loader.readFlash(identity.address + 0x120, 32), board)) {
+    if (!matchesMarker(await loader.readFlash(identity.address + 0x120, 32), identity.board)) {
       throw new Error("Installed app is not the verified CYD firmware. No flash was written.");
     }
     const options = flashOptions(identity, bytes, (_file, written, total) => {
@@ -147,6 +213,12 @@ button.addEventListener("click", async () => {
     }
     verified = true;
     await loader.after("hard_reset");
+    await transport.disconnect();
+    transport = null;
+    if (manifest.board === "cydesp32profiles") {
+      status.textContent = "App verified. Confirming the saved hardware profile after reboot…";
+      await confirmProfile(port, board);
+    }
     status.textContent = `Updated to ${manifest.version}. App verified; saved tanks/settings were not erased. Wait for the aquarium to restart.`;
   } catch (error) {
     status.textContent = `${error.name === "NotFoundError" ? "No USB port selected." : error.message} ` +

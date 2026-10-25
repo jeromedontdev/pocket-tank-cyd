@@ -4,10 +4,14 @@
 
 **An illustrated tour of Pocket Tank CYD 2.3.6**
 
-**2.3.6 board support:** the website installer offers separate original CYD
-and ELEGOO ESP32-32E 2.8-inch ILI9341V images. Both run the same aquarium;
+**2.3.6 board support:** the website installer uses one shared application for
+the original CYD and ELEGOO ESP32-32E 2.8-inch ILI9341V, with saved hardware profiles.
+Existing tanks migrate by app-only USB update; new-board factory images differ
+only in their blank NVS profile. Both run the same aquarium;
 ELEGOO uses different LCD initialization and has no room-light sensor.
-Select the exact board for USB, SD or Wi-Fi updates. A module's ESP32-32E
+Select the exact board for USB. Once unified, both use unified-update.ptu /
+unified-ota.json; legacy board-specific SD/Wi-Fi downloads remain separate.
+A module's ESP32-32E
 label alone is not enough to identify it. See the
 [hardware/board-conversion guide](../firmware/CYD.md#supported-board-variants).
 

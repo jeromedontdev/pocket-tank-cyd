@@ -20,6 +20,7 @@ jobs:
           npm install --prefix .browser-tools --no-save playwright@1.56.1
           .browser-tools/node_modules/.bin/playwright install --with-deps chromium
           node tools/test_browser.cjs
+          node --input-type=module -e "import('./tools/test_usb_updater.mjs').then(m=>m.runTests()).then(console.log)"
   cyd:
     runs-on: ubuntu-latest
     steps:

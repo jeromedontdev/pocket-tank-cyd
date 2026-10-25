@@ -24,7 +24,7 @@ jobs:
           esp_idf_version: v6.1
           target: esp32
           path: firmware
-          command: idf.py -B build_cyd -DPT_BOARD_VARIANT=cyd build && idf.py -B build_elegoo -DSDKCONFIG=build_elegoo/sdkconfig -DPT_BOARD_VARIANT=elegoo build
+          command: idf.py -B build_cyd -DPT_BOARD_VARIANT=cyd build && idf.py -B build_elegoo -DSDKCONFIG=build_elegoo/sdkconfig -DPT_BOARD_VARIANT=elegoo build && idf.py -B build_unified -DSDKCONFIG=build_unified/sdkconfig -DPT_BOARD_VARIANT=unified build
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -42,6 +42,9 @@ jobs:
           python tools/test_profile_storage.py --cc gcc
           python tools/test_internal_tanks.py --cc gcc
           python tools/test_cyd_display.py --cc gcc
+          python tools/test_cyd_sd_init.py --cc gcc
+          python tools/test_cyd_touch_defaults.py --cc gcc
+          python tools/test_board_hardware.py --cc gcc
           python tools/test_cyd_settings.py --cc gcc
           python tools/test_ambient.py --cc gcc
           python tools/test_brightness.py --cc gcc
@@ -52,9 +55,21 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          python -m pip install esptool==5.6.0
+          python -m pip install esptool==5.6.0 esp-idf-nvs-partition-gen==0.1.9
           python tools/package_cyd_release.py --build firmware/build_cyd --out dist/cyd --version "$RELEASE_TAG"
           python tools/package_cyd_release.py --board elegoo --build firmware/build_elegoo --out dist/elegoo --version "$RELEASE_TAG"
+          python tools/package_cyd_release.py --board unified --build firmware/build_unified --out dist/unified --version "$RELEASE_TAG"
+          python tools/prepare_web_installer.py --bundles dist --version "$RELEASE_TAG"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+      - name: Verify staged installer and legacy-to-unified USB migration before publication
+        run: |
+          npm install --prefix .browser-tools --no-save playwright@1.56.1
+          .browser-tools/node_modules/.bin/playwright install --with-deps chromium
+          node --input-type=module -e "import('./tools/test_usb_updater.mjs').then(m=>m.runTests()).then(console.log)"
+          node tools/test_usb_installer.cjs
+          node tools/test_usb_migration.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: cyd-release
@@ -65,6 +80,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" dist/cyd/* dist/elegoo/* --verify-tag --latest \
+          gh release create "$RELEASE_TAG" dist/cyd/* dist/elegoo/* dist/unified/* --verify-tag --latest \
             --title "Pocket Tank CYD ${RELEASE_TAG#v}" --notes-file dist/cyd/RELEASE-NOTES.md
           gh workflow run pages.yml --ref main

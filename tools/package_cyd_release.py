@@ -11,6 +11,7 @@ import zipfile
 
 from make_sd_update import package
 from board_profiles import BOARDS
+from provision_factory import provision_factory
 
 
 def release_version(value):
@@ -44,6 +45,10 @@ def create_bundle(build, output, version, board="cyd"):
     for offset, name in args["flash_files"].items():
         command.extend((offset, str((build / name).resolve())))
     subprocess.run(command, check=True)
+    if board == "unified":
+        for hardware in ("cyd", "elegoo"):
+            (output / f"{prefix}-{hardware}-factory.bin").write_bytes(
+                provision_factory(factory.read_bytes(), hardware))
     # These assets are shared by the standalone downloads and the all-in-one ZIP.
     (output / f"{prefix}-app.bin").write_bytes(image)
     (output / f"{asset_prefix}ota.json").write_text(json.dumps({
@@ -112,6 +117,42 @@ Do not downgrade: the extended CYD save format is not supported upstream.
 Source, build instructions, full feature guide and screenshots:
 https://github.com/jeromedontdev/pocket-tank-cyd
 """
+    if board == "unified":
+        instructions = f"""Pocket Tank CYD {version}: one application for CYD and ELEGOO
+
+EXISTING AQUARIUM: back up first. Use the website save-preserving USB updater,
+selecting the actual hardware. It verifies the running slot, partition layout,
+installed family, download and written app, then provisions the saved profile.
+Legacy board-specific firmware must migrate by USB; its Wi-Fi/SD channels stay
+board-specific. Never use a factory image to migrate an existing aquarium.
+Local alternative: tools\\build_cyd.ps1 -Board unified -HardwareProfile cyd
+  -Port YOUR_PORT -Flash -Backup YOUR_NEW_BACKUP_FILE
+Choose elegoo instead of cyd for the ELEGOO 2.8-inch ILI9341V board.
+
+ONCE UNIFIED: use unified-ota.json for Wi-Fi, or rename unified-update.ptu to
+pocket-tank/update.ptu on SD. Updates preserve the saved hardware profile,
+calibration, Wi-Fi, all internal aquariums and collection identity.
+
+NEW BOARD / DELIBERATE RESET ONLY:
+The unified-cyd-factory and unified-elegoo-factory images contain the EXACT
+SAME application but different blank NVS hardware profiles. Choose the actual
+board. Flash the chosen merged image at 0x0; THIS ERASES EXISTING SAVES.
+The unconfigured pocket-tank-unified-factory.bin waits over USB at 115200 baud
+for hardware cyd or hardware elegoo before initializing the display.
+
+SCREEN-INDEPENDENT RECOVERY at 115200 baud:
+hardware                  query saved profile and image family
+hardware cyd              save aquarium, persist CYD profile and restart
+hardware elegoo           save aquarium, persist ELEGOO profile and restart
+Calibration is not erased. Do not guess pins or rely on all-zero controller IDs.
+ELEGOO GPIO34 is battery sensing, not an LDR. Manual brightness works.
+This supports only the two tested ESP32/4 MiB/SPI/XPT2046 boards, not all CYDs.
+
+Backups/photos/offline updates remain optional SD features. Eight aquariums
+are stored internally. A JSON backup covers the active aquarium/shared state,
+not all archives; a full 4 MiB flash dump preserves the complete collection.
+Only install trusted downloads; these images are not publisher-signed.
+"""
     if board == "elegoo":
         instructions = instructions.replace("ESP32-2432S028 only", profile.name + " only")
         instructions = instructions.replace("pocket-tank-cyd-app.bin", f"{prefix}-app.bin")
@@ -126,15 +167,19 @@ https://github.com/jeromedontdev/pocket-tank-cyd
 
 ## Pocket Tank CYD {version}
 
-Release for **ESP32-2432S028 CYD only**.
+Release for the **ESP32-2432S028 CYD and ELEGOO 2.8-inch ILI9341V**.
+The website uses one unified application with an explicit saved hardware profile.
 
 Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.6: separate ELEGOO display support
+### New in 2.3.6: one firmware, explicit CYD / ELEGOO profiles
 
-- Select the original CYD or ELEGOO ESP32-32E 2.8-inch ILI9341V in the website installer. Each board has its own factory/app/SD/OTA downloads and embedded identity; wrong-board updates are refused.
+- The unified application is byte-identical on the original CYD and ELEGOO ESP32-32E 2.8-inch ILI9341V. The website selects a saved hardware profile, not a different game binary. New-board factory downloads contain that same app and a board-specific blank NVS profile.
+- Existing tanks migrate through the save-preserving USB updater. Legacy board-specific Wi-Fi/SD assets remain available; once unified, use unified-update.ptu / unified-ota.json. Unrelated family markers, unknown hardware, pending slots and unexpected partitions are still refused.
+- ELEGOO's corrected default touch transform preserves existing saved calibration. Screen-independent USB commands hardware cyd / hardware elegoo save the aquarium before switching profiles and rebooting.
+- Failed SD mounting no longer tears down the bus and disrupts LCD DMA; normal 40 MHz rendering and upright ELEGOO orientation are restored.
 - ELEGOO uses ILI9341 initialization, red LED GPIO22 and disabled audio enable GPIO4. GPIO34 is battery sensing, not an LDR; automatic room-light dimming is unavailable. Touch and SD use the documented matching pins. No battery charging/audio application is added.
 - The original CYD keeps its proven display initialization and pins. Both boards retain the same saves, partitions, games and menu fixes.
 
@@ -383,6 +428,11 @@ while adding its own modes, shared progression, genetics, stories and games.
 - Upstream daytime fish-rest recovery fix.
 
 ### Downloads
+- **pocket-tank-unified-app.bin**: the same app for both boards; migrate existing tanks with save-preserving USB.
+- **pocket-tank-unified-cyd-factory.bin** / **pocket-tank-unified-elegoo-factory.bin**: new boards/reset only, same app with different blank NVS profiles.
+- **unified-update.ptu** / **unified-ota.json**: subsequent updates after USB migration. Rename the SD package to `pocket-tank/update.ptu`.
+- **pocket-tank-unified-{version}.zip** / **unified-SHA256SUMS.txt**: shared-image bundle and checksums.
+- The following original CYD assets and their `elegoo-` counterparts remain for **legacy board-specific installations**:
 - **pocket-tank-cyd-{version}.zip**: complete bundle with installation instructions.
 - **update.ptu**: existing installations; copy to `pocket-tank/update.ptu` on SD.
 - **pocket-tank-cyd-app.bin**: advanced, active-slot USB upgrades only.
@@ -396,6 +446,14 @@ Read INSTALL.txt before flashing. Do not downgrade to upstream firmware.
 
 [Illustrated guide](https://github.com/jeromedontdev/pocket-tank-cyd/blob/v{version}/docs/CYD-FEATURES.md)
 """
+    if board == "unified":
+        notes = (f"## Pocket Tank CYD {version}: unified firmware\n\n"
+                 "Use the website to select the actual CYD or ELEGOO profile. "
+                 "The application bytes are identical; factory NVS profiles differ. "
+                 "Existing aquariums must use save-preserving USB migration, not factory flashing.\n\n"
+                 "After migration use unified-update.ptu (rename to update.ptu on SD) "
+                 "or unified-ota.json. Read unified-INSTALL.txt. Legacy board-specific "
+                 "downloads remain available; family checks stay enabled.\n")
     if board == "elegoo":
         notes = notes.replace("ESP32-2432S028 CYD only", profile.name + " only")
         notes = notes.replace("pocket-tank-cyd-app.bin", f"{prefix}-app.bin")

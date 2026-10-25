@@ -3,9 +3,9 @@
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **2.3.6 development**; the latest verified
-public release is **2.3.5**. Stable firmware, update packages and the browser
-installer are published through GitHub Releases.
+now versioned independently. This source targets **2.3.6**. Stable firmware,
+update packages and the browser installer are published through GitHub Releases;
+check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
 permanent game modes, shared multi-aquarium progression, a global Fish Bank,
@@ -27,7 +27,7 @@ actual desktop renderer.
 
 ## New in 2.3.6: ELEGOO display support
 
-**Unreleased development:** runtime hardware profiles now let the same
+Runtime hardware profiles now let the same
 `unified` application image run on both tested boards. A saved profile selects
 LCD initialization, orientation, touch defaults and peripheral capabilities.
 Physical tests traced the white/striped display to failed-SD
@@ -35,8 +35,9 @@ cleanup disturbing LCD DMA; retaining the SD bus restores visible output.
 The ELEGOO UI is upright at normal speed. Its default touch transform is
 corrected without invalidating existing calibration; the user confirmed their
 calibrated touch works. Fresh uncalibrated touch still needs physical testing.
-The unified public installer/migration path is not released; verified public
-2.3.5 continues to target the original board.
+The installer uses one app for both boards and provisions the explicitly
+selected hardware profile. Existing tanks migrate by save-preserving USB;
+legacy board-specific SD/Wi-Fi packages remain available.
 
 Choose your exact board in the [website installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html).
 The ELEGOO uses the same LCD/touch SPI pins but an **ILI9341V**, not the original
@@ -45,11 +46,14 @@ is held high to disable the audio amplifier. GPIO34 is battery sensing, **not
 a room-light sensor**: automatic room dimming/night detection is unavailable.
 No audio or battery/charging application is added.
 
-The existing board-specific packaging/installer paths still use separate
-app/factory images, SD packages, Wi-Fi manifests and download checksums.
-The development unified image uses its own family marker, `cydesp32profiles`;
-it does not disable old board-marker checks or automatically migrate old
-images. It waits for an explicit USB serial profile on first boot, before
+The shared app is `pocket-tank-unified-app.bin`, with `unified-update.ptu`
+and `unified-ota.json` for subsequent SD/Wi-Fi updates. Board-specific legacy
+packages retain their original names. The unified family marker,
+`cydesp32profiles`, does not disable old board-marker checks: the USB updater
+permits only the selected hardware's legacy identity or a matching saved
+unified profile. New-board factory images contain the same app with different
+blank NVS profiles; never use them to migrate existing aquariums.
+The unconfigured factory image waits for explicit USB serial selection before
 initializing board-dependent hardware. The original CYD retains its existing
 display initialization.
 If an ELEGOO was already flashed with the original CYD image and shows white,

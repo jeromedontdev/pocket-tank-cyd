@@ -1,7 +1,7 @@
 // Runs without dependencies in Node 20+ or a browser: await (await import(...)).runTests().
 import {
   BOARD_MARKER, SLOT_SIZE, parseOTA, identifyFirmware, validateManifest,
-  verifyApp, validatePartitions, validateOTAData, flashOptions,
+  verifyApp, validatePartitions, validateOTAData, flashOptions, identifyForHardware,
 } from "../web/update-core.mjs";
 import { boardMarker, boardProfile } from "../web/board-profiles.mjs";
 
@@ -82,6 +82,23 @@ export async function runTests() {
   validateManifest(elegooManifest, "elegoo28");
   assert(identifyFirmware(banner("1.0.0", "elegoo28") + ota(), "1.0.1", "elegoo28").slot === "ota_0");
   await verifyApp(elegoo, elegooManifest);
+  const unified = image.slice();
+  unified.set(boardMarker("cydesp32profiles"), 0x120);
+  for (const hardware of ["cyd2432s028", "elegoo28"]) {
+    const shared = { ...manifest, board: "cydesp32profiles", hardware,
+      app: "pocket-tank-unified-app.bin",
+      sha256: hex(await crypto.subtle.digest("SHA-256", unified)) };
+    validateManifest(shared, hardware);
+    await verifyApp(unified, shared);
+    const profile = `I (1234) director: hardware profile ${hardware} | image cydesp32profiles\n`;
+    const boot = banner("1.0.0", "cydesp32profiles") + ota();
+    assert(identifyForHardware(boot + profile, "1.0.1", hardware).board === "cydesp32profiles");
+    assert(identifyForHardware(banner("1.0.0", hardware) + ota(), "1.0.1", hardware).board === hardware);
+    refuses(() => identifyForHardware(boot, "1.0.1", hardware));
+    refuses(() => identifyForHardware(boot + profile, "1.0.1",
+      hardware === "elegoo28" ? "cyd2432s028" : "elegoo28"));
+    refuses(() => validateManifest(shared, hardware === "elegoo28" ? "cyd2432s028" : "elegoo28"));
+  }
   refuses(() => identifyFirmware(banner() + ota(), "1.0.1", "elegoo28"));
   refuses(() => identifyFirmware(banner("1.0.0", "elegoo28") + ota(), "1.0.1"));
   refuses(() => validateManifest(manifest, "elegoo28"));

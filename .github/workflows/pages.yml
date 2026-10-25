@@ -63,7 +63,9 @@ jobs:
               u = json.loads((p/'update.json').read_text())
               eu = json.loads((p/'elegoo-update.json').read_text())
               assert e['version'] == u['version'] == eu['version'] == f['version'], 'Board installer versions differ'
-              assert u['board'] == 'cyd2432s028' and eu['board'] == 'elegoo28', 'Board identities differ'
+              assert u['board'] == eu['board'] == 'cydesp32profiles', 'Unified identities differ'
+              assert u['hardware'] == 'cyd2432s028' and eu['hardware'] == 'elegoo28', 'Hardware profiles differ'
+              assert u['app'] == eu['app'] and u['sha256'] == eu['sha256'], 'Application bytes differ'
           b.update(release=tag, commit=commit)
           (p/'play-build.json').write_text(json.dumps(b)+'\n')
           PY
@@ -76,6 +78,7 @@ jobs:
           .browser-tools/node_modules/.bin/playwright install --with-deps chromium
           node tools/test_browser.cjs
           if test -f tools/test_usb_installer.cjs; then node tools/test_usb_installer.cjs; fi
+          if test -f tools/test_usb_migration.cjs; then node tools/test_usb_migration.cjs; fi
       - name: Reject deployment if latest stable release changed during the build
         env:
           GH_TOKEN: ${{ github.token }}

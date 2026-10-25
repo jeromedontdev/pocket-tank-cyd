@@ -5,13 +5,26 @@
 ## Save-preserving browser USB updates
 
 Since 2.3.6, select the exact **original CYD** or **ELEGOO ESP32-32E 2.8-inch
-ILI9341V** first. Each choice binds the manifest, running boot identity and
-embedded app marker; a different board is refused. ELEGOO uses
+ILI9341V** first. Both choices download the same unified application;
+the manifest binds its `cydesp32profiles` family and the explicit hardware
+profile. Existing legacy firmware must match that hardware's old identity;
+an existing unified image must report the matching saved runtime profile.
+Unknown families and mismatched profiles are refused.
+Legacy ELEGOO firmware still uses
 `pocket-tank-elegoo-app.bin`, `elegoo-update.ptu`, `elegoo-ota.json` and
 `elegoo-SHA256SUMS.txt`, with a separate ZIP/factory image. Original CYD asset
 names remain unchanged. If original CYD firmware was mistakenly installed on
 ELEGOO, use the backed-up [explicit app-only conversion](../firmware/CYD.md#recovering-a-wrong-cyd-image-on-elegoo-without-resetting-fish),
 not a factory reset or an unrestricted cross-board update.
+
+Migrate legacy firmware to unified once over USB. After the app checksum is
+verified, the installer reboots and writes only a missing hardware-profile key,
+then confirms it over serial. It does not overwrite an existing different
+profile, calibration, Wi-Fi or aquarium saves. Subsequent unified SD/Wi-Fi
+updates use **unified-update.ptu** / **unified-ota.json** and preserve that
+profile. Local migration with a full flash backup is documented in the hardware
+guide. New-board factory images contain the same app with different blank NVS
+profiles; they are destructive and are never a save-preserving migration.
 
 Open the [USB installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html) in
 desktop Chrome or Edge and choose **save-preserving USB update**. Make an SD backup first
@@ -41,8 +54,10 @@ Prebuilt packages are available from
 Download the bundle, read `INSTALL.txt`, and verify `SHA256SUMS.txt`.
 Copy `update.ptu` to
 `pocket-tank/update.ptu` while powered off. Follow steps 3 and 4 below.
-For ELEGOO, copy **elegoo-update.ptu** to that same `pocket-tank/update.ptu`
-path (rename it on the card); do not copy the original CYD package.
+For unified firmware on either board, copy **unified-update.ptu** to that same
+`pocket-tank/update.ptu` path. For legacy ELEGOO use **elegoo-update.ptu**;
+legacy original CYD uses **update.ptu**. Family checks refuse a different
+package; SD updates do not perform legacy-to-unified migration.
 Artwork is embedded in firmware; no SD icons are needed.
 The application-only binary and factory image are not SD update packages.
 **Do not factory-flash an existing tank: it overwrites NVS and loses saved

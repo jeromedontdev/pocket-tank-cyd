@@ -36,7 +36,8 @@
     <option value="cyd2432s028">ESP32-2432S028 CYD (original supported display revision)</option>
     <option value="elegoo28">ELEGOO ESP32-32E 2.8-inch ILI9341V</option>
   </select>
-  <p>Selecting the correct image matters: an ESP32-32E module label alone does not identify the LCD.
+  <p>The unified application is the same for both boards; your selection sets the
+    saved hardware profile. An ESP32-32E module label alone does not identify the LCD.
     ELEGOO has no room-light sensor; GPIO34 measures battery voltage instead.</p>
   <p>If an ELEGOO board already has the original CYD firmware and shows white,
     its installed identity is wrong for the selected board. The safe updater will
@@ -53,7 +54,9 @@
       <code>ota</code> response, restarts to check the CYD board identity, and verifies
       the installed partition layout. Only the reported <strong>running app slot</strong>
       is replaced: <code>ota_0 / 0x20000</code> or <code>ota_1 / 0x200000</code>.
-      Saved tanks, Wi-Fi, calibration, OTA selection and partitions are not written.</p>
+      Saved tanks, Wi-Fi, calibration, OTA selection and partitions are not erased.
+      Migrating to unified firmware writes only the explicit hardware-profile key
+      in NVS after the app is verified. Existing unified profiles must match your selection.</p>
     <p>Unknown firmware, other boards, pending slot changes, unexpected layouts and
       downgrades are refused. No guessed offset, full-chip erase or factory image is used.
       This preserves stored saves, not unsaved changes. Keep USB power connected:
@@ -153,7 +156,10 @@
     if (!response.ok) throw new Error(`Firmware manifest unavailable (${response.status}).`);
     const manifest = await response.json();
     document.querySelector("#release-status").textContent =
-      `Published firmware: ${manifest.version} for ${profile.name}. Separate board images; same games, internal aquariums and menu improvements.`;
+      `Published firmware: ${manifest.version} for ${profile.name}. ` +
+      (manifest.board === "cydesp32profiles" ?
+        "Same unified application on both boards; factory images set the selected hardware profile." :
+        "Legacy board-specific application; use matching downloads only.");
     await import("https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module");
     await customElements.whenDefined("esp-web-install-button");
     status.textContent = `Ready to install Pocket Tank ${manifest.version} for ${profile.name}.`;

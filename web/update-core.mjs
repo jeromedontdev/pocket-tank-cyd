@@ -54,9 +54,28 @@ export function identifyFirmware(text, targetVersion, board = "cyd2432s028") {
   return ota;
 }
 
+export function identifyForHardware(text, targetVersion, hardware) {
+  if (!["cyd2432s028", "elegoo28"].includes(hardware)) throw new Error("Unsupported hardware profile.");
+  if (!cleanLines(text).some(line => line.includes("for cydesp32profiles boot"))) {
+    return { ...identifyFirmware(text, targetVersion, hardware), board: hardware };
+  }
+  const identity = identifyFirmware(text, targetVersion, "cydesp32profiles");
+  const profiles = cleanLines(text).filter(line => line.startsWith("hardware profile ") && line.includes(" | image "));
+  if (!profiles.length || profiles.some(line =>
+    line !== `hardware profile ${hardware} | image cydesp32profiles`)) {
+    throw new Error("Running hardware profile does not match the selected board. No flash was written.");
+  }
+  return { ...identity, board: "cydesp32profiles" };
+}
+
 export function validateManifest(manifest, board = manifest?.board) {
-  const profile = boardProfile(board);
-  if (!manifest || manifest.format !== 1 || manifest.board !== board ||
+  boardProfile(board);
+  const profile = boardProfile(manifest?.board);
+  const unified = manifest?.board === "cydesp32profiles" && manifest.hardware === board &&
+    ["cyd2432s028", "elegoo28"].includes(board);
+  if (!manifest || manifest.format !== 1 || (!unified && manifest.board !== board) ||
+      (manifest.hardware !== undefined && (!["cyd2432s028", "elegoo28"].includes(manifest.hardware) ||
+        (board !== manifest.board && manifest.hardware !== board))) ||
       manifest.app !== profile.app ||
       !Number.isInteger(manifest.size) || manifest.size < 0x140 || manifest.size > SLOT_SIZE ||
       !/^[a-f0-9]{64}$/.test(manifest.sha256) || !/^[a-f0-9]{32}$/.test(manifest.md5)) {

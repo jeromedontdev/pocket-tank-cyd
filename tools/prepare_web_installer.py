@@ -1,4 +1,5 @@
 """Stage checksum-verified factory and save-preserving USB images for Pages."""
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -43,13 +44,25 @@ def validate_images(profile, image, checksums, app):
         raise ValueError("Factory and app images do not contain the same application")
 
 
-def stage_site(source, output, version, image, checksums, app, elegoo=None):
+def stage_site(source, output, version, image, checksums, app, elegoo=None, unified=None):
     version = release_version(version)
     images = [(BOARDS["cyd"], image, checksums, app)]
     if elegoo is not None:
         images.append((BOARDS["elegoo"], *elegoo))
     for profile, factory, sums, application in images:
         validate_images(profile, factory, sums, application)
+    if unified is not None:
+        factory, sums, application, profile_factories = unified
+        validate_images(BOARDS["unified"], factory, sums, application)
+        expected = dict(line.split("  ", 1)[::-1] for line in sums.splitlines() if line)
+        for hardware in ("cyd", "elegoo"):
+            name = f"pocket-tank-unified-{hardware}-factory.bin"
+            data = profile_factories[hardware]
+            if (hashlib.sha256(data).hexdigest() != expected.get(name) or
+                    data[:0x9000] != factory[:0x9000] or
+                    data[0xf000:] != factory[0xf000:]):
+                raise ValueError("Profile factory differs outside NVS or fails checksum")
+        images.append((BOARDS["unified"], factory, sums, application))
     shutil.copytree(source, output)
     media = output / "media"
     media.mkdir()
@@ -74,9 +87,46 @@ def stage_site(source, output, version, image, checksums, app, elegoo=None):
             "md5": hashlib.md5(application).hexdigest(),
         }
         (output / f"{profile.asset_prefix}update.json").write_text(json.dumps(update, indent=2) + "\n", encoding="utf-8")
+    if unified is not None:
+        for hardware in ("cyd", "elegoo"):
+            profile = BOARDS[hardware]
+            factory_name = f"pocket-tank-unified-{hardware}-factory.bin"
+            (output / factory_name).write_bytes(profile_factories[hardware])
+            manifest = {
+                "name": f"Pocket Tank CYD - {profile.name}", "version": version,
+                "hardware": profile.identity, "board": BOARDS["unified"].identity,
+                "new_install_prompt_erase": False,
+                "builds": [{"chipFamily": "ESP32", "parts": [{"path": factory_name, "offset": 0}]}],
+            }
+            (output / f"{profile.asset_prefix}manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+            update = json.loads((output / "unified-update.json").read_text())
+            update["hardware"] = profile.identity
+            (output / f"{profile.asset_prefix}update.json").write_text(json.dumps(update, indent=2) + "\n")
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bundles", type=Path, help="Local release bundle root (cyd/elegoo/unified)")
+    parser.add_argument("--version", help="Required with --bundles")
+    parser.add_argument("--out", type=Path, default=Path("_site"))
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parent.parent
+    if args.bundles:
+        if not args.version:
+            parser.error("--bundles requires --version")
+        def read(board, name):
+            return (args.bundles / board / name).read_bytes()
+        stage_site(root / "web", args.out, args.version,
+                   read("cyd", FACTORY), read("cyd", "SHA256SUMS.txt").decode(), read("cyd", APP),
+                   elegoo=(read("elegoo", "pocket-tank-elegoo-factory.bin"),
+                           read("elegoo", "elegoo-SHA256SUMS.txt").decode(),
+                           read("elegoo", "pocket-tank-elegoo-app.bin")),
+                   unified=(read("unified", "pocket-tank-unified-factory.bin"),
+                            read("unified", "unified-SHA256SUMS.txt").decode(),
+                            read("unified", "pocket-tank-unified-app.bin"),
+                            {hardware: read("unified", f"pocket-tank-unified-{hardware}-factory.bin")
+                             for hardware in ("cyd", "elegoo")}))
+        return
     def fetch(url):
         request = urllib.request.Request(url, headers={"User-Agent": "Pocket-Tank-CYD-installer"})
         with urllib.request.urlopen(request, timeout=120) as response:
@@ -87,13 +137,19 @@ def main():
         raise ValueError("Web installer requires a published stable release")
     assets = {asset["name"]: asset["browser_download_url"] for asset in release["assets"]}
     elegoo = BOARDS["elegoo"]
-    root = Path(__file__).resolve().parent.parent
-    stage_site(root / "web", root / "_site", release["tag_name"],
+    unified = None
+    if "unified-SHA256SUMS.txt" in assets:
+        unified = (fetch(assets["pocket-tank-unified-factory.bin"]),
+                   fetch(assets["unified-SHA256SUMS.txt"]).decode("utf-8"),
+                   fetch(assets["pocket-tank-unified-app.bin"]),
+                   {hardware: fetch(assets[f"pocket-tank-unified-{hardware}-factory.bin"])
+                    for hardware in ("cyd", "elegoo")})
+    stage_site(root / "web", args.out, release["tag_name"],
                fetch(assets[FACTORY]), fetch(assets["SHA256SUMS.txt"]).decode("utf-8"),
                fetch(assets[APP]),
                elegoo=(fetch(assets[f"{elegoo.image_prefix}-factory.bin"]),
                        fetch(assets["elegoo-SHA256SUMS.txt"]).decode("utf-8"),
-                       fetch(assets[f"{elegoo.image_prefix}-app.bin"])))
+                       fetch(assets[f"{elegoo.image_prefix}-app.bin"])), unified=unified)
 
 
 if __name__ == "__main__":

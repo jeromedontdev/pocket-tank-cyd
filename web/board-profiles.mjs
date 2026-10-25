@@ -7,6 +7,10 @@ export const BOARDS = Object.freeze({
     name: "ELEGOO ESP32-32E 2.8-inch ILI9341V", manifest: "./elegoo-manifest.json",
     update: "./elegoo-update.json", app: "pocket-tank-elegoo-app.bin",
   }),
+  cydesp32profiles: Object.freeze({
+    name: "CYD / ELEGOO saved hardware profiles", manifest: "./unified-manifest.json",
+    update: "./unified-update.json", app: "pocket-tank-unified-app.bin",
+  }),
 });
 
 export function boardProfile(identity) {

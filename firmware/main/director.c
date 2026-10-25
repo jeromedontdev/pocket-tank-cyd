@@ -631,7 +631,8 @@ static void run(tank_t *t, char *line) {
         tank_set_name(t, who, argv[2]); progression_save(t);
         ESP_LOGI(TAG, "fish %d is now %s (saved)", who, t->fish[who].name);
     } else if (!strcmp(c, "save")) {
-        progression_save(t); ESP_LOGI(TAG, "saved");
+        if (progression_save(t)) ESP_LOGI(TAG, "saved");
+        else ESP_LOGE(TAG, "aquarium save failed");
     } else if (!strcmp(c, "stash")) {
         staging_disabled();
     } else if (!strcmp(c, "restore")) {
