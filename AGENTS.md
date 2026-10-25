@@ -20,7 +20,17 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.2.5**, consistent font coverage at fractional sizes,
+- Source release: **2.2.6**, one shared Back on Wardrobe Colors, unchanged
+  Creature Colors Next Type, draft/cancel/save behavior and both-scale headers.
+  Lossless adjacent backdrop-row reuse keeps the same 12 KB budget; Simple
+  batches consecutive live fallback rows. Fish scan edges avoid modulo.
+  Perched-seahorse contact shadows include the preceding tile/region row.
+  `test_renderer_stress.py` profiles synthetic five-fish scenes and checks
+  full/tile/retained parity, cache/detail/palette/clock transitions and no tank
+  mutation. Positive soak durations include a shadow regression that fails
+  the 2.2.5 renderer; collect old timing baselines with `--seconds 0`.
+  Native timings are not hardware FPS. No new buffers, save fields or gameplay.
+  2.2.5 introduced consistent font coverage at fractional sizes,
   sharp native 5x7/integer sizes and common punctuation. UI and Wi-Fi share
   rasterization and metrics; Wi-Fi remains case-sensitive. Jumbo text/Flip
   digits share coverage; retain distinct clock-face styles, run recording,
@@ -328,6 +338,7 @@ python tools\test_tank_backup.py --cc gcc
 python tools\test_tank_backup.py --cc gcc --flat-edges
 python tools\test_rpg.py --cc gcc
 python tools\test_page_art.py --cc gcc
+python tools\test_renderer_stress.py --cc gcc --frames 1200 --seconds 30
 python tools\test_creative.py --cc gcc
 python tools\test_profiles.py --cc gcc
 python tools\test_cyd_display.py --cc gcc

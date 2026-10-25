@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.2.5
+# Pocket Tank CYD 2.2.6
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.2.5**; firmware, update
+now versioned independently. This is **release 2.2.6**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,28 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.2.5: consistent typography in both display scales
+## New in 2.2.6: cleaner navigation and leaner five-fish rendering
+
+- Wardrobe Colors has one shared header **BACK**, returning to Wardrobe.
+  The fish's name replaces the repeated subheading; the removed button's old
+  touch target is inactive. Leaving without **SAVE COLORS** discards the draft.
+  Creature Colors keeps its **NEXT TYPE** control.
+- The existing 12 KB backdrop cache reuses identical neighboring rows.
+  Simple renders contiguous uncached rows together instead of repeating
+  scenery/vegetation setup for every scanline. No extra cache RAM or visual
+  detail is traded for speed.
+- Controlled native five-fish tests measured about **33-37% lower render time
+  in Simple** and **15-22% lower in heavier themed scenes** versus 2.2.5.
+  These are desktop renderer measurements, **not CYD FPS guarantees**.
+  Both scales and all three details retain identical reference images.
+- Fixed perched-seahorse contact shadows disappearing at tile boundaries.
+  Stress tests compare full, tiled and retained-region output, check rendering
+  does not mutate the synthetic aquarium, and never use the real save.
+- Fish limits, care/progression, artwork, saved preferences and save format
+  are unchanged. See [performance methodology](firmware/CYD.md#five-fish-renderer-validation-226)
+  for reproducible commands and measurement limits.
+
+## Previously in 2.2.5: consistent typography in both display scales
 
 - Normal no longer thickens arbitrary font strokes by repeating rows and
   columns. Fractional sizes use exact pixel coverage; native 5x7 and integer

@@ -142,7 +142,7 @@ def exercise(lib, backup):
     colored = json.loads(backup(lib))
     assert bytes.fromhex(colored["companion"]["active"])[11] == 0x11
     assert colored["tank"]["sd_balance"] == 955, "Accessory colors must be free"
-    tap(365, 100); tap(380, 24); tap(380, 24); tap(330, 100); tap(330, 180)
+    tap(380, 24); tap(380, 24); tap(380, 24); tap(330, 100); tap(330, 180)
     before_creatures = json.loads(backup(lib))
     tap(220, 234); tap(365, 100)
     assert json.loads(backup(lib))["companion"] == before_creatures["companion"], "Switching creatures discards an unsaved preview"
@@ -171,6 +171,22 @@ def exercise(lib, backup):
         assert scaled["tank"]["sd_balance"] == reset["tank"]["sd_balance"]
         data = json.dumps(scaled).encode()
         assert lib.sim_restore(data, len(data)) and lib.sim_width() == width
+        home(); tap(100, 100); tap(100, 180)
+        wardrobe_view = frame()
+        tap(60, 180)
+        colors_view = frame()
+        tap(365, 100)
+        assert frame() == colors_view, "Removed duplicate BACK must not remain an invisible hit target"
+        color_state = json.loads(backup(lib))["companion"]
+        tap(220, 234)
+        assert frame() != colors_view, "Gear color changes remain previews"
+        tap(380, 24)
+        assert frame() == wardrobe_view, "The sole header BACK returns exactly one level without saving"
+        assert json.loads(backup(lib))["companion"] == color_state
+        tap(60, 180)
+        assert frame() == colors_view, "Reopening gear colors discards unsaved draft colors"
+        tap(380, 24); tap(380, 24)
+        assert lib.sim_page() == 9, "Wardrobe BACK returns to the Fish category"
         for category, child, destination in (
                 ((100, 100), (330, 100), 6),
                 ((330, 100), (100, 100), 3),

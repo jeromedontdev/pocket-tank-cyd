@@ -110,6 +110,33 @@ static void check_font_clock_cache(void) {
     render_work_caches(false);
 }
 
+static void check_companion_navigation(void) {
+    tank_t tank;
+    tank_init(&tank, 77);
+    tank_new_population(&tank);
+    for (int section = COMPANION_SECTION_CARE; section <= COMPANION_SECTION_RPG_EVENT; section++) {
+        if (section == 17) continue;
+        companion_open_section(section);
+        companion_render(&tank, full_frame, TANK_W);
+        memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * 2);
+        render_rect(repeated, TANK_W, 346, 8, 90, 30, 0x264d55);
+        render_text(repeated, TANK_W, 354, 15, 2, 0xe7f4dc, "BACK");
+        assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
+    }
+    companion_open_section(COMPANION_SECTION_WARDROBE);
+    companion_tap(&tank, render_frame_x(60), render_frame_y(180));
+    companion_render(&tank, full_frame, TANK_W);
+    memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * 2);
+    render_rect(repeated, TANK_W, 304, 86, 132, 30, 0x102b36);
+    assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
+    companion_open_section(COMPANION_SECTION_CREATURE_COLORS);
+    companion_render(&tank, full_frame, TANK_W);
+    memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * 2);
+    render_rect(repeated, TANK_W, 304, 86, 132, 30, 0x264d55);
+    render_text(repeated, TANK_W, 312, 93, 2, 0xe7f4dc, "NEXT TYPE");
+    assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
+}
+
 static void check_fish_material(void) {
     const float xs[] = {28, 65, 87, 70, 32, 17};
     const float ys[] = {21, 18, 40, 63, 67, 43};
@@ -781,6 +808,7 @@ int main(int argc, char **argv) {
         check_fish_material();
         check_font_coverage();
         check_font_clock_cache();
+        check_companion_navigation();
         check_aquarium_effects();
         check_care_scene_cache();
         if (argc > 2) {
@@ -831,5 +859,6 @@ int main(int argc, char **argv) {
     puts("Fish materials: five RGB565 tones with unchanged polygon coverage and guarded one-row tile equality.");
     puts("Aquarium details: five visitors and food/bubbles stay bounded with guarded row parity; care feedback requires a successful stroke.");
     puts("Typography: exact coverage/ink conservation for every UI glyph at native and fractional sizes; guarded row/region parity, identical ASCII/UI metrics at scales 1-6, and no new Jumbo clock cache fallbacks.");
+    puts("Navigation: all companion sections share the same header BACK; gear colors has no duplicate button and creature colors retains NEXT TYPE at both resolutions.");
     return 0;
 }

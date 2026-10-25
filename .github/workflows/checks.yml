@@ -38,6 +38,7 @@ jobs:
       - run: python tools/test_tank_backup.py --cc gcc --flat-edges
       - run: python tools/test_rpg.py --cc gcc
       - run: python tools/test_page_art.py --cc gcc
+      - run: python tools/test_renderer_stress.py --cc gcc --frames 1200 --seconds 30
       - run: python tools/test_creative.py --cc gcc
       - run: python tools/test_profiles.py --cc gcc
       - run: python tools/test_profile_storage.py --cc gcc

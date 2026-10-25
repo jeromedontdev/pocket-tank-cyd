@@ -318,7 +318,8 @@ static void fill_poly_palette(ctx_t *c, const float *xs, const float *ys, int n,
     for (int y = y0; y <= y1; y++) {
         float x0 = 1e9f, x1 = -1e9f;
         for (int i = 0; i < n; i++) {
-            int j = (i + 1) % n;
+            int j = i + 1;
+            if (j == n) j = 0;
             float ay = ys[i], by = ys[j];
             if ((ay <= y && by > y) || (by <= y && ay > y)) {
                 float x = xs[i] + (xs[j] - xs[i]) * (y - ay) / (by - ay);
@@ -2784,7 +2785,7 @@ static void seahorse_box(const tank_t *t, int *x0, int *y0, int *x1, int *y1) {
 static void draw_seahorse(ctx_t *c, const tank_t *t) {
     if (!(t->sd_unlocks & SD_ITEM_SEAHORSE) || t->sh_x < 0 || t->sh_hidden) return;
     int bx0, by0, bx1, by1; seahorse_box(t, &bx0, &by0, &bx1, &by1);
-    if (bx1 < c->ox || bx0 >= c->ox + c->w || by1 < c->oy || by0 >= c->oy + c->h) return;
+    if (bx1 < c->ox || bx0 >= c->ox + c->w || by1 + 1 < c->oy || by0 >= c->oy + c->h) return;
     if (scene_box_hidden(bx0, by0, bx1, by1)) return;
     float clock = secondary_clock(t);
     decor_scratch_t *sc = ds();
@@ -2837,7 +2838,8 @@ static void draw_seahorse(ctx_t *c, const tank_t *t) {
         if (sc->sh_yoff == 0 && want != 0) sc->sh_yoff = roundf(want);  /* the first frame */
     }
     for (int py = by0; py <= by1; py++) {
-        if (py < c->oy || py >= c->oy + c->h) continue;
+        /* A tail crossing can shadow the next row, including the tile's first. */
+        if (py + 1 < c->oy || py >= c->oy + c->h) continue;
         float rcx = 0, rhalf = 0; bool ribbon = onblade ? veg_ribbon_at(t, t->sh_bed, t->sh_frond, py, t->clock, &rcx, &rhalf)
                                               : onpost && fabsf(py - t->sh_ay) <= 14 && (rcx = t->sh_ax, rhalf = t->sh_ahw, true);
         int row_ly = -1, row_xs = 0;
@@ -2849,7 +2851,7 @@ static void draw_seahorse(ctx_t *c, const tank_t *t) {
             row_xs = (int)sc->sh_rowx[row_ly];
         }
         for (int px = bx0; px <= bx1; px++) {
-            if (!CTX_IN(c, px, py)) continue;
+            if (!CTX_IN(c, px, py) && !CTX_IN(c, px, py + 1)) continue;
             int ilx, ily;
             if (upright) {
                 int lxm = px - row_xs; ily = row_ly;
@@ -3999,6 +4001,23 @@ static void backdrop_prepare(const tank_t *t, float dim) {
             draw_floor_scenery(&row, t, false);
             for (int k = 0; k < prefix; k++) pc_draw(&row, t, k, false, false);
         }
+        /* Adjacent RGB565 rows often coincide after quantization. Reuse the
+         * prior runs before consuming more of the fixed backdrop budget. */
+        if (y && g_backdrop_row[y - 1] != UINT16_MAX) {
+            size_t at = g_backdrop_row[y - 1];
+            int x = 0;
+            while (x < TANK_W) {
+                int count = g_backdrop[at++];
+                uint16_t previous = g_backdrop[at++];
+                int end = x + count;
+                while (x < end && pixels[x] == previous) x++;
+                if (x != end) break;
+            }
+            if (x == TANK_W) {
+                g_backdrop_row[y] = g_backdrop_row[y - 1];
+                continue;
+            }
+        }
         uint16_t color = pixels[0];
         int count = 1;
         bool fits = true;
@@ -4497,7 +4516,7 @@ static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float d
     g_veg_mask_cx = -1;
     pieces_build(t, false, false);
     backdrop_prepare(t, dim);
-    for (int y = c.oy; y < c.oy + c.h; y++) {
+    for (int y = c.oy; y < c.oy + c.h;) {
         if (g_backdrop && g_backdrop_row[y] != UINT16_MAX) {
             size_t at = g_backdrop_row[y];
             uint16_t *row = fb + (y - g_tile_y) * stride;
@@ -4507,10 +4526,13 @@ static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float d
                 backdrop_fill(row, x > c.ox ? x : c.ox, end < c.ox + c.w ? end : c.ox + c.w, y, color);
                 x = end;
             }
+            y++;
         } else {
-            ctx_t row = c;
-            row.fb += (y - c.oy) * stride; row.oy = y; row.h = 1;
-            draw_simple_static(&row, t);
+            int start = y++;
+            while (y < c.oy + c.h && (!g_backdrop || g_backdrop_row[y] == UINT16_MAX)) y++;
+            ctx_t live = c;
+            live.fb += (start - c.oy) * stride; live.oy = start; live.h = y - start;
+            draw_simple_static(&live, t);
         }
     }
     PROF_ADD(0, p0);

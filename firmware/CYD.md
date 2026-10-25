@@ -269,6 +269,56 @@ checked on the real unit. Wallet changes matched normal earned income.
 The unit was left on Normal + Balanced. The EMEET camera faced the back of the
 unit during this final run, so these checks do not establish final visual
 appearance; scaled/tiled output was verified pixel-for-pixel in the LCD harness.
+
+### Five-fish renderer validation (2.2.6)
+
+The synthetic native benchmark uses five adults/elders, all ten varieties
+across two fixtures, wearables, plants, helpers and scenery. It runs the real
+C renderer in 80-row tiles with the hardware's 12,288-byte backdrop budget.
+Three alternating baseline/current runs used the same Zig C compiler, `-O2`,
+1,200 moving frames per scene and a fixed reference pose. Median desktop
+microseconds per frame (not LCD transfer time or hardware FPS):
+
+| Resolution/detail | Fixture | 2.2.5 | 2.2.6 | Render time saved |
+|---|---|---:|---:|---:|
+| Enlarged/Balanced | Heavier theme | 273.0 | 232.9 | 14.7% |
+| Enlarged/Enhanced | Heavier theme | 280.9 | 239.7 | 14.7% |
+| Normal/Balanced | Heavier theme | 509.1 | 398.7 | 21.7% |
+| Normal/Enhanced | Heavier theme | 518.9 | 402.9 | 22.4% |
+| Enlarged/Simple | Both fixtures | 184.0-190.4 | 115.3-122.1 | 35.9-37.4% |
+| Normal/Simple | Both fixtures | 210.5-215.2 | 138.6-144.7 | 32.7-34.1% |
+
+The lighter Balanced/Enhanced fixtures stayed within about 1.5% of baseline
+(measurement noise). All twelve reference-frame hashes matched. Adjacent
+identical RGB565 backdrop rows now share their existing RLE runs, and Simple
+batches contiguous live fallback rows. Polygon edges avoid an integer
+remainder. These changes add no buffers and do not reduce detail or simulation
+frequency. A separate correctness fix lets perched-seahorse contact shadows
+cross tile boundaries; its one-row regression fails against 2.2.5.
+
+From the repository root, substitute your existing compiler:
+
+```powershell
+python tools\test_renderer_stress.py --cc clang --frames 1200 --seconds 0 --baseline v2.2.5 --out baseline.json
+python tools\test_renderer_stress.py --cc clang --frames 1200 --seconds 1800 --out current.json
+```
+
+`--seconds 0` measures only; positive durations also check the dedicated
+shadow regression and varying tile heights 1-80, full-frame idempotence,
+retained 32x40 damage rectangles, both scales, three details, day/night,
+palettes, clock layouts and work-cache toggles. Every frame checks five
+residents, finite positions and no render-time tank mutation. Fixtures and
+temporary saves are isolated; the real aquarium is never staged. A failed
+stress run exits nonzero and preserves completed benchmark records when
+`--out` is supplied. Run timings without other CPU-heavy tests for comparisons.
+The old renderer intentionally fails the new shadow regression, so use zero
+soak seconds when collecting its timing baseline. Neither desktop timing nor
+the synthetic frame count establishes five-fish CYD FPS.
+
+The final local 30-minute soak completed 238,142 cases / 1,666,994 five-fish
+frame sets without full/tiled/retained mismatches or render-time tank
+mutation. This is the actual soak duration, not an eight-hour hardware run.
+
 Menus retain their full 448x368 layout and are scaled into that framebuffer,
 rather than cropped. Menu touch coordinates use the inverse scaling.
 The post-1.4 source visual overhaul uses shared, static pixel-art sprites and

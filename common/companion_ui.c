@@ -747,9 +747,9 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
     } else if (page == COMPANION_SECTION_CREATURE_COLORS || (page == COMPANION_SECTION_GEAR_COLORS && t->n_fish)) {
         bool gear = page == COMPANION_SECTION_GEAR_COLORS;
         int i = selected < t->n_fish ? selected : 0;
-        snprintf(line, sizeof line, "%s", gear ? "GEAR COLORS" : CREATURE_NAMES[creature]);
+        snprintf(line, sizeof line, "%s", gear ? t->fish[i].name : CREATURE_NAMES[creature]);
         text(fb, stride, 14, 94, 0xe7f4dc, line);
-        button(fb, stride, 304, 86, 132, gear ? "BACK" : "NEXT TYPE");
+        if (!gear) button(fb, stride, 304, 86, 132, "NEXT TYPE");
         if (gear) {
             fish_t preview = t->fish[i]; preview.wearable = (uint8_t)wardrobe; preview.wear_colors = color_draft;
             render_fish_portrait(fb, stride, 224, 165, 1.5f, &preview, t->clock);
@@ -786,7 +786,7 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
         if (page == COMPANION_SECTION_RPG_EVENT) { page = COMPANION_SECTION_RPG; notice[0] = 0; return false; }
         if (page == COMPANION_SECTION_RPG_HELP) { page = COMPANION_SECTION_RPG_JOURNAL; notice[0] = 0; return false; }
         if (page == COMPANION_SECTION_RPG_JOURNAL) { page = COMPANION_SECTION_RPG; notice[0] = 0; return false; }
-        if (page == COMPANION_SECTION_GEAR_COLORS) { page = COMPANION_SECTION_WARDROBE; return false; }
+        if (page == COMPANION_SECTION_GEAR_COLORS) { page = COMPANION_SECTION_WARDROBE; notice[0] = 0; return false; }
         if (page == COMPANION_SECTION_TRICKS) { page = COMPANION_SECTION_CARE; notice[0] = 0; return false; }
         if (page == COMPANION_SECTION_HINTS) { page = COMPANION_SECTION_COLLECTIONS; leaf /= 4; notice[0] = 0; return false; }
         if (page != section) { page = section; leaf = 0; notice[0] = 0; return false; }
@@ -895,9 +895,8 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
     } else if (page == COMPANION_SECTION_CREATURE_COLORS || (page == COMPANION_SECTION_GEAR_COLORS && t->n_fish)) {
         bool gear = page == COMPANION_SECTION_GEAR_COLORS;
         int i = selected < t->n_fish ? selected : 0;
-        if (y >= 86 && y < 116 && x >= 304 && x < 436) {
-            if (gear) page = COMPANION_SECTION_WARDROBE;
-            else { creature = (creature + 1) % CREATURE_COUNT; color_draft = s->creature_colors[creature]; }
+        if (!gear && y >= 86 && y < 116 && x >= 304 && x < 436) {
+            creature = (creature + 1) % CREATURE_COUNT; color_draft = s->creature_colors[creature];
             notice[0] = 0;
         } else if (x >= 12 && x < 436 && y >= 220 && y < 250) {
             color_draft = (uint8_t)((color_draft & 240) | ((color_draft + 1) & 15)); notice[0] = 0;

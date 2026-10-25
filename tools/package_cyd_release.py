@@ -89,7 +89,15 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.2.5: consistent typography in both display scales
+### New in 2.2.6: menu consistency and five-fish rendering
+
+- Wardrobe Colors uses one shared header BACK, with the selected fish's name above its preview. The old duplicate button and touch target are removed. Leaving without SAVE COLORS discards the draft; Creature Colors retains NEXT TYPE.
+- Identical neighboring backdrop rows share compressed runs within the same 12 KB budget. Simple batches contiguous uncached scenery rows instead of rebuilding geometry per scanline. Fish polygon edges avoid an unnecessary integer remainder.
+- Three controlled native five-fish benchmark repeats measured approximately 33-37% less render time in Simple and 15-22% less in heavier themed scenes versus 2.2.5. These are desktop renderer timings, not CYD FPS claims; all twelve reference images are unchanged.
+- Perched-seahorse contact shadows now survive tile/region boundaries. New synthetic stress checks compare full, tiled and retained output across both scales, all details, palettes, clocks and cache transitions without changing the aquarium.
+- No extra renderer buffers, visual downgrade, fish-limit change, gameplay/economy change, or save-schema change.
+
+### Previously in 2.2.5: consistent typography in both display scales
 
 - Normal's fractional font sizes use exact pixel coverage instead of unevenly repeated rows/columns. Native 5x7 and integer-size text remain pixel-exact, retaining Enlarged's crisp small labels.
 - Shared menus, cards, setup, games, stories, notices, weather and clock captions use the corrected renderer. Jumbo text/Flip digits share it; segmented, analog and binary clock styles remain distinct.

@@ -2,7 +2,19 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.2.5**
+**An illustrated tour of Pocket Tank CYD 2.2.6**
+
+**2.2.6** removes the second Back button from Wardrobe Colors and gives every
+companion section the same header return. The selected fish's name appears
+above the preview; leaving without Save Colors does not commit the draft.
+Creature Colors retains Next Type. The five-fish renderer reuses identical
+compressed backdrop rows within the same 12 KB budget and batches Simple's
+uncached scenery rows. Native measurements show about 33-37% less render time
+in Simple and 15-22% less in heavier themed scenes; these are desktop timings,
+not hardware FPS promises. A perched seahorse's shadow now crosses tile
+boundaries correctly. Full/tiled/retained rendering is stress-tested at both
+scales and all details without touching the real aquarium. No gameplay,
+ownership, artwork, save fields or additional cache memory are introduced.
 
 **2.2.5** fixes the uneven stroke weight caused by fractional font scaling,
 most visible in Normal. Shared 5x7 text now uses exact pixel coverage rather
