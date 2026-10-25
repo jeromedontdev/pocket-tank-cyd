@@ -310,11 +310,12 @@ static void fill_poly_palette(ctx_t *c, const float *xs, const float *ys, int n,
                               const uint32_t *colors, int tones) {
     float miny = 1e9f, maxy = -1e9f;
     for (int i = 0; i < n; i++) { if (ys[i] < miny) miny = ys[i]; if (ys[i] > maxy) maxy = ys[i]; }
-    src_t palette[5];
-    for (int i = 0; i < tones; i++) palette[i] = src_color(colors[i], c->dim);
     int y0 = (int)miny, y1 = (int)maxy;
     if (y0 < c->oy) y0 = c->oy;
     if (y1 >= c->oy + c->h) y1 = c->oy + c->h - 1;
+    if (y0 > y1) return;
+    src_t palette[5];
+    for (int i = 0; i < tones; i++) palette[i] = src_color(colors[i], c->dim);
     for (int y = y0; y <= y1; y++) {
         float x0 = 1e9f, x1 = -1e9f;
         for (int i = 0; i < n; i++) {
@@ -741,6 +742,7 @@ static void draw_creature_portrait(ctx_t *c, float x, float y, float scale, int 
 /* optional per-stage frame profiling (render.h) */
 int64_t (*render_clock_us)(void) = NULL;
 int64_t render_prof_us[8];
+int64_t render_helper_us[3];
 #define PROF_MARK() (render_clock_us ? render_clock_us() : 0)
 #define PROF_ADD(i, t0) do { if (render_clock_us) { int64_t _n = render_clock_us(); render_prof_us[i] += _n - (t0); (t0) = _n; } } while (0)
 
@@ -2305,6 +2307,7 @@ static void draw_snail(ctx_t *c, const tank_t *t, bool upright_pass) {
     int ox = (int)t->snail_x, oy = (int)(t->snail_y + SNAIL_SOLE_DY);
     if (!c->scaled && (oy + 18 < c->oy || oy - 24 >= c->oy + c->h ||
         ox + 24 < c->ox || ox - 24 >= c->ox + c->w)) return;
+    int64_t helper_start = PROF_MARK();
     sn_row_t row = { .y = -(1 << 20) };
     for (int i = 0; i < SN_NONE; i++) row.rgb[i] = creature_tone_rgb(CREATURE_SNAIL, i, t->companion.creature_colors[CREATURE_SNAIL]);
     if (upright) {
@@ -2370,6 +2373,7 @@ static void draw_snail(ctx_t *c, const tank_t *t, bool upright_pass) {
             }
         }
     }
+    if (render_clock_us) render_helper_us[0] += render_clock_us() - helper_start;
 }
 /* ---- the urchin, procedural (2026-10-02, SD_ITEM_URCHIN) ----
  * After Strato's sea-urchin-v1 (working-assets): a domed purple urchin seen
@@ -2458,6 +2462,7 @@ static void draw_urchin(ctx_t *c, const tank_t *t) {
     if (!(t->sd_unlocks & SD_ITEM_URCHIN) || t->urchin_x < 0) return;
     if (!c->scaled && (URCHIN_FLOOR_Y + UR_BASE < c->oy || URCHIN_FLOOR_Y - 16 >= c->oy + c->h ||
         t->urchin_x + 20 < c->ox || t->urchin_x - 20 >= c->ox + c->w)) return;
+    int64_t helper_start = PROF_MARK();
     static unsigned epoch;
     static uint16_t ready;
     static bool cached_chewing, failed;
@@ -2490,13 +2495,17 @@ static void draw_urchin(ctx_t *c, const tank_t *t) {
         int y = cy + ly;
         if (!c->scaled && (y < c->oy || y >= c->oy + c->h)) continue;
         uint32_t w = water_rgb(y < 0 ? 0 : y >= TANK_H ? TANK_H - 1 : y);
+        src_t tones[UR_NONE];
+        for (int tone = 0; tone < UR_NONE; tone++)
+            tones[tone] = src_color(mix(w, palette[tone], UR_TINT), c->dim);
         for (int lx = -18; lx <= 18; lx++) {
             if (!CTX_IN(c, cx + lx, y)) continue;
             int tone = art ? art[(ly + 16) * 37 + lx + 18] : urchin_tone((float)lx + 0.5f, (float)ly + 0.5f, &p);
             if (tone == UR_NONE) continue;
-            px_blend(c, cx + lx, y, mix(w, palette[tone], UR_TINT), 255);
+            px_blend_s(c, cx + lx, y, &tones[tone], 255);
         }
     }
+    if (render_clock_us) render_helper_us[1] += render_clock_us() - helper_start;
 }
 
 /* ---- the seahorse (0.3.6; the prototype is working-assets/seahorse/
@@ -2545,6 +2554,17 @@ static inline float sh_seg(float px, float py, float x0, float y0, float x1, flo
     return sqrtf(dx * dx + dy * dy);
 }
 static inline float sh_tail_hw(float frac) { return 2.4f - 1.8f * powf(frac, 0.8f); }
+static float sh_pixel_tail_hw(uint8_t fraction) {
+    /* The distance map stores only 256 fractions; avoid repeated software powf. */
+    static float widths[16];
+    static uint16_t tags[16];
+    int slot = fraction & 15;
+    if (tags[slot] != fraction + 1) {
+        widths[slot] = sh_tail_hw(fraction / 255.0f);
+        tags[slot] = (uint16_t)(fraction + 1);
+    }
+    return widths[slot];
+}
 static inline int sh_clamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 /* the tail's spine: a bezier lead-in from the body's base and a spiral; on a
  * blade the spiral is centred on the blade (local x SX, half-width SW) and
@@ -2622,6 +2642,11 @@ static uint8_t sh_tone(float lx, float ly, float t, float flutter, const decor_s
                                         { 12.6f, 4.6f, 13.3f, 3.5f, 0.85f }, { 5.2f, 7.6f, 3.6f, 7.4f, 0.9f } };
     if (ly < 10.5f) for (int i = 0; i < 5; i++) {
         const float *q = SPIKES[i];
+        float margin = q[4] + 0.001f;
+        if (lx < fminf(q[0], q[2]) + jut - margin ||
+            lx > fmaxf(q[0], q[2]) + jut + margin ||
+            ly < fminf(q[1], q[3]) + nod - margin ||
+            ly > fmaxf(q[1], q[3]) + nod + margin) continue;
         d = sh_seg(lx, ly, q[0] + jut, q[1] + nod, q[2] + jut, q[3] + nod, &u);
         if (d <= q[4] * (1 - 0.15f * u)) return SHB_ON | ((u > 0.75f || d > q[4] * 0.55f) ? SHT_3 : SHT_2);
     }
@@ -2676,7 +2701,7 @@ static uint8_t sh_tone(float lx, float ly, float t, float flutter, const decor_s
     }
     if (sc->sh_d[k] != 255) {                                              /* the tail, from the distance map */
         float dd = sc->sh_d[k] / 32.0f, frac = sc->sh_fr[k] / 255.0f;
-        hw = sh_tail_hw(frac);
+        hw = sh_pixel_tail_hw(sc->sh_fr[k]);
         if (dd <= hw) {
             int tone = SHT_2;
             if (fmodf(frac * 60.0f, 2.6f) < 0.8f) tone = SHT_3;             /* the rings down the tail */
@@ -2787,6 +2812,7 @@ static void draw_seahorse(ctx_t *c, const tank_t *t) {
     int bx0, by0, bx1, by1; seahorse_box(t, &bx0, &by0, &bx1, &by1);
     if (bx1 < c->ox || bx0 >= c->ox + c->w || by1 + 1 < c->oy || by0 >= c->oy + c->h) return;
     if (scene_box_hidden(bx0, by0, bx1, by1)) return;
+    int64_t helper_start = PROF_MARK();
     float clock = secondary_clock(t);
     decor_scratch_t *sc = ds();
     bool held = t->sh_mode == SH_PERCH && t->sh_akind != SH_ANCHOR_NONE;
@@ -2884,6 +2910,7 @@ static void draw_seahorse(ctx_t *c, const tank_t *t) {
             }
         }
     }
+    if (render_clock_us) render_helper_us[2] += render_clock_us() - helper_start;
 }
 
 /* where the castle stands this frame: its centre x (-1 = not bought), its
@@ -4641,7 +4668,6 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     }
     PROF_ADD(0, p0);
 
-    PROF_ADD(1, p0);   /* stage 1 (light shafts) retired 2026-09-01 */
     /* vegetation, BACK layer: the reef bed (left - milestone lushness widens
        its base, never withers) and two decor beds; all three keep growing up
        and out with tank_t.veg_growth until the keeper trims them (slash the
@@ -4712,12 +4738,14 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     }
     PROF_ADD(3, p0);
     /* fish */
+    int64_t fish_start = PROF_MARK();
     for (int i = 0; i < t->n_fish; i++) {
         g_bb_on = true; g_bb_x0 = g_bb_y0 = 1 << 20; g_bb_x1 = g_bb_y1 = -1;
         draw_fish(&c, t, &t->fish[i]);
         g_bb_on = false;
         if (g_bb_x1 >= g_bb_x0) DYN_RECT(g_bb_x0, g_bb_y0, g_bb_x1, g_bb_y1);
     }
+    PROF_ADD(1, fish_start);
     /* the snail on the floor (upright): in the scene, under the front fronds -
        unless it walks its front lane (tank_t.snail_front), drawn below, over
        the pieces placed IN FRONT */
@@ -7146,18 +7174,21 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
     for (size_t i = 0; i < g_clock_run_count; i++) {
         const paint_run_t *run = clock_run(i);
         unsigned alpha = run->alpha & 511;
+        int x0 = run->x0 > c.ox ? run->x0 : c.ox;
+        int x1 = run->x1 < c.ox + c.w ? run->x1 : c.ox + c.w - 1;
+        if (x0 > x1) continue;
+        src_t source = {0};
+        if (alpha != 256) source = src_color(run->color, 1);
         for (int y = run->y; y <= run->y + (run->alpha >> 9); y++) {
             if (y < c.oy || y >= c.oy + c.h) continue;
             if (alpha == 256) {
-                int x0 = run->x0 > c.ox ? run->x0 : c.ox;
-                int x1 = run->x1 < c.ox + c.w ? run->x1 : c.ox + c.w - 1;
-                if (x0 > x1) continue;
                 uint16_t *out = &CTX_PX(&c, x0, y);
                 for (int x = x0; x <= x1; x++) *out++ = (uint16_t)run->color;
                 dirty_span(x0, x1, y);
+            } else if (alpha < 255) {
+                span(&c, x0, x1, y, &source, (int)alpha);
             } else {
-                src_t source = src_color(run->color, 1);
-                for (int x = run->x0; x <= run->x1; x++) px_blend_s(&c, x, y, &source, (int)alpha);
+                for (int x = x0; x <= x1; x++) px_blend_s(&c, x, y, &source, (int)alpha);
             }
         }
     }

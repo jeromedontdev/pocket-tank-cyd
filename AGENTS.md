@@ -20,7 +20,20 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.2.6**, one shared Back on Wardrobe Colors, unchanged
+- Source release: **2.2.7**, full-capacity LCD DMA halves at unchanged 40 MHz,
+  off-tile polygon palette culling, identical-input pitch memo, row-shaded
+  urchins, conservative seahorse coronet culling/exact 96-byte tail-width memo,
+  and clipped clock-span replay (retain alpha-255 blend semantics).
+  Both scales/all details/gameplay modes benefit; LCD transfers are CYD-only.
+  RAM-only serial `benchmark` pauses real care, never runs progression/saves,
+  uses two seeded fixtures and one evolving current-tank copy with clock.
+  Local Normal/Balanced five-fish copy: 10.79 FPS, lowest 120-frame window
+  10.22 with 5 ms/frame service reserve; not full gameplay/network timing or
+  a universal minimum. Ordinary four-fish windows included sub-10 results.
+  Current-renderer 5-minute soak passed 283,024 frame sets, 12 hashes equal
+  2.2.6. See hardware guide for scope; do not claim public deployment without
+  checking release/Pages. No new image buffers, save fields or gameplay.
+  2.2.6 introduced one shared Back on Wardrobe Colors, unchanged
   Creature Colors Next Type, draft/cancel/save behavior and both-scale headers.
   Lossless adjacent backdrop-row reuse keeps the same 12 KB budget; Simple
   batches consecutive live fallback rows. Fish scan edges avoid modulo.

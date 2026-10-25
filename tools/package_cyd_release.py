@@ -89,7 +89,15 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.2.6: menu consistency and five-fish rendering
+### New in 2.2.7: measured CYD performance improvements
+
+- LCD transfers fill the existing DMA halves instead of capping an 80-column band at 16 rows. Normal full-frame submissions fall from 60 to 42 without additional image buffers or a faster 40 MHz SPI clock.
+- Skip vertically clipped polygon palettes, reuse identical fish-pitch calculations, shade urchin tones per row, conservatively cull seahorse coronet distance tests and memoize exact quantized tail-width math in 96 bytes. Cached translucent clock runs replay as clipped spans while preserving alpha-255 blending.
+- Real CYD Normal/Balanced diagnostics measured 14.28/13.82 FPS in two fixed five-adult/elder scenes and 10.79 FPS over 1,200 frames in a five-fish copy of the saved decorated tank with clock enabled. Its lowest 120-frame window was 10.22 FPS including a 5 ms/frame service reserve. These local pre-release measurements exclude normal progression/touch/network services; ordinary four-fish monitoring still included sub-10 windows. This is not a guaranteed gameplay minimum.
+- Improvements apply across both scales, all three scene details and all gameplay modes where the paths are used; LCD DMA savings are CYD-only. No artwork, fish-limit, gameplay/economy or save-schema changes.
+- Serial benchmark runs two seeded fixtures and a current-tank copy in isolated RAM, uses the real LCD and automatically returns without saving synthetic residents. Final five-minute current-renderer stress passed 283,024 full/tiled/retained frame sets; all twelve reference hashes match 2.2.6. DMA tests assert capacity, ownership, transfer count and exact pixels.
+
+### Previously in 2.2.6: menu consistency and five-fish rendering
 
 - Wardrobe Colors uses one shared header BACK, with the selected fish's name above its preview. The old duplicate button and touch target are removed. Leaving without SAVE COLORS discards the draft; Creature Colors retains NEXT TYPE.
 - Identical neighboring backdrop rows share compressed runs within the same 12 KB budget. Simple batches contiguous uncached scenery rows instead of rebuilding geometry per scanline. Fish polygon edges avoid an unnecessary integer remainder.

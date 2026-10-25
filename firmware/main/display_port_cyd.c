@@ -168,8 +168,8 @@ void display_port_flush(const uint16_t *fb) {
     }
 #endif
     int region_width = panel_end - panel_start;
+    /* Each ping-pong half fits 24 rows for an 80-column band, not just 16. */
     int rows = CYD_STRIPE_BYTES / 2 / sizeof(uint16_t) / region_width;
-    if (rows > CYD_STRIPE_ROWS) rows = CYD_STRIPE_ROWS;
     bool reverse_x = (CYD_LCD_MIRROR_X != 0) != s_inverted;
     int source_left = reverse_x ? TANK_W - region_right : region_left;
     int source_right = reverse_x ? TANK_W - region_left : region_right;

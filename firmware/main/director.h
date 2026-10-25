@@ -24,3 +24,4 @@ void device_clock_log(void);           /* main.c: the clock - RTC chip or the in
 void device_poweroff(void);            /* main.c: save + PMIC cut now */
 void device_update_check(void);        /* main.c: as CHECK FOR UPDATES - save, restart into update mode (docs/OTA.md) */
 void device_wifi_setup(void);
+void device_render_benchmark(void);

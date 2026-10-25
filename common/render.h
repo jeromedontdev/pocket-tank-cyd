@@ -58,11 +58,13 @@ typedef struct {
 void render_clock_layout(const tank_t *t, render_clock_layout_t *layout);
 
 /* Optional frame profiling: set a microsecond clock and render_tank fills
- * render_prof_us per stage (0 scene-copy, 1 shafts, 2 veg (back), 3 food+
- * bubbles, 4 fish + front veg, 5 vignette sweep, 6 algae film, 7 clock). Accumulates
- * until the caller zeroes it. NULL = off. */
+ * render_prof_us per stage (0 scene-copy, 1 fish only, 2 veg (back), 3 food+
+ * bubbles/back helpers, 4 fish + front veg/helpers, 5 vignette sweep, 6 algae film, 7 clock).
+ * Stage 1 is nested inside stage 4; helper counters are snail/urchin/seahorse.
+ * Accumulates until the caller zeroes it. NULL = off. */
 extern int64_t (*render_clock_us)(void);
 extern int64_t render_prof_us[8];
+extern int64_t render_helper_us[3];
 
 /* Optional static-scene cache (TANK_W*TANK_H uint16): the water gradient,
  * pebbles and backdrop decor are rendered once per lighting state and copied each

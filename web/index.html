@@ -102,9 +102,31 @@
     Consistent Normal/Enlarged typography requires <strong>2.2.5 or newer</strong>.
     Single-Back wardrobe colors, leaner five-fish rendering and tile-safe seahorse shadows
     require <strong>2.2.6 or newer</strong>.
+    Fuller LCD DMA transfers and lossless fish/helper/clock optimizations
+    require <strong>2.2.7 or newer</strong>.
     Check the published version above before installing. Older releases remain
     available, but cannot load the expanded current save format.
   </aside>
+
+  <section id="hardware-performance" aria-labelledby="hardware-performance-heading">
+    <p class="eyebrow">New in 2.2.7</p>
+    <h2 id="hardware-performance-heading">More room in the frame budget</h2>
+    <p>Fuller use of existing LCD DMA buffers, reused fish/helper math and
+      clipped clock spans improve performance without reducing artwork,
+      changing care or increasing the 40 MHz SPI clock. The optimizations
+      apply across display scales, scene details and gameplay modes;
+      LCD transfer savings are CYD-only.</p>
+    <p>A five-fish RAM copy of a decorated aquarium with its clock enabled
+      measured <strong>10.79 FPS</strong> on a real CYD in
+      <strong>Normal / Balanced</strong> over 1,200 frames.
+      The slowest 120-frame window was 10.22 FPS, including a
+      5 ms/frame allowance for normal services.</p>
+    <p>This is a bounded diagnostic, not the full gameplay/network loop or
+      a guaranteed minimum. Ordinary four-fish monitoring still included
+      sub-10 FPS windows. Both scales and all scene details retain matching
+      reference images, with no extra image buffers or save-format changes.</p>
+    <p><a href="https://github.com/jeromedontdev/pocket-tank-cyd/blob/main/firmware/CYD.md#five-fish-hardware-follow-up-227">Read the hardware test scope and reproducible diagnostics</a>.</p>
+  </section>
 
   <section id="features" aria-labelledby="features-heading">
     <p class="eyebrow">Already in the published tank</p>

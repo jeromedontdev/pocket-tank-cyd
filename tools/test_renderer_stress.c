@@ -277,6 +277,15 @@ static void soak(int seconds) {
 
 int main(int argc, char **argv) {
     assert(argc == 4);
+#ifndef RENDER_BASELINE
+    for (int pass = 0; pass < 3; pass++)
+        for (int i = 0; i < 256; i++) {
+            uint8_t fraction = (uint8_t)(pass % 2 ? 255 - i : i);
+            float expected = sh_tail_hw(fraction / 255.0f);
+            assert(sh_pixel_tail_hw(fraction) == expected);
+            assert(sh_pixel_tail_hw(fraction) == expected);
+        }
+#endif
     FILE *icons = fopen(argv[1], "rb"); assert(icons);
     icon_bytes = fread(icon_bank, 1, sizeof icon_bank, icons);
     assert(!ferror(icons) && feof(icons) && !fclose(icons));

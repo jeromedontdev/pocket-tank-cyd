@@ -287,6 +287,127 @@ void device_photo(bool from_settings) {
     s_photo_delay = 0.8f;
 }
 static void request_update(void);        /* below: CHECK FOR UPDATES */
+static bool s_benchmark_requested;
+void device_render_benchmark(void) { s_benchmark_requested = true; }
+
+static void render_benchmark(uint16_t *buffer) {
+    if (!buffer) {
+        ESP_LOGE(TAG, "benchmark requires an allocated framebuffer");
+        return;
+    }
+    if (!tank.companion.display_compact || !tank.n_fish || setup_active()) {
+        ESP_LOGE(TAG, "benchmark requires Normal scale, residents and no setup panel");
+        return;
+    }
+    tank_t *sample = malloc(sizeof *sample);
+    if (!sample) {
+        ESP_LOGE(TAG, "benchmark cannot allocate an isolated fixture");
+        return;
+    }
+    ESP_LOGI("benchmark", "BEGIN RAM-only five-fish Normal Balanced; no progression or save writes");
+    ESP_LOGI("benchmark", "Two fixed scenes then live-copy decor/clock; includes 5 ms/frame service reserve, not network/menu testing");
+    for (int fixture = 0; fixture < 3; fixture++) {
+        if (fixture == 2) {
+            *sample = tank;
+            for (int i = sample->n_fish; i < 5; i++) {
+                sample->fish[i] = sample->fish[0];
+                sample->fish[i].x = TANK_W * .8f;
+                sample->fish[i].y = TANK_BOT * .6f;
+            }
+            sample->n_fish = 5;
+            sample->clock_requested = true;
+        } else {
+            memset(sample, 0, sizeof *sample);
+            tank_init(sample, 0x5167);
+            tank_new_population(sample);
+            while (sample->n_fish < 5) if (tank_add_fish(sample, 0, 1) < 0) {
+                ESP_LOGE(TAG, "benchmark could not populate its isolated fixture");
+                free(sample);
+                return;
+            }
+            sample->companion.display_compact = true;
+            sample->sd_unlocks = SD_ITEM_PLANT | SD_ITEM_SHRIMP | SD_ITEM_SNAIL |
+                SD_ITEM_URCHIN | SD_ITEM_SEAHORSE | SD_ITEM_LIGHTS | SD_ITEM_SAND |
+                SD_ITEM_PEBBLES | SD_ITEM_PEARL | SD_ITEM_SPONGES | SD_ITEM_BARREL;
+            sample->journal.xp = journal_level_xp(20);
+            sample->journal.initialized = 1;
+            sample->journal.theme = (uint8_t)fixture;
+            sample->clock = 10;
+            sample->clock_requested = false;
+            sample->aquariums.clock_theme = CLOCK_OFF;
+            sample->light_override = true; sample->light_on = true;
+            sample->night = false;
+            for (int i = 0; i < 5; i++) {
+                sample->fish[i].stage = i == 4 ? STAGE_ELDER : STAGE_ADULT;
+                sample->fish[i].size = i == 4 ? 1.25f : 1.05f;
+                sample->fish[i].variety = (uint8_t)(fixture * 5 + i);
+                sample->fish[i].pattern = (uint8_t)(i % 4);
+                sample->fish[i].wearable = (uint8_t)(1 + i % (WEAR_COUNT - 1));
+                sample->fish[i].hunger = 3; sample->fish[i].energy = 7;
+                sample->fish[i].x = TANK_W * (i + 1) / 6.0f;
+                sample->fish[i].y = TANK_BOT * (0.25f + i % 3 * .22f);
+                sample->fish[i].heading = i * .7f;
+                sample->fish[i].goal.id = GOAL_EXPLORE;
+            }
+        }
+        sample->ui_cover = sample->hold_active = sample->drag_active = false;
+        render_device_t device = {0, 0, false, -1, SCENE_BALANCED};
+        render_set_device(&device);
+        render_work_caches(true);
+        render_set_backdrop_cache((uint8_t *)buffer + TANK_W * 80 * 2,
+                                 PLAN_FB_BYTES - TANK_W * 80 * 2);
+        int timed_frames = fixture == 2 ? 1200 : 240;
+        int64_t started = 0, window = 0, tick = 0, draw = 0, flush = 0;
+        double lowest_fps = 1e9;
+        for (int frame = 0; frame < timed_frames + 10; frame++) {
+            if (frame == 10) {
+                started = window = esp_timer_get_time();
+                memset(render_prof_us, 0, sizeof render_prof_us);
+                memset(render_helper_us, 0, sizeof render_helper_us);
+            }
+            int64_t a = esp_timer_get_time();
+            tank_tick(sample, .1f, advisor_rules);
+            int64_t b = esp_timer_get_time();
+            render_damage_begin(sample, frame == 0);
+            int cursor = 0, x, y, width, height;
+            while (render_damage_next(&cursor, &x, &y, &width, &height)) {
+                render_region(x, width); render_tile(y, height);
+                int64_t before = esp_timer_get_time();
+                render_tank(sample, buffer, TANK_W);
+                int64_t after = esp_timer_get_time();
+                display_port_flush(buffer);
+                if (frame >= 10) {
+                    draw += after - before;
+                    flush += esp_timer_get_time() - after;
+                }
+            }
+            render_tile(0, 0); render_region(0, 0);
+            if (frame >= 10) tick += b - a;
+            vTaskDelay(pdMS_TO_TICKS(5) + 1);
+            if (frame >= 10 && (frame - 9) % 120 == 0) {
+                int64_t now = esp_timer_get_time();
+                double fps = 120000000.0 / (now - window);
+                if (fps < lowest_fps) lowest_fps = fps;
+                window = now;
+            }
+        }
+        int64_t elapsed = esp_timer_get_time() - started;
+        double divisor = timed_frames * 1000.0;
+        ESP_LOGI("benchmark", "RESULT fixture %d %d frames %.2f fps (lowest 120-frame window %.2f) | tick %.2f render %.2f flush %.2f ms | scene %.2f veg %.2f fish/front %.2f fish-only %.2f ms",
+                 fixture, timed_frames, timed_frames * 1000000.0 / elapsed, lowest_fps,
+                 tick / divisor, draw / divisor, flush / divisor,
+                 render_prof_us[0] / divisor, render_prof_us[2] / divisor, render_prof_us[4] / divisor,
+                 render_prof_us[1] / divisor);
+        ESP_LOGI("benchmark", "HELPERS snail %.2f urchin %.2f seahorse %.2f ms",
+                 render_helper_us[0] / divisor, render_helper_us[1] / divisor, render_helper_us[2] / divisor);
+    }
+    free(sample);
+    int64_t discarded_wait, discarded_send;
+    display_port_flush_prof(&discarded_wait, &discarded_send);
+    render_damage_begin(&tank, true);
+    ESP_LOGI("benchmark", "END original aquarium retained; diagnostic excluded from normal FPS logs");
+}
+
 static void tank_task(void *arg);
 static void start_tank_task(void *arg) {
     (void)arg;
@@ -307,6 +428,15 @@ static void tank_task(void *arg) {
     int64_t polls_us = 0, tick_us = 0, wait_us = 0, tail_us = 0, sleep_us = 0, slept_from = 0;
     ESP_LOGI(TAG, "tank task up | heap int %u KB", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
     for (;;) {
+        if (s_benchmark_requested) {
+            s_benchmark_requested = false;
+            render_benchmark(fb[cur]);
+            last = last_log = esp_timer_get_time();
+            render_us = flush_us = card_us = polls_us = tick_us = wait_us = tail_us = sleep_us = slept_from = 0;
+            frames = card_frames = drawn_rows = 0;
+            memset(render_prof_us, 0, sizeof render_prof_us);
+            memset(render_helper_us, 0, sizeof render_helper_us);
+        }
         int64_t now = esp_timer_get_time();
         float dt = (now - last) / 1e6f; last = now;
         float max_dt = tank.companion.display_compact ? 1.0f : 0.25f;
@@ -515,7 +645,7 @@ static void tank_task(void *arg) {
                          fb[cur] ? fb[cur][5 * TANK_W + 5] : 0,
                          sc ? sc[(TANK_H / 2) * TANK_W + TANK_W / 2] : 0, ep,
                          (int)tank.night, 0);
-                ESP_LOGI("display", "%.1f fps | render %.1f ms flush %.1f ms | scene %.1f shafts %.1f veg %.1f fd/bub %.1f fish %.1f vig %.1f algae %.1f clock %.1f | card %.1f ms x%lu | veg %.2f %.2f %.2f",
+                ESP_LOGI("display", "%.1f fps | render %.1f ms flush %.1f ms | scene %.1f fish-only %.1f veg %.1f fd/bub %.1f fish/front %.1f vig %.1f algae %.1f clock %.1f | card %.1f ms x%lu | veg %.2f %.2f %.2f",
                          frames * 1e6f / (float)(now - last_log),
                          render_us / 1e3f / frames, flush_us / 1e3f / frames,
                          render_prof_us[0] / 1e3f / frames, render_prof_us[1] / 1e3f / frames,
@@ -534,6 +664,7 @@ static void tank_task(void *arg) {
                          (float)drawn_rows / frames, TANK_H, (unsigned)render_work_cache_bytes());
                 card_us = 0; card_frames = 0;
                 memset(render_prof_us, 0, sizeof render_prof_us);
+                memset(render_helper_us, 0, sizeof render_helper_us);
             }
             render_us = flush_us = 0; frames = 0; drawn_rows = 0;
             polls_us = tick_us = wait_us = tail_us = sleep_us = 0;

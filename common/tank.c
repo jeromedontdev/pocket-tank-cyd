@@ -97,8 +97,14 @@ void tank_glass_clamp(float *x, float *y, float m) {
 }
 #define corner_clamp(x, y, m) ((void)0)            /* the plain rectangle (and the bowl, which has its own): no corners */
 float tank_fish_pitch(const fish_t *f) {
+    /* Clearance queries project one pose in four directions consecutively. */
+    static float heading, speed, pitch;
+    static bool valid;
+    if (valid && heading == f->heading && speed == f->speed) return pitch;
     float limit = 0.61f + 0.35f * clampf((f->speed - 35) / 40, 0, 1);
-    return limit * tanhf(0.8f * atan2f(sinf(f->heading), fabsf(cosf(f->heading))) / limit);
+    pitch = limit * tanhf(0.8f * atan2f(sinf(f->heading), fabsf(cosf(f->heading))) / limit);
+    heading = f->heading; speed = f->speed; valid = true;
+    return pitch;
 }
 int tank_wearable_polygon(const fish_t *f, int part, float x[8], float y[8], uint32_t *color) {
     if (!f->wearable || f->wearable >= WEAR_COUNT || part > 1) return 0;

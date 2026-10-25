@@ -322,6 +322,69 @@ Strict optimized GCC compilation also exposed uninitialized non-body seahorse
 row fields. Explicit initialization passed an additional 55,384 frame sets
 and the artwork regression without changing any reference-frame hash.
 
+### Five-fish hardware follow-up (2.2.7)
+
+The follow-up keeps 40 MHz SPI and the same 7,680-byte stripe allocation.
+Each ping-pong half fits 24 rows for an 80-column Normal tile band; the old
+16-row cap left capacity unused. A fully changed 320x240 frame now requires
+42 LCD submissions instead of 60. The delayed-DMA regression asserts that
+count, half-buffer capacity/ownership, exact rotated/scaled pixels and CRC
+invalidation through scale, tile, region and inversion changes.
+
+Other lossless changes skip palette setup for vertically clipped polygons,
+memoize consecutive identical heading/speed pitch calculations, shade urchin
+tones once per row and bound seahorse coronet distance tests conservatively.
+Seahorse tail pixels reuse exact software-power results in a 16-entry,
+96-byte numerical memo keyed by their stored 8-bit fraction. This is not an
+approximation or image cache; tests exercise all 256 fractions, repeated hits
+and eviction in both directions.
+Cached translucent clock runs clip horizontally before replay and reuse the
+existing span path; alpha-255 blends retain their original 255/256 semantics.
+No new image buffers, simulation throttling, reduced art/detail, save fields
+or faster SPI are involved. Profiling now separates fish-only time from the
+larger fish/front-vegetation/helper stage; these nested counters must not be
+summed as independent stages.
+
+The serial `benchmark` command requires Normal scale and no setup panel.
+It temporarily allocates one isolated `tank_t`, pauses real care/input, runs
+two seeded five-adult/elder scenes (all ten varieties across them), then a
+five-resident copy of the current aquarium with its clock requested.
+Only the first two fixtures are reproducible across invocations; the live-copy
+fixture reflects current resident/helper/layout state and is not an exact A/B.
+Each scene warms for ten frames. Fixed scenes measure 240 frames each, and
+the live copy measures 1,200. It ticks only the fixture, uses the real retained
+damage renderer/LCD, and never runs progression, saves or staging on it.
+The original aquarium returns automatically; diagnostic timing is excluded
+from ordinary FPS and LCD-transfer logs.
+
+Local COM4 results, Normal/Balanced, including an additional 5 ms/frame sleep
+reserve for ordinary services (plus the normal yield):
+
+| Workload | Average FPS | Lowest 120-frame window |
+|---|---:|---:|
+| Fixed varieties 0-4, adults/elder and helpers | 14.28 | 14.22 |
+| Fixed varieties 5-9, second theme and helpers | 13.82 | 13.77 |
+| Saved decor/helpers/clock copied to five fish | 10.79 | 10.22 |
+
+The last scene averaged 6.86 ms simulation, 50.35 ms render and 26.28 ms flush.
+Earlier live-copy measurements saw flush fall from roughly 42-44 ms to
+33-35 ms with the stripe change, but their changing poses prevent an exact
+whole-frame speedup claim. This diagnostic is **not** the full gameplay loop:
+touch, progression, companion services, menus and network fetches are not
+executed; the 5 ms allowance is a reserve, not a measurement of those paths.
+These results clear the tested five-fish target, not a universal 10 FPS floor.
+Two minutes of subsequent ordinary four-fish operation measured 9.7-11.1 FPS,
+including sub-10 windows; this is not evidence of a sustained gameplay minimum.
+Resident names, ownership, wallet/earned accounting and clock preferences were
+checked before/after flashing and testing. These measurements were collected
+from the local implementation before the release version bump, not from the
+CI-built release binary. Optimizations apply across both scales, all three
+details and all gameplay modes; the table measures Normal/Balanced only.
+The final current-renderer five-minute soak passed 40,432 cases / 283,024
+full/tiled/retained five-fish frame sets. All twelve fixed reference hashes
+matched a separately compiled v2.2.6 renderer. Final firmware size is
+1,782,240 bytes, leaving 183,840 bytes in each OTA slot.
+
 Menus retain their full 448x368 layout and are scaled into that framebuffer,
 rather than cropped. Menu touch coordinates use the inverse scaling.
 The post-1.4 source visual overhaul uses shared, static pixel-art sprites and

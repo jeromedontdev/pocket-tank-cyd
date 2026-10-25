@@ -53,6 +53,8 @@ static int px0, py0, px1, py1;
 static int esp_lcd_panel_draw_bitmap(int panel, int x0, int y0, int x1, int y1, const void *data) {
     (void)panel;
     assert(!pending && x0 >= 0 && x1 <= 240 && y0 >= 0 && y1 <= 320);
+    assert(data == s_stripe || data == s_stripe + CYD_STRIPE_BYTES / 2 / sizeof(uint16_t));
+    assert((size_t)(x1 - x0) * (y1 - y0) * sizeof(uint16_t) <= CYD_STRIPE_BYTES / 2);
     pending = data; px0 = x0; py0 = y0; px1 = x1; py1 = y1;
     memcpy(pending_copy, data, (size_t)(x1 - x0) * (y1 - y0) * 2);
     return 0;
@@ -114,8 +116,10 @@ int main(void) {
         TANK_W = mode % 2 ? 320 : 240; TANK_H = mode % 2 ? 240 : 180;
         int height = mode % 2 ? 80 : 180;
         for (int i = 0; i < TANK_W * TANK_H; i++) frame[i] = (uint16_t)(i * 13u + i / 43);
+        unsigned before = s_blocks_sent;
         check_frame(frame, height);
         if (TANK_H == 240) {
+        assert(s_blocks_sent - before == 3 * ((320 + 23) / 24));
         for (int pass = 0; pass < 10; pass++) {
             region_x = pass * 32; region_w = 32;
             tile_y = (pass % 6) * 40; tile_h = 40;

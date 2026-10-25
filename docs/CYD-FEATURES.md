@@ -2,7 +2,21 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.2.6**
+**An illustrated tour of Pocket Tank CYD 2.2.7**
+
+**2.2.7** improves real CYD throughput without reducing artwork or detail.
+LCD transfers use the full capacity of the existing DMA halves at the same
+40 MHz SPI clock. Shared rendering skips clipped polygon palettes, reuses
+identical fish-pitch and seahorse-tail calculations, shades urchin tones per
+row and replays clipped translucent clock spans. Both display scales, all
+three scene details and all gameplay modes benefit where those paths apply;
+LCD DMA savings are hardware-only. A five-fish RAM copy of the decorated tank
+with its clock enabled measured 10.79 FPS over 1,200 frames, with a lowest
+120-frame window of 10.22 FPS including a 5 ms/frame service reserve.
+This Normal/Balanced diagnostic is not the complete gameplay/network loop
+or a universal minimum; ordinary four-fish monitoring included sub-10 windows.
+Saves, ownership, gameplay and artwork stay unchanged. See the
+[hardware methodology](../firmware/CYD.md#five-fish-hardware-follow-up-227).
 
 **2.2.6** removes the second Back button from Wardrobe Colors and gives every
 companion section the same header return. The selected fish's name appears

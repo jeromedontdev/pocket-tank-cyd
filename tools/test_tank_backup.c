@@ -1677,6 +1677,20 @@ static void test_adventure_traveler(void) {
     puts("PASS: real absent fish has frozen identity/care/age, 2-hour wall-clock return once, schema-6 migration and reserved return capacity");
 }
 static void test_fish_sand_clearance(void) {
+    for (int heading = -8; heading <= 8; heading++)
+        for (int speed = 0; speed <= 100; speed += 5) {
+            fish_t fish = {0}, other = {0};
+            fish.heading = heading * .7f; fish.speed = (float)speed;
+            float scale = fminf(1, fmaxf(0, (fish.speed - 35) / 40));
+            float limit = .61f + .35f * scale;
+            float expected = limit * tanhf(.8f * atan2f(sinf(fish.heading), fabsf(cosf(fish.heading))) / limit);
+            assert(fabsf(tank_fish_pitch(&fish) - expected) < 1e-6f);
+            other.heading = fish.heading; other.speed = fish.speed;
+            assert(tank_fish_pitch(&other) == tank_fish_pitch(&fish));
+            other.heading += .4f; other.speed += 20;
+            (void)tank_fish_pitch(&other);
+            assert(fabsf(tank_fish_pitch(&fish) - expected) < 1e-6f);
+        }
     uint16_t with_fish[TANK_W * TANK_H], without_fish[TANK_W * TANK_H];
     for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++)
         for (int stage = STAGE_FRY; stage <= STAGE_ELDER; stage++)

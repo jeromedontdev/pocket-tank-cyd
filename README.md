@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.2.6
+# Pocket Tank CYD 2.2.7
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.2.6**; firmware, update
+now versioned independently. This is **release 2.2.7**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -43,6 +43,21 @@ actual desktop renderer.
 - Fish limits, care/progression, artwork, saved preferences and save format
   are unchanged. See [performance methodology](firmware/CYD.md#five-fish-renderer-validation-226)
   for reproducible commands and measurement limits.
+
+## New in 2.2.7: measured CYD performance improvements
+
+The CYD build uses the full capacity of its existing LCD DMA halves,
+skips off-tile polygon palettes, reuses identical fish-pitch queries,
+clips/replays translucent clock runs as spans and avoids unnecessary helper
+shading/distance work without reducing detail.
+On the connected CYD, a RAM-only five-fish copy of the saved decorated tank
+with its clock enabled measured **10.79 FPS** over 1,200 frames; the slowest
+120-frame window was **10.22 FPS**, including a 5 ms/frame service reserve.
+This is not a guaranteed minimum for gameplay, network activity or every layout,
+and ordinary four-fish monitoring still included sub-10 FPS windows.
+The changes apply across both display scales, all three scene details and all
+gameplay modes; the quoted measurement is specifically Normal/Balanced.
+See [hardware test scope and commands](firmware/CYD.md#five-fish-hardware-follow-up-227).
 
 ## Previously in 2.2.5: consistent typography in both display scales
 
