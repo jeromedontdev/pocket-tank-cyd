@@ -2,7 +2,11 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.2**
+**An illustrated tour of Pocket Tank CYD 2.3.3**
+
+Version 2.3.3 exposes **Screenshot to SD** under **Settings > Device**, while
+retaining **Photo to SD** under SD Backups. Dedicated update mode leaves
+aquarium-only rendering scratch free for GitHub TLS certificate verification.
 
 Version 2.3.2 adds **Check GitHub via Wi-Fi** to Settings > Device > SD Updates.
 It checks this fork's latest stable release and asks before installing newer
@@ -538,7 +542,9 @@ In **Settings > Display**:
 
 **Settings > SD Backups > DAILY** makes one verified automatic backup per day
 (`pocket-tank/auto-NNNN.json`, the newest seven are kept) once the clock is
-set. **PHOTO TO SD** saves a BMP screenshot of the aquarium to
+set. **Settings > Device > SCREENSHOT TO SD** saves a BMP screenshot of the
+aquarium. The existing **PHOTO TO SD** shortcut under **SD Backups** remains
+available. Both save to
 `pocket-tank/photos/`.
 
 ## Mini-games: play with your fish, not their care stats

@@ -103,6 +103,11 @@ the overlay says **SYNC NEEDED**. See [clock setup and time limitations](../firm
 
 Install 2.3.2 once by save-preserving USB or SD update to enable the default
 channel. Earlier releases had no default Wi-Fi firmware channel.
+Prefer 2.3.3 or newer for that bootstrap: it frees aquarium-only rendering
+scratch in update mode and delays the manifest buffer until after TLS,
+fixing insufficient-memory certificate verification on GitHub's asset host.
+The aquarium simulation and SD services do not run during the download;
+certificate and image verification are never disabled to recover memory.
 
 1. Make an SD backup if available and keep USB power connected.
 2. Open **Settings > Device > SD Updates > Check GitHub via Wi-Fi**.

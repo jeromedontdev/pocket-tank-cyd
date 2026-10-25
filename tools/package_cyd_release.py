@@ -109,7 +109,13 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.2: on-device GitHub updates
+### New in 2.3.3: screenshot shortcut and update-mode memory
+
+- Settings > Device now has SCREENSHOT TO SD. The existing PHOTO TO SD shortcut under SD Backups remains; both save aquarium BMPs to pocket-tank/photos/.
+- Dedicated Wi-Fi update mode defers fish/decor scratch until returning to care. The manifest buffer is allocated after TLS connects, leaving more internal heap for GitHub release-asset certificate verification.
+- Certificate validation, complete image SHA-256/size/board/version checks, explicit approval and A/B boot validation remain required. SD and Wi-Fi updates remain separate choices on the update page.
+
+### Previously in 2.3.2: on-device GitHub updates
 
 - Settings > Device > SD Updates now includes Check GitHub via Wi-Fi, alongside the existing offline SD flow. The aquarium must save before entering update mode.
 - The default channel checks this fork's latest stable GitHub release via ota.json. Each release manifest pins its app download to the exact release tag. Newer versions require explicit UPDATE confirmation; equal/older versions report UP TO DATE.

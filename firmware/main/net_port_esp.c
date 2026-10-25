@@ -356,9 +356,7 @@ static void do_check(void) {
                                     .buffer_size = 2048, .buffer_size_tx = 2048, .max_redirection_count = 8 };
     esp_http_client_handle_t c = esp_http_client_init(&hc);
     if (!c) { s_err = NET_ERR_NO_NET; s_state = NET_FAILED; return; }
-    char *buf = heap_caps_malloc(4096,
-                                 MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    if (!buf) ESP_LOGE(TAG, "no memory for update manifest");
+    char *buf = NULL;
     int err = NET_ERR_NO_NET, n = 0;
     /* GitHub answers a release asset's address with a redirect, twice (releases/latest/download ->
      * releases/download/<tag> -> the asset host, a 900-byte signed address). The open / fetch_headers
@@ -367,7 +365,7 @@ static void do_check(void) {
      * release - a tank that could never see an update (2026-10-04; the rehearsal's files sat on a
      * host that answers directly). Follow them by hand, a few hops at most. */
     int status = 0;
-    for (int hop = 0; buf && hop < 6; hop++) {
+    for (int hop = 0; hop < 6; hop++) {
         if (esp_http_client_open(c, 0) != ESP_OK) { status = 0; break; }
         (void)esp_http_client_fetch_headers(c);
         status = esp_http_client_get_status_code(c);
@@ -383,7 +381,11 @@ static void do_check(void) {
         int drained = 0; esp_http_client_flush_response(c, &drained);
         esp_http_client_close(c);
     }
-    if (buf && status) {
+    if (status == 200) {
+        buf = heap_caps_malloc(4096, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!buf) ESP_LOGE(TAG, "no memory for update manifest");
+    }
+    if (buf) {
         while (n < 4095) { int r = esp_http_client_read(c, buf + n, 4095 - n); if (r <= 0) break; n += r; }
         buf[n] = 0;
         if (status == 200 && n > 0 && n < 4095 && esp_http_client_is_complete_data_received(c))

@@ -39,6 +39,18 @@ class CydBuildContractTests(unittest.TestCase):
         for previous, current in zip(ordered, ordered[1:]):
             self.assertLessEqual(previous[1], current[0])
 
+    def test_update_mode_defers_tank_only_memory(self):
+        main = (FIRMWARE / "main" / "main.c").read_text()
+        app = main[main.index("void app_main(void)"):]
+        self.assertIn("if (!network_mode && !reserve_tank_scratch()) return;", app)
+        self.assertLess(app.index("update_mode_pending()"), app.index("reserve_tank_scratch()"))
+        self.assertLess(app.index("update_mode_run(fb[0])"),
+                        app.index("if (network_mode && !reserve_tank_scratch()) return;"))
+        net = (FIRMWARE / "main" / "net_port_esp.c").read_text()
+        check = net[net.index("static void do_check("):net.index("static bool verify_download(")]
+        self.assertLess(check.index("esp_http_client_open(c, 0)"),
+                        check.index("heap_caps_malloc(4096"))
+
     def test_size_flags_exclude_frame_loop_sources(self):
         core = (FIRMWARE / "components" / "tankcore" / "CMakeLists.txt").read_text()
         size_flags = re.search(r"set_property\(SOURCE(.*?)APPEND PROPERTY COMPILE_OPTIONS \"-Os\"\)",

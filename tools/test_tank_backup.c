@@ -3773,7 +3773,10 @@ int main(int argc, char **argv) {
     assert(render_settings_touch(&tank, rx, y, false, &value) == SET_TAP_RESTORE && value == 0);
     const struct { int section, x, y, action; } device_taps[] = {
         {0, 200, 190, SET_TAP_DETAIL}, {0, 200, 232, SET_TAP_ROOM}, {0, 200, 272, SET_TAP_LED},
-        {3, 224, 180, SET_TAP_AUTO_BACKUP}, {3, 224, 228, SET_TAP_PHOTO}
+        {3, 224, 180, SET_TAP_AUTO_BACKUP}, {3, 224, 228, SET_TAP_PHOTO},
+        {5, 224, 69, SET_TAP_PHOTO}, {5, 224, 122, SET_TAP_UPDATES},
+        {5, 224, 192, SET_TAP_TOUCH}, {5, 224, 262, SET_TAP_WIPE},
+        {5, 224, 93, SET_TAP_NONE}
     };
     for (int scale = 0; scale < 2; scale++) {
         tank_resolution(scale != 0);

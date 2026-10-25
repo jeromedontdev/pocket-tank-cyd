@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.2
+# Pocket Tank CYD 2.3.3
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.3.2**; firmware, update
+now versioned independently. This is **release 2.3.3**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -22,6 +22,17 @@ covers named tanks, the bank, creature customization, Journal, mini-games,
 decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
+
+## New in 2.3.3: clearer screenshots and more update memory
+
+**Settings > Device > Screenshot to SD** exposes the aquarium screenshot
+feature without opening backups. The existing **Photo to SD** button in
+SD Backups remains available; both save BMP images in `pocket-tank/photos/`.
+
+Dedicated Wi-Fi update mode no longer reserves fish/decor rendering scratch,
+and manifest reception memory is allocated only after the HTTPS handshake.
+This leaves more ESP32 RAM for GitHub release-asset certificate validation,
+without disabling certificate, board, version, size or SHA-256 checks.
 
 ## New in 2.3.2: on-device GitHub updates
 

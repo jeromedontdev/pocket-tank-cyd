@@ -372,6 +372,8 @@ async function main() {
       await page.locator('[data-action="2"]').click();
       await menuImage(`settings-${scale}`);
       await tap(330, 260); // Device.
+      await tap(224, 69); // Screenshot to SD is discoverable outside backups.
+      assert.equal(await native("return game._sim_page()"), 2);
       const beforeWifi = (await snapshot()).tank;
       await tap(200, 122); // Firmware installation deliberately stays hardware-only.
       assert.equal(await native("return game._sim_page()"), 2);

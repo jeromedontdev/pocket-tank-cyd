@@ -766,6 +766,22 @@ void device_provision_request(void) {
     provision_mode_request();                /* restarts */
 }
 
+static bool reserve_tank_scratch(void) {
+    void *decor = heap_caps_calloc(1, render_decor_scratch_size(), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!decor) {
+        ESP_LOGE(TAG, "cannot reserve CYD decoration scratch (%u B)", (unsigned)render_decor_scratch_size());
+        return false;
+    }
+    uint32_t *masks = heap_caps_malloc(render_mask_scratch_size(), MALLOC_CAP_INTERNAL | MALLOC_CAP_32BIT);
+    if (!masks) {
+        heap_caps_free(decor);
+        ESP_LOGE(TAG, "cannot reserve CYD word masks (%u B)", (unsigned)render_mask_scratch_size());
+        return false;
+    }
+    render_set_decor_scratch(decor);
+    render_set_mask_scratch(masks);
+    return true;
+}
 void app_main(void) {
     ESP_LOGI(TAG, "pocket-tank v%s %s (build %s) for %s boot%s", PT_RELEASE, PT_RELEASE_STAGE, version_port_string(), PT_BOARD,
              esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0 || esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1 ? " (woken by button)" : "");
@@ -781,22 +797,11 @@ void app_main(void) {
         if (!fb[i]) fb[i] = i ? fb[0] : NULL;          /* no PSRAM: share or skip */
     }
     if (!fb[0]) ESP_LOGW(TAG, "no framebuffer RAM: rendering disabled (tank still runs)");
-    /* Reserve the largest required renderer buffer before peripheral allocations fragment RAM. */
-    void *cyd_decor = heap_caps_calloc(1, render_decor_scratch_size(), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    if (!cyd_decor) {
-        ESP_LOGE(TAG, "cannot reserve CYD decoration scratch (%u B)", (unsigned)render_decor_scratch_size());
-        return;
-    }
-    render_set_decor_scratch(cyd_decor);
-    uint32_t *masks = heap_caps_malloc(render_mask_scratch_size(), MALLOC_CAP_INTERNAL | MALLOC_CAP_32BIT);
-    if (!masks) {
-        ESP_LOGE(TAG, "cannot reserve CYD word masks (%u B)", (unsigned)render_mask_scratch_size());
-        return;
-    }
-    render_set_mask_scratch(masks);
+    bool network_mode = update_mode_pending();
+    /* Network-only pages do not render fish/decor. Leave their scratch free for TLS. */
+    if (!network_mode && !reserve_tank_scratch()) return;
     /* Network modes must run before SD/cache allocations consume Wi-Fi headroom. */
     render_clock_us = esp_timer_get_time;    /* per-stage frame profiling in the display log */
-    bool network_mode = update_mode_pending();
     if (network_mode) display_port_set_brightness(0);
     display_port_init();
     ambient_init();
@@ -805,6 +810,7 @@ void app_main(void) {
     if (network_mode) update_mode_run(fb[0]);
     else if (provision_mode_wanted()) provision_mode_run(fb[0]);   /* just installed, no network yet: the page's Wi-Fi step, the glass dark */
     net_clock_boot(fb[0]);            /* no RTC chip and a saved network: the time from the internet, before the advisor takes the heap */
+    if (network_mode && !reserve_tank_scratch()) return;
     sd_port_init();
     ESP_LOGI(TAG, "CYD build: rules advisor (no model partition or PSRAM)");
     ESP_LOGI(TAG, "after the advisor: internal heap %u KB free", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);

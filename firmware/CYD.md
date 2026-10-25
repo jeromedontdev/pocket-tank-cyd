@@ -8,7 +8,7 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.2 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.3 is a distinct aquarium game, not just a board port.**
 
 ### Firmware-space audit after 2.3.0
 
@@ -22,6 +22,7 @@ It does not change the schema-18 save contract or require an aquarium reset.
 | First local selective-size pass | 1,788,752 | 177,328 |
 | 2.3.1: client-only TLS and device-management size flags | 1,777,840 | 188,240 |
 | 2.3.2 local build: GitHub manifest, full-file OTA checks and Wi-Fi entry | 1,780,160 | 185,920 |
+| 2.3.3 local build: screenshot shortcut and update-mode memory | 1,780,128 | 185,952 |
 
 Net saving: **19,312 bytes**; headroom increases from about **165 KiB to
 184 KiB**.

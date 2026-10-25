@@ -7606,6 +7606,7 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     }
     draw_text(&c, 24, 18, 2, MSP_TEAL, names[g_settings_section - 1]);
     if (g_settings_section == 6) {
+        button(&c, 32, 52, 384, 34, 0x1c2f36, MSP_TEAL, "SCREENSHOT TO SD", 2);
         button(&c, 32, 100, 384, 44, 0x1c2f36, MSP_TEAL, "SD UPDATES", 2);
         button(&c, 32, 170, 384, 44, 0x1c2f36, MSP_TEAL, "TOUCH CALIBRATION", 2);
         button(&c, 32, 240, 384, 44, 0x7a2028, 0xf25b65, "WIPE ALL PROGRESS", 2);
@@ -8460,6 +8461,7 @@ int render_settings_tap(float x, float y, int *value) {
     if (g_settings_section == 5 && x >= 32 && x < 416 && y >= 292 && y < 326) return SETTINGS_RESCUE;
     if (g_settings_section == 6) {
         if (x >= 32 && x < 416) {
+            if (y >= 52 && y < 86) return SET_TAP_PHOTO;
             if (y >= 100 && y < 144) return SET_TAP_UPDATES;
             if (y >= 170 && y < 214) return SET_TAP_TOUCH;
             if (y >= 240 && y < 284) return SET_TAP_WIPE;
