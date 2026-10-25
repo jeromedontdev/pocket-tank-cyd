@@ -23,7 +23,7 @@ int main(void) {
         "\"sha256\":\"0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789abcdef\"}}";
     cJSON *base = cJSON_Parse(valid);
     check(base, true);
-    const char *boards[] = {"cyd2432s028", "elegoo28", "unknown"};
+    const char *boards[] = {"cyd2432s028", "elegoo28", "cydesp32profiles", "unknown"};
     for (unsigned i=0; i<sizeof boards/sizeof *boards; i++) {
         cJSON *r = cJSON_Duplicate(base, true);
         cJSON_ReplaceItemInObject(r, "board", cJSON_CreateString(boards[i]));
@@ -160,7 +160,7 @@ def main():
     assert install.index("verify_download(") < install.index("esp_https_ota_finish(")
     with tempfile.TemporaryDirectory(prefix="cyd-ota-test-") as folder:
         folder = Path(folder)
-        for board, name, text in ((board, name, text) for board in ("cyd", "elegoo")
+        for board, name, text in ((board, name, text) for board in ("cyd", "elegoo", "unified")
                                  for name, text in (("manifest", source + PARSER_TEST),
                                                     ("verify", VERIFY_STUBS + verify + VERIFY_TEST))):
             test = folder / (board + "-" + name + ".c")
@@ -170,6 +170,8 @@ def main():
                         "-I" + str(ROOT / "common"), "-I" + str(cjson), str(test)]
             if board == "elegoo":
                 command.append("-DPT_BOARD_ELEGOO=1")
+            elif board == "unified":
+                command.append("-DPT_BOARD_UNIFIED=1")
             if name == "manifest":
                 command += [str(cjson / "cJSON.c")]
             executable = folder / (board + "-" + name + ".exe")
