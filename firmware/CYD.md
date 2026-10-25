@@ -318,6 +318,9 @@ the synthetic frame count establishes five-fish CYD FPS.
 The final local 30-minute soak completed 238,142 cases / 1,666,994 five-fish
 frame sets without full/tiled/retained mismatches or render-time tank
 mutation. This is the actual soak duration, not an eight-hour hardware run.
+Strict optimized GCC compilation also exposed uninitialized non-body seahorse
+row fields. Explicit initialization passed an additional 55,384 frame sets
+and the artwork regression without changing any reference-frame hash.
 
 Menus retain their full 448x368 layout and are scaled into that framebuffer,
 rather than cropped. Menu touch coordinates use the inverse scaling.

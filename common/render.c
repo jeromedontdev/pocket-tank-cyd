@@ -2718,7 +2718,7 @@ static void sh_sprite(decor_scratch_t *sc, uint8_t *out, float t, int pose, floa
     }
     float nod = 0.35f * sinf(t * 1.3f);
     for (int y = 0; y < SH_H; y++) {
-        sh_row_t row; row.body = sh_body(y + 0.5f, &row.sx, &row.w, &row.tb);
+        sh_row_t row = {0}; row.body = sh_body(y + 0.5f, &row.sx, &row.w, &row.tb);
         for (int x = 0; x < SH_W; x++) out[y * SH_W + x] = sh_tone(x + 0.5f, y + 0.5f, t, flutter, sc, y * SH_W + x, nod, &row, jut);
     }
 }
