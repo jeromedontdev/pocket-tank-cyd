@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.2.0
+# Pocket Tank CYD 2.2.1
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.2.0**; firmware, update
+now versioned independently. This is **release 2.2.1**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,23 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.2.0: care-first daily progression
+## New in 2.2.1: a more consistent pixel-art interface
+
+- Fifteen shared menu/goal icons redrawn with distinct silhouettes, outlines,
+  shaded bodies, upper-left highlights and restrained warm details.
+- All eighteen game thumbnails share a quieter aqua/gold/rose palette, framed
+  underwater backplates and shaded cards, tiles and treasure chests.
+- Bronze, silver and gold medals have faceted faces and two-tone ribbons;
+  unearned medals remain clearly hollow.
+- Art keeps its existing bounds and touch targets at Normal and Enlarged size.
+  No new artwork buffers, PSRAM, downloads or per-frame aquarium effects.
+- This first art pass covers interface illustrations, not a replacement of
+  swimming fish, tank scenery, story scenes or the existing PNG icon pack.
+  Gameplay, daily rewards, saves and progression are unchanged.
+
+![Refined shared icons in the Collections menu](docs/media/cyd-features/home-collections.png)
+
+## Previously in 2.2.0: care-first daily progression
 
 - **Collections > Goals > TODAY:** three flexible care activities, up to
   **100 sand dollars and 50 XP per day**. MILESTONES keeps the original goals.

@@ -8,7 +8,14 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.1.3 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.2.1 is a distinct aquarium game, not just a board port.**
+
+Release 2.2.1 refines the shared menu/goal stamps, all eighteen game thumbnails
+and reward medals. Static outlined sprites use restrained shading/highlights
+inside the existing 24x24, 40x32 and 20x24 page-coordinate bounds respectively.
+Both sizes and clipped/tiled drawing are tested. No extra framebuffer, decoded
+art cache, PNG pack, PSRAM or live-aquarium work is added. Save schema 17,
+daily care, game bonus limits, touch targets and gameplay are unchanged.
 
 Settings now uses a Clock/Weather hub with Face, Colors, Text / Effects,
 Time / Zone, Weather and one Show Clock action. BACK returns one level.

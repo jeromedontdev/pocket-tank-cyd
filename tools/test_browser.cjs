@@ -221,6 +221,17 @@ async function main() {
       }
       return image;
     }
+    async function checkArtHeader() {
+      const colors = await page.locator("#screen").evaluate(canvas => {
+        const context = canvas.getContext("2d");
+        const data = context.getImageData(Math.ceil(326 * canvas.width / 448), Math.ceil(8 * canvas.height / 368),
+          Math.floor(112 * canvas.width / 448), Math.floor(36 * canvas.height / 368)).data;
+        const colors = new Set();
+        for (let i = 0; i < data.length; i += 4) colors.add(`${data[i]},${data[i+1]},${data[i+2]}`);
+        return colors.size;
+      });
+      assert.ok(colors >= 3, "BACK stays visible alongside the polished art");
+    }
     for (let scale = 0; scale < 2; scale++) {
       const fixture = await snapshot();
       fixture.care.ready = 7; fixture.care.claimed = 0; fixture.care.game_paid = 5;
@@ -230,7 +241,32 @@ async function main() {
         const pointer = game._malloc(bytes.length);
         try { game.HEAPU8.set(bytes, pointer); return game._sim_restore(pointer, bytes.length); }
         finally { game._free(pointer); }`), 1);
-      await page.locator('[data-action="7"]').click(); await tap(330,180); await tap(100,100);
+      await page.locator('[data-action="7"]').click();
+      const home = await menuImage(`art-home-${scale}`);
+      for (const [name, x, y] of [["fish",100,100], ["tank",330,100], ["collections",330,180], ["adventures",100,180]]) {
+        await tap(x,y);
+        assert.notEqual(await menuImage(`art-${name}-${scale}`), home);
+        await checkArtHeader();
+        if (name === "fish") {
+          await tap(350,335);
+          await menuImage(`art-fish-more-${scale}`);
+          await checkArtHeader();
+          await tap(350,335);
+        }
+        await tap(375,25);
+        assert.equal(await menuImage(`art-home-back-${scale}`), home);
+      }
+      await tap(100,260);
+      for (let gamePage = 0; gamePage < 3; gamePage++) {
+        await menuImage(`art-games-${scale}-${gamePage}`);
+        await tap(350,80);
+      }
+      await tap(330,330);
+      await menuImage(`art-records-${scale}`);
+      await checkArtHeader();
+      await tap(375,25);
+      await tap(375,25);
+      await tap(330,180); await tap(100,100);
       const daily = await menuImage(`daily-care-${scale}`);
       const balance = (await snapshot()).tank.sd_balance, xp = (await snapshot()).tank.journal_xp;
       await tap(350,330);

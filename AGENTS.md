@@ -20,7 +20,12 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.2.0**, adding shared daily care (100 dollars/50 XP),
+- Source release: **2.2.1**, polishing fifteen shared menu/goal stamps, eighteen
+  game thumbnails and medals. Stamps use static 12x12 indexed art expanded
+  within 24x24 page bounds; thumbnails remain 40x32 and medals 20x24.
+  Preserve those bounds, low-contrast locked states, full/tile equality and
+  both sizes. No live-aquarium work, new buffers or save fields were added.
+  2.2.0 added shared daily care (100 dollars/50 XP),
   five shared game-bonus dollars/day with no game XP, halved future milestone
   XP and append-only 6032-byte/schema-17 saves. Existing XP/wallet/unlocks stay.
   Clockless renewal uses 24 running care hours; valid time uses UTC days.

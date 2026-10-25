@@ -89,7 +89,15 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.2.0: care-first daily progression
+### New in 2.2.1: refined shared interface artwork
+
+- Redraw fifteen shared menu/goal stamps with distinct silhouettes, outlines, body shading, upper-left highlights and warm details. Existing accent/locked states remain.
+- Coordinate all eighteen game thumbnails with aqua/gold/rose tones, underwater backplates and shaded tiles, cards and chests.
+- Faceted bronze/silver/gold medals with shaded ribbons; unearned medals retain a hollow face.
+- Preserve icon bounds, labels and touch targets at both sizes. Validate distinctness, four-plus tones, clipping and guarded one/17-row tile equality, plus actual browser navigation and persistence.
+- No new framebuffer, decoded art cache, PNG asset pack, PSRAM or aquarium animation cost. This first pass does not replace fish/scenery/story artwork. Gameplay, daily care, quotas and 6032-byte/schema-17 saves are unchanged.
+
+### Previously in 2.2.0: care-first daily progression
 
 - Goals opens TODAY: an eaten player feeding (25 dollars/12 XP), Say Hello or 60 seconds holding near a calm fish (25/13), and cleaning a colony, trimming a 10 cm counter step or five minutes watching a fed, calm, lit tank (50/25). Ready rewards are claimed once per profile per day; MILESTONES keeps the original objectives.
 - Daily care totals 100 dollars and 50 XP. Repeat gestures and seahorse snacks no longer farm care money/XP. Growth, births and full-trust firsts retain their one-time dollars.

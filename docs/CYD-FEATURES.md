@@ -2,7 +2,18 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.2.0**
+**An illustrated tour of Pocket Tank CYD 2.2.1**
+
+**2.2.1** refines the shared interface artwork: fifteen shaded menu/goal icons,
+eighteen coordinated game thumbnails and faceted reward medals. Cleaner
+silhouettes, upper-left highlights and a restrained aqua/gold/rose palette keep
+the cozy pixel-art look readable at both sizes. Art stays inside the original
+bounds, without new buffers, PSRAM or aquarium animation work. Fish, scenery,
+story scenes, PNG icons and gameplay are unchanged in this first polish pass.
+
+| Refined shared menu icons | Coordinated game thumbnails |
+|---|---|
+| ![Collections with shaded book, map, trophy and fish icons](media/cyd-features/home-collections.png) | ![Six distinct puzzle thumbnails in a consistent palette](media/cyd-features/games-page-three.png) |
 
 **2.2.0** makes care the progression path: **Collections > Goals > TODAY**
 offers three flexible activities worth up to **100 dollars / 50 XP daily**.

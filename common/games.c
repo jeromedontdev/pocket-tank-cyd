@@ -734,17 +734,26 @@ static void game_extra_render(render_ctx_t *c) {
     }
 }
 /* Fixed 40x32 previews deliberately share the games' board colors and shapes. */
+static void game_thumb_tile(render_ctx_t *c, int x, int y, int w, int h, uint32_t color) {
+    render_internal_rect_fill(c, x, y, w, h, 0x102a34);
+    render_internal_rect_fill(c, x, y, w - 1, h - 1, color);
+    render_internal_rect_fill(c, x + 1, y, w - 2, 1, 0xd9edf0);
+    render_internal_rect_fill(c, x, y + h - 2, w - 1, 1, 0x3c6370);
+}
 GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
-    const uint32_t blue = 0x73e5ff, gold = 0xffdc73, pink = 0xffa3cf;
-    render_internal_rect_fill(c, x, y, 40, 32, 0x092027);
+    const uint32_t blue = 0x78cddd, gold = 0xefc66c, pink = 0xe59bb3;
+    render_internal_rect_fill(c, x, y, 40, 32, 0x102a34);
+    render_internal_rect_fill(c, x + 1, y + 1, 38, 10, 0x163641);
+    render_internal_rect_fill(c, x + 1, y + 11, 38, 10, 0x102d37);
+    render_internal_rect_fill(c, x + 1, y + 21, 38, 10, 0x0b222b);
     if (game == 12) {
         for (int i = 0; i < 16; i++)
-            render_internal_rect_fill(c, x + 3 + i % 4 * 9, y + 2 + i / 4 * 7, 6, 5,
+            game_thumb_tile(c, x + 3 + i % 4 * 9, y + 2 + i / 4 * 7, 6, 5,
                       i == 2 || i == 5 || i == 6 || i == 7 || i == 10 ? gold : 0x24404b);
     } else if (game == 13) {
         for (int i = 0; i < 8; i++) {
             int xx = x + 4 + i % 3 * 11, yy = y + 1 + i / 3 * 10;
-            render_internal_rect_fill(c, xx, yy, 9, 8, blue);
+            game_thumb_tile(c, xx, yy, 9, 8, blue);
             render_internal_rect_fill(c, xx + 3, yy + 2, 2, 4, MSP_INK);
         }
     } else if (game == 14) {
@@ -752,38 +761,46 @@ GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
         render_internal_ring(c, x + 20, y + 17, 6, MSP_TEAL);
         render_internal_rect_fill(c, x + 19, y + 4, 2, 14, gold);
         render_internal_ring(c, x + 27, y + 23, 3, gold);
+        render_internal_rect_fill(c, x + 11, y + 11, 2, 2, 0xe7f3ee);
+        render_internal_rect_fill(c, x + 19, y + 17, 2, 2, 0xe7f3ee);
     } else if (game == 15) {
-        render_internal_rect_fill(c, x + 2, y + 9, 11, 15, blue);
-        render_internal_rect_fill(c, x + 16, y + 9, 11, 15, blue);
-        render_internal_rect_fill(c, x + 29, y + 6, 9, 21, pink);
+        game_thumb_tile(c, x + 2, y + 9, 11, 15, blue);
+        game_thumb_tile(c, x + 16, y + 9, 11, 15, blue);
+        game_thumb_tile(c, x + 29, y + 6, 9, 21, pink);
         render_internal_text(c, x + 5, y + 12, 1, MSP_INK, "2");
         render_internal_text(c, x + 19, y + 12, 1, MSP_INK, "2");
         render_internal_text(c, x + 31, y + 12, 1, MSP_INK, "4");
     } else if (game == 16) {
         for (int i = 0; i < 4; i++)
-            render_internal_rect_fill(c, x + 3 + i * 4, y + 25 - i * 7, 29 - i * 5, 5, i == 3 ? gold : blue);
+            game_thumb_tile(c, x + 3 + i * 4, y + 25 - i * 7, 29 - i * 5, 5, i == 3 ? gold : blue);
     } else if (game == 17) {
         for (int i = 0; i < 4; i++) {
             int xx = x + 3 + i % 2 * 19, yy = y + 2 + i / 2 * 15;
-            render_internal_rect_edge(c, xx, yy, 16, 12, i == 1 ? gold : pink);
-            if (i == 1) render_internal_rect_fill(c, xx + 3, yy + 3, 10, 6, gold);
+            game_thumb_tile(c, xx, yy, 16, 12, i == 1 ? gold : 0x426575);
+            render_internal_rect_fill(c, xx + 3, yy + 3, 9, 5, i == 1 ? 0xffe4a5 : pink);
+            if (i != 1) render_internal_rect_fill(c, xx + 4, yy + 4, 7, 3, 0x254450);
         }
     } else if (game == 0) {
         render_internal_ring(c, x + 12, y + 19, 8, blue);
         render_internal_ring(c, x + 29, y + 9, 6, gold);
+        render_internal_ring(c, x + 12, y + 19, 6, 0x325e6b);
+        render_internal_ring(c, x + 29, y + 9, 4, 0x776b4a);
         render_internal_rect_fill(c, x + 8, y + 14, 3, 2, 0xffffff);
         render_internal_rect_fill(c, x + 26, y + 6, 2, 2, 0xffffff);
     } else if (game == 1) {
         for (int i = 0; i < 4; i++) {
             int xx = x + 4 + i % 2 * 18, yy = y + 2 + i / 2 * 15;
-            render_internal_rect_edge(c, xx, yy, 13, 12, i % 3 ? MSP_TEAL : gold);
+            game_thumb_tile(c, xx, yy, 13, 12, i % 3 ? 0x426575 : gold);
             if (i % 3 == 0) render_internal_ring(c, xx + 6, yy + 6, 3, gold);
-            else render_internal_rect_fill(c, xx + 4, yy + 3, 5, 6, 0x24505a);
+            else {
+                render_internal_rect_edge(c, xx + 2, yy + 2, 8, 7, 0x87b2bd);
+                render_internal_rect_fill(c, xx + 5, yy + 4, 2, 3, blue);
+            }
         }
     } else if (game == 2 || game == 7) {
         for (int i = 0; i < 3; i++) {
             render_internal_rect_fill(c, x + 5 + i * 12, y + 2, 2, 27, 0x24505a);
-            if (i != 1) render_internal_rect_fill(c, x + 2 + i * 12, y + 10, 8, 5, 0x8b6570);
+            if (i != 1) game_thumb_tile(c, x + 2 + i * 12, y + 10, 8, 5, 0x9a7982);
         }
         if (game == 2) render_internal_page_stamp(c, x + 8, y + 10, STAMP_FISH, MSP_TEAL);
         else {
@@ -791,9 +808,11 @@ GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
             render_internal_rect_fill(c, x + 13, y + 24, 11, 5, MSP_TEAL);
         }
     } else if (game == 3 || game == 11) {
-        render_internal_rect_fill(c, x + 5, y + 20, 29, 9, gold);
-        render_internal_rect_fill(c, x + 5, y + 19, 29, 3, 0xb37b4b);
-        render_internal_rect_fill(c, x + 17, y + 21, 5, 6, 0xffffff);
+        game_thumb_tile(c, x + 5, y + 19, 29, 11, 0xb7855e);
+        render_internal_rect_fill(c, x + 6, y + 22, 27, 2, gold);
+        render_internal_rect_fill(c, x + 9, y + 20, 2, 8, gold);
+        render_internal_rect_fill(c, x + 28, y + 20, 2, 8, gold);
+        game_thumb_tile(c, x + 17, y + 22, 6, 6, gold);
         if (game == 3) {
             render_internal_rect_fill(c, x + 23, y + 1, 2, 13, blue);
             render_internal_rect_fill(c, x + 18, y + 12, 7, 3, blue);
@@ -805,16 +824,19 @@ GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
         }
     } else if (game == 4) {
         render_internal_page_stamp(c, x + 1, y + 1, STAMP_FISH, MSP_TEAL);
-        for (int i = 0; i < 3; i++) render_internal_rect_fill(c, x + 28 + i % 2 * 5, y + 7 + i * 7, 4, 4, gold);
+        for (int i = 0; i < 3; i++) game_thumb_tile(c, x + 28 + i % 2 * 5, y + 7 + i * 7, 4, 4, gold);
     } else if (game == 5) {
         render_internal_rect_fill(c, x + 2, y + 4, 17, 5, blue);
         render_internal_rect_fill(c, x + 14, y + 4, 5, 21, blue);
         render_internal_rect_fill(c, x + 14, y + 20, 24, 5, gold);
+        render_internal_rect_fill(c, x + 3, y + 4, 15, 1, 0xd9edf0);
+        render_internal_rect_fill(c, x + 15, y + 9, 1, 10, 0xd9edf0);
+        render_internal_rect_fill(c, x + 20, y + 20, 14, 1, 0xffe4a5);
         render_internal_ring(c, x + 6, y + 6, 5, MSP_TEAL);
         render_internal_ring(c, x + 34, y + 22, 5, MSP_TEAL);
     } else if (game == 6) {
         for (int i = 0; i < 3; i++) {
-            render_internal_rect_fill(c, x + 4 + i * 12, y + 3, 7, 7, i == 1 ? gold : pink);
+            game_thumb_tile(c, x + 4 + i * 12, y + 3, 7, 7, i == 1 ? gold : pink);
             render_internal_rect_fill(c, x + 6 + i * 12, y + 10, 3, 3, pink);
         }
         render_internal_rect_fill(c, x + 19, y + 17, 2, 3, blue);
@@ -822,13 +844,13 @@ GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
         render_internal_rect_fill(c, x + 19, y + 22, 3, 5, MSP_TEAL);
     } else if (game == 8) {
         for (int i = 0; i < 8; i++)
-            render_internal_rect_fill(c, x + 2 + i % 4 * 9, y + 3 + i / 4 * 7, 7, 5, i % 3 ? blue : gold);
+            game_thumb_tile(c, x + 2 + i % 4 * 9, y + 3 + i / 4 * 7, 7, 5, i % 3 ? blue : gold);
         render_internal_ring(c, x + 23, y + 20, 3, 0xffffff);
         render_internal_rect_fill(c, x + 9, y + 28, 20, 3, MSP_TEAL);
     } else {
         for (int i = 0; i < 9; i++) {
             int xx = x + 5 + i % 3 * 10, yy = y + 2 + i / 3 * 10;
-            render_internal_rect_fill(c, xx, yy, 8, 8, 0x24505a);
+            game_thumb_tile(c, xx, yy, 8, 8, 0x315460);
             if (game == 9 && (i == 0 || i == 8))
                 render_internal_rect_fill(c, xx + 2, yy + 2, 4, 4, i ? 0xff8173 : MSP_TEAL);
             if (game == 9 && i == 2) {

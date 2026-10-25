@@ -315,6 +315,56 @@ static void check_box(int x, int y, int width, int height) {
     assert(drawn > 0);
 }
 
+static void draw_page_asset(uint16_t *fb, int x, int y, int kind, int item) {
+    ctx_t c = ctx_page(fb, TANK_W);
+    if (kind == 0) page_stamp(&c, x, y, item, MSP_TEAL);
+    else if (kind == 1) game_thumb(&c, x, y, item);
+    else page_medal(&c, x, y, (unsigned)item);
+}
+
+static void check_page_asset(int kind, int item, int x, int y) {
+    const uint16_t background = 0x1843, guard = 0xc59a;
+    int count = TANK_W * TANK_H;
+    int width = kind == 1 ? 40 : kind == 0 ? 24 : 20;
+    int height = kind == 1 ? 32 : 24;
+    for (int p = 0; p < count; p++) full_frame[p] = repeated[p] = background;
+    render_tile(0, 0);
+    draw_page_asset(full_frame, x, y, kind, item);
+    draw_page_asset(repeated, x, y, kind, item);
+    assert(!memcmp(full_frame, repeated, (size_t)count * sizeof *full_frame));
+    int left = x * TANK_W / PAGE_W, top = y * TANK_H / PAGE_H;
+    int right = (x + width - 1) * TANK_W / PAGE_W;
+    int bottom = (y + height - 1) * TANK_H / PAGE_H;
+    uint16_t colors[64]; int color_count = 0;
+    for (int row = 0; row < TANK_H; row++) for (int col = 0; col < TANK_W; col++) {
+        uint16_t pixel = full_frame[row * TANK_W + col];
+        if (col < left || col > right || row < top || row > bottom) assert(pixel == background);
+        else if (pixel != background) {
+            int i = 0;
+            while (i < color_count && colors[i] != pixel) i++;
+            if (i == color_count) {
+                assert(color_count < 64);
+                colors[color_count++] = pixel;
+            }
+        }
+    }
+    if (x == 100 && y == 100) assert(color_count >= 4);
+    for (int tile_height = 1; tile_height <= 17; tile_height += 16) {
+        for (int row = 0; row < TANK_H; row += tile_height) {
+            int height_now = TANK_H - row < tile_height ? TANK_H - row : tile_height;
+            int length = TANK_W * height_now;
+            tile_frame[0] = tile_frame[length + 1] = guard;
+            for (int p = 1; p <= length; p++) tile_frame[p] = background;
+            render_tile(row, height_now);
+            draw_page_asset(tile_frame + 1, x, y, kind, item);
+            assert(tile_frame[0] == guard && tile_frame[length + 1] == guard);
+            assert(!memcmp(tile_frame + 1, full_frame + row * TANK_W,
+                           (size_t)length * sizeof *full_frame));
+        }
+    }
+    render_tile(0, 0);
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     FILE *icons = fopen(argv[1], "rb");
@@ -338,10 +388,25 @@ int main(int argc, char **argv) {
         assert(draw_text_wrap(&c, 100, 100, 136, 0xffffff, game_names[game]) <= 2);
         assert(24 + text_w(game_titles[game], 1) < 164);
     }
+    uint32_t stamps[STAMP_CLEAN + 1];
     for (int stamp = STAMP_FISH; stamp <= STAMP_CLEAN; stamp++) {
         memset(pixels, 0, sizeof pixels);
         page_stamp(&c, 100, 100, stamp, MSP_TEAL);
         check_box(100, 100, 24, 24);
+        uint32_t hash = 2166136261u;
+        for (int row = 100; row < 124; row++) for (int col = 100; col < 124; col++)
+            hash = (hash ^ pixels[row * 448 + col]) * 16777619u;
+        for (int previous = 0; previous < stamp; previous++) assert(hash != stamps[previous]);
+        stamps[stamp] = hash;
+        memset(pixels, 0, sizeof pixels);
+        page_stamp(&c, 100, 100, stamp, MSP_DIM);
+        const uint16_t dim = rgb565(MSP_DIM, 1);
+        for (int row = 100; row < 124; row++) for (int col = 100; col < 124; col++) {
+            uint16_t pixel = pixels[row * 448 + col];
+            assert((pixel >> 11) <= (dim >> 11));
+            assert(((pixel >> 5) & 63) <= ((dim >> 5) & 63));
+            assert((pixel & 31) <= (dim & 31));
+        }
     }
     for (int theme = 0; theme < JOURNAL_THEME_COUNT; theme++) {
         for (int unlocked = 0; unlocked < 2; unlocked++) {
@@ -365,6 +430,23 @@ int main(int argc, char **argv) {
     }
     for (int resolution = 0; resolution < 2; resolution++) {
         tank_resolution(resolution != 0);
+        render_life_open();
+        for (int category = 0; category < 5; category++) for (int page = 0; page < 2; page++) {
+            g_home_category = category; g_home_page = page;
+            render_life(&help_tank, full_frame, TANK_W);
+            memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * sizeof *full_frame);
+            ctx_t header = ctx_page(repeated, TANK_W);
+            button(&header, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
+            assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * sizeof *full_frame));
+        }
+        for (int kind = 0; kind < 3; kind++) {
+            int items = kind == 0 ? STAMP_CLEAN + 1 : kind == 1 ? 18 : 4;
+            for (int item = 0; item < items; item++) {
+                check_page_asset(kind, item, 100, 100);
+                check_page_asset(kind, item, -10, -8);
+                check_page_asset(kind, item, PAGE_W - 15, PAGE_H - 9);
+            }
+        }
         check_game_help();
         check_creative_games();
         check_practice_render();
@@ -386,5 +468,6 @@ int main(int argc, char **argv) {
     puts("Page art: distinct games; stamps, themes, medals and goal labels fit.");
     puts("Wrappers: static, clipped and full/tile equivalent at both resolutions.");
     puts("Help/pause: all games mask gameplay and match tiled output at both resolutions.");
+    puts("Polished art: distinct stamps, four-plus tones, clipped bounds and guarded 1/17-row tile parity at both resolutions.");
     return 0;
 }
