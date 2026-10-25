@@ -2,18 +2,26 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.4**
+**An illustrated tour of Pocket Tank CYD 2.3.5**
+
+**2.3.5 menu cleanup:** use **Settings > Device >
+Firmware Updates** for both SD and GitHub Wi-Fi updates (called **SD Updates**
+in 2.3.4 and older). **Screenshot to SD** is only under Device; its old
+SD Backups duplicate is removed. Weather text size is only on **Clock/Weather >
+Weather**, not duplicated in Text / Effects. Layout checks cover both scales.
+The Device, Text / Effects and update screenshots show the current controls.
 
 Version 2.3.4 stores all eight aquariums internally. SD is optional for buying
 and switching tanks; keep an existing installation's original card inserted
 for its first boot to import inactive tanks. Backups, photos and offline
 updates remain on SD.
 
-Version 2.3.3 exposes **Screenshot to SD** under **Settings > Device**, while
-retaining **Photo to SD** under SD Backups. Dedicated update mode leaves
+Version 2.3.3 exposed **Screenshot to SD** under **Settings > Device**, initially
+retaining **Photo to SD** under SD Backups (removed in 2.3.5). Dedicated update mode leaves
 aquarium-only rendering scratch free for GitHub TLS certificate verification.
 
-Version 2.3.2 adds **Check GitHub via Wi-Fi** to Settings > Device > SD Updates.
+Version 2.3.2 added **Check GitHub via Wi-Fi** to the update page, now called
+**Settings > Device > Firmware Updates**.
 It checks this fork's latest stable release and asks before installing newer
 firmware. Exact size, board, embedded version and full-file SHA-256 are checked
 before switching the inactive boot slot. Install this version once by USB/SD
@@ -191,8 +199,8 @@ to bare hands. Locked bare-hand drags cannot clean or trim; explicit tools can.
 
 **2.1.3** simplifies Settings with one Clock/Weather hub: Clock Face, Colors,
 Text / Effects, Time / Zone, Weather and one Show Clock action. BACK goes one
-level up. Weather has a visible **Text: Small/Medium/Large** control, also called
-**Weather Size** in Text / Effects; it sizes the weather reading and saved clock
+level up. Weather has a visible **Text: Small/Medium/Large** control; the duplicate
+**Weather Size** in Text / Effects was removed in 2.3.5. It sizes the weather reading and saved clock
 weather/event captions. Condition icons show sun, partly cloudy, cloud, fog,
 rain, snow or storms when a cached reading exists. Stale/error text remains.
 Auto Feed is one toggle, SD actions are full-width, and forgetting a city needs
@@ -364,13 +372,13 @@ slot, then writes only the application. The **factory installer** remains separa
 overwrites saved tanks, Wi-Fi, calibration and collection identity.
 Back up first; SD updates remain available.
 
-From 2.3.2, **Check GitHub via Wi-Fi** on the SD Updates page offers newer
+From 2.3.2, **Check GitHub via Wi-Fi** on the Firmware Updates page offers newer
 stable CYD releases after saving the aquarium. SD and USB remain available
 when Wi-Fi is unavailable. Standard releases are not publisher-signed.
 
 - **Already using this CYD fork:** back up your active aquarium, power off
   before moving SD, copy `update.ptu` to `pocket-tank/update.ptu`, then install
-  through Settings > Device > SD Updates. No SD artwork is required.
+  through Settings > Device > Firmware Updates > Check SD Card. No SD artwork is required.
 - **New board:** use the factory image at `0x0`; all artwork is embedded in firmware.
   **Factory flashing overwrites saved tanks, Wi-Fi credentials, calibration
   and collection identity. Never use it for a normal upgrade.**
@@ -548,8 +556,8 @@ In **Settings > Display**:
 **Settings > SD Backups > DAILY** makes one verified automatic backup per day
 (`pocket-tank/auto-NNNN.json`, the newest seven are kept) once the clock is
 set. **Settings > Device > SCREENSHOT TO SD** saves a BMP screenshot of the
-aquarium. The existing **PHOTO TO SD** shortcut under **SD Backups** remains
-available. Both save to
+aquarium. Versions 2.3.4 and older also had **PHOTO TO SD** under **SD Backups**;
+2.3.5 removes that duplicate. Screenshots save to
 `pocket-tank/photos/`.
 
 ## Mini-games: play with your fish, not their care stats
@@ -712,7 +720,7 @@ retain their previous care setting.
 **Settings > Clock/Weather > Text / Effects > Sparkles** adds eight brighter cyan/gold
 drifting stars beside the clock, independently of captions. Stars do not cover the
 clock face or weather panel and have no effect on fish care.
-![Text and Effects keeps weather sizing and clock options together](media/cyd-features/clock-effects.png)
+![Text and Effects contains clock detail size, seconds, date, sparkles and event captions; weather sizing is in Weather](media/cyd-features/clock-effects.png)
 ![Bright cyan and gold sparkles beside an idle clock](media/cyd-features/clock-sparkles.png)
 
 **Settings > Clock/Weather > Text / Effects > Event Captions** enables useful clock messages: adventures,
@@ -1475,13 +1483,15 @@ palettes, Journal and bank.
 Backups are written and read back for validation. A restore first creates
 a safety snapshot of the current aquarium.
 
-New backups use **schema 17**, including shared daily care/bonus limits, fixed game mode, starvation timers,
+New backups use **schema 18**, including shared decoration inventory,
+extra placed ornaments, pearl-mussel income, per-game daily allowances,
+shared daily care/bonus limits, fixed game mode, starvation timers,
 global shop unlocks/local refundable purchases, eighteen-game records,
 Lost Current progress, family lineage, genes, visitor sightings, fish identities/stories, remembered buddies,
 recaps, tank identity, fixed scenery, backup status, display scale, traveling fish, creature colors, per-fish wearables/colors,
 companion progression and the optional `tank.stat_upgrades` field for the four
-fish-care purchases. Schemas 1 through 16 remain importable when valid for the
-chosen mode; older firmware cannot restore schema 17 files. Restores must
+fish-care purchases. Schemas 1 through 17 remain importable when valid for the
+chosen mode; firmware older than 2.3.0 cannot restore schema 18 files. Restores must
 match the chosen Normal/Creative/Hard mode; changing it requires a full wipe.
 Keep a matching backup
 when deliberately downgrading.
@@ -1498,7 +1508,7 @@ do not depend on keeping the card inserted.
 
 ### Offline firmware updates
 
-**Settings > Device > SD Updates** checks a local package at
+**Settings > Device > Firmware Updates > Check SD Card** checks a local package at
 `pocket-tank/update.ptu` on SD. It does not require Wi-Fi or install
 anything automatically at boot.
 
@@ -1543,8 +1553,18 @@ python tools\capture_cyd_gallery.py --cc clang
 Use `--cc C:\path\to\zig.exe` for Zig, or `--out C:\path\to\gallery`
 for another destination. The capture tool compiles the emulator, stages
 its own temporary demonstration save, navigates the real UI and exports
-41 PNGs. It never opens a serial port, touches the board, or replaces
+PNG screenshots. It never opens a serial port, touches the board, or replaces
 the normal desktop save.
+
+For the 434-state menu audit and its current Device, update, Text / Effects,
+Clock/Weather and Goals screenshots, use:
+
+```powershell
+python tools\test_page_art.py --cc clang --gallery C:\path\to\menu-gallery
+```
+
+The gallery names include the actual framebuffer width, `240` or `320`.
+Release 2.3.5 uses the `320` captures for those five guide/website images.
 
 For build instructions and live usage, see the [project README](../README.md)
 and [CYD hardware guide](../firmware/CYD.md).

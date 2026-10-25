@@ -5661,6 +5661,10 @@ static void draw_page_glyph(ctx_t *c, int x, int y, int scale, const src_t *col,
     draw_font_glyph(c, left, top, w, h, col, g);
 }
 static void draw_text(ctx_t *c, int x, int y, int scale, uint32_t rgb, const char *s) {
+#ifdef RENDER_MENU_TESTING
+    extern void menu_test_text(int x, int y, int scale, const char *text);
+    menu_test_text(x, y, scale, s);
+#endif
     if (scale < 1) scale = 1;
     if (rgb == 0x2a3f45 || rgb == 0x3f6a72) rgb = 0xa4c5ce;
     src_t col = src_color(rgb, c->dim);
@@ -5698,6 +5702,10 @@ static int draw_text_wrap(ctx_t *c, int x, int y, int width, uint32_t rgb, const
  * asks before the save is wiped. Opaque stores only, so a frame with it up
  * costs about what the milestones page does. */
 static void rect_fill(ctx_t *c, int x, int y, int w, int h, uint32_t rgb) {
+#ifdef RENDER_MENU_TESTING
+    extern void menu_test_panel(int w, int h);
+    menu_test_panel(w, h);
+#endif
     src_t f = src_color(rgb, 1.0f);
     for (int yy = y; yy < y + h; yy++) span(c, x, x + w - 1, yy, &f, 255);
 }
@@ -5707,6 +5715,10 @@ static void rect_edge(ctx_t *c, int x, int y, int w, int h, uint32_t rgb) {
     for (int yy = y + 1; yy < y + h - 1; yy++) { px(c, x, yy, e.v); px(c, x + w - 1, yy, e.v); }
 }
 static void button(ctx_t *c, int x, int y, int W, int H, uint32_t fill, uint32_t edge, const char *label, int scale) {
+#ifdef RENDER_MENU_TESTING
+    extern void menu_test_button(int x, int y, int w, int h, const char *label, int scale);
+    menu_test_button(x, y, W, H, label, scale);
+#endif
     rect_fill(c, x, y, W, H, fill);
     rect_edge(c, x, y, W, H, edge); rect_edge(c, x + 1, y + 1, W - 2, H - 2, edge);
     draw_text(c, x + (W - text_w(label, scale)) / 2, y + (H - 7 * scale) / 2, scale, 0xffffff, label);
@@ -6626,6 +6638,7 @@ static void shop_fry_modal(ctx_t *c, const tank_t *t, uint16_t *fb, int stride) 
 }
 static void render_mussel_panel(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
+    rect_fill(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, MSP_INK);
     rect_fill(&c, 48, 48, 352, 260, 0x04141a);
     rect_edge(&c, 48, 48, 352, 260, MSP_TEAL);
     draw_text(&c, 64, 64, 3, 0xffffff, "PEARL MUSSEL");
@@ -6637,15 +6650,15 @@ static void render_mussel_panel(const tank_t *t, uint16_t *fb, int stride) {
         snprintf(line, sizeof line, "GROWN TODAY: %u / %d", t->mussel.generated, MUSSEL_DAILY_LIMIT);
         draw_text(&c, 64, 180, 1, MSP_TEAL, line);
         if (t->mussel.generated >= MUSSEL_DAILY_LIMIT)
-            snprintf(line, sizeof line, "DAILY LIMIT - BACK TOMORROW");
+            snprintf(line, sizeof line, "DAILY LIMIT - TRY TOMORROW");
         else if (t->mussel.bank >= MUSSEL_DAILY_LIMIT)
             snprintf(line, sizeof line, "BANK FULL - COLLECT FIRST");
         else if (!progression_mussel_healthy(t))
-            snprintf(line, sizeof line, "PAUSED - FEED AND CALM FISH");
+            snprintf(line, sizeof line, "PAUSED - FEED/CALM FISH");
         else snprintf(line, sizeof line, "NEXT: %u/%d HEALTHY SEC", t->mussel.seconds, MUSSEL_SECONDS);
         draw_text(&c, 64, 202, 1, MSP_TEAL, line);
         draw_text(&c, 64, 224, 1, MSP_DIM, "ONLINE ONLY - NO XP");
-        draw_text(&c, 64, 242, 1, MSP_DIM, "ONE SHARED MUSSEL / PROFILE");
+        draw_text(&c, 64, 242, 1, MSP_DIM, "ONE MUSSEL PER PROFILE");
     } else if (progression_creative(t)) {
         draw_text(&c, 64, 156, 1, MSP_TEAL, "CREATIVE: NO INCOME");
         draw_text(&c, 64, 178, 1, MSP_DIM, "NO CARE REWARDS TO UNLOCK.");
@@ -6664,34 +6677,36 @@ static void render_mussel_panel(const tank_t *t, uint16_t *fb, int stride) {
 static void render_inventory(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
     rect_fill(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, MSP_INK);
-    draw_text(&c, 24, 20, 3, 0xffffff, "DECOR INVENTORY");
-    char line[64];
-    int stored = 0;
-    for (int slot = 0; slot < DECOR_SLOTS; slot++)
-        stored += progression_inventory_stored(t, tank_decor_slot_item(slot));
-    snprintf(line, sizeof line, "SHARED STORAGE %d/%d", stored, DECOR_INVENTORY_CAP);
-    draw_text(&c, 24, 56, 2, MSP_TEAL, line);
-    shop_arrow(&c, SHP_ARROW_X0, SHP_ARROW_Y, false, g_inventory_page ? MSP_TEAL : MSP_DIM);
-    shop_arrow(&c, SHP_ARROW_X1, SHP_ARROW_Y, true, g_inventory_page < (DECOR_SLOTS - 1) / SHP_PER_PAGE ? MSP_TEAL : MSP_DIM);
-    for (int r = 0; r < SHP_PER_PAGE; r++) {
-        int slot = g_inventory_page * SHP_PER_PAGE + r;
-        if (slot >= DECOR_SLOTS) break;
-        int item = tank_decor_slot_item(slot), y = SHP_ROW_Y0 + r * SHP_ROW_DY;
-        render_decor_thumbnail(fb, stride, 24, y, 36, item, true);
-        draw_text(&c, 76, y + 2, 2, 0xffffff, SD_ITEMS[item].name);
-        snprintf(line, sizeof line, "STORED %d / HERE %d",
-                 progression_inventory_stored(t, item), progression_inventory_placed(t, item));
-        draw_text(&c, 76, y + 22, 1, MSP_TEAL, line);
-        button(&c, SHP_BTN_X, y, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "MANAGE", 2);
-    }
+    if (g_shp_mussel) { render_mussel_panel(t, fb, stride); return; }
     if (g_inventory_item < 0) {
-        draw_text(&c, 24, MSP_CLOSE_Y - 20, 1, MSP_TEAL, "STORE > TANKS > PLACE");
+        draw_text(&c, 24, 20, 3, 0xffffff, "DECOR INVENTORY");
+        char line[64];
+        int stored = 0;
+        for (int slot = 0; slot < DECOR_SLOTS; slot++)
+            stored += progression_inventory_stored(t, tank_decor_slot_item(slot));
+        snprintf(line, sizeof line, "SHARED STORAGE %d/%d", stored, DECOR_INVENTORY_CAP);
+        draw_text(&c, 24, 56, 2, MSP_TEAL, line);
+        shop_arrow(&c, SHP_ARROW_X0, SHP_ARROW_Y, false, g_inventory_page ? MSP_TEAL : MSP_DIM);
+        shop_arrow(&c, SHP_ARROW_X1, SHP_ARROW_Y, true, g_inventory_page < (DECOR_SLOTS - 1) / SHP_PER_PAGE ? MSP_TEAL : MSP_DIM);
+        for (int r = 0; r < SHP_PER_PAGE; r++) {
+            int slot = g_inventory_page * SHP_PER_PAGE + r;
+            if (slot >= DECOR_SLOTS) break;
+            int item = tank_decor_slot_item(slot), y = SHP_ROW_Y0 + r * SHP_ROW_DY;
+            render_decor_thumbnail(fb, stride, 24, y, 36, item, true);
+            draw_text(&c, 76, y + 2, 2, 0xffffff, SD_ITEMS[item].name);
+            snprintf(line, sizeof line, "STORED %d / HERE %d",
+                     progression_inventory_stored(t, item), progression_inventory_placed(t, item));
+            draw_text(&c, 76, y + 22, 1, MSP_TEAL, line);
+            button(&c, SHP_BTN_X, y, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "MANAGE", 2);
+        }
+        draw_text(&c, 24, 348, 1, MSP_TEAL, "STORE > TANKS > PLACE");
         button(&c, 24, MSP_CLOSE_Y, 156, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "MUSSEL", 2);
         button(&c, 194, MSP_CLOSE_Y, 116, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "TANKS", 2);
         button(&c, SHP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
     }
-    if (g_inventory_item >= 0) {
+    else {
         int item = g_inventory_item;
+        char line[64];
         rect_fill(&c, 48, 40, 352, 268, 0x04141a);
         rect_edge(&c, 48, 40, 352, 268, MSP_TEAL);
         draw_text(&c, 64, 56, 2, 0xffffff, SD_ITEMS[item].name);
@@ -6715,7 +6730,6 @@ static void render_inventory(const tank_t *t, uint16_t *fb, int stride) {
     }
     const char *notice = progression_shop_notice();
     if (notice) draw_text(&c, 24, 314, 1, 0xff8a7a, notice);
-    if (g_shp_mussel) render_mussel_panel(t, fb, stride);
 }
 static int inventory_tap(const tank_t *t, float x, float y) {
     if (g_inventory_item >= 0) {
@@ -6767,6 +6781,7 @@ static int inventory_tap(const tank_t *t, float x, float y) {
     return SHOP_TAP_KEPT;
 }
 void render_shop(const tank_t *t, uint16_t *fb, int stride) {
+    if (g_shp_mussel) { render_mussel_panel(t, fb, stride); return; }
     if (g_shp_inventory) { render_inventory(t, fb, stride); return; }
     ctx_t c = ctx_page(fb, stride);
     rect_fill(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, MSP_INK);
@@ -6817,7 +6832,6 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
     button(&c, SHP_EARN_X, MSP_CLOSE_Y, SHP_EARN_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "HOW TO EARN", 2);
     button(&c, 194, MSP_CLOSE_Y, 116, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "TANKS", 2);
     button(&c, SHP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
-    if (g_shp_mussel) { render_mussel_panel(t, fb, stride); return; }
     if (g_shp_modal < 0 && !g_shp_earn) return;
     for (int y = render_tile_top(); y < render_tile_bottom(); y++)
         for (int x = 0; x < TANK_W; x++) fb[(y - g_tile_y) * stride + x] = (uint16_t)((fb[(y - g_tile_y) * stride + x] >> 1) & 0x7bef);
@@ -7528,7 +7542,7 @@ static const char *const MODE_NAMES[] = {"NORMAL", "CREATIVE", "HARD"};
 static int g_clock_step;
 static const int CLOCK_STEPS[] = {4, 2, 1};
 static const char *const CLOCK_STEP_NAMES[] = {"1H", "30M", "15M"};
-enum { CLOCK_HIT_PAGE = 100, CLOCK_HIT_THEME, CLOCK_HIT_FORMAT, CLOCK_HIT_POSITION, CLOCK_HIT_PREVIOUS, CLOCK_HIT_NEXT, CLOCK_HIT_SIZE, CLOCK_HIT_DELAY, CLOCK_HIT_DST, CLOCK_HIT_STEP, CLOCK_HIT_STYLE, CLOCK_HIT_COLOR, CLOCK_HIT_SECONDS, CLOCK_HIT_PANEL, CLOCK_HIT_DATE, CLOCK_HIT_SECONDARY, CLOCK_HIT_WEATHER, CLOCK_HIT_FACE, CLOCK_HIT_TEXT, CLOCK_HIT_DETAIL_SIZE, CLOCK_HIT_CAPTION_SIZE, CLOCK_HIT_TIME };
+enum { CLOCK_HIT_PAGE = 100, CLOCK_HIT_THEME, CLOCK_HIT_FORMAT, CLOCK_HIT_POSITION, CLOCK_HIT_PREVIOUS, CLOCK_HIT_NEXT, CLOCK_HIT_SIZE, CLOCK_HIT_DELAY, CLOCK_HIT_DST, CLOCK_HIT_STEP, CLOCK_HIT_STYLE, CLOCK_HIT_COLOR, CLOCK_HIT_SECONDS, CLOCK_HIT_PANEL, CLOCK_HIT_DATE, CLOCK_HIT_SECONDARY, CLOCK_HIT_WEATHER, CLOCK_HIT_FACE, CLOCK_HIT_TEXT, CLOCK_HIT_DETAIL_SIZE, CLOCK_HIT_TIME };
 static const char *const CLOCK_NAMES[CLOCK_THEME_COUNT] = {"OFF", "MINIMAL", "DIGITAL", "ANALOG", "NEON", "FLIP", "BINARY", "ORBIT"};
 static const char *const CLOCK_SIZES[] = {"LARGE", "MEDIUM", "SMALL", "JUMBO", "TINY"};
 static const char *const CLOCK_TEXT_SIZES[] = {"SMALL", "MEDIUM", "LARGE"};
@@ -7545,7 +7559,7 @@ static void clock_settings_draw(ctx_t *c, const tank_t *t) {
             button(c, 24 + i % 2 * 212, 68 + i / 2 * 80, 188, 64,
                    i == 5 ? 0x28535b : 0x1c2f36, MSP_TEAL, names[i], 2);
         draw_text(c, 24, 324, 1, MSP_TEAL, g_clock_synchronized ?
-                  "TIME SYNCED - OPTIONS SAVE WHEN TAPPED" : "TIME SYNC: CONNECT WI-FI IN SETTINGS");
+                  "SYNCED - TAP OPTIONS TO SAVE" : "SYNC TIME: SETTINGS > WI-FI");
     } else if (g_clock_page == CLOCK_FACE) {
         snprintf(label, sizeof label, "THEME: %s", CLOCK_NAMES[t->aquariums.clock_theme < CLOCK_THEME_COUNT ? t->aquariums.clock_theme : 0]);
         button(c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
@@ -7566,12 +7580,11 @@ static void clock_settings_draw(ctx_t *c, const tank_t *t) {
     } else if (g_clock_page == CLOCK_TEXT) {
         snprintf(label, sizeof label, "DETAIL SIZE: %s", CLOCK_TEXT_SIZES[t->aquariums.clock_layout >> CLOCK_DETAIL_SHIFT]);
         button(c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
-        snprintf(label, sizeof label, "WEATHER SIZE: %s", CLOCK_TEXT_SIZES[(t->aquariums.clock_delay & CLOCK_CAPTION_MASK) >> CLOCK_CAPTION_SHIFT]);
-        button(c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, label, 2);
-        button(c, 32, 160, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_SECONDS ? "SECONDS: HIDDEN" : "SECONDS: SHOWN", 2);
-        button(c, 32, 208, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_DATE ? "DATE: HIDDEN" : "DATE: SHOWN", 2);
-        button(c, 32, 256, 384, 40, 0x1c2f36, MSP_TEAL, t->companion.lively ? "SPARKLES: ON" : "SPARKLES: OFF", 2);
-        button(c, 32, 304, 384, 40, 0x1c2f36, MSP_TEAL, t->companion.captions ? "EVENT CAPTIONS: ON" : "EVENT CAPTIONS: OFF", 2);
+        button(c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_SECONDS ? "SECONDS: HIDDEN" : "SECONDS: SHOWN", 2);
+        button(c, 32, 160, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_HIDE_DATE ? "DATE: HIDDEN" : "DATE: SHOWN", 2);
+        button(c, 32, 208, 384, 40, 0x1c2f36, MSP_TEAL, t->companion.lively ? "SPARKLES: ON" : "SPARKLES: OFF", 2);
+        button(c, 32, 256, 384, 40, 0x1c2f36, MSP_TEAL, t->companion.captions ? "EVENT CAPTIONS: ON" : "EVENT CAPTIONS: OFF", 2);
+        draw_text(c, 32, 316, 1, MSP_TEAL, "WEATHER TEXT SIZE: WEATHER MENU");
     } else if (g_clock_page == CLOCK_TIME) {
         button(c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_12H ? "FORMAT: 12 HOUR" : "FORMAT: 24 HOUR", 2);
         button(c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, t->aquariums.clock_flags & CLOCK_DST ? "DAYLIGHT SAVING: +1H" : "DAYLIGHT SAVING: OFF", 2);
@@ -7585,9 +7598,9 @@ static void clock_settings_draw(ctx_t *c, const tank_t *t) {
         snprintf(label, sizeof label, "STEP: %s", CLOCK_STEP_NAMES[g_clock_step]);
         button(c, 124, 250, 200, 44, 0x1c2f36, MSP_TEAL, label, 2);
         button(c, 336, 250, 80, 44, 0x1c2f36, MSP_TEAL, "+", 2);
-        draw_text(c, 32, 316, 1, MSP_TEAL, "SET UTC OFFSET, THEN ENABLE DST IF NEEDED.");
+        draw_text(c, 32, 316, 1, MSP_TEAL, "SET UTC OFFSET, THEN DST.");
     }
-    draw_text(c, 24, 354, 1, MSP_TEAL, s_backup_message);
+    draw_text(c, 24, 348, 1, MSP_TEAL, s_backup_message);
 }
 void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) {
     ctx_t c = ctx_page(fb, stride);
@@ -7606,10 +7619,11 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     }
     draw_text(&c, 24, 18, 2, MSP_TEAL, names[g_settings_section - 1]);
     if (g_settings_section == 6) {
-        button(&c, 32, 52, 384, 34, 0x1c2f36, MSP_TEAL, "SCREENSHOT TO SD", 2);
-        button(&c, 32, 100, 384, 44, 0x1c2f36, MSP_TEAL, "SD UPDATES", 2);
-        button(&c, 32, 170, 384, 44, 0x1c2f36, MSP_TEAL, "TOUCH CALIBRATION", 2);
-        button(&c, 32, 240, 384, 44, 0x7a2028, 0xf25b65, "WIPE ALL PROGRESS", 2);
+        button(&c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, "SCREENSHOT TO SD", 2);
+        button(&c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, "FIRMWARE UPDATES", 2);
+        button(&c, 32, 160, 384, 40, 0x1c2f36, MSP_TEAL, "TOUCH CALIBRATION", 2);
+        draw_text_wrap(&c, 32, 212, 384, MSP_TEAL, s_backup_message);
+        button(&c, 32, 264, 384, 40, 0x7a2028, 0xf25b65, "WIPE ALL PROGRESS", 2);
         char ver[64]; snprintf(ver, sizeof ver, "V%s %s", PT_RELEASE, PT_RELEASE_STAGE);
         draw_text(&c, 32, 326, 2, MSP_TEAL, ver); return;
     }
@@ -7624,7 +7638,7 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
                progression_hard(t) ? "HARD: COMFORT ASSIST OFF" :
                t->companion.cozy ? "COMFORT ASSIST: ON" : "COMFORT ASSIST: OFF", 2);
         if (progression_hard(t)) {
-            draw_text(&c, 32, 278, 1, MSP_TEAL, "6H STARVING WHILE RUNNING CAN KILL.");
+            draw_text(&c, 32, 276, 1, MSP_TEAL, "6H STARVING IN LIVE TANK CAN KILL.");
             if (!t->n_fish) button(&c, 32, 292, 384, 34, 0x1c2f36, MSP_TEAL, "RECOVER 2 FRY - FREE", 2);
             draw_text_wrap(&c, 32, 336, 384, 0xffffff, g_mode_message);
         } else {
@@ -7664,14 +7678,13 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     button(&c, 32, 64, 384, 40, 0x1c2f36, MSP_TEAL, "BACKUP TO SD", 2);
     button(&c, 32, 112, 384, 40, 0x1c2f36, MSP_TEAL, s_restore_until > 0 ? "CONFIRM RESTORE" : "RESTORE FROM SD", 2);
     button(&c, 32, 160, 384, 40, 0x1c2f36, MSP_TEAL, g_device.auto_backup ? "DAILY BACKUP: ON" : "DAILY BACKUP: OFF", 2);
-    button(&c, 32, 208, 384, 40, 0x1c2f36, MSP_TEAL, "PHOTO TO SD", 2);
-    draw_text_wrap(&c, 32, 264, 384, MSP_TEAL, s_backup_message);
-    draw_text(&c, 32, 308, 1, MSP_TEAL, "ACTIVE TANK, WALLET, GLOBAL BANK / TRAVELER.");
-    draw_text(&c, 32, 324, 1, MSP_TEAL, "OTHER AQUARIUMS NOT INCLUDED.");
+    draw_text_wrap(&c, 32, 216, 384, MSP_TEAL, s_backup_message);
+    draw_text(&c, 32, 280, 1, MSP_TEAL, "ACTIVE TANK + WALLET + BANK");
+    draw_text(&c, 32, 298, 1, MSP_TEAL, "TRAVELER INCLUDED, NOT OTHER TANKS");
     char backup_date[40], backup_line[64];
     companion_date_text(t->polish.backup_unix, backup_date, sizeof backup_date);
     snprintf(backup_line, sizeof backup_line, "LAST BACKUP: %s", t->polish.backups ? backup_date : "NOT RECORDED");
-    draw_text(&c, 32, 352, 1, MSP_TEAL, backup_line);
+    draw_text(&c, 32, 334, 1, MSP_TEAL, backup_line);
 }
 static int g_aquarium_page, g_aquarium_pick = -1;
 static char g_aquarium_message[80];
@@ -7721,7 +7734,7 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
                 draw_text(&c, 24, 278, 1, 0xffffff, line);
                 button(&c, 232, 274, 192, 34, 0x1c2f36, MSP_TEAL, "CONFIRM REMOVE", 2);
             } else {
-                draw_text(&c, 24, 278, 1, MSP_TEAL, "REMOVE LAST FISH? KEEP TWO.");
+                draw_text(&c, 24, 278, 1, MSP_TEAL, "KEEP TWO FISH.");
                 button(&c, 232, 274, 192, 34, 0x1c2f36, MSP_TEAL, "REMOVE FISH", 2);
             }
         }
@@ -7795,7 +7808,7 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
     if (g_aquarium_pick < 0 && !g_aquarium_naming) {
         if (progression_creative(t))
             button(&c, 24, 296, 400, 26, 0x1c2f36, MSP_TEAL, "CREATIVE: ADD / REMOVE FISH", 2);
-        else draw_text(&c, 24, 300, 1, MSP_TEAL, "BANK, MONEY AND PROGRESS ARE SHARED.");
+        else draw_text(&c, 24, 300, 1, MSP_TEAL, "SHARED BANK, MONEY AND PROGRESS");
         button(&c, 24, 328, 160, 22, 0x1c2f36, MSP_TEAL, "NAME TANK", 2);
         button(&c, 208, 328, 216, 22, 0x1c2f36, MSP_TEAL, "TANK IDENTITY", 2);
     }
@@ -8441,11 +8454,11 @@ int render_settings_tap(float x, float y, int *value) {
         int row = (int)(y - 64) / 48;
         static const int face[] = {CLOCK_HIT_THEME, CLOCK_HIT_SIZE, CLOCK_HIT_POSITION};
         static const int colors[] = {CLOCK_HIT_COLOR, CLOCK_HIT_SECONDARY, CLOCK_HIT_PANEL};
-        static const int text[] = {CLOCK_HIT_DETAIL_SIZE, CLOCK_HIT_CAPTION_SIZE, CLOCK_HIT_SECONDS, CLOCK_HIT_DATE, SETTINGS_SPARKLES, SETTINGS_CAPTIONS};
+        static const int text[] = {CLOCK_HIT_DETAIL_SIZE, CLOCK_HIT_SECONDS, CLOCK_HIT_DATE, SETTINGS_SPARKLES, SETTINGS_CAPTIONS};
         static const int time[] = {CLOCK_HIT_FORMAT, CLOCK_HIT_DST, CLOCK_HIT_DELAY};
         if (g_clock_page == CLOCK_FACE && row < 3) return face[row];
         if (g_clock_page == CLOCK_COLORS && row < 3) return colors[row];
-        if (g_clock_page == CLOCK_TEXT) return text[row];
+        if (g_clock_page == CLOCK_TEXT && row < 5) return text[row];
         if (g_clock_page == CLOCK_TIME && row < 3) return time[row];
         return SET_TAP_NONE;
     }
@@ -8461,10 +8474,10 @@ int render_settings_tap(float x, float y, int *value) {
     if (g_settings_section == 5 && x >= 32 && x < 416 && y >= 292 && y < 326) return SETTINGS_RESCUE;
     if (g_settings_section == 6) {
         if (x >= 32 && x < 416) {
-            if (y >= 52 && y < 86) return SET_TAP_PHOTO;
-            if (y >= 100 && y < 144) return SET_TAP_UPDATES;
-            if (y >= 170 && y < 214) return SET_TAP_TOUCH;
-            if (y >= 240 && y < 284) return SET_TAP_WIPE;
+            if (y >= 64 && y < 104) return SET_TAP_PHOTO;
+            if (y >= 112 && y < 152) return SET_TAP_UPDATES;
+            if (y >= 160 && y < 200) return SET_TAP_TOUCH;
+            if (y >= 264 && y < 304) return SET_TAP_WIPE;
         }
         return SET_TAP_NONE;
     }
@@ -8491,7 +8504,6 @@ int render_settings_tap(float x, float y, int *value) {
             if (y >= 64 && y < 104) return SET_TAP_BACKUP;
             if (y >= 112 && y < 152) return SET_TAP_RESTORE;
             if (y >= 160 && y < 200) return SET_TAP_AUTO_BACKUP;
-            if (y >= 208 && y < 248) return SET_TAP_PHOTO;
         }
         return SET_TAP_NONE;
     }
@@ -8552,6 +8564,7 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
                     if (item == 0) render_backup_status("ROOM LIGHT DIMMING / BACK LED GLOW", false);
                     else if (item == 3) render_backup_status("JSON BACKUP / RESTORE FROM SD", false);
                     else if (item == 4) render_backup_status("OPTIONS SAVE WHEN TAPPED", false);
+                    else if (item == 5) render_backup_status("UPDATES: WI-FI OR SD CARD", false);
                 }
             } else if (h == SETTINGS_RESCUE && progression_hard(t) && !t->n_fish) {
                 const char *error = progression_hard_rescue(t);
@@ -8588,7 +8601,7 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
             } else if (h == CLOCK_HIT_WEATHER) {
                 weather_open(); g_clock_weather = true;
             } else if ((h >= CLOCK_HIT_THEME && h <= CLOCK_HIT_SECONDARY) ||
-                       h == CLOCK_HIT_DETAIL_SIZE || h == CLOCK_HIT_CAPTION_SIZE) {
+                       h == CLOCK_HIT_DETAIL_SIZE) {
                 aquarium_state_t before = t->aquariums;
                 if (h == CLOCK_HIT_THEME) t->aquariums.clock_theme = (uint8_t)((t->aquariums.clock_theme + 1) % CLOCK_THEME_COUNT);
                 if (h == CLOCK_HIT_FORMAT) t->aquariums.clock_flags ^= CLOCK_12H;
@@ -8604,7 +8617,6 @@ int render_settings_touch(tank_t *t, float x, float y, bool down, int *value) {
                     t->aquariums.clock_layout = clock_layout_set_size(t->aquariums.clock_layout, size);
                 }
                 if (h == CLOCK_HIT_DETAIL_SIZE) t->aquariums.clock_layout = (uint8_t)((t->aquariums.clock_layout & ~CLOCK_DETAIL_MASK) | (((t->aquariums.clock_layout >> CLOCK_DETAIL_SHIFT) + 1) % CLOCK_TEXT_SIZE_COUNT << CLOCK_DETAIL_SHIFT));
-                if (h == CLOCK_HIT_CAPTION_SIZE) clock_weather_size_next(t);
                 if (h == CLOCK_HIT_DELAY) t->aquariums.clock_delay = (uint8_t)((t->aquariums.clock_delay & ~CLOCK_DELAY_MASK) | (((t->aquariums.clock_delay & CLOCK_DELAY_MASK) + 1) % CLOCK_DELAY_COUNT));
                 if (h == CLOCK_HIT_PREVIOUS || h == CLOCK_HIT_NEXT) {
                     int offset = t->aquariums.clock_utc_quarters;

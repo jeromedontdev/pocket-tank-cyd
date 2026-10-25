@@ -47,7 +47,7 @@ export function identifyFirmware(text, targetVersion) {
     throw new Error("Missing or mismatched CYD board/firmware boot identity. No flash was written.");
   }
   if (compareVersions(ota.version, "1.0.0") < 0 || compareVersions(ota.version, targetVersion) > 0) {
-    throw new Error("Unsupported firmware or downgrade refused. Use SD Updates or a matching newer release.");
+    throw new Error("Unsupported firmware or downgrade refused. Use the on-device Firmware Updates menu (SD Updates on older versions) or a matching newer release.");
   }
   return ota;
 }

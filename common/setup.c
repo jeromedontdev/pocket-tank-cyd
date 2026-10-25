@@ -671,7 +671,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
     if (s_page == SETUP_PG_MODE) {
         render_rect(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, C_PANEL);
         text_c(fb, stride, CX, 18, 3, C_TEXT, "CHOOSE YOUR MODE");
-        text_c(fb, stride, CX, 52, 1, C_CAPT, "MODE IS FIXED UNTIL YOU WIPE YOUR TANK");
+        text_c(fb, stride, CX, 52, 1, C_CAPT, "WIPE ALL PROGRESS TO CHANGE MODE");
         static const char *const labels[] = {
             "NORMAL - EARN / NO DEATHS",
             "CREATIVE - EVERYTHING FREE",
@@ -681,7 +681,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
             render_button(fb, stride, 24, 76 + i * 56, 400, 44,
                           s_mode_pick == i ? C_FILL : C_INNER, s_mode_pick == i ? C_TEXT : C_EDGE, labels[i], 2);
         text_c(fb, stride, CX, 250, 1, C_CAPT, s_mode_pick == GAME_MODE_HARD ?
-               "HARD: NO OFFLINE DEATHS. KEEP FISH FED." : "ALL AQUARIUMS SHARE MONEY AND PROGRESS.");
+               "HARD: DEATHS ONLY WHILE RUNNING" : "TANKS SHARE MONEY AND PROGRESS");
         render_button(fb, stride, 24, 282, 400, 38, C_INNER, C_EDGE, "START THIS MODE", 2);
         text_c(fb, stride, CX, 336, 1, C_CAPT, s_mode_error);
     } else if (s_page == SETUP_PG_CUSTOM) {

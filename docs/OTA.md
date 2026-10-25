@@ -37,8 +37,10 @@ The application-only binary and factory image are not SD update packages.
 **Do not factory-flash an existing tank: it overwrites NVS and loses saved
 state, credentials, calibration and collection identity.**
 
-**Settings > Device > SD Updates** installs a trusted local package from
-`pocket-tank/update.ptu` on the SD card. Wi-Fi is not used.
+**Settings > Device > Firmware Updates** (called **SD Updates** in published
+2.3.4 and older) offers SD and GitHub Wi-Fi updates side by side.
+The **Check SD Card** option installs a trusted local package from
+`pocket-tank/update.ptu` on the SD card without using Wi-Fi.
 
 1. Build the CYD application, then package the application binary (not a
    merged flash image):
@@ -52,7 +54,7 @@ state, credentials, calibration and collection identity.**
    console without removing the card. USB copying requires pyserial and
    refuses to overwrite an existing package or interrupted `.upload` file.
    Remove those specific files from the card before another USB copy.
-3. Open **Settings > Device > SD Updates > Check SD Card**. The device validates the
+3. Open **Settings > Device > Firmware Updates > Check SD Card**. The device validates the
    package and displays its release label.
 4. Tap **Install and Restart** within 60 seconds to confirm. If the offer
    expired or the file changed, the device asks for confirmation again.
@@ -113,7 +115,7 @@ The aquarium simulation and SD services do not run during the download;
 certificate and image verification are never disabled to recover memory.
 
 1. Make an SD backup if available and keep USB power connected.
-2. Open **Settings > Device > SD Updates > Check GitHub via Wi-Fi**.
+2. Open **Settings > Device > Firmware Updates > Check GitHub via Wi-Fi**.
    The page retains its existing SD entry for compatibility; the Wi-Fi button
    is separate from **Check SD Card / Install and Restart**.
 3. The aquarium must save successfully before restarting into update mode.

@@ -16,13 +16,303 @@ static uint16_t icon_bank[128 * 1024];
 static size_t icon_bank_bytes;
 static tank_t help_tank;
 
+static const char *menu_screen;
+static int menu_errors, menu_screens, menu_width;
+static struct { int x, y, w, h; char text[128]; } menu_texts[160];
+static int menu_text_count;
+void menu_test_panel(int w, int h) {
+    if (menu_screen && w >= 300 && h >= 100) menu_text_count = 0;
+}
+void menu_test_text(int x, int y, int scale, const char *text) {
+    if (!menu_screen || !*text) return;
+    int w = text_w(text, scale), h = scale == 1 ? (7 * PAGE_H + TANK_H - 1) / TANK_H : 7 * scale;
+    if (x < 0 || x + w > PAGE_W || y < 0 || y + h > PAGE_H) {
+        fprintf(stderr, "MENU %d %s: clipped text (%d,%d %dx%d): %s\n", TANK_W, menu_screen, x, y, w, h, text);
+        menu_errors++;
+    }
+    for (int i = 0; i < menu_text_count; i++) {
+        if (x < menu_texts[i].x + menu_texts[i].w && x + w > menu_texts[i].x &&
+            y < menu_texts[i].y + menu_texts[i].h && y + h > menu_texts[i].y) {
+            fprintf(stderr, "MENU %d %s: text overlap: %s / %s\n", TANK_W, menu_screen, menu_texts[i].text, text);
+            menu_errors++;
+        }
+    }
+    assert(menu_text_count < 160);
+    int i = menu_text_count++;
+    menu_texts[i].x = x; menu_texts[i].y = y; menu_texts[i].w = w; menu_texts[i].h = h;
+    snprintf(menu_texts[i].text, sizeof menu_texts[i].text, "%s", text);
+}
+void menu_test_button(int x, int y, int w, int h, const char *label, int scale) {
+    if (!menu_screen) return;
+    if (x < 0 || y < 0 || x + w > PAGE_W || y + h > PAGE_H ||
+        text_w(label, scale) > w - 8 || 7 * scale > h - 4) {
+        fprintf(stderr, "MENU %d %s: button label/bounds (%d,%d %dx%d): %s\n", TANK_W, menu_screen, x, y, w, h, label);
+        menu_errors++;
+    }
+}
+static void menu_begin(const char *name) {
+    assert(TANK_W == menu_width);
+    menu_screen = name; menu_text_count = 0;
+}
+static void menu_update_tap(int x, int y) {
+    update_touch(render_frame_x(x), render_frame_y(y), true);
+    update_touch(render_frame_x(x), render_frame_y(y), false);
+}
+static void menu_network_wait(void) {
+    extern void net_sim_advance(float dt);
+    for (int i = 0; i < 24; i++) { net_sim_advance(.25f); update_tick(.25f); }
+}
+static void menu_end(const char *gallery) {
+    menu_screens++;
+    if (gallery) {
+        char path[1024]; snprintf(path, sizeof path, "%s/menu-%s-%d.raw", gallery, menu_screen, TANK_W);
+        FILE *file = fopen(path, "wb"); assert(file);
+        assert(fwrite(full_frame, 2, (size_t)TANK_W * TANK_H, file) == (size_t)TANK_W * TANK_H);
+        assert(!fclose(file));
+    }
+    menu_screen = NULL;
+}
+static void check_menu_layout(const char *gallery) {
+    menu_width = TANK_W;
+    tank_t t; tank_init(&t, 77); tank_new_population(&t);
+    t.companion.display_compact = TANK_W == 320;
+    t.aquariums.clock_theme = CLOCK_COMPACT;
+    t.sd_balance = 100000; t.journal.xp = 20000;
+    snprintf(t.fish[0].name, sizeof t.fish[0].name, "WIDEWWW");
+    char name[64];
+    for (int category = 0; category < 5; category++) {
+        for (int p = 0; p < (category == 1 ? 2 : 1); p++) {
+            render_life_open(); g_home_category = category; g_home_page = p;
+            snprintf(name, sizeof name, "home-%d-%d", category, p); menu_begin(name);
+            render_life(&t, full_frame, TANK_W); menu_end(gallery);
+        }
+    }
+    for (int section = 0; section <= 6; section++) {
+        if (section == 2 || section == 3) continue;
+        render_settings_open(); g_settings_section = section;
+        render_backup_status(section == 6 ? "UPDATES: WI-FI OR SD CARD" : "", false);
+        snprintf(name, sizeof name, "settings-%d", section); menu_begin(name);
+        render_settings(&t, full_frame, TANK_W, 100); menu_end(gallery);
+    }
+    for (int p = CLOCK_MENU; p <= CLOCK_TIME; p++) {
+        render_settings_open(); g_clock_settings = true; g_clock_page = p;
+        render_backup_status("", false);
+        snprintf(name, sizeof name, "clock-%d", p); menu_begin(name);
+        render_settings(&t, full_frame, TANK_W, 100); menu_end(gallery);
+    }
+    for (int section = COMPANION_SECTION_CARE; section <= COMPANION_SECTION_RPG_HELP; section++) {
+        if (section == 17) continue;
+        companion_open_section(section);
+        snprintf(name, sizeof name, "companion-%d", section); menu_begin(name);
+        companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    render_aquariums_open(&t);
+    for (int pick = -1; pick <= 1; pick++) {
+        g_aquarium_pick = pick;
+        snprintf(name, sizeof name, "aquariums-%d", pick); menu_begin(name);
+        render_aquariums(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    render_bank_open();
+    for (int tab = 0; tab < 2; tab++) {
+        g_bank_tab = tab;
+        snprintf(name, sizeof name, "bank-%d", tab); menu_begin(name);
+        render_bank(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    for (int tab = 0; tab < 3; tab++) {
+        render_journal_open_section(tab);
+        snprintf(name, sizeof name, "journal-%d", tab); menu_begin(name);
+        render_journal(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    uint32_t game_menus[3];
+    for (int p = 0; p < 3; p++) {
+        for (int game = 0; game < 6; game++) {
+            t.games.best[game] = t.games_extra.best[game] = t.companion.game_best[game] = UINT16_MAX;
+            t.games.rounds[game] = t.games_extra.rounds[game] = t.companion.game_rounds[game] = UINT16_MAX;
+        }
+        render_games_open();
+        snprintf(name, sizeof name, "games-%d", p); menu_begin(name);
+        render_games(&t, full_frame, TANK_W); menu_end(gallery);
+        uint32_t hash = 2166136261u;
+        for (int i = 0; i < TANK_W * TANK_H; i++) hash = (hash ^ full_frame[i]) * 16777619u;
+        for (int i = 0; i < p; i++) assert(hash != game_menus[i]);
+        game_menus[p] = hash;
+        g_game.page = GAME_RECORDS;
+        snprintf(name, sizeof name, "records-%d", p); menu_begin(name);
+        render_games(&t, full_frame, TANK_W); menu_end(gallery);
+        render_games_tap(&t, render_frame_x(350), render_frame_y(80));
+    }
+    weather_open(); menu_begin("weather"); weather_render(full_frame, TANK_W, 1); menu_end(gallery);
+    menu_begin("updates"); render_updates_page(full_frame, TANK_W); menu_end(gallery);
+    render_shop_leave();
+    for (int p = 0; p < shp_pages(&t); p++) {
+        g_shp_page = p;
+        snprintf(name, sizeof name, "shop-%d", p); menu_begin(name);
+        render_shop(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    g_shp_inventory = true;
+    for (int p = 0; p <= (DECOR_SLOTS - 1) / SHP_PER_PAGE; p++) {
+        g_inventory_page = p;
+        snprintf(name, sizeof name, "inventory-%d", p); menu_begin(name);
+        render_shop(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    for (int slot = 0; slot < DECOR_SLOTS; slot++) {
+        g_inventory_item = tank_decor_slot_item(slot);
+        snprintf(name, sizeof name, "inventory-item-%d", slot); menu_begin(name);
+        render_shop(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    render_shop_leave();
+    g_shp_mussel = true; menu_begin("mussel");
+    render_shop(&t, full_frame, TANK_W); menu_end(gallery);
+    render_shop_leave();
+    for (int game = 0; game < 18; game++) {
+        game_start(game_kinds[game]);
+        snprintf(name, sizeof name, "game-help-%d", game); menu_begin(name);
+        render_games(&t, full_frame, TANK_W); menu_end(gallery);
+        game_finish();
+        snprintf(name, sizeof name, "game-result-%d", game); menu_begin(name);
+        render_games(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    for (int section = 0; section < 3; section++) {
+        companion_open_section(COMPANION_SECTION_COLLECTIONS);
+        for (int p = 0; p < section; p++)
+            companion_tap(&t, render_frame_x(100), render_frame_y(300));
+        snprintf(name, sizeof name, "discoveries-%d", section); menu_begin(name);
+        companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    for (int hint = 0; hint < COMPANION_DISCOVERY_COUNT; hint++) {
+        companion_open_section(COMPANION_SECTION_HINTS);
+        for (int p = 0; p < hint; p++)
+            companion_tap(&t, render_frame_x(300), render_frame_y(250));
+        snprintf(name, sizeof name, "hint-%d", hint); menu_begin(name);
+        companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    for (int item = 0; item < SD_ITEM_COUNT; item++) {
+        companion_open_section(COMPANION_SECTION_OBJECTS);
+        for (int p = 0; p < item; p++)
+            companion_tap(&t, render_frame_x(300), render_frame_y(270));
+        snprintf(name, sizeof name, "object-%d", item); menu_begin(name);
+        companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    setup_begin(&t);
+    if (setup_page() == SETUP_PG_MODE) {
+        menu_begin("mode-selection"); render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery);
+        setup_cancel(&t);
+        t.profile = (profile_state_t){.marker = 0x50524631u, .version = 1,
+            .mode = GAME_MODE_NORMAL, .chosen = 1, .reserved = 2};
+        setup_begin(&t);
+    }
+    for (int p = 0; p < SETUP_PG_N && setup_active(); p++) {
+        render_tank(&t, full_frame, TANK_W);
+        snprintf(name, sizeof name, "setup-%d", setup_page()); menu_begin(name);
+        render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery);
+        int pg = setup_page();
+        bool top = pg == SETUP_PG_BUBBLES || pg == SETUP_PG_NAME_A || pg == SETUP_PG_NAME_B ||
+                   pg == SETUP_PG_LOOK_A || pg == SETUP_PG_LOOK_B;
+        int next_x = top ? SETUP_TOP_NEXT_X : pg == SETUP_PG_WELCOME ? SETUP_MID_X : SETUP_NEXT_X;
+        setup_activate(&t, setup_hit(render_frame_x(next_x + 10),
+                                    render_frame_y((top ? SETUP_TOP_BTN_Y : SETUP_BTN_Y) + 10)));
+        assert(!setup_active() || setup_page() != pg);
+    }
+    setup_cancel(&t);
+    setup_begin_customize(&t, 0); render_tank(&t, full_frame, TANK_W); menu_begin("fish-customize");
+    render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery); setup_cancel(&t);
+    setup_begin_rename(&t, 0); render_tank(&t, full_frame, TANK_W); menu_begin("fish-rename");
+    render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery); setup_cancel(&t);
+    setup_begin_place(&t, 9); render_tank(&t, full_frame, TANK_W); menu_begin("decor-place");
+    render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery); setup_cancel(&t);
+    render_settings_open(); g_settings_section = 6;
+    render_backup_status("PHOTO SAVED: photos/photo-9999.bmp", false);
+    menu_begin("screenshot-status"); render_settings(&t, full_frame, TANK_W, 50); menu_end(gallery);
+    int value;
+    assert(render_settings_tap(render_frame_x(220), render_frame_y(84), &value) == SET_TAP_PHOTO);
+    assert(render_settings_tap(render_frame_x(220), render_frame_y(132), &value) == SET_TAP_UPDATES);
+    assert(render_settings_tap(render_frame_x(220), render_frame_y(180), &value) == SET_TAP_TOUCH);
+    assert(render_settings_tap(render_frame_x(220), render_frame_y(250), &value) == SET_TAP_NONE);
+    assert(render_settings_tap(render_frame_x(220), render_frame_y(284), &value) == SET_TAP_WIPE);
+    g_settings_section = 4;
+    assert(render_settings_tap(render_frame_x(220), render_frame_y(228), &value) == SET_TAP_NONE);
+    menu_begin("wipe-confirm"); render_confirm_reset(full_frame, TANK_W, 1); menu_end(gallery);
+    for (int p = 0; p < (JOURNAL_THEME_COUNT + 3) / 4; p++) {
+        render_journal_open_section(2); g_journal_theme_page = p;
+        snprintf(name, sizeof name, "themes-%d", p); menu_begin(name);
+        render_journal(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    render_journal_open(); g_journal_daily = false; menu_begin("milestone-goals");
+    render_journal(&t, full_frame, TANK_W); menu_end(gallery);
+    render_aquariums_open(&t); g_aquarium_naming = true;
+    memcpy(g_aquarium_draft, "FIFTEEN LETTERS", 16);
+    menu_begin("aquarium-name"); render_aquariums(&t, full_frame, TANK_W); menu_end(gallery);
+    t.bank_count = FISH_BANK_CAP;
+    for (int i = 0; i < FISH_BANK_CAP; i++) {
+        memset(&t.bank[i], 0, sizeof t.bank[i]);
+        snprintf(t.bank[i].name, sizeof t.bank[i].name, "WIDEWWW");
+        t.bank[i].fish.stage = STAGE_ELDER;
+        t.bank[i].body = 0xffb155; t.bank[i].accent = 0xeeeeee;
+    }
+    for (int p = 0; p < (FISH_BANK_CAP + BANK_PER_PAGE - 1) / BANK_PER_PAGE; p++) {
+        render_bank_open(); g_bank_page = p;
+        snprintf(name, sizeof name, "bank-full-%d", p); menu_begin(name);
+        render_bank(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    g_bank_pick = 0; menu_begin("bank-detail");
+    render_bank(&t, full_frame, TANK_W); menu_end(gallery);
+    for (int pending = -1; pending < 1; pending++) {
+        g_bank_pending = pending;
+        snprintf(name, sizeof name, "bank-confirm-%d", pending); menu_begin(name);
+        render_bank(&t, full_frame, TANK_W); menu_end(gallery);
+    }
+    t.profile.mode = GAME_MODE_CREATIVE;
+    t.creative = (creative_state_t){0x43525631u, 1, 1, 0};
+    render_aquariums_open(&t); g_aquarium_creative = true;
+    menu_begin("creative-fish"); render_aquariums(&t, full_frame, TANK_W); menu_end(gallery);
+    g_creative_remove = 0;
+    menu_begin("creative-remove"); render_aquariums(&t, full_frame, TANK_W); menu_end(gallery);
+    t.profile.mode = GAME_MODE_HARD; memset(&t.creative, 0, sizeof t.creative);
+    t.n_fish = 0; render_settings_open_care();
+    menu_begin("hard-recovery"); render_settings(&t, full_frame, TANK_W, 50); menu_end(gallery);
+    t.n_fish = 2; t.profile.mode = GAME_MODE_NORMAL;
+    setup_begin_birth(&t, 0);
+    for (int p = 0; p < SETUP_BIRTH_PAGES && setup_active(); p++) {
+        render_tank(&t, full_frame, TANK_W);
+        snprintf(name, sizeof name, "birth-%d", setup_page()); menu_begin(name);
+        render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery);
+        int pg = setup_page(), x = pg == SETUP_PG_BORN ? SETUP_MID_X :
+            pg == SETUP_PG_NAME_NEW ? SETUP_TOP_NEXT_X : SETUP_NEXT_X;
+        setup_activate(&t, setup_hit(render_frame_x(x + 10),
+            render_frame_y((pg == SETUP_PG_NAME_NEW ? SETUP_TOP_BTN_Y : SETUP_BTN_Y) + 10)));
+    }
+    setup_cancel(&t);
+    net_port_creds_forget();
+    update_wifi_begin(); menu_begin("wifi-scan-busy");
+    render_update(full_frame, TANK_W, 0); menu_end(gallery);
+    menu_network_wait(); assert(update_page() == UPD_PG_SCAN);
+    menu_begin("wifi-networks"); render_update(full_frame, TANK_W, 0); menu_end(gallery);
+    menu_update_tap(160, 74); assert(update_page() == UPD_PG_PASSWORD);
+    menu_begin("wifi-keyboard"); render_update(full_frame, TANK_W, 0); menu_end(gallery);
+    for (int i = 0; i < 63; i++) menu_update_tap(33, 127);
+    menu_begin("wifi-keyboard-full"); render_update(full_frame, TANK_W, .5f); menu_end(gallery);
+    assert(strlen(update_typed()) == 63);
+    assert(net_port_creds_set("Long-Synthetic-Network-Name-12345", "wrongpass"));
+    update_wifi_begin(); menu_begin("wifi-saved");
+    render_update(full_frame, TANK_W, 0); menu_end(gallery);
+    menu_update_tap(110, 265); menu_network_wait();
+    assert(!strcmp(update_message_title(), "NOT ACCEPTED"));
+    menu_begin("wifi-rejected"); render_update(full_frame, TANK_W, 0); menu_end(gallery);
+    menu_update_tap(330, 265);
+    assert(update_page() == UPD_PG_PASSWORD);
+    menu_begin("wifi-retype-long-name"); render_update(full_frame, TANK_W, 0); menu_end(gallery);
+    net_port_creds_forget();
+}
+
 static int inventory_touch(const tank_t *t, float x, float y) {
     return render_shop_tap(t, x * TANK_W / PAGE_W, y * TANK_H / PAGE_H);
 }
 static void check_inventory_ui(void) {
     static bool booted;
+    bool normal = TANK_W == 320;
     tank_t t; memset(&t, 0, sizeof t); tank_init(&t, 42);
     if (!booted) { progression_boot(&t); booted = true; }
+    tank_resolution(normal);
     tank_init(&t, 42); tank_new_population(&t);
     t.companion.display_compact = TANK_W == 320;
     t.sd_balance = 100000;
@@ -43,12 +333,12 @@ static void check_inventory_ui(void) {
     assert(fabsf(arrival - x) < .01f && crawl == 0);
     t.clock = 0;
     assert(text_w("NEXT: 599/600 HEALTHY SEC", 1) <= 320);
-    assert(text_w("ONE SHARED MUSSEL / PROFILE", 1) <= 320);
+    assert(text_w("ONE MUSSEL PER PROFILE", 1) <= 320);
     assert(text_w("TO WELCOME A FREE MUSSEL.", 1) <= 320);
     assert(text_w("1 COIN/10 HEALTHY MINUTES", 1) <= 320);
     assert(text_w("NO CARE REWARDS TO UNLOCK.", 1) <= 320);
-    assert(text_w("DAILY LIMIT - BACK TOMORROW", 1) <= 320);
-    assert(text_w("PAUSED - FEED AND CALM FISH", 1) <= 320);
+    assert(text_w("DAILY LIMIT - TRY TOMORROW", 1) <= 320);
+    assert(text_w("PAUSED - FEED/CALM FISH", 1) <= 320);
     assert(text_w("STORE > TANKS > PLACE", 1) <= 400);
     render_shop_leave();
     assert(inventory_touch(&t, 180, 77) == SHOP_TAP_KEPT && g_shp_inventory);
@@ -940,6 +1230,8 @@ int main(int argc, char **argv) {
         check_font_clock_cache();
         check_companion_navigation();
         check_inventory_ui();
+        assert(TANK_W == (resolution ? 320 : 240));
+        check_menu_layout(argc > 2 ? argv[2] : NULL);
         check_aquarium_effects();
         check_care_scene_cache();
         if (argc > 2) {
@@ -982,7 +1274,8 @@ int main(int argc, char **argv) {
             }
         }
     }
-    puts("Page art: distinct games; stamps, themes, medals and goal labels fit.");
+    assert(menu_errors == 0);
+    printf("Page art: distinct games; stamps, themes, medals and %d menu screens fit at both scales.\n", menu_screens);
     puts("Wrappers: static, clipped and full/tile equivalent at both resolutions.");
     puts("Help/pause: all games mask gameplay and match tiled output at both resolutions.");
     puts("Polished art: distinct stamps, four-plus tones, clipped bounds and guarded 1/17-row tile parity at both resolutions.");

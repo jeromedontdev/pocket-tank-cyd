@@ -63,12 +63,13 @@ EXISTING CYD INSTALLATION (preserve your tanks)
 2. Power off before moving the SD card.
 3. Menu artwork is embedded in firmware; no SD icons are required.
 4. Copy update.ptu to pocket-tank/update.ptu on the SD card.
-5. Reinsert the card, power on, and use Settings > Device > SD Updates to install.
+5. Reinsert the card, power on, and use Settings > Device > Firmware Updates to install.
+   Published 2.3.4 and older call that entry SD Updates.
 The SD updater verifies board, size and SHA-256. Packages are not signed:
 only install files from a source you trust.
 
 WI-FI UPGRADE (once running 2.3.2 or newer)
-Settings > Device > SD Updates > Check GitHub via Wi-Fi checks the latest
+Settings > Device > Firmware Updates > Check GitHub via Wi-Fi checks the latest
 stable release from this fork and asks before installing a newer version.
 The aquarium must save before restarting into update mode. Keep power on.
 HTTPS, exact size, CYD board, embedded release and full-file SHA-256 are checked
@@ -119,7 +120,15 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.4: all aquariums in internal flash
+### New in 2.3.5: consistent menus and clearer updates
+
+- Settings > Device > Firmware Updates exposes separate Check SD Card and Check GitHub via Wi-Fi actions. Versions 2.3.4 and older called this page SD Updates.
+- Screenshot to SD is only under Device; weather text size is only under Clock/Weather > Weather. Removed duplicate shortcuts without removing either feature.
+- Aligned Device rows and their touch targets, kept screenshot results visible and separated Wipe All Progress from ordinary actions. Cancellation, timeout and drag-off safety remain tested.
+- Corrected locked-trick labels, Genes/header and journal spacing, inventory/mussel parent controls, long Wi-Fi display names, maximum game records, setup/help text and Enlarged-mode clipping.
+- 434 measured menu-state renders cover both actual framebuffer sizes, plus native, browser and simulator navigation/save-preservation regressions. No partition, save-schema or gameplay changes.
+
+### Previously in 2.3.4: all aquariums in internal flash
 
 - Buy and switch among all eight aquariums without SD. The active profile, global Bank and decoration inventory remain internal; SD remains useful for JSON backups, screenshots and offline updates.
 - Keep the original card inserted for the first upgraded boot. Missing inactive slots import from pocket-tank/tanks with CRC/readback verification; originals are retained but no longer refreshed by gameplay. Missing imports report failure and can retry with the card on a later boot.
@@ -129,7 +138,7 @@ while adding its own modes, shared progression, genetics, stories and games.
 
 ### Previously in 2.3.3: screenshot shortcut and update-mode memory
 
-- Settings > Device now has SCREENSHOT TO SD. The existing PHOTO TO SD shortcut under SD Backups remains; both save aquarium BMPs to pocket-tank/photos/.
+- Settings > Device added SCREENSHOT TO SD. Versions 2.3.3 and 2.3.4 also kept PHOTO TO SD under SD Backups; 2.3.5 removes that duplicate. Aquarium BMPs save to pocket-tank/photos/.
 - Dedicated Wi-Fi update mode defers fish/decor scratch until returning to care. The manifest buffer is allocated after TLS connects, leaving more internal heap for GitHub release-asset certificate verification.
 - Certificate validation, complete image SHA-256/size/board/version checks, explicit approval and A/B boot validation remain required. SD and Wi-Fi updates remain separate choices on the update page.
 

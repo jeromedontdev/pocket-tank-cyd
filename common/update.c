@@ -202,6 +202,10 @@ static const uint8_t ASCII5X7[95][7] = {
 };
 int update_text_w(const char *s, int scale) { return render_text_w(s, scale); }
 void update_text(uint16_t *fb, int stride, int x, int y, int scale, uint32_t rgb, const char *s) {
+#ifdef RENDER_MENU_TESTING
+    extern void menu_test_text(int x, int y, int scale, const char *text);
+    menu_test_text(x, y, scale, s);
+#endif
     if (scale < 1) scale = 1;
     int advance = scale == 1 ? (6 * PAGE_W + TANK_W - 1) / TANK_W : 6 * scale;
     for (; *s; s++, x += advance) {
@@ -215,6 +219,16 @@ static void text_c(uint16_t *fb, int stride, int y, int scale, uint32_t rgb, con
 }
 static void atext_c(uint16_t *fb, int stride, int y, int scale, uint32_t rgb, const char *s) {  /* ASCII, centred */
     update_text(fb, stride, CX - update_text_w(s, scale) / 2, y, scale, rgb, s);
+}
+static void network_name(uint16_t *fb, int stride, int x, int y, int width, const char *name) {
+    char shown[NET_SSID_MAX + 1];
+    snprintf(shown, sizeof shown, "%s", name);
+    size_t n = strlen(shown);
+    if (update_text_w(shown, 2) > width) {
+        while (n > 3 && update_text_w(shown, 2) > width) shown[--n] = 0;
+        if (n >= 3) memcpy(shown + n - 3, "...", 3);
+    }
+    update_text(fb, stride, x, y, 2, C_TEXT, shown);
 }
 static void page_bg(uint16_t *fb, int stride) {
     render_rect(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, C_INK);
@@ -235,7 +249,7 @@ void updates_sd_status(const char *message, bool ready) {
 }
 void render_updates_page(uint16_t *fb, int stride) {
     page_bg(fb, stride);
-    text_c(fb, stride, 14, 3, C_TEXT, "UPDATES");
+    text_c(fb, stride, 14, 3, C_TEXT, "FIRMWARE UPDATES");
     char line[64];
     snprintf(line, sizeof line, "VERSION %s %s", PT_RELEASE, PT_RELEASE_STAGE);
     render_text(fb, stride, 32, 62, 2, C_TEXT, line);
@@ -246,7 +260,8 @@ void render_updates_page(uint16_t *fb, int stride) {
     render_text(fb, stride, 32, 184, 2, C_CAPT, "TRUSTED FILES ONLY - NOT SIGNED");
     render_button(fb, stride, UPD_CHECK_X, UPD_CHECK_Y, UPD_CHECK_W, UPD_CHECK_H, C_GO, C_GO_E, s_sd_ready ? "INSTALL AND RESTART" : "CHECK SD CARD", 2);
     render_button(fb, stride, 32, 264, 384, 34, C_INNER, C_EDGE, "CHECK GITHUB VIA WI-FI", 2);
-    render_text(fb, stride, 32, 312, 1, C_CAPT, "BACK UP FIRST. KEEP POWER ON.");
+    render_text(fb, stride, 32, 312, 1, C_CAPT, "BACK UP FIRST.");
+    render_text(fb, stride, 32, 330, 1, C_CAPT, "KEEP POWER ON.");
     render_button(fb, stride, UPD_CLOSE_X, UPD_CLOSE_Y, UPD_CLOSE_W, UPD_CLOSE_H, C_INNER, C_EDGE, "BACK", 2);
 }
 int updates_page_tap(float x, float y) {
@@ -738,7 +753,10 @@ void render_update(uint16_t *fb, int stride, float clock) {
             int y = UPD_ROW_Y0 + r * UPD_ROW_H;
             render_rect(fb, stride, UX, y, UW - (pages > 1 ? 36 : 0), UPD_ROW_H - 4, C_PANEL);
             render_rect_edge(fb, stride, UX, y, UW - (pages > 1 ? 36 : 0), UPD_ROW_H - 4, C_INNER);
-            update_text(fb, stride, UX + 12, y + (UPD_ROW_H - 4 - 14) / 2, 2, C_TEXT, s.aps[i].ssid);
+            int signal_x = UX + UW - (pages > 1 ? 36 : 0) - 44;
+            int name_end = signal_x - 8 - (s.aps[i].secured ? 0 : render_text_w("OPEN", 2) + 8);
+            network_name(fb, stride, UX + 12, y + (UPD_ROW_H - 4 - 14) / 2,
+                         name_end - UX - 12, s.aps[i].ssid);
             signal_bars(fb, stride, UX + UW - (pages > 1 ? 36 : 0) - 44, y + 8, s.aps[i].rssi);
             if (!s.aps[i].secured) render_text(fb, stride, UX + UW - (pages > 1 ? 36 : 0) - 44 - 8 - render_text_w("OPEN", 2), y + 12, 2, C_DIM, "OPEN");
         }
@@ -753,7 +771,8 @@ void render_update(uint16_t *fb, int stride, float clock) {
         break; }
     case UPD_PG_PASSWORD:
         render_text(fb, stride, UX, 22, 2, C_CAPT, "PASSWORD FOR");
-        update_text(fb, stride, UX + render_text_w("PASSWORD FOR", 2) + 12, 22, 2, C_TEXT, s.ssid);
+        { int x = UX + render_text_w("PASSWORD FOR", 2) + 12;
+          network_name(fb, stride, x, 22, UX + UW - 48 - x, s.ssid); }
         draw_field(fb, stride, clock);
         draw_keyboard(fb, stride);
         break;

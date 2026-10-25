@@ -44,7 +44,11 @@ or deployment is published. Update this file when its contracts change.
   defer fish/decor scratch and manifest buffer until needed for TLS headroom.
   Real GitHub asset certificate verification failed with PSA -141 (RAM) before
   this fix; never weaken TLS checks to work around it. SD and Wi-Fi buttons
-  remain separate. Device > Screenshot to SD retains the backups-page shortcut.
+  remain separate. 2.3.5 menu cleanup renames SD Updates to Firmware
+  Updates, keeps Screenshot to SD only in Device and weather text size only
+  on Weather. Versions 2.3.4 and older retain the previous labels/duplicate shortcuts.
+  The measured menu audit covers 434 states (217 per actual framebuffer size),
+  including long network names, full Bank pages and maximum game records.
 
 - Release 2.3.0 inventory/income: schema 18 / 6168-byte binary, frozen
   previous schema-17 prefix unchanged. Shared storage holds 64 physical
@@ -382,6 +386,14 @@ or further split modules without a concrete maintenance benefit.
 - Page text wraps differently at each resolution. Test actual glyph bounds,
   longest prompts, button collisions, and help/return paths; do not rely on
   ellipses or a screenshot from only one scale.
+- `test_page_art.py` compiles test-only menu observers: measured glyph bounds,
+  text collisions and button label fit across menu/submenu fixtures at both
+  CYD scales. `--gallery <session-directory>` exports the audited screens.
+  Assert the actual framebuffer width for each pass: `progression_boot` can
+  load a different display scale, so restore the intended fixture resolution.
+  Update touch routing and browser/simulator tests when moving a control.
+  Keep screenshot status visible on Device, destructive actions separated,
+  and both update sources discoverable behind the neutral Firmware Updates label.
 - `sim_frame(0)` can normalize tank state. Warm staged fixtures before asserting
   browsing does not mutate saves. Change resolution through the real UI rather
   than editing framebuffer dimensions in a serialized fixture.

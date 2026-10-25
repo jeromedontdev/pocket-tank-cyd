@@ -17,6 +17,7 @@ FEATURE_IMAGES = (
     "game-tide-tactics.png", "game-reef-architect.png", "games-page-two.png",
     "clock-jumbo-digital.png", "clock-jumbo-flip.png", "clock-jumbo-analog.png",
     "clock-settings.png", "weather-settings.png", "journal-goals.png",
+    "settings-device.png", "sd-updates.png",
     "home-collections.png", "games-page-three.png",
     "tank-crafted-ornaments.png", "tank-crafted-seabed.png",
     "tank-crafted-reef.png", "tank-crafted-plants.png",

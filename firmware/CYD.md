@@ -8,7 +8,7 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.4 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.5 is a distinct aquarium game, not just a board port.**
 
 ### Firmware-space audit after 2.3.0
 
@@ -149,8 +149,9 @@ daily care, game bonus limits, touch targets and gameplay are unchanged.
 
 Settings now uses a Clock/Weather hub with Face, Colors, Text / Effects,
 Time / Zone, Weather and one Show Clock action. BACK returns one level.
-Weather's **Text: Small/Medium/Large** control (also **Weather Size** under
-Text / Effects) resizes its reading and saved clock weather/event text.
+Weather's **Text: Small/Medium/Large** control resizes its reading and saved
+clock weather/event text. 2.3.5 removes its duplicate from
+Text / Effects; 2.3.4 and older still have both shortcuts.
 Simple condition icons use the cached weather code; unavailable readings do
 not invent conditions. Clock layout reserves icon/text space and fits down
 when needed. Auto Feed is one toggle, SD actions are full-width, and forgetting
@@ -245,7 +246,8 @@ not distributed as a separate SD icon bank.
    from the latest release; no artwork download is required.
 3. Power off before moving the card. Put
    the update at `pocket-tank/update.ptu` (create `pocket-tank` if needed).
-4. Reinsert the card, power on, open **Settings > Device > SD Updates > Check SD Card**,
+4. Reinsert the card, power on, open **Settings > Device > Firmware Updates > Check SD Card**
+   (**SD Updates** on published 2.3.4 and older),
    then **Install and Restart**. Keep power connected until it finishes.
 
 **Brand-new board or deliberate factory reset:**
@@ -621,8 +623,9 @@ OFF / GLOW / ALERTS (water-colored breathing glow; ALERTS adds hunger and
 visitor signals). Choices persist in NVS; the learned lit-room reading is
 saved at most every 30 minutes. **Settings > SD Backups** offers DAILY
 automatic backups (`auto-NNNN.json`, verified, newest seven kept, retried
-hourly on failure; requires a valid clock) and PHOTO TO SD
-(`pocket-tank/photos/photo-NNNN.bmp`).
+hourly on failure; requires a valid clock). **Settings > Device > Screenshot
+to SD** saves `pocket-tank/photos/photo-NNNN.bmp`. Versions 2.3.4 and older also have a
+PHOTO TO SD shortcut in SD Backups; 2.3.5 removes that duplicate.
 
 Serial console helpers: `ldr` (log), `ldr <mode>`, `ldr <dark> <lit>` (manual
 calibration), `led <mode>`, `led <r> <g> <b> [ms]`, `photo`,
@@ -634,7 +637,8 @@ calibration), `led <mode>`, `led <r> <g> <b> [ms]`, `photo`,
 - Fish goals use the rules advisor, not the upstream local LLM. This build
   has no model partition and the connected board has no PSRAM.
 - Wi-Fi scanning, saved-network reconnect and certificate-verified weather
-  use internal RAM. From 2.3.2, Settings > Device > SD Updates also offers
+  use internal RAM. Settings > Device > Firmware Updates (called SD Updates
+  on published 2.3.4 and older) offers
   **Check GitHub via Wi-Fi** against the latest stable release of this fork.
   The download is checked for exact size, board, embedded version and full-file
   SHA-256 before selecting the inactive app slot. The channel trusts GitHub
@@ -717,7 +721,7 @@ fish identities/life records, a bounded recap, tank identity, visitor/backup
 records and six fixed-scenery ownership bits. The 24 KiB NVS partition remains
 unchanged; the practical 5920-byte NVS ceiling budgets three copies and 64
 settings entries within the 630 usable entries, retaining the GC page.
-Source saves are 6032 bytes/schema 17: the existing 128 KiB SPIFFS partition
+Current saves are 6168 bytes/schema 18: the existing 128 KiB SPIFFS partition
 holds alternating CRC/readback-verified active copies and a durable wipe
 marker. NVS is migration input only; never put the expanded blob back there.
 Only a byte-for-byte erased filesystem may be formatted automatically.
@@ -815,7 +819,8 @@ Rainbow sand runs left-to-right with the original stable grain texture.
 `style sand 4`, `5`, `6`, and `7` select rainbow, hot pink, electric cyan,
 and neon lime. All four are included in the existing Sand Palette purchase.
 **Home > Tank > Sand & Water** keeps each palette on its own line.
-**Settings > Device** contains **TOUCH CALIBRATION**, **SD UPDATES** and the
+**Settings > Device** contains **SCREENSHOT TO SD**, **TOUCH CALIBRATION**,
+**FIRMWARE UPDATES** (**SD UPDATES** on published 2.3.4 and older) and the
 confirmed aquarium wipe. Brightness and scale are in **Settings > Display**.
 The Lights Out control remains hidden;
 existing lighting behavior and the serial `ota check` command remain available.
@@ -834,12 +839,14 @@ Console examples: `buy shell`, `buy starfish`, `buy anchor`, `buy buoy`,
 Open **Settings > SD Backups** and tap **BACKUP TO SD**. Each successful backup creates a
 new file in the card's `pocket-tank` directory: `backup-0001.json`,
 `backup-0002.json`, and so on. Existing backups are not overwritten.
-New exports use JSON schema 17, including shared daily care/bonus limits, fixed mode, starvation/global unlock/
+New exports use JSON schema 18, including shared decoration inventory,
+extra placed ornaments, pearl-mussel income and per-game daily allowances,
+shared daily care/bonus limits, fixed mode, starvation/global unlock/
 local refund state, eighteen-game records, Lost Current progress, family
 lineage, genes, the visitor log, persistent fish stories/buddies, recaps,
 tank identity, rare sightings, fixed scenery, backup status, Enlarged/Normal scale, creature/wardrobe colors, per-fish wearables, the traveling fish, companion progress, item ownership, placement,
 stacking, palette selections, fish appearance, Aquarium Journal progress
-and all stored fish. Schema 1 through 16 backups
+and all stored fish. Schema 1 through 17 backups
 still restore, defaulting absent additions to unowned decorations and
 Classic/Stripes fish (schema 1 also defaults the palettes to original).
 Older backups start with an empty Journal; existing care totals and current

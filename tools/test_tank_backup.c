@@ -876,7 +876,7 @@ static void test_clock(void) {
     for (int i = 0; i < 4; i++) clock_tap(&t, 220, 132);
     clock_tap(&t, 220, 180);
     clock_tap(&t, 380, 28); clock_tap(&t, 100, 180);
-    clock_tap(&t, 220, 180); clock_tap(&t, 220, 228);
+    clock_tap(&t, 220, 132); clock_tap(&t, 220, 180);
     assert(t.aquariums.clock_flags == CLOCK_FLAGS_MASK);
     clock_tap(&t, 380, 20);
     clock_tap(&t, 330, 180); clock_tap(&t, 220, 180);
@@ -3738,7 +3738,7 @@ int main(int argc, char **argv) {
     cx = render_frame_x(360); cy = render_frame_y(190);
     render_settings_touch(&tank, cx, cy, true, &value);
     assert(render_settings_touch(&tank, cx, cy, false, &value) == SET_TAP_TOUCH);
-    cx = render_frame_x(100); cy = render_frame_y(260);
+    cx = render_frame_x(100); cy = render_frame_y(284);
     int wipe_writes = writes;
     render_settings_touch(&tank, cx, cy, true, &value);
     assert(writes == wipe_writes);
@@ -3773,10 +3773,10 @@ int main(int argc, char **argv) {
     assert(render_settings_touch(&tank, rx, y, false, &value) == SET_TAP_RESTORE && value == 0);
     const struct { int section, x, y, action; } device_taps[] = {
         {0, 200, 190, SET_TAP_DETAIL}, {0, 200, 232, SET_TAP_ROOM}, {0, 200, 272, SET_TAP_LED},
-        {3, 224, 180, SET_TAP_AUTO_BACKUP}, {3, 224, 228, SET_TAP_PHOTO},
-        {5, 224, 69, SET_TAP_PHOTO}, {5, 224, 122, SET_TAP_UPDATES},
-        {5, 224, 192, SET_TAP_TOUCH}, {5, 224, 262, SET_TAP_WIPE},
-        {5, 224, 93, SET_TAP_NONE}
+        {3, 224, 180, SET_TAP_AUTO_BACKUP}, {3, 224, 228, SET_TAP_NONE},
+        {5, 224, 84, SET_TAP_PHOTO}, {5, 224, 132, SET_TAP_UPDATES},
+        {5, 224, 180, SET_TAP_TOUCH}, {5, 224, 284, SET_TAP_WIPE},
+        {5, 224, 108, SET_TAP_NONE}, {5, 224, 250, SET_TAP_NONE}
     };
     for (int scale = 0; scale < 2; scale++) {
         tank_resolution(scale != 0);

@@ -34,7 +34,7 @@ def exercise(lib, backup):
         assert lib.sim_page() == 7
 
     def wipe():
-        lib.sim_action(2); tap(330, 260); tap(100, 260); tap(302, 216)
+        lib.sim_action(2); tap(330, 260); tap(100, 284); tap(302, 216)
         assert lib.sim_setup_page() >= 0 and not lib.sim_mode_chosen()
         fresh = snapshot()
         assert not fresh["tank"]["sd_balance"] and not fresh["tank"]["journal_xp"]

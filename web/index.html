@@ -54,7 +54,7 @@
 <nav aria-label="Main navigation">
   <strong>Pocket Tank CYD</strong>
   <a href="#features">Features</a>
-  <a href="#latest-features">New in 2.2</a>
+  <a href="#menu-updates">What's new</a>
   <a href="./play.html">Play</a>
   <a href="./viewer.html">Save viewer</a>
   <a class="button" href="./flash.html">USB flasher</a>
@@ -90,26 +90,36 @@
     <strong>Published firmware: <span id="release-version">see the latest release</span>.</strong>
     The flasher uses the latest stable
     <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">GitHub release</a>.
-    The illustrated menus, eighteen games, first-run Normal/Creative/Hard modes,
-    shared progression and global Fish Bank require <strong>2.0.0 or newer</strong>.
-    Three scene-detail levels, Tiny/Jumbo clocks, resizable supporting text and linked screen/LED dimming
-    require <strong>2.1.0 or newer</strong>.
-    Cleaner settings, visible weather text sizing and condition icons require
-    <strong>2.1.3 or newer</strong>.
-    Care-first daily progression and bounded game bonuses require <strong>2.2.0 or newer</strong>.
-    Refined shared menu icons, game thumbnails and medals require <strong>2.2.1 or newer</strong>.
-    Crafted tank ornaments, scenery and shaded foliage require <strong>2.2.2 or newer</strong>.
-    Consistent Normal/Enlarged typography requires <strong>2.2.5 or newer</strong>.
-    Single-Back wardrobe colors, leaner five-fish rendering and tile-safe seahorse shadows
-    require <strong>2.2.6 or newer</strong>.
-    Fuller LCD DMA transfers and lossless fish/helper/clock optimizations
-    require <strong>2.2.7 or newer</strong>.
-    Shared decoration inventory, pearl-mussel income and five daily bonus dollars
-    per game require <strong>2.3.0 or newer</strong>.
+    The current release includes all eight internally stored aquariums, shared
+    inventory, pearl-mussel income, eighteen games and the audited menus below.
+    <strong>2.3.5</strong> clarifies update navigation and removes duplicate
+    controls; GitHub Wi-Fi updating requires 2.3.2 or newer, and SD-free tank
+    switching requires 2.3.4 or newer.
     Check the published version above before installing. Older releases remain
     available, but cannot load the expanded current save format.
   </aside>
 
+  <section id="menu-updates" aria-labelledby="menu-updates-heading">
+    <p class="eyebrow">New in 2.3.5</p>
+    <h2 id="menu-updates-heading">Clearer menus, easier updates</h2>
+    <p><strong>Settings &gt; Device &gt; Firmware Updates</strong> puts
+      <strong>Check GitHub via Wi-Fi</strong> and <strong>Check SD Card</strong>
+      side by side. Versions 2.3.4 and older called this entry SD Updates.</p>
+    <p>Screenshot to SD now has one home under Device; weather text size has one
+      home under Clock/Weather &gt; Weather. Aligned buttons, corrected clipped
+      text and cleaner inventory panels make both Normal and Enlarged easier
+      to use. The audit checks 434 rendered menu states across both scales.</p>
+    <div class="gallery">
+      <figure>
+        <img class="screen" src="./media/settings-device.png" width="320" height="240" alt="Device settings with screenshot, firmware updates, touch calibration and a separated wipe action">
+        <figcaption>One place for screenshots, updates and device maintenance.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/sd-updates.png" width="320" height="240" alt="Firmware Updates with separate SD card and GitHub Wi-Fi actions">
+        <figcaption>Wi-Fi and SD updates remain separate choices on the same page.</figcaption>
+      </figure>
+    </div>
+  </section>
   <section id="internal-aquariums" aria-labelledby="internal-aquariums-heading">
     <p class="eyebrow">New in 2.3.4</p>
     <h2 id="internal-aquariums-heading">Eight aquariums, no card required</h2>
@@ -125,8 +135,8 @@
     <p class="eyebrow">New in 2.3.3</p>
     <h2 id="screenshot-shortcut-heading">Keep a picture of your aquarium</h2>
     <p><strong>Settings &gt; Device &gt; Screenshot to SD</strong> saves a BMP
-      image to <code>pocket-tank/photos/</code>. The Photo to SD shortcut under
-      SD Backups remains available too.</p>
+      image to <code>pocket-tank/photos/</code>. The old duplicate under
+      SD Backups was removed in 2.3.5; the screenshot feature remains.</p>
     <p>Wi-Fi update mode also leaves more ESP32 memory free for GitHub's TLS
       certificate verification, while retaining all download checks and the
       separate offline SD update option.</p>
@@ -135,7 +145,8 @@
     <p class="eyebrow">New in 2.3.2</p>
     <h2 id="github-updates-heading">The next update, without the cable</h2>
     <p>After installing 2.3.2 once, open <strong>Settings &gt; Device &gt;
-      SD Updates &gt; Check GitHub via Wi-Fi</strong>. The tank checks the latest
+      Firmware Updates &gt; Check GitHub via Wi-Fi</strong> (called SD Updates
+      in 2.3.4 and older). The tank checks the latest
       stable CYD release and asks before downloading a newer version.</p>
     <p>Certificate-verified HTTPS, an exact-release app URL, board/version/size
       checks and SHA-256 verification protect the download before switching
@@ -383,11 +394,12 @@
     <span class="badge">Care-first progression: 2.2.0</span>
     <h2>A little care. A reason to return.</h2>
     <p>Feed, connect with a fish, and tend or quietly watch your reef.
-      Three flexible daily activities offer up to 100 sand dollars and 50 XP,
+      Three flexible daily activities offer up to 125 sand dollars and 50 XP,
       with no streak penalties or missed-day debt. The budget aims at weeks of
       short daily visits, not grinding.</p>
     <p>Games are optional fun: unlimited play, continued Challenge records and
-      medals, but just five shared bonus dollars a day and no Journal XP.
+      medals, with up to five bonus dollars per game per day (90 across
+      eighteen games), shared across tanks and difficulty, and no Journal XP.
       Existing progress stays yours.</p>
     <figure>
       <img class="screen" src="./media/journal-goals.png" loading="lazy" width="320" height="240" alt="Pocket Tank CYD daily care checklist with feeding, connection and reef care rewards">

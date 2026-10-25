@@ -299,8 +299,8 @@ void weather_render(uint16_t *fb, int st, int text_size) {
         if (weather_icon_code() >= 0) render_weather_icon(fb, st, 32, 172, 28, reading.code);
         bounded_text(fb, st, weather_icon_code() >= 0 ? 72 : 32, 180, weather_icon_code() >= 0 ? 344 : 384,
                      text_size >= 1 && text_size <= 3 ? text_size : 1, INK, line);
-        render_text(fb, st, 32, 320, 1, MUTED, "OPTIONAL CITY LOOKUP - NO AUTO LOCATION");
-        render_text(fb, st, 32, 334, 1, MUTED, "OPEN-METEO / GEONAMES - REFRESH EVERY 15M");
+        render_text(fb, st, 32, 318, 1, MUTED, "CHOOSE CITY - NO AUTO LOCATION");
+        render_text(fb, st, 32, 336, 1, MUTED, "OPEN-METEO / GEONAMES: 15M");
     } else if (page == 1) {
         render_rect(fb, st, 12, 56, 424, 32, BUTTON);
         bounded_text(fb, st, 20, 65, 408, 2, INK, query[0] ? query : "Type a city name");

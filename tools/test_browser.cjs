@@ -425,6 +425,32 @@ async function main() {
       await menuImage(`care-${scale}`);
       await tap(380,28); await tap(330,180);
       await menuImage(`backups-${scale}`);
+      const backupBefore = await snapshot();
+      async function assertMenuPreserved() {
+        const after = await snapshot();
+        for (const key of ["names","n_fish","sd_balance","sd_earned","sd_unlocks","journal_xp",
+          "newborn_p1","autofeed_off","clock_theme","clock_flags","clock_layout","clock_delay"]) {
+          assert.ok(Object.hasOwn(backupBefore.tank, key), `Fixture contains ${key}`);
+          assert.deepEqual(after.tank[key], backupBefore.tank[key], `Inert/cancelled control preserves ${key}`);
+        }
+        for (const key of ["bank","inventory","profile"]) {
+          assert.ok(Object.hasOwn(backupBefore, key), `Fixture contains ${key}`);
+          assert.deepEqual(after[key], backupBefore[key], `Inert/cancelled control preserves ${key}`);
+        }
+      }
+      await tap(224,228); // Removed duplicate screenshot control is inert.
+      await assertMenuPreserved();
+      await tap(380,28); await tap(330,260);
+      const deviceImage = await menuImage(`device-${scale}`);
+      await tap(224,250); // Gap above destructive action is inert.
+      assert.equal(await native("return game._sim_page()"), 2);
+      assert.equal(await menuImage(`device-gap-${scale}`), deviceImage);
+      await tap(224,284); // Wipe must open confirmation, never reset directly.
+      assert.equal(await native("return game._sim_page()"), 2);
+      assert.notEqual(await menuImage(`wipe-confirm-${scale}`), deviceImage);
+      await tap(140,216); // Cancel the rendered confirmation without touching saves.
+      assert.equal(await menuImage(`wipe-cancelled-${scale}`), deviceImage);
+      await assertMenuPreserved();
       await tap(380,28); await tap(100,100); await tap(200,138);
       await page.locator('[data-action="0"]').click();
     }

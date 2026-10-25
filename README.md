@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.4
+# Pocket Tank CYD 2.3.5
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.3.4**; firmware, update
+now versioned independently. This is **release 2.3.5**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,6 +23,21 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
+## New in 2.3.5: consistent menus and clearer updates
+
+The source now calls **Settings > Device > Firmware Updates** what it is:
+one page with separate **Check SD Card** and **Check GitHub via Wi-Fi** actions.
+Versions 2.3.4 and older label that entry **SD Updates**.
+
+**Screenshot to SD** lives only under **Device**, not twice in Device and SD
+Backups. Weather text sizing lives only under **Clock/Weather > Weather**.
+Device actions use aligned full-width rows; screenshot success/failure is
+visible on that page. Enlarged-scale clipping, locked-trick labels, journal
+line spacing, inventory details and update-footer collisions are corrected.
+The renderer tests measure text and button bounds and text collisions at both
+240x180 and 320x240: 434 menu-state renders, including long status strings,
+full Bank pages, Creative/Hard controls and maximum game records.
+
 ## New in 2.3.4: SD-optional aquarium storage
 
 The current source stores all eight aquarium slots internally. Buying and
@@ -39,8 +54,9 @@ No partitions or save schema change. Use 2.3.4 or newer for this storage behavio
 ## New in 2.3.3: clearer screenshots and more update memory
 
 **Settings > Device > Screenshot to SD** exposes the aquarium screenshot
-feature without opening backups. The existing **Photo to SD** button in
-SD Backups remains available; both save BMP images in `pocket-tank/photos/`.
+feature without opening backups. Versions 2.3.3 and 2.3.4 also offered a
+**Photo to SD** duplicate in SD Backups; 2.3.5 keeps only the Device control.
+Screenshots save BMP images in `pocket-tank/photos/`.
 
 Dedicated Wi-Fi update mode no longer reserves fish/decor rendering scratch,
 and manifest reception memory is allocated only after the HTTPS handshake.
@@ -49,7 +65,7 @@ without disabling certificate, board, version, size or SHA-256 checks.
 
 ## New in 2.3.2: on-device GitHub updates
 
-**Settings > Device > SD Updates > Check GitHub via Wi-Fi** checks this fork's
+**Settings > Device > Firmware Updates > Check GitHub via Wi-Fi** checks this fork's
 latest stable GitHub release and offers newer firmware for explicit approval.
 The existing SD installer remains available on the same page. Install 2.3.2
 once over USB or SD to enable the default channel. Aquarium saving must succeed
@@ -420,7 +436,7 @@ This release adds:
   that follows the clock (north, south or off).
 - The CYD's **room-light sensor** can dim the backlight in a dark room, and the
   **back RGB LED** glows with the water color or signals hunger and visitors.
-- Daily automatic SD backups (newest seven kept), **PHOTO TO SD** screenshots
+- Daily automatic SD backups (newest seven kept), **Device > Screenshot to SD**
   and a browser [save viewer](https://jeromedontdev.github.io/pocket-tank-cyd/viewer.html).
 - Fish biographies, remembered swim buddies, life firsts and adventure keepsakes.
 - Quiet bounded recaps, helper reports, tank subtitles/emblems and discovery hints.
@@ -443,7 +459,7 @@ This release adds:
   display orientation, brightness and gameplay settings.
 - Flash-resident icon art and versioned SD JSON tank backups with safety snapshots
   before restores.
-- Offline SD firmware packages through **Settings > Device > SD Updates**, with
+- Offline SD firmware packages through **Settings > Device > Firmware Updates**, with
   checksum/board validation, explicit confirmation and a pre-update tank backup.
 - Treasure chest: 120 sand dollars, placement/layering, move/sell and persistence.
 - Scallop shell (60), starfish ornament (60), sunken anchor (80), and a

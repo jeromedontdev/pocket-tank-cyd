@@ -86,7 +86,7 @@ def main():
 
                 def restore(snapshot, preserve_life=False):
                     snapshot = copy.deepcopy(snapshot)
-                    if snapshot.get("schema") in (11, 12, 13, 14, 15, 16, 17) and not preserve_life:
+                    if snapshot.get("schema") in (11, 12, 13, 14, 15, 16, 17, 18) and not preserve_life:
                         # Staged rosters replace identities; migrate their life records honestly.
                         snapshot["schema"] = 10
                         snapshot.pop("polish")
@@ -97,6 +97,9 @@ def main():
                         snapshot.pop("profile", None)
                         snapshot.pop("games_extra", None)
                         snapshot.pop("care", None)
+                        snapshot.pop("inventory", None)
+                        snapshot.pop("mussel", None)
+                        snapshot.pop("game_income", None)
                     data = json.dumps(snapshot, separators=(",", ":")).encode()
                     if not lib.sim_restore(data, len(data)):
                         raise RuntimeError(lib.sim_error().decode())
@@ -541,7 +544,7 @@ def main():
                 capture("settings-display")
                 lib.sim_action(2); tap(100, 260)
                 capture("settings-care")
-                lib.sim_action(2); tap(330, 100); tap(330, 318)
+                lib.sim_action(2); tap(330, 100); tap(100, 180)
                 capture("clock-effects")
                 lib.sim_action(0)
                 scene("tank-normal")
@@ -551,7 +554,7 @@ def main():
                 tap(200, 120)
                 capture("sd-updates")
                 lib.sim_action(2)
-                tap(330, 260); tap(100, 260)
+                tap(330, 260); tap(100, 284)
                 capture("wipe-confirmation")
                 tap(140, 216)
                 # Unowned shop pages show the actual prices rather than owned controls.
@@ -642,7 +645,7 @@ def main():
                 tap(350, 120)
                 capture("aquarium-switch")
                 tap(120, 250)
-                lib.sim_action(2); tap(330, 260); tap(100, 260); tap(302, 216)
+                lib.sim_action(2); tap(330, 260); tap(100, 284); tap(302, 216)
                 tap(200, 154); capture("first-run-creative")
                 tap(200, 300); lib.sim_action(0)
                 if lib.sim_mode() != 1:
@@ -657,7 +660,7 @@ def main():
                     capture("creative-fish" + suffix)
                     lib.sim_action(0); scene("creative-tank" + suffix)
                 lib.sim_action(2); capture("settings-creative-mode")
-                tap(330, 260); tap(100, 260); tap(302, 216)
+                tap(330, 260); tap(100, 284); tap(302, 216)
                 tap(200, 210); capture("first-run-hard")
                 tap(200, 300); lib.sim_action(0)
                 lib.sim_action(2); tap(100, 260); capture("hard-care")

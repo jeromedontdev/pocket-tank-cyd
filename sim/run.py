@@ -221,7 +221,7 @@ def main():
                 tap(380, 28); tap(330, 100)  # Colors.
                 tap(220, 84); tap(220, 132); tap(220, 180)
                 tap(380, 28); tap(100, 180)  # Text & Effects.
-                tap(220, 180); tap(220, 228)
+                tap(220, 132); tap(220, 180)
                 assert json.loads(backup(lib))["tank"]["clock_flags"] == 61
                 assert json.loads(backup(lib))["tank"]["clock_secondary"] == 1
                 tap(380, 28); tap(330, 260)
@@ -233,15 +233,23 @@ def main():
                     tap(220, 132)
                 tap(220, 180)
                 tap(380, 28); tap(100, 180)
-                tap(220, 180); tap(220, 228)
+                tap(220, 132); tap(220, 180)
                 assert json.loads(backup(lib))["tank"]["clock_flags"] == 1, "Color wrapping/detail toggles must preserve format and DST"
                 assert json.loads(backup(lib))["tank"]["clock_secondary"] == 0
                 for step in range(3):
-                    tap(220, 84); tap(220, 132)
+                    tap(220, 84)
                     text = json.loads(backup(lib))["tank"]
                     assert text["clock_layout"] == 5 + ((step + 1) % 3) * 64
-                    assert text["clock_delay"] == 1 + ((step + 1) % 3) * 8
+                    assert text["clock_delay"] == 1, "Weather size belongs only to Weather"
                     assert text["clock_secondary"] == 0
+                tap(380, 28); tap(100, 260)
+                for step in range(3):
+                    tap(320, 288)
+                    text = json.loads(backup(lib))["tank"]
+                    assert text["clock_delay"] == 1 + ((step + 1) % 3) * 8
+                    assert text["clock_layout"] == 5
+                tap(380, 28)
+                tap(100, 180)
                 tap(380, 28)  # One BACK always returns to Clock & Weather.
                 options = json.loads(backup(lib))["tank"]
                 tap(330, 260)
@@ -522,14 +530,14 @@ def main():
                 lib.sim_action(2)
                 tap(330, 260)
                 before = json.loads(backup(lib))["tank"]
-                tap(100, 260)
+                tap(100, 284)
                 tap(146, 216)  # Cancel leaves the tank intact.
                 assert json.loads(backup(lib))["tank"]["sd_balance"] == before["sd_balance"]
-                tap(100, 260)
+                tap(100, 284)
                 for _ in range(81):
                     lib.sim_frame(0.25)
                 assert json.loads(backup(lib))["tank"]["sd_balance"] == before["sd_balance"]
-                tap(100, 260)
+                tap(100, 284)
                 lib.sim_touch(146 * lib.sim_width() / 448, 216 * lib.sim_height() / 368, 1)
                 lib.sim_touch(302 * lib.sim_width() / 448, 216 * lib.sim_height() / 368, 0)
                 assert json.loads(backup(lib))["tank"]["sd_balance"] == before["sd_balance"]

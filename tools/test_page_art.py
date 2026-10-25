@@ -11,7 +11,7 @@ import os
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="cc")
-    parser.add_argument("--gallery", type=Path, help="Capture typography, fish, accessory and aquarium-detail samples from the actual renderer")
+    parser.add_argument("--gallery", type=Path, help="Capture audited menus, typography, fish, accessories and aquarium details from the actual renderer")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     build = root / "firmware" / "build_page_art_native"
@@ -25,7 +25,8 @@ def main():
         if Path(args.cc).stem.lower() == "zig":
             command.append("cc")
         command += ["-std=c11", "-O1", "-Wall", "-Wextra", "-Werror",
-                    "-DRENDER_GAMES_TESTING",
+                    "-DRENDER_GAMES_TESTING", "-DRENDER_MENU_TESTING",
+                    "-DPOP_CAP=5", "-DCYD_FLAT_EDGES=1",
                     "-I" + str(common), "-I" + str(cjson),
                     str(root / "tools" / "test_page_art.c")]
         command += [str(common / name) for name in (
@@ -50,8 +51,7 @@ def main():
         if args.gallery:
             from capture_cyd_gallery import png
             for width, height in ((240, 180), (320, 240)):
-                for name in ("fish-bodies", "fish-accessories", "aquarium-details", "typography"):
-                    raw = args.gallery / f"{name}-{width}.raw"
+                for raw in args.gallery.glob(f"*-{width}.raw"):
                     data = raw.read_bytes()
                     pixels = struct.unpack(f"<{width * height}H", data)
                     png(raw.with_suffix(".png"), pixels, 3, width, height)

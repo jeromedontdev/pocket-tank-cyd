@@ -20,6 +20,10 @@ static void text(uint16_t *fb, int stride, int x, int y, uint32_t rgb, const cha
 static void button(uint16_t *fb, int stride, int x, int y, int w, const char *s) {
     render_rect(fb, stride, x, y, w, 30, 0x264d55);
     int scale = render_text_w(s, 2) <= w - 16 ? 2 : 1;
+#ifdef RENDER_MENU_TESTING
+    extern void menu_test_button(int x, int y, int w, int h, const char *label, int scale);
+    menu_test_button(x, y, w, 30, s, scale);
+#endif
     render_text(fb, stride, x + 8, y + (scale == 2 ? 7 : 11), scale, 0xe7f4dc, s);
 }
 static void stamp(uint16_t *fb, int stride, int x, int y, int kind, bool found);
@@ -28,6 +32,10 @@ static void illustrated_button(uint16_t *fb, int stride, int x, int y, int w,
     render_rect(fb, stride, x, y, w, 30, 0x264d55);
     stamp(fb, stride, x + 8, y + 7, icon, found);
     int scale = render_text_w(label, 2) <= w - 42 ? 2 : 1;
+#ifdef RENDER_MENU_TESTING
+    extern void menu_test_button(int x, int y, int w, int h, const char *label, int scale);
+    menu_test_button(x + 26, y, w - 26, 30, label, scale);
+#endif
     render_text(fb, stride, x + 34, y + (scale == 2 ? 7 : 11), scale, 0xe7f4dc, label);
 }
 static unsigned bits(unsigned value) {
@@ -220,7 +228,7 @@ static void rpg_render(const tank_t *t, uint16_t *fb, int stride) {
                 snprintf(line, sizeof line, "%.12s: %s", name && *name ? name : "EARLIER FISH",
                          companion_rpg_route(t, chapter));
             } else snprintf(line, sizeof line, "%s", chapter == r->chapter ? "YOUR NEXT CHAPTER" : "UNEXPLORED");
-            render_text(fb, stride, 38, y + 14, 1, done ? 0xffd998 : 0x809b9a, line);
+            render_text(fb, stride, 38, y + 16, 1, done ? 0xffd998 : 0x809b9a, line);
         }
         button(fb, stride, 12, 310, 205, "HOW TO PLAY");
         button(fb, stride, 231, 310, 205, "CONTINUE STORY");
@@ -331,7 +339,7 @@ static void genes_render(const tank_t *t, int i, uint16_t *fb, int stride) {
     if (!t->n_fish) { text(fb, stride, 14, 94, 0xe7f4dc, "No fish at home."); return; }
     const fish_lineage_t *l = &t->story.active[i];
     char line[160];
-    fish_heading(t, i, fb, stride, "SHOWN & INHERITED LOOKS");
+    fish_heading(t, i, fb, stride, "INHERITED LOOKS");
     button(fb, stride, 304, 84, 132, "NEXT FISH");
     snprintf(line, sizeof line, "MARKING: %s", FISH_PATTERN_NAMES[t->fish[i].pattern]);
     render_text(fb, stride, 14, 124, 1, 0xe7f4dc, line);
@@ -480,7 +488,7 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
             "Calm nearby fish get to know one another.",
             "Fed, rested fish sometimes make a playful dart.",
             "Reef decorations give curious fish a destination.",
-            "Use SAY HELLO in Care to build a bond.",
+            "Use Fish > Say Hello to build a bond.",
             "Say hello, then try a bond-unlocked trick.",
             "Send a fish to Lantern lagoon; wait for its return.",
             "Send a fish to Pearl library; wait for its return.",
@@ -656,13 +664,11 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
             static const unsigned need[] = {10, 25, 50};
             for (int j = 0; j < 3; j++) {
                 bool unlocked = progression_creative(t) || b->bond >= need[j];
-                snprintf(line, sizeof line, "%s%s", tricks[j], unlocked ? "" : " (LOCKED)");
-                illustrated_button(fb, stride, 12 + 146 * j, 244, 132, line,
-                                   j == 0 ? STAMP_FLAG : j == 1 ? STAMP_EYE : STAMP_FISH,
-                                   unlocked);
+                snprintf(line, sizeof line, "%s%s", tricks[j], unlocked ? "" : " -");
+                button(fb, stride, 12 + 146 * j, 244, 132, line);
             }
             render_text(fb, stride, 14, 282, 1, 0xa7c4ba,
-                        progression_creative(t) ? "CREATIVE: ALL TRICKS AVAILABLE." : "TRICKS: 10 / 25 / 50 BOND.");
+                        progression_creative(t) ? "CREATIVE: ALL TRICKS AVAILABLE." : "- = LOCKED: 10 / 25 / 50 BOND.");
             button(fb, stride, 12, 306, 424, "HOW BONDS WORK");
         } else paragraph(fb, stride, 94, 0xa7c4ba, "No fish at home. Check the Fish Bank or Adventures.");
     } else if (page == COMPANION_SECTION_APPEARANCE) {
@@ -773,7 +779,7 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
             "DART: a quick playful swim.",
             "BUBBLE: visit the bubble column.",
             "FOLLOW: swim with a tankmate.",
-            "Close CARE to watch a trick."
+            "Use BACK to watch a trick."
         };
         for (int i = 0; i < 10; i++) text(fb, stride, 14, 91 + 23 * i, 0xe7f4dc, help[i]);
     }
@@ -872,7 +878,7 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
         else if (y >= 244 && y < 274 && t->n_fish) for (int j = 0; j < 3; j++)
             if (x >= 12 + 146 * j && x < 144 + 146 * j) {
                 static const unsigned need[] = {10, 25, 50};
-                static const char *const effects[] = {"Dart! Close CARE to watch.", "Bubbles! Close CARE to watch.", "Follow! Close CARE to watch."};
+                static const char *const effects[] = {"Dart! BACK to watch.", "Bubbles! BACK to watch.", "Follow! BACK to watch."};
                 int i = selected < t->n_fish ? selected : 0;
                 if (t->companion.active[i].bond < need[j]) snprintf(notice, sizeof notice, "Locked: needs %u bond. Say hello.", need[j]);
                 else if (j == 2 && t->n_fish < 2) snprintf(notice, sizeof notice, "Follow needs a tankmate at home.");

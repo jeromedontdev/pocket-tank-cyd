@@ -906,7 +906,7 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
             if (g_game_menu) {
                 snprintf(text, sizeof text, "%s  %s", game_names[g_game_menu * 6 + i], medals[medal < 4 ? medal : 0]);
                 render_internal_text(&c, 76, y + 1, 1, MSP_TEAL, text);
-                snprintf(text, sizeof text, "BEST %u%s  ROUNDS %u", (unsigned)records->best[i],
+                snprintf(text, sizeof text, "BEST %u%s RND %u", (unsigned)records->best[i],
                          g_game_menu == 2 && i < 2 ? " MOVES" : "", (unsigned)records->rounds[i]);
                 render_internal_text(&c, 76, y + 18, 1, 0xffffff, text);
                 continue;
@@ -914,7 +914,7 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
             snprintf(text, sizeof text, "%s%s  %s", t->companion.featured == i ? "> " : "",
                      short_names[i], medals[medal < 4 ? medal : 0]);
             render_internal_text(&c, 76, y + 1, 1, MSP_TEAL, text);
-            snprintf(text, sizeof text, "BEST %u%s  ROUNDS %u", (unsigned)t->companion.game_best[i],
+            snprintf(text, sizeof text, "BEST %u%s RND %u", (unsigned)t->companion.game_best[i],
                      i == 1 || i == 5 ? " MOVES" : "", (unsigned)t->companion.game_rounds[i]);
             render_internal_text(&c, 76, y + 18, 1, 0xffffff, text);
         }
@@ -1068,7 +1068,7 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
         render_internal_button(&c, 280, 54, 144, 34, 0x1c2f36, MSP_TEAL, "FINISH", 2);
     if (g_game.page == GAME_MENU) {
         if (progression_creative(t)) snprintf(text, sizeof text, "CREATIVE: NO COINS, XP OR RECORDS");
-        else snprintf(text, sizeof text, "+1/ROUND, 5 EACH/DAY: ALL 18 + PRACTICE");
+        else snprintf(text, sizeof text, "+1/ROUND, MAX 5/GAME/DAY");
         render_internal_text(&c, 24, 350, 1, MSP_TEAL, text);
     } else render_internal_text(&c, 24, 340, 2,
                     g_game.save_failed ? 0xff8173 : MSP_TEAL,
