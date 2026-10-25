@@ -4,11 +4,13 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import struct
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="cc")
+    parser.add_argument("--gallery", type=Path, help="Capture fish/accessory lineups from the actual renderer")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     build = root / "firmware" / "build_page_art_native"
@@ -35,8 +37,21 @@ def main():
         if sys.platform != "win32":
             command += ["-pthread", "-lm"]
         subprocess.run(command, check=True)
-        subprocess.run([str(build / "test-page-art.exe"), str(build / "icons.bin")],
+        run = [str(build / "test-page-art.exe"), str(build / "icons.bin")]
+        if args.gallery:
+            args.gallery.mkdir(parents=True, exist_ok=True)
+            run.append(str(args.gallery.resolve()))
+        subprocess.run(run,
                        check=True, cwd=root)
+        if args.gallery:
+            from capture_cyd_gallery import png
+            for width, height in ((240, 180), (320, 240)):
+                for kind in ("bodies", "accessories"):
+                    raw = args.gallery / f"fish-{kind}-{width}.raw"
+                    data = raw.read_bytes()
+                    pixels = struct.unpack(f"<{width * height}H", data)
+                    png(raw.with_suffix(".png"), pixels, 3, width, height)
+                    raw.unlink()
     finally:
         shutil.rmtree(build)
 

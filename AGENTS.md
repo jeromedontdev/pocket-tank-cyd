@@ -20,7 +20,14 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.2.2**, refining twenty tank ornaments/fixed scenery,
+- Source release: **2.2.3**, shading all ten fish bodies/fins and six wearables.
+  `fill_fish_material` selects five pre-tinted tones during existing polygon
+  scan conversion; preserve exact coverage, markings/traits, color choices,
+  poses, attachment and full/tile parity. Head-on shading stays within the
+  existing thickness ellipse. No new textures, buffers or save fields.
+  `tools/test_page_art.py --gallery <directory>` captures actual fish/wearable
+  lineups at both sizes without device staging.
+  2.2.2 refined twenty tank ornaments/fixed scenery,
   jade vegetation and folded sword-leaf shading. Material art stays in the
   existing `ornament_pixel`/`scenery_pixel` paths, shared with previews and
   static caches; preserve footprints, openings, night/tile parity and all

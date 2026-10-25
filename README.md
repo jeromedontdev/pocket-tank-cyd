@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.2.2
+# Pocket Tank CYD 2.2.3
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.2.2**; firmware, update
+now versioned independently. This is **release 2.2.3**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,25 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.2.2: more crafted aquarium decorations
+## New in 2.2.3: dimensional fish and accessories
+
+- All ten fish varieties now have restrained back highlights, body midtones
+  and underside shading. Fins, tails, ray wings and jellyfish bells share the
+  same gentle material lighting; head-on turns keep rounded volume.
+- All six wearable accessories have lit faces and shaded folds inside their
+  existing outlines. Both chosen accessory colors and Natural are retained.
+- Tank fish, wardrobe, setup and portraits share the actual renderer.
+  Species silhouettes, swimming, inherited markings, shimmer/pale-belly traits,
+  growth, sleep cues and wearable attachment are unchanged.
+- Shading selects from five pre-tinted colors during the existing polygon
+  scanline pass: no new textures, framebuffer, per-pixel lighting or assets.
+  Saves, prices and daily progression remain unchanged.
+
+| Ten fish varieties | Six wearable accessories |
+|---|---|
+| ![Actual fish bodies and fins with soft material lighting](docs/media/cyd-features/fish-bodies.png) | ![Shaded top hat, party hat, crown, tie, bowtie and bandana](docs/media/cyd-features/fish-accessories.png) |
+
+## Previously in 2.2.2: more crafted aquarium decorations
 
 - Twenty in-tank ornaments and fixed scenery pieces now have material-specific
   shading: wood grain and brass chest fittings, faceted crystals, beveled

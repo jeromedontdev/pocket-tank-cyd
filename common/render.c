@@ -306,10 +306,12 @@ static float fast_sin(float x) {
 }
 
 /* filled convex polygon, points in world space */
-static void fill_poly(ctx_t *c, const float *xs, const float *ys, int n, uint32_t rgb) {
+static void fill_poly_palette(ctx_t *c, const float *xs, const float *ys, int n,
+                              const uint32_t *colors, int tones) {
     float miny = 1e9f, maxy = -1e9f;
     for (int i = 0; i < n; i++) { if (ys[i] < miny) miny = ys[i]; if (ys[i] > maxy) maxy = ys[i]; }
-    src_t s = src_color(rgb, c->dim);
+    src_t palette[5];
+    for (int i = 0; i < tones; i++) palette[i] = src_color(colors[i], c->dim);
     int y0 = (int)miny, y1 = (int)maxy;
     if (y0 < c->oy) y0 = c->oy;
     if (y1 >= c->oy + c->h) y1 = c->oy + c->h - 1;
@@ -324,8 +326,15 @@ static void fill_poly(ctx_t *c, const float *xs, const float *ys, int n, uint32_
                 if (x > x1) x1 = x;
             }
         }
-        span(c, (int)x0, (int)x1, y, &s, 255);
+        int tone = tones == 1 ? 0 : (int)((y - miny) * tones / (maxy - miny + 1));
+        if (tone < 0) tone = 0;
+        if (tone >= tones) tone = tones - 1;
+        span(c, (int)x0, (int)x1, y, &palette[tone], 255);
     }
+}
+
+static void fill_poly(ctx_t *c, const float *xs, const float *ys, int n, uint32_t rgb) {
+    fill_poly_palette(c, xs, ys, n, &rgb, 1);
 }
 
 static uint32_t mix(uint32_t a, uint32_t b, float p) {
@@ -334,6 +343,18 @@ static uint32_t mix(uint32_t a, uint32_t b, float p) {
     return ((uint32_t)(ar + (br - ar) * p) << 16) |
            ((uint32_t)(ag + (bg - ag) * p) << 8) |
             (uint32_t)(ab + (bb - ab) * p);
+}
+
+static void fill_fish_material(ctx_t *c, const float *xs, const float *ys, int n,
+                               uint32_t rgb, float relief) {
+    uint32_t colors[5] = {
+        mix(rgb, 0xf4edda, relief),
+        mix(rgb, 0xf4edda, relief * 0.4f),
+        rgb,
+        mix(rgb, 0x183541, relief * 0.45f),
+        mix(rgb, 0x183541, relief * 0.85f)
+    };
+    fill_poly_palette(c, xs, ys, n, colors, 5);
 }
 
 
@@ -378,7 +399,7 @@ static void draw_wearable(ctx_t *c, const fish_t *f, float yh, float yt, float c
                 xs[i] = cx + (xs[i] - cx) * 0.8f;
                 ys[i] = cy + (ys[i] - cy) * 0.8f;
             }
-            fill_poly(c, xs, ys, n, rgb);
+            fill_fish_material(c, xs, ys, n, rgb, 0.38f);
         }
     }
 }
@@ -432,7 +453,7 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
         static const float by[11] = {1, -5, -11, -15, -17, -15, -11, -5, 1, 3, 3};
         float xs[11], ys[11];
         for (int i = 0; i < 11; i++) { xs[i] = TX(bx[i] * width, by[i]); ys[i] = TY(bx[i] * width, by[i]); }
-        fill_poly(c, xs, ys, 11, body);
+        fill_fish_material(c, xs, ys, 11, body, 0.28f);
         float jw = f->size * fabsf(yh);
         if (f->stage >= STAGE_JUV && f->pattern >= PATTERN_SADDLE) {
             static const float sx[7] = {-9, -4, 2, 8, -6, 5, 0}, sy[7] = {-4, -9, -12, -6, -13, -1, -5};
@@ -469,10 +490,10 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
         float lx[8] = {15, 2, -9, -15, -9, 2, 15, 7};
         float ly[8] = {0, -24 + flap, -16, 0, 16 - flap, 24 - flap, 0, 0}, xs[8], ys[8];
         for (int i = 0; i < 8; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
-        fill_poly(c, xs, ys, 8, fin);
+        fill_fish_material(c, xs, ys, 8, fin, 0.28f);
         float tx[3] = {-10, -38, -12}, ty[3] = {-1, tail * 3, 2};
         for (int i = 0; i < 3; i++) { xs[i] = TX(tx[i], ty[i]); ys[i] = TY(tx[i], ty[i]); }
-        fill_poly(c, xs, ys, 3, fin);
+        fill_fish_material(c, xs, ys, 3, fin, 0.24f);
     }
     /* tail fin (triangle, flaps with tail phase) */
     if (!ray) {
@@ -483,23 +504,23 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
         if (shark) { lx[1] = -32; lx[2] = -30; ly[2] = 10 + tail * 4; }
         float xs[3], ys[3];
         for (int i = 0; i < 3; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
-        fill_poly(c, xs, ys, 3, fin);
+        fill_fish_material(c, xs, ys, 3, fin, 0.24f);
     }
     if (betta) {
         float lx[6] = {8, -3, -24, -22, -8, 4}, ly[6] = {6, 22 + tail * 2, 25, 11, 7, 5};
         float xs[6], ys[6];
         for (int i = 0; i < 6; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
-        fill_poly(c, xs, ys, 6, fin);
+        fill_fish_material(c, xs, ys, 6, fin, 0.3f);
     }
     if (shark) {
         float lx[3] = {7, -5, -10}, ly[3] = {3, 17, 5}, xs[3], ys[3];
         for (int i = 0; i < 3; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
-        fill_poly(c, xs, ys, 3, fin);
+        fill_fish_material(c, xs, ys, 3, fin, 0.24f);
     }
     if (f->variety == FISH_ANGEL) {
         float lx[3] = {5, -8, -11}, ly[3] = {9, 25, 7}, xs[3], ys[3];
         for (int i = 0; i < 3; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
-        fill_poly(c, xs, ys, 3, fin);
+        fill_fish_material(c, xs, ys, 3, fin, 0.24f);
     }
     /* dorsal crest: adults a small fin, elders a taller one */
     if (!ray && (grown || shark || betta || clown)) {
@@ -507,7 +528,7 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
         float lx[3] = {6, -2, -9}, ly[3] = {-8, h, -8};
         float xs[3], ys[3];
         for (int i = 0; i < 3; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
-        fill_poly(c, xs, ys, 3, fin);
+        fill_fish_material(c, xs, ys, 3, fin, 0.24f);
     }
     /* body: sampled outline of the prototype's quadratic silhouette */
     {
@@ -517,11 +538,16 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
         static const float bly[10] = { 0, -7, -10, -9, -6, 0, 6, 9, 10, 7 };
         float xs[10], ys[10];
         for (int i = 0; i < 10; i++) { float lx = (shark ? shark_x[i] : ray ? ray_x[i] : blx[i]) * body_x, ly = bly[i] * body_y; xs[i] = TX(lx, ly); ys[i] = TY(lx, ly); }
-        fill_poly(c, xs, ys, 10, body);
+        fill_fish_material(c, xs, ys, 10, body, 0.3f);
         /* its thickness: the cross-section at the deepest point, widening as
          * the fish turns toward the glass (sin of the yaw angle) */
         float sm = yaw_at(yh, yt, 2), rx = FISH_THICK * f->size * sqrtf(fmaxf(0, 1 - sm * sm));
-        if (rx >= 1) fill_ellipse(c, TX(2, 0), TY(2, 0), rx, 9.5f * body_y * f->size, body, 255);
+        if (rx >= 1) {
+            float cx = TX(2, 0), cy = TY(2, 0), ry = 9.5f * body_y * f->size;
+            fill_ellipse(c, cx, cy, rx, ry, mix(body, 0x183541, 0.12f), 255);
+            fill_ellipse(c, cx, cy - ry * 0.15f, rx * 0.78f, ry * 0.72f,
+                         mix(body, 0xf4edda, 0.12f), 255);
+        }
         /* genetics (1.3): a pale belly, and the FADE marking - the rear of the outline in the accent */
         if (f->traits & TRAIT_PALE_BELLY) {
             float s = fabsf(yaw_at(yh, yt, 0));

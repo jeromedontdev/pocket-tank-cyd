@@ -15,6 +15,74 @@ static uint16_t icon_bank[128 * 1024];
 static size_t icon_bank_bytes;
 static tank_t help_tank;
 
+static void check_fish_material(void) {
+    const float xs[] = {28, 65, 87, 70, 32, 17};
+    const float ys[] = {21, 18, 40, 63, 67, 43};
+    render_tile(0, 0);
+    memset(full_frame, 0, sizeof full_frame);
+    memset(repeated, 0, sizeof repeated);
+    ctx_t flat = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+    ctx_t shaded = flat; shaded.fb = repeated;
+    fill_poly(&flat, xs, ys, 6, 0x659dba);
+    fill_fish_material(&shaded, xs, ys, 6, 0x659dba, .3f);
+    uint16_t colors[5]; int count = 0;
+    for (int i = 0; i < TANK_W * TANK_H; i++) {
+        assert((full_frame[i] != 0) == (repeated[i] != 0));
+        if (!repeated[i]) continue;
+        int k = 0;
+        while (k < count && colors[k] != repeated[i]) k++;
+        if (k == count) { assert(count < 5); colors[count++] = repeated[i]; }
+    }
+    assert(count == 5);
+    flat.dim = .2f;
+    memset(full_frame, 0, sizeof full_frame);
+    fill_fish_material(&flat, xs, ys, 6, 0x659dba, .3f);
+    for (int i = 0; i < TANK_W * TANK_H; i++) {
+        uint16_t dim = full_frame[i], lit = repeated[i];
+        assert((dim >> 11) <= (lit >> 11));
+        assert(((dim >> 5) & 63) <= ((lit >> 5) & 63));
+        assert((dim & 31) <= (lit & 31));
+    }
+    for (int row = 0; row < TANK_H; row++) {
+        memset(tile_frame, 0, sizeof tile_frame);
+        ctx_t tile = shaded; tile.fb = tile_frame + 1; tile.oy = row; tile.h = 1;
+        tile_frame[0] = tile_frame[TANK_W + 1] = 0xc59a;
+        fill_fish_material(&tile, xs, ys, 6, 0x659dba, .3f);
+        assert(tile_frame[0] == 0xc59a && tile_frame[TANK_W + 1] == 0xc59a);
+        assert(!memcmp(tile_frame + 1, repeated + row * TANK_W, TANK_W * sizeof *repeated));
+    }
+}
+
+static void capture_fish_materials(const char *directory) {
+    for (int accessories = 0; accessories < 2; accessories++) {
+        ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+        for (int i = 0; i < TANK_W * TANK_H; i++) full_frame[i] = rgb565(0x102b34, 1);
+        int count = accessories ? WEAR_COUNT - 1 : FISH_VARIETY_COUNT;
+        for (int i = 0; i < count; i++) {
+            fish_t f = help_tank.fish[0];
+            float scale = TANK_W / 320.0f;
+            f.x = (i % 2 ? 245 : 85) * scale;
+            f.y = (accessories ? 45 + i / 2 * 72 : 25 + i / 2 * 46) * scale;
+            f.size = (accessories ? 1.35f : .92f) * scale;
+            f.stage = STAGE_ADULT; f.yaw = f.yaw_tail = 1; f.heading = 0;
+            f.color = 0x69b6bf; f.fin = 0xb47faf; f.accent = 0xf0d399;
+            f.hunger = f.stress = 0; f.speed = 0; f.traits = 0; f.pattern = PATTERN_PLAIN;
+            f.variety = accessories ? FISH_CLASSIC : i;
+            f.wearable = accessories ? i + 1 : WEAR_NONE; f.wear_colors = 0;
+            draw_fish_core(&c, &f, 0, false, f.size);
+            draw_text(&c, (int)(f.x - 58 * scale), (int)(f.y + 20 * scale), 1,
+                      0xb6d3ce, accessories ? WEAR_NAMES[i + 1] : FISH_VARIETY_NAMES[i]);
+        }
+        char path[1024];
+        int length = snprintf(path, sizeof path, "%s/fish-%s-%d.raw", directory,
+                              accessories ? "accessories" : "bodies", TANK_W);
+        assert(length > 0 && length < (int)sizeof path);
+        FILE *file = fopen(path, "wb"); assert(file);
+        assert(fwrite(full_frame, sizeof *full_frame, TANK_W * TANK_H, file) == (size_t)TANK_W * TANK_H);
+        assert(!fclose(file));
+    }
+}
+
 static void check_tank_materials(void) {
     static const int items[] = {9, 10, 11, 12, 16, 17, 18, 19, 20, 22, 23, 25, 26, 27,
                                SD_SCENERY_GLASS, SD_SCENERY_BRAIN, SD_SCENERY_TIKI,
@@ -401,7 +469,7 @@ static void check_page_asset(int kind, int item, int x, int y) {
 }
 
 int main(int argc, char **argv) {
-    assert(argc == 2);
+    assert(argc == 2 || argc == 3);
     FILE *icons = fopen(argv[1], "rb");
     assert(icons);
     icon_bank_bytes = fread(icon_bank, 1, sizeof icon_bank, icons);
@@ -466,6 +534,8 @@ int main(int argc, char **argv) {
     check_tank_materials();
     for (int resolution = 0; resolution < 2; resolution++) {
         tank_resolution(resolution != 0);
+        check_fish_material();
+        if (argc > 2) capture_fish_materials(argv[2]);
         render_life_open();
         for (int category = 0; category < 5; category++) for (int page = 0; page < 2; page++) {
             g_home_category = category; g_home_page = page;
@@ -506,5 +576,6 @@ int main(int argc, char **argv) {
     puts("Help/pause: all games mask gameplay and match tiled output at both resolutions.");
     puts("Polished art: distinct stamps, four-plus tones, clipped bounds and guarded 1/17-row tile parity at both resolutions.");
     puts("Tank materials: 20 dimensional ornaments, RGB565 contrast, night dimming, original bounds and arch opening.");
+    puts("Fish materials: five RGB565 tones with unchanged polygon coverage and guarded one-row tile equality.");
     return 0;
 }

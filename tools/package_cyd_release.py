@@ -89,7 +89,15 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.2.2: crafted aquarium ornaments and foliage
+### New in 2.2.3: dimensional fish and wearable accessories
+
+- All ten fish varieties gain restrained back highlights, body midtones and underside shading. Fins, tails, ray wings and jellyfish bells share the lighting; head-on turns retain rounded volume.
+- All six wearable accessories gain lit faces and shaded folds within their original outlines, retaining both chosen colors and Natural.
+- Tank, wardrobe, setup and portraits share the same art. Existing silhouettes, movement, inherited markings/traits, growth, sleep cues and wearable attachment are retained.
+- Five pre-tinted tones are selected during the existing polygon scanline pass: no per-pixel lighting, texture packs, new buffers or save changes. Daily care, progression and prices are unchanged.
+- Both sizes, animated poses, wearables/colors, bounds, night lighting and full/tile/cache output are tested.
+
+### Previously in 2.2.2: crafted aquarium ornaments and foliage
 
 - Twenty actual tank ornaments/fixed scenery pieces gain material-specific shading: chest wood/brass, crystal facets, stone bevels, pearl sheen, sponge pores and barrel hoop rivets.
 - Six fixed sand pieces get softer forms and quieter highlights: sea glass, brain coral, tiki, bottle, anemone and teapot.

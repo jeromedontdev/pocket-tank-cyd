@@ -2,7 +2,23 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.2.2**
+**An illustrated tour of Pocket Tank CYD 2.2.3**
+
+**2.2.3** extends the material polish to all ten fish varieties and all six
+wearables. Soft back highlights, body midtones and underside shadows give
+the existing silhouettes volume; fins, ray wings, jellyfish bells and
+accessories receive coordinated shading. Colors, inherited markings,
+traits, stages, movement and wearable attachment are preserved. Tank fish,
+wardrobe, setup and portraits share the same rendering code. Five pre-tinted
+tones are selected during the existing scanline pass, with no texture packs,
+new buffers or per-pixel lighting. Saves and daily care are unchanged.
+
+| Actual body/fin renderer, ten varieties | Actual wearable renderer, six accessories |
+|---|---|
+| ![Plain fish in a shared comparison palette, showing body and fin shading](media/cyd-features/fish-bodies.png) | ![Top hat, party hat, crown, tie, bowtie and bandana with shaded faces](media/cyd-features/fish-accessories.png) |
+
+These isolated renderer lineups use the same body/fin colors and plain markings
+for comparison, not new default fish colors. Your own colors and markings remain.
 
 **2.2.2** brings the polish into the aquarium itself: twenty ornaments and
 fixed sand pieces gain material-specific depth, from chest fittings and
