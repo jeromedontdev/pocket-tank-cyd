@@ -2,7 +2,12 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.3**
+**An illustrated tour of Pocket Tank CYD 2.3.4**
+
+Version 2.3.4 stores all eight aquariums internally. SD is optional for buying
+and switching tanks; keep an existing installation's original card inserted
+for its first boot to import inactive tanks. Backups, photos and offline
+updates remain on SD.
 
 Version 2.3.3 exposes **Screenshot to SD** under **Settings > Device**, while
 retaining **Photo to SD** under SD Backups. Dedicated update mode leaves
@@ -922,7 +927,7 @@ Names persist across switches and restarts.
 | Name your active tank | Keep your tanks recognizable |
 |---|---|
 | ![Tank-name editor with letter selection and left/right arrow controls](media/cyd-features/aquarium-name.png) | ![Saved Reef Garden name in the aquarium selector](media/cyd-features/aquariums-named.png) |
-Inactive tanks are fully paused on SD: no aging, hunger, growth or rewards
+Inactive tanks are fully paused: no aging, hunger, growth or rewards
 while you play another aquarium. Finish naming any new fry before leaving.
 Existing per-tank Banks merge on the first visit to each old aquarium.
 If there is not enough room in the shared 20 slots, the switch asks you to
@@ -932,19 +937,29 @@ make room first, leaving the live tank and all stored fish unchanged.
 |---|---|
 | ![Welcome flow for the newly purchased aquarium with two new fry](media/cyd-features/aquarium-welcome.png) | ![Two owned aquariums, one active, with free Open controls and another purchase available](media/cyd-features/aquariums-owned.png) |
 
-Buying or switching requires the card. The outgoing aquarium is saved to
-alternating, checksummed SD files and read back before the new active tank
-is committed to internal storage. A failed transaction does not charge you
-or replace the live tank. The selected tank can keep running without SD,
-but the card is needed to access inactive tanks.
+**From 2.3.4:** buying and switching
+no longer require a card. All eight aquarium slots fit in internal storage.
+The active save retains two generations. An inactive archive replacement is
+written and checksum/readback-verified before retiring its old generation;
+the final active-save commit selects the incoming aquarium. A failed transaction
+does not charge you or replace the live tank. Inactive archives retain one
+verified generation between transactions, not two historical copies.
+
+Boot once with the original SD inserted to import existing inactive tanks.
+Imports leave SD originals untouched, but subsequent gameplay does not update
+those old SD snapshots. Missing slots can retry on a later boot with the card;
+an existing corrupt internal archive reports failure, never silently loads a
+stale SD version. Backups, photos and offline update files stay on the card.
 
 **JSON replaces the active aquarium and shared progression; Wipe resets the
 whole profile and permits a new first-run mode choice.** Individual JSON backups do not
 contain the entire collection, slot ownership or tank names; a JSON restore
 keeps the current device's slot identity/name and replaces the active tank's
-contents **and shared progression/wallet**. Also copy the SD card's `pocket-tank/tanks`
-directory when archiving it. There is no one-click whole-collection recovery:
-SD copies alone cannot recreate collection identity after NVS is erased.
+contents **and shared progression/wallet**. There is no one-click whole-collection
+backup. For current per-tank contents, visit each aquarium and make an SD JSON
+backup; old imported SD snapshots are not refreshed. Preserve a complete flash
+recovery image when archiving collection identity/internal slots; individual
+JSON files alone cannot recreate the collection after a factory erase.
 Avoid downgrading to older firmware, which does not preserve the collection.
 
 ## 2. Make each fish your own

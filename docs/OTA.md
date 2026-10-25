@@ -73,8 +73,11 @@ stops if either fails. NVS, calibration, SD files and normal tank backups
 are not erased. Older firmware may not understand newer saves; use a
 compatible backup when deliberately downgrading.
 Individual backups cover the active tank and shared wallet, not purchased
-slot identity or the entire aquarium collection. Also archive the SD tank
-snapshot directory and avoid erasing NVS.
+slot identity or the entire aquarium collection. In releases through 2.3.3,
+also archive the SD tank snapshot directory. From 2.3.4, the firmware
+imports those tanks internally and does not refresh the old SD copies: visit
+each tank to make current JSON backups and preserve a full-flash recovery
+image for the complete internal collection. Avoid erasing NVS/save storage.
 
 **Trust model:** these are local, unsigned packages. SHA-256 detects corruption,
 not malicious modifications. Only install packages you trust. SD installation

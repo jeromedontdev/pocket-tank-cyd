@@ -3331,7 +3331,7 @@ static const char *aquarium_move(tank_t *t, int target) {
         return "INVALID TANK";
     if (target == t->aquariums.active) return "THIS TANK IS ALREADY ACTIVE";
     if (s_setup_pending || s_newborn >= 0) return "FINISH NAMING YOUR FRY FIRST";
-    if (!aquarium_port_ready()) return "SD CARD REQUIRED";
+    if (!aquarium_port_ready()) return "TANK STORAGE UNAVAILABLE";
     bool buy = target == t->aquariums.count;
     bool creative_new = buy && progression_creative(t);
     if (!progression_mode_chosen(t)) return "CHOOSE YOUR GAME MODE FIRST";
@@ -3431,11 +3431,11 @@ static const char *aquarium_move(tank_t *t, int target) {
         !companion_rpg_valid(&s->incoming.rpg, s->incoming.polish.next_id)) {
         error = "INVALID SHARED BANK - NOT SWITCHED"; goto done;
     }
-    /* No time away is simulated for inactive SD tanks. Active storage is the final commit point. */
+    /* No time away is simulated for inactive tanks. Active storage is the final commit point. */
     s->incoming.saved_unix = clock_port_now_unix();
     if (!aquarium_port_write(owned.id, owned.active, &s->outgoing, sizeof s->outgoing) ||
         (buy && !aquarium_port_write(owned.id, target, &s->incoming, sizeof s->incoming))) {
-        error = "SD WRITE FAILED - NO CHANGE"; goto done;
+        error = "TANK WRITE FAILED - NO CHANGE"; goto done;
     }
     if (!persist_port_save(&s->incoming, sizeof s->incoming)) { error = "SAVE FAILED - NO CHANGE"; goto done; }
     double mussel_fraction = t->mussel_fraction;

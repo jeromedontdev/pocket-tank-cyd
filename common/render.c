@@ -7667,7 +7667,7 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     button(&c, 32, 208, 384, 40, 0x1c2f36, MSP_TEAL, "PHOTO TO SD", 2);
     draw_text_wrap(&c, 32, 264, 384, MSP_TEAL, s_backup_message);
     draw_text(&c, 32, 308, 1, MSP_TEAL, "ACTIVE TANK, WALLET, GLOBAL BANK / TRAVELER.");
-    draw_text(&c, 32, 324, 1, MSP_TEAL, "OTHER SD TANKS NOT INCLUDED.");
+    draw_text(&c, 32, 324, 1, MSP_TEAL, "OTHER AQUARIUMS NOT INCLUDED.");
     char backup_date[40], backup_line[64];
     companion_date_text(t->polish.backup_unix, backup_date, sizeof backup_date);
     snprintf(backup_line, sizeof backup_line, "LAST BACKUP: %s", t->polish.backups ? backup_date : "NOT RECORDED");
@@ -7690,7 +7690,7 @@ void render_aquariums_open(const tank_t *t) {
         g_aquarium_summary_ok[i] = progression_aquarium_summary(t, i, &g_aquarium_summaries[i]);
         if (!progression_aquarium_label(t, i, g_aquarium_names[i])) {
             snprintf(g_aquarium_names[i], sizeof g_aquarium_names[i], "TANK %d ?", i + 1);
-            snprintf(g_aquarium_message, sizeof g_aquarium_message, "SD TANK NAMES UNAVAILABLE");
+            snprintf(g_aquarium_message, sizeof g_aquarium_message, "TANK NAMES UNAVAILABLE");
         }
     }
 }
@@ -7749,7 +7749,7 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
             draw_text(&c, 24, 194, 2, MSP_TEAL, "OWN FISH AND DECORATIONS.");
             draw_text(&c, 24, 218, 2, MSP_TEAL, "SHARED BANK AND PROGRESS.");
         } else if (!g_aquarium_summary_ok[g_aquarium_pick])
-            draw_text(&c, 24, 170, 2, 0xff7070, "SD SUMMARY UNAVAILABLE");
+            draw_text(&c, 24, 170, 2, 0xff7070, "TANK SUMMARY UNAVAILABLE");
         else {
             const aquarium_summary_t *s = &g_aquarium_summaries[g_aquarium_pick];
             snprintf(line, sizeof line, "%u FISH / %u AWAY / BANK %u", s->fish, s->away, t->bank_count);

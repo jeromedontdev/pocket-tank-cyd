@@ -8,7 +8,7 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.3 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.4 is a distinct aquarium game, not just a board port.**
 
 ### Firmware-space audit after 2.3.0
 
@@ -262,8 +262,9 @@ not distributed as a separate SD icon bank.
    Replace COM4 with the board's actual port. **This overwrites tank saves
    and settings. Do not run it as a normal upgrade.**
 3. Power on and complete first-time setup/calibration. Menu artwork is embedded;
-   an SD card is optional for the first aquarium, but required for extra aquarium
-   snapshots, SD backups and SD updates.
+   SD is used for backups, photos and offline updates. From 2.3.4 all eight
+   aquarium slots are internal. Keep the original SD inserted for the first
+   upgraded boot to import existing inactive tanks without deleting originals.
 
 The factory binary already contains the bootloader, partition table, initial
 OTA data and application at the correct offsets. It is flashed once at `0x0`;

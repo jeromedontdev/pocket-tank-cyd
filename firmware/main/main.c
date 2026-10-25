@@ -843,6 +843,16 @@ void app_main(void) {
     if (!progression_storage_ready()) {
         ESP_LOGE(TAG, "Profile unavailable; saves blocked. Existing data retained; check storage before retrying");
         render_backup_status("SAVE UNAVAILABLE - CHECK STORAGE", false);
+    } else {
+        bool imported = true;
+        for (int slot = 0; slot < tank.aquariums.count; slot++) {
+            char name[16];
+            if (!progression_aquarium_label(&tank, slot, name)) {
+                ESP_LOGE(TAG, "Tank %d unavailable; retain original SD for import or check internal storage", slot + 1);
+                imported = false;
+            }
+        }
+        if (!imported) render_backup_status("TANK IMPORT INCOMPLETE - CHECK SD", false);
     }
     notice_sync(&tank);                      /* what is already earned stays unannounced */
     { uint32_t r = progression_loaded_release();   /* which release wrote the tank we just loaded */

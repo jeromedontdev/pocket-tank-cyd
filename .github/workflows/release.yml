@@ -39,6 +39,7 @@ jobs:
           python tools/test_creative.py --cc gcc
           python tools/test_profiles.py --cc gcc
           python tools/test_profile_storage.py --cc gcc
+          python tools/test_internal_tanks.py --cc gcc
           python tools/test_cyd_display.py --cc gcc
           python tools/test_cyd_settings.py --cc gcc
           python tools/test_ambient.py --cc gcc

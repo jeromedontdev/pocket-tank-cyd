@@ -86,6 +86,16 @@ active app slot, or query `ota` over serial and write the app at the reported
 active slot (ota_0: 0x20000; ota_1: 0x200000).
 Do not assume the active slot or overwrite the partition table or NVS.
 
+INTERNAL AQUARIUM STORAGE (2.3.4+)
+Keep the original SD inserted for the first upgraded boot to import existing
+inactive tanks. Import leaves SD originals intact; they stop updating afterward.
+Buying/switching all eight tanks then works without SD. A missing import needs
+the original card again; never erase internal storage to force stale fallback.
+For current JSON backups visit each tank and back it up; a single JSON file
+does not include all slots. A full flash recovery image preserves the collection
+identity and internal archive files. Backups/photos/offline updates remain on SD.
+Do not downgrade to SD-only tank firmware: it sees old, unsynchronized snapshots.
+
 NEW BOARD / DELIBERATE FACTORY RESET ONLY
 WARNING: the factory image overwrites NVS, saved tanks, Wi-Fi credentials,
 touch calibration and OTA slot selection. Never use it for a normal upgrade.
@@ -109,7 +119,15 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.3: screenshot shortcut and update-mode memory
+### New in 2.3.4: all aquariums in internal flash
+
+- Buy and switch among all eight aquariums without SD. The active profile, global Bank and decoration inventory remain internal; SD remains useful for JSON backups, screenshots and offline updates.
+- Keep the original card inserted for the first upgraded boot. Missing inactive slots import from pocket-tank/tanks with CRC/readback verification; originals are retained but no longer refreshed by gameplay. Missing imports report failure and can retry with the card on a later boot.
+- Never fall back to stale SD data when an internal archive exists but is corrupt. No partition or save-schema changes, no erase, no tank-price or capacity changes.
+- Active saves retain two generations. Inactive archive replacements are written and readback-verified before their previous generation is retired. Eight archives plus active redundancy and one replacement pack into 80 KiB with the actual IDF SPIFFS geometry, below 75% of the existing 128 KiB partition.
+- Individual JSON backups still do not contain the whole collection. Visit each tank to make current backups; preserve a full-flash recovery image for collection identity/internal slots. Old imported SD copies are historical, not current backups.
+
+### Previously in 2.3.3: screenshot shortcut and update-mode memory
 
 - Settings > Device now has SCREENSHOT TO SD. The existing PHOTO TO SD shortcut under SD Backups remains; both save aquarium BMPs to pocket-tank/photos/.
 - Dedicated Wi-Fi update mode defers fish/decor scratch until returning to care. The manifest buffer is allocated after TLS connects, leaving more internal heap for GitHub release-asset certificate verification.

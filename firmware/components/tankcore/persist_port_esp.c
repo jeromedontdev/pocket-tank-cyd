@@ -13,11 +13,14 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <dirent.h>
 
 static const char *TAG = "persist";
 static const char *directory = "/profiles";
 static const uint32_t store_id[2] = {0x50524631u, 0x41435456u};
 static bool s_save_blocked, s_mounted;
+static const char *tank_directory = "/profiles/tanks";
+bool sd_port_aquarium_read(const uint32_t id[2], int slot, void *data, size_t size);
 
 static bool blank_partition(const esp_partition_t *p) {
     unsigned char bytes[256];
@@ -86,6 +89,58 @@ static bool remove_active(void) {
     }
     return ok;
 }
+static bool remove_archives(void) {
+    DIR *dir = opendir(tank_directory);
+    if (!dir) {
+        if (errno == ENOENT) return true;
+        ESP_LOGE(TAG, "Cannot enumerate obsolete tanks: %s", strerror(errno)); return false;
+    }
+    bool ok = true;
+    struct dirent *entry;
+    for (;;) {
+        errno = 0;
+        entry = readdir(dir);
+        if (!entry) {
+            if (errno) {
+                ESP_LOGE(TAG, "Cannot enumerate obsolete tanks: %s", strerror(errno));
+                ok = false;
+            }
+            break;
+        }
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        char path[128];
+        int n = snprintf(path, sizeof path, "%s/%s", tank_directory, entry->d_name);
+        if (n < 0 || (size_t)n >= sizeof path || remove(path) != 0) {
+            ESP_LOGE(TAG, "Cannot remove obsolete tank archive: %s", entry->d_name);
+            ok = false;
+        }
+    }
+    if (closedir(dir) != 0) {
+        ESP_LOGE(TAG, "Cannot close obsolete tank directory: %s", strerror(errno));
+        ok = false;
+    }
+    return ok;
+}
+bool aquarium_port_ready(void) { return mount_store(); }
+bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size) {
+    if (!mount_store() || slot < 0 || slot >= AQUARIUM_CAP) return false;
+    int present = aquarium_store_present(tank_directory, id, slot);
+    if (present != 0)
+        return present > 0 && aquarium_store_read(tank_directory, id, slot, data, size);
+    if (!sd_port_aquarium_read(id, slot, data, size)) return false;
+    if (!aquarium_store_archive(tank_directory, id, slot, data, size)) {
+        ESP_LOGE(TAG, "Legacy tank %d import failed; SD source unchanged", slot + 1);
+        return false;
+    }
+    ESP_LOGI(TAG, "Tank %d imported into internal flash; SD source retained", slot + 1);
+    return true;
+}
+bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_t size) {
+    if (!mount_store() || slot < 0 || slot >= AQUARIUM_CAP) return false;
+    bool ok = aquarium_store_archive(tank_directory, id, slot, data, size);
+    if (!ok) ESP_LOGE(TAG, "Internal tank %d write failed; active aquarium unchanged", slot + 1);
+    return ok;
+}
 static bool legacy_load(void *buf, size_t max, size_t *got) {
     nvs_handle_t h;
     esp_err_t error = nvs_open(SAVE_NVS_NS, NVS_READONLY, &h);
@@ -131,7 +186,7 @@ bool persist_port_save(const void *buf, size_t len) {
     if (state == 2) {
         /* Keep the wipe authoritative until both old generations are gone
          * and a complete fresh record has passed CRC/readback. */
-        if (!remove_active() || !aquarium_store_write(directory, store_id, 0, buf, len)) return false;
+        if (!remove_archives() || !remove_active() || !aquarium_store_write(directory, store_id, 0, buf, len)) return false;
         return aquarium_store_write(directory, store_id, 1, &initialized, sizeof initialized);
     }
     if (state != 1 && !aquarium_store_write(directory, store_id, 1, &initialized, sizeof initialized)) return false;
@@ -157,6 +212,7 @@ bool persist_port_erase(void) {
     /* Once the tombstone is durable, deletion is cleanup, not a rollbackable
      * operation. A retrying fresh save also removes any remaining old files. */
     if (!remove_active()) ESP_LOGW(TAG, "Profile wiped; obsolete copies await cleanup");
+    if (!remove_archives()) ESP_LOGW(TAG, "Profile wiped; obsolete tank archives await cleanup");
     s_save_blocked = false;
     return true;
 }

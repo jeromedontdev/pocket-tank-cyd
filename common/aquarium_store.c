@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #ifdef _WIN32
 #include <io.h>
 #define sync_file(file) _commit(_fileno(file))
@@ -98,4 +99,29 @@ bool aquarium_store_write(const char *directory, const uint32_t id[2], int slot,
     ok = ok && inspect(paths[use], size, &verified) == 1 && verified == h.sequence;
     if (!ok) fprintf(stderr, "Aquarium write/readback failed; previous snapshot retained\n");
     return ok;
+}
+int aquarium_store_present(const char *directory, const uint32_t id[2], int slot) {
+    int found = 0;
+    for (int copy = 0; copy < 2; copy++) {
+        char path[192]; struct stat info;
+        if (!name(path, directory, id, slot, copy)) return -1;
+        if (stat(path, &info) == 0) found = 1;
+        else if (errno != ENOENT) {
+            fprintf(stderr, "Aquarium stat failed: %s (%s)\n", path, strerror(errno));
+            return -1;
+        }
+    }
+    return found;
+}
+bool aquarium_store_archive(const char *directory, const uint32_t id[2], int slot, const void *data, size_t size) {
+    if (!aquarium_store_write(directory, id, slot, data, size)) return false;
+    char paths[2][192]; uint32_t sequence[2] = {0}; int status[2];
+    if (!copies(directory, id, slot, size, paths, sequence, status)) return false;
+    int newest = status[1] == 1 && (status[0] != 1 || sequence[1] > sequence[0]) ? 1 : 0;
+    if (status[newest] != 1) return false;
+    if (remove(paths[1 - newest]) != 0 && errno != ENOENT) {
+        fprintf(stderr, "Aquarium archive cleanup failed: %s\n", strerror(errno));
+        return false;
+    }
+    return true;
 }

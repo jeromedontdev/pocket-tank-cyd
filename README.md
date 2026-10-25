@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.3
+# Pocket Tank CYD 2.3.4
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.3.3**; firmware, update
+now versioned independently. This is **release 2.3.4**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -22,6 +22,19 @@ covers named tanks, the bank, creature customization, Journal, mini-games,
 decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
+
+## New in 2.3.4: SD-optional aquarium storage
+
+The current source stores all eight aquarium slots internally. Buying and
+switching tanks no longer requires SD. On first boot, leave the original card
+inserted so existing inactive tanks can be imported automatically; originals
+are retained, but are not kept in sync after import. Missing imports report
+an error and can be retried by reinserting the card and restarting.
+
+SD remains for backups, screenshots and offline updates. The active profile
+retains two verified generations; inactive archives write/readback a replacement
+before retiring their previous generation to fit the existing 128 KiB partition.
+No partitions or save schema change. Use 2.3.4 or newer for this storage behavior.
 
 ## New in 2.3.3: clearer screenshots and more update memory
 
@@ -542,8 +555,9 @@ instructions are available under
 | [Checksums](https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/SHA256SUMS.txt) | Verify downloaded files |
 
 **All artwork is embedded in the firmware. No icons need to be copied to SD.**
-No source build is needed for these downloads. SD is used for extra aquariums,
-backups and offline updates, not artwork.
+No source build is needed for these downloads. From 2.3.4, SD is optional for
+all eight aquariums and remains useful for backups, screenshots and offline
+updates. Older multi-tank installs need the original card once for import.
 Use the SD update for an existing installation. **Factory images overwrite
 saved tanks and settings** and are only for new boards or deliberate resets.
 See [release instructions](firmware/CYD.md#downloadable-releases).
@@ -670,7 +684,7 @@ unlock follows all tanks; free replacement copies show REMOVE and refund zero.
 The shop descriptions identify their positions.
 The upkeep upgrades are permanent, affect only their own aquarium, do not
 erase existing algae or grass, and never award chore credit. Other care,
-fish aging and coral growth remain unchanged. Sleeping SD tanks still pause.
+fish aging and coral growth remain unchanged. Inactive tanks still pause.
 
 ![Surface decorations](docs/media/cyd-features/tank-surface-floats.png)
 
@@ -1112,13 +1126,18 @@ Inactive tanks are fully paused: no aging, hunger, growth, rewards or offline
 simulation while another tank is active. The active tank retains the existing
 power-off/sleep behavior.
 
-An SD card is required to buy or switch. Sleeping aquarium snapshots are
-stored under `pocket-tank/tanks`, with alternating checksummed, readback-verified
-copies. The outgoing tank must save successfully before switching; the final
-internal-save commit selects the new aquarium and records the purchase.
-Failures do not charge you or replace the live aquarium. Keep the card with
-the device: losing it loses access to inactive aquariums. The selected aquarium
-continues from internal storage without the card.
+From 2.3.4, an SD card is not required to buy or switch. Sleeping
+aquariums are checksummed internal archives. A replacement is written and read
+back before its previous archive generation is retired; the active profile
+still retains two generations. The outgoing tank must save before switching;
+the final active-save commit selects the new aquarium and records the purchase.
+Failures do not charge you or replace the live aquarium.
+
+For an existing multi-tank installation, boot once with its original SD inserted.
+Missing internal slots are imported from `pocket-tank/tanks`; source files are
+not deleted or updated. A corrupt existing internal archive fails explicitly,
+never falling back to stale SD data. An incomplete import does not stop the active
+tank; reinsert the original card and restart to retry missing slots.
 
 Older per-aquarium Banks merge into the global Bank the first time you visit
 each old tank. If the combined contents exceed 20 fish, the switch asks you

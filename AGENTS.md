@@ -20,6 +20,32 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- 2.3.4 moves all eight aquarium archives to internal SPIFFS; SD is only for
+  legacy import, backups, screenshots and offline updates. Firmware owns this
+  policy in `persist_port_esp.c`; `sd_port_cyd.c` exposes read-only legacy import.
+  Boot visits inactive labels to import missing archives with the original SD
+  inserted. Never delete or refresh SD originals during import, and never
+  resurrect stale SD data when any local archive exists but is corrupt.
+  Active saves remain dual-generation; inactive archives keep one verified
+  generation after alternate-write/readback and retiring the previous file.
+  Eight archives + two active copies + markers + one replacement use 80 KiB
+  under actual IDF SPIFFS geometry (<75% of 128 KiB). No partition/schema change.
+  Native port tests cover SD-free reads/writes, interruption, migration, corrupt
+  local rejection and wipe cleanup; rerun capacity checks as save tails grow.
+  Whole-collection backup is NOT implemented: JSON covers the active tank and
+  shared state, not slot identity/all archives. Old SD copies stop updating.
+- 2.3.2/2.3.3 add `ota.json` at the latest stable GitHub release, pin the app URL
+  to its immutable tag and require format/fork/board/version/HTTPS/size/SHA-256.
+  Read back the entire downloaded asset before `esp_https_ota_finish` selects
+  the inactive slot. Standard images are unsigned: trust is certificate-checked
+  HTTPS/release account plus integrity checks, not secure boot/signatures.
+  ESP-IDF descriptor.version is PT_RELEASE; PT_BUILD_ID separately displays Git.
+  Update mode must save successfully then reboot before simulation/SD starts;
+  defer fish/decor scratch and manifest buffer until needed for TLS headroom.
+  Real GitHub asset certificate verification failed with PSA -141 (RAM) before
+  this fix; never weaken TLS checks to work around it. SD and Wi-Fi buttons
+  remain separate. Device > Screenshot to SD retains the backups-page shortcut.
+
 - Release 2.3.0 inventory/income: schema 18 / 6168-byte binary, frozen
   previous schema-17 prefix unchanged. Shared storage holds 64 physical
   pieces; eight additional simple ornaments per aquarium have independent
@@ -47,7 +73,7 @@ or deployment is published. Update this file when its contracts change.
   Both scales/all details/gameplay modes benefit; LCD transfers are CYD-only.
   RAM-only serial `benchmark` pauses real care, never runs progression/saves,
   uses two seeded fixtures and one evolving current-tank copy with clock.
-  Unreleased source adds a fourth maximum-extra-ornament/mussel fixture.
+  2.3.0 added a fourth maximum-extra-ornament/mussel fixture.
   Local Normal/Balanced five-fish copy: 10.79 FPS, lowest 120-frame window
   10.22 with 5 ms/frame service reserve; not full gameplay/network timing or
   a universal minimum. Ordinary four-fish windows included sub-10 results.
@@ -244,7 +270,10 @@ or further split modules without a concrete maintenance benefit.
   Expanded saves MUST NOT be written there. They use the existing **128 KiB
   SPIFFS `storage` partition**, mounted at `/profiles`, through aquarium_store's
   CRC/readback dual copies. NVS `tank`/`save` is read-only migration input.
-  No repartition, no PSRAM, no SD dependency for the active profile.
+  No repartition, no PSRAM, no SD dependency for any aquarium after legacy import.
+  Inactive archives use `/profiles/tanks` (SPIFFS virtual path, no mkdir);
+  keep filenames below CONFIG_SPIFFS_OBJ_NAME_LEN. Wipe's durable tombstone
+  precedes archive cleanup; retry cleanup before creating a fresh active save.
 - Only format a byte-for-byte erased partition or the verified exact empty
   legacy 64 KiB SPIFFS template inside the 128 KiB partition (16 metadata-only
   blocks, zero erase counts, all lookup/data bytes and remainder erased).
@@ -484,8 +513,8 @@ For feature work, update the relevant entries in:
 - Tag the verified release commit `vMAJOR.MINOR.PATCH` and push that tag.
   `.github/workflows/release.yml` builds/tests/packages and publishes.
   Never move an existing tag or replace historical firmware assets.
-- Verify the release action, eight download assets (ZIP, app, factory, PTU,
-  checksums, notes, install instructions, license), checksums, board/version
+- Verify the release action, nine download assets (ZIP, app, factory, PTU,
+ ota.json, checksums, notes, install instructions, license), checksums, board/version
   markers and stable/latest status. Check actual package contents, not only
   the presence of a release page.
 - Pages uses `tools/prepare_web_installer.py` to fetch the latest stable release,
@@ -498,3 +527,33 @@ For feature work, update the relevant entries in:
   when applying branding. Report commit/tag/release URLs and verification status.
 - End with a clean worktree or explicitly describe remaining changes/failures.
   Do not label a running/failed workflow a successful publication.
+
+## Reuse for Pocket Terrarium and other virtual pets
+
+- This repository remains Pocket Tank CYD. Do not add terrarium creatures,
+  alternate pet modes or another product's assets to its tight OTA slots unless
+  explicitly requested. The earlier Terrarium prototype was canceled; do not
+  resurrect it or alter a sibling checkout as incidental cleanup.
+- Start a separately requested product in its own repository/build/release
+  channel. Preserve upstream license/attribution. Reuse proven platform ports,
+  tiled renderer/input architecture, transactional storage, tests and packaging;
+  replace aquarium-specific simulation, care economy, scenery and terminology.
+  Avoid building a generic pet framework before a concrete second product needs it.
+- Trace `common/` simulation/progression and portable renderer, platform ports
+  in `firmware/components/tankcore` and `firmware/main`, and simulator/browser
+  backends before copying. Keep hardware services separate from species rules.
+  Recheck framebuffer/RAM budgets, 40 MHz LCD DMA and both UI scales.
+- New products require distinct firmware identity, fork/channel checks, image
+  marker and package identity as appropriate; a shared physical board ID alone
+  must not allow cross-product OTA/SD installs. Preserve board compatibility
+  checks and reject the wrong product before selecting a boot slot.
+- Never reuse Pocket Tank save namespaces/files/collection IDs on a real keeper's
+  board without explicit migration/reset consent. Design a versioned save contract,
+  validators and fixtures for the new pet; do not reinterpret aquarium bytes.
+  Retain missing-versus-corrupt distinctions, transactional switching, durable
+  wipe, no stale-source resurrection and verified archive replacement.
+- Flash capacity, filesystem working space and heap are separate budgets.
+  Re-run `test_internal_tanks.py --cc <compiler> --idf <esp-idf>` for actual
+  filesystem packing, plus profile/storage, renderer, browser and OTA tests.
+  Test synthetic pets in the simulator, never by overwriting the real aquarium.
+  Validate hardware with backups and app-only flashing; preserve A/B rollback.

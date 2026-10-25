@@ -95,7 +95,7 @@ const icon_t *icons_resolve(const icon_t *icon) {
     return icon;
 }
 #define SAVE_DIR "/sdcard/pocket-tank"
-bool aquarium_port_ready(void) {
+static bool legacy_aquarium_ready(void) {
     if (!s_mounted || s_upload) return false;
     if (mkdir(SAVE_DIR, 0755) != 0 && errno != EEXIST) {
         ESP_LOGE(TAG, "aquarium directory: %s", strerror(errno)); return false;
@@ -106,11 +106,12 @@ bool aquarium_port_ready(void) {
     return true;
 }
 void aquarium_port_id(uint32_t id[2]) { esp_fill_random(id, 2 * sizeof *id); }
-bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size) {
-    return aquarium_port_ready() && aquarium_store_read(SAVE_DIR "/tanks", id, slot, data, size);
-}
-bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_t size) {
-    return aquarium_port_ready() && aquarium_store_write(SAVE_DIR "/tanks", id, slot, data, size);
+bool sd_port_aquarium_read(const uint32_t id[2], int slot, void *data, size_t size) {
+    if (!legacy_aquarium_ready()) {
+        ESP_LOGE(TAG, "Legacy tank import needs the original SD card");
+        return false;
+    }
+    return aquarium_store_read(SAVE_DIR "/tanks", id, slot, data, size);
 }
 static bool backup_latest(const char *prefix, char path[96], unsigned *number) {
     DIR *dir = opendir(SAVE_DIR);
