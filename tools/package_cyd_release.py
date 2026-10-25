@@ -89,7 +89,15 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.2.1: refined shared interface artwork
+### New in 2.2.2: crafted aquarium ornaments and foliage
+
+- Twenty actual tank ornaments/fixed scenery pieces gain material-specific shading: chest wood/brass, crystal facets, stone bevels, pearl sheen, sponge pores and barrel hoop rivets.
+- Six fixed sand pieces get softer forms and quieter highlights: sea glass, brain coral, tiki, bottle, anemone and teapot.
+- Jade seagrass and light/shadow faces on broad sword leaves preserve existing growth, sway and trimming. The sea fan now connects to its base.
+- The tank and shop previews share the same artwork, including locked previews. Both sizes, all three scene details, day/night and guarded full/tile/cache output are tested.
+- Existing bounds, touch targets, ownership, placement, prices, care and schema-17 saves are unchanged. No new graphics buffers, asset downloads or animations.
+
+### Previously in 2.2.1: refined shared interface artwork
 
 - Redraw fifteen shared menu/goal stamps with distinct silhouettes, outlines, body shading, upper-left highlights and warm details. Existing accent/locked states remain.
 - Coordinate all eighteen game thumbnails with aqua/gold/rose tones, underwater backplates and shaded tiles, cards and chests.

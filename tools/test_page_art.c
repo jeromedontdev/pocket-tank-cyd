@@ -15,6 +15,41 @@ static uint16_t icon_bank[128 * 1024];
 static size_t icon_bank_bytes;
 static tank_t help_tank;
 
+static void check_tank_materials(void) {
+    static const int items[] = {9, 10, 11, 12, 16, 17, 18, 19, 20, 22, 23, 25, 26, 27,
+                               SD_SCENERY_GLASS, SD_SCENERY_BRAIN, SD_SCENERY_TIKI,
+                               SD_SCENERY_BOTTLE, SD_SCENERY_ANEMONE, SD_SCENERY_TEAPOT};
+    for (unsigned i = 0; i < sizeof items / sizeof *items; i++) {
+        int item = items[i], width = tank_ornament_w(item), height = tank_ornament_h(item);
+        uint16_t colors[32];
+        int count = 0, painted = 0, transparent = 0;
+        for (int y = -1; y <= height; y++) for (int x = -1; x <= width; x++) {
+            uint32_t rgb = ornament_pixel(item, x, y);
+            assert(rgb == ornament_pixel(item, x, y));
+            if (x < 0 || y < 0 || x >= width || y >= height) assert(!rgb);
+            else if (!rgb) transparent++;
+            else {
+                painted++;
+                uint16_t color = rgb565(rgb, 1), dark = rgb565(rgb, 0.2f);
+                assert((dark >> 11) <= (color >> 11));
+                assert(((dark >> 5) & 63) <= ((color >> 5) & 63));
+                assert((dark & 31) <= (color & 31));
+                int k = 0;
+                while (k < count && colors[k] != color) k++;
+                if (k == count) {
+                    assert(count < 32);
+                    colors[count++] = color;
+                }
+            }
+        }
+        assert(painted > 40 && transparent > 0);
+        assert(count >= 4); /* Material faces, highlights and recesses survive RGB565. */
+    }
+    assert(!ornament_pixel(20, 29, 35)); /* The stone arch is still a real opening. */
+    assert(ornament_pixel(9, 23, 23) != ornament_pixel(9, 21, 23)); /* Recessed latch. */
+    assert(ornament_pixel(26, 11, 10) != ornament_pixel(26, 12, 10)); /* Hoop rivet. */
+}
+
 static void check_game_help(void) {
     for (int game = 0; game < 18; game++) for (int paused = 0; paused < 2; paused++) {
         memset(&g_game, 0, sizeof g_game);
@@ -428,6 +463,7 @@ int main(int argc, char **argv) {
         snprintf(reward, sizeof reward, "%u/%u +%uXP +%uC", g->target, g->target, g->xp, g->coins);
         assert(64 + text_w(reward, 1) < 348); /* CLAIM column stays separate. */
     }
+    check_tank_materials();
     for (int resolution = 0; resolution < 2; resolution++) {
         tank_resolution(resolution != 0);
         render_life_open();
@@ -469,5 +505,6 @@ int main(int argc, char **argv) {
     puts("Wrappers: static, clipped and full/tile equivalent at both resolutions.");
     puts("Help/pause: all games mask gameplay and match tiled output at both resolutions.");
     puts("Polished art: distinct stamps, four-plus tones, clipped bounds and guarded 1/17-row tile parity at both resolutions.");
+    puts("Tank materials: 20 dimensional ornaments, RGB565 contrast, night dimming, original bounds and arch opening.");
     return 0;
 }

@@ -136,6 +136,27 @@ def main():
                 tank["extra_z1"] = [1, 2, 2, 1, 1, 2]
                 restore(demo)
                 scene("tank-kelp")
+                for name, owned, fixed in (
+                        ("tank-crafted-ornaments", (9, 10, 18, 20), 0),
+                        ("tank-crafted-seabed", (22, 23, 25, 26, 27), 0),
+                        ("tank-crafted-reef", (), 63),
+                        ("tank-crafted-plants", (0, 17, 19), 0)):
+                    showcase = copy.deepcopy(demo)
+                    showcase["tank"].update(n_fish=2, journal_theme=0,
+                        sd_unlocks=sum(1 << item for item in owned), chest_x=122,
+                        ornament_x=[42, 95, 202, 216], extra_x=[38, 80, 190, 253, 273, 219],
+                        plant_x=152, plant_z1=2)
+                    for key in ("veg_growth", "veg_h", "veg_h3"):
+                        base, spread = (0.22, 0.018) if name.endswith("plants") else (0.08, 0.008)
+                        showcase["tank"][key] = [base + (i * 7 % 11) * spread
+                                                 for i in range(len(showcase["tank"][key]))]
+                    restore(showcase)
+                    if fixed:
+                        showcase = json.loads(sim.backup(lib))
+                        showcase["polish"]["scenery_unlocks"] = fixed
+                        restore(showcase, preserve_life=True)
+                    scene(name)
+                restore(demo)
                 polish = json.loads(sim.backup(lib))
                 polish["polish"].update(scenery_unlocks=63, subtitle=3, emblem=3)
                 restore(polish, preserve_life=True)

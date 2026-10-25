@@ -190,6 +190,58 @@ static void test_decor_scenery_notice(void) {
     free(plain); free(noted);
 }
 
+static void test_decor_scenery_variants(void) {
+    size_t capacity = (size_t)TANK_MAX_W * TANK_MAX_H;
+    uint16_t *full = calloc(capacity, sizeof *full), *scene = calloc(capacity, sizeof *scene);
+    uint16_t *tile = calloc((size_t)TANK_MAX_W * 17 + 2, sizeof *tile);
+    void *scratch = calloc(1, render_decor_scratch_size());
+    assert(full && scene && tile && scratch);
+    render_set_decor_scratch(scratch);
+    render_device_t device = {0};
+    for (int normal = 0; normal < 2; normal++) {
+        tank_resolution(normal != 0);
+        tank_t t;
+        tank_init(&t, 27);
+        t.companion.display_compact = normal != 0;
+        t.n_fish = 0;
+        t.sd_unlocks = SD_ITEM_PLANT | SD_ITEM_CHEST;
+        for (int item = 10; item <= 12; item++) t.sd_unlocks |= UINT32_C(1) << item;
+        for (int item = 16; item <= 20; item++) t.sd_unlocks |= UINT32_C(1) << item;
+        for (int item = 22; item <= 27; item++) t.sd_unlocks |= UINT32_C(1) << item;
+        t.polish.scenery_unlocks = SD_SCENERY_MASK;
+        for (int bed = 0; bed < VEG_BEDS_MAX; bed++)
+            for (int i = 0; i < VEG_FRONDS_MAX; i++) t.veg_h[bed][i] = .2f + (i % 7) * .025f;
+        for (int detail = SCENE_BALANCED; detail <= SCENE_ENHANCED; detail++)
+            for (int night = 0; night < 2; night++) for (int theme = 0; theme < 2; theme++) {
+                device.scene_detail = (uint8_t)detail;
+                render_set_device(&device);
+                t.night = night != 0;
+                t.light_on = !night;
+                t.journal.theme = theme ? JOURNAL_THEME_COUNT - 1 : 0;
+                tank_t before = t;
+                render_set_scene_cache(scene);
+                render_tile(0, 0); render_region(0, 0);
+                render_tank(&t, full, TANK_W);
+                assert(!memcmp(&t, &before, sizeof t));
+                for (int row = 0; row < TANK_H; row += 17) {
+                    int height = TANK_H - row < 17 ? TANK_H - row : 17;
+                    size_t count = (size_t)TANK_W * height;
+                    tile[0] = tile[count + 1] = 0xa55a;
+                    render_tile(row, height);
+                    render_tank(&t, tile + 1, TANK_W);
+                    assert(tile[0] == 0xa55a && tile[count + 1] == 0xa55a);
+                    assert(!memcmp(full + row * TANK_W, tile + 1, count * sizeof *full));
+                }
+            }
+    }
+    render_tile(0, 0);
+    render_set_scene_cache(NULL); render_set_decor_scratch(NULL);
+    device.scene_detail = SCENE_BALANCED; render_set_device(&device);
+    tank_resolution(false);
+    free(full); free(scene); free(tile); free(scratch);
+    puts("PASS: crafted ornaments and sword foliage preserve full/warm-tile equality, day/night, both sizes, two themes and all three scene details without tank mutation");
+}
+
 void test_decor_scenery(void) {
     test_decor_scenery_catalog();
     test_decor_scenery_buy_sell();
@@ -197,5 +249,6 @@ void test_decor_scenery(void) {
     test_decor_scenery_journal();
     test_decor_scenery_render();
     test_decor_scenery_notice();
+    test_decor_scenery_variants();
     puts("PASS: six fixed sand scenery pieces buy/sell with save-failure rollback and notice, binary/JSON reload, cached backdrop art, no decor slots");
 }

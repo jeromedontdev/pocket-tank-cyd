@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.2.1
+# Pocket Tank CYD 2.2.2
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.2.1**; firmware, update
+now versioned independently. This is **release 2.2.2**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,23 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.2.1: a more consistent pixel-art interface
+## New in 2.2.2: more crafted aquarium decorations
+
+- Twenty in-tank ornaments and fixed scenery pieces now have material-specific
+  shading: wood grain and brass chest fittings, faceted crystals, beveled
+  masonry, rounded pebbles, pearl sheen, sponge pores and barrel hoop rivets.
+- Sea glass, brain coral, tiki, bottle, anemone and teapot gain softer forms,
+  readable recesses and quieter highlights. The sea fan connects to its base.
+- Seagrass has a deeper jade palette; broad sword leaves have a lit face and
+  shaded fold without changing their growth, size, sway or trimming behavior.
+- The actual tank and shop previews share the same artwork, at both sizes and
+  all three scene details, including night lighting and cached/tiled drawing.
+- Ownership, positions, touch targets, prices, daily care and schema-17 saves
+  are unchanged. No new graphics buffers, asset downloads or animations.
+
+![Crafted chest, shell, crystals and stone arch in the aquarium](docs/media/cyd-features/tank-crafted-ornaments.png)
+
+## Previously in 2.2.1: a more consistent pixel-art interface
 
 - Fifteen shared menu/goal icons redrawn with distinct silhouettes, outlines,
   shaded bodies, upper-left highlights and restrained warm details.

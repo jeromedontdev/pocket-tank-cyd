@@ -8,7 +8,15 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.2.1 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.2.2 is a distinct aquarium game, not just a board port.**
+
+Release 2.2.2 refines twenty actual tank ornaments/fixed scenery pieces with
+material-specific shading, rounded forms, recessed details and muted highlights.
+Seagrass has a jade palette; broad sword leaves have light/shadow faces inside
+their existing silhouette. Art is shared with shop previews, including locked
+previews. Both sizes, all scene details, night lighting and full/tile/cache
+parity are tested. No new buffers, required PSRAM, asset packs, animation,
+save fields or changes to ownership, placement, care or progression.
 
 Release 2.2.1 refines the shared menu/goal stamps, all eighteen game thumbnails
 and reward medals. Static outlined sprites use restrained shading/highlights

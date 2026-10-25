@@ -951,12 +951,15 @@ static inline uint32_t water_rgb(int y) {
 static uint16_t g_veg_row[4][TANK_MAX_H];   /* grass pair, then the sword plant's yellow-green pair */
 static float    g_veg_row_dim = -1;
 static void veg_tint_fill(float dim) {
-    static const uint32_t frond[4] = { 0x3f8b55, 0x2e7d4f, 0x8dbb48, 0x6c9d38 };
+    static const uint32_t frond[4] = { 0x419568, 0x2d7d59, 0xaac67a, 0x70974e };
     if (g_veg_row_dim == dim) return;
     for (int y = 0; y < TANK_H; y++) {
         uint32_t w = water_rgb(y);
-        for (int k = 0; k < 4; k++)
-            g_veg_row[k][y] = rgb565(mix(w, frond[k], VEG_ALPHA / 255.0f), dim);
+        float depth = (float)y / TANK_BOT;
+        for (int k = 0; k < 4; k++) {
+            uint32_t leaf = mix(frond[k], 0x315e4a, 0.22f * depth * depth);
+            g_veg_row[k][y] = rgb565(mix(w, leaf, VEG_ALPHA / 255.0f), dim);
+        }
     }
     g_veg_row_dim = dim;
 }
@@ -1132,7 +1135,15 @@ static void draw_veg(ctx_t *c, const tank_t *t, int b, int seed, int layer, bool
             int k = (int)sp; float fr = sp - k;
             float cx = xs[k] + (xs[k + 1] - xs[k]) * fr;
             src_t s; s.v = pal[y];                              /* opaque: only .v is read */
-            veg_span(c, (int)(cx - half), (int)(cx + half), y, &s, final);
+            if (sword && half >= 2) {
+                int vein = (int)cx;
+                s.v = g_veg_row[2][y];
+                veg_span(c, (int)(cx - half), vein, y, &s, final);
+                s.v = g_veg_row[3][y];
+                veg_span(c, vein + 1, (int)(cx + half), y, &s, final);
+            } else {
+                veg_span(c, (int)(cx - half), (int)(cx + half), y, &s, final);
+            }
         }
     }
 }
@@ -3099,14 +3110,28 @@ static void draw_cluster_crown(ctx_t *c, int cx, int scheme, float growth, float
 static uint32_t chest_pixel(int x, int y) {
     if (x < 0 || x >= CHEST_W || y < 0 || y >= CHEST_H) return 0;
     if (y < 4 && (x < 5 || x >= CHEST_W - 5)) return 0;
+    bool strap = (x >= 7 && x <= 10) || (x >= CHEST_W - 11 && x <= CHEST_W - 8);
     if (y < 12) {
-        if (y < 2 || x < 2 || x >= CHEST_W - 2) return 0xd9aa40;
-        return y % 5 == 0 ? 0x39231b : 0x80502b;
+        if (y < 2 || strap) return y < 5 ? 0xf2d18a : x > CHEST_W / 2 ? 0x99713e : 0xc49a55;
+        if (x < 2 || x >= CHEST_W - 2 || y == 11) return 0x392e2c;
+        if (y == 5 || y == 9) return 0x634032;
+        return y < 5 ? 0xbb8151 : y < 9 ? 0x98613e : 0x754932;
     }
-    if (y < 18) return ((x + 3 * y) % 9 < 5) ? 0xffd55a : 0x8a5f22;
-    if (x < 3 || x >= CHEST_W - 3 || y == 18 || y >= CHEST_H - 3) return 0xc79b39;
-    if (x >= 20 && x <= 27 && y <= 27) return y < 24 ? 0xffd55a : 0x36231d;
-    return y % 7 == 0 ? 0x40271d : 0x976039;
+    if (y < 18) {
+        int coin = (x + (y > 14 ? 3 : 0)) % 8;
+        if (y == 12 || coin == 0) return 0x4e382b;
+        return coin < 3 && y % 3 == 1 ? 0xffe3a0 : y % 3 == 0 ? 0xa77731 : 0xdab253;
+    }
+    if (x < 2 || x >= CHEST_W - 2 || y >= CHEST_H - 2) return 0x49392f;
+    if (y == 18 || y == CHEST_H - 3) return x < CHEST_W - 8 ? 0xd6af6b : 0x916839;
+    if (x >= 20 && x <= 27 && y <= 27) {
+        if ((x == 23 || x == 24) && y >= 22 && y <= 25) return 0x49392f;
+        return x == 20 || y == 19 ? 0xf2d18a : x == 27 || y == 27 ? 0x926a3b : 0xc49a55;
+    }
+    if (strap) return (y == 21 || y == CHEST_H - 5) && (x == 8 || x == CHEST_W - 10) ? 0xffdf99 : 0xa88249;
+    if (x >= CHEST_W - 7) return y % 7 == 0 ? 0x49392f : 0x6e4734;
+    if (y % 7 == 0) return 0x593b2e;
+    return y % 7 == 1 ? 0xb17a4c : 0x93613f;
 }
 static int g_buoy_sway, g_buoy_bob;
 /* the fixed sand scenery (1.2, IDs 36..41): 40 x 40, resting on row 37 */
@@ -3115,42 +3140,61 @@ static uint32_t scenery_pixel(int item, int x, int y) {
     switch (item) {
     case SD_SCENERY_GLASS: {
         static const int cx[3] = {11, 27, 19}, cy[3] = {33, 34, 27};
-        static const uint32_t lit[3] = {0x9ff0c0, 0x9fd8ff, 0xffd98a}, dark[3] = {0x3f9d72, 0x3f78b8, 0xc08a32};
+        static const uint32_t lit[3] = {0xc1ead2, 0xb7deed, 0xf0d9a8};
+        static const uint32_t mid[3] = {0x83bda5, 0x7baabf, 0xc8a76b}, dark[3] = {0x487e72, 0x496e86, 0x97734c};
         for (int i = 2; i >= 0; i--) {
             int ex = x - cx[i], ey = y - cy[i];
-            if (ex * ex * 16 + ey * ey * 36 <= 576) return ex + ey < -2 ? lit[i] : dark[i];
+            int edge = ex * ex * 16 + ey * ey * 36;
+            if (edge <= 576) {
+                if (ey == -2 && ex >= -3 && ex <= -1) return 0xe4f5e9;
+                if (edge > 430 || ex + 2 * ey > 4) return dark[i];
+                return ex + ey < -2 ? lit[i] : mid[i];
+            }
         }
         return 0;
     }
     case SD_SCENERY_BRAIN: {
         int dy = y - 37;
         if (y > 37 || dx * dx * 256 + dy * dy * 324 > 82944) return 0;
-        if ((x + dy * dy / 9) % 6 < 2) return 0x9c5a44;
-        return x < 18 && y < 30 ? 0xf2bf93 : 0xd9906a;
+        int fold = (x + (y / 4 % 2 ? y % 4 : 4 - y % 4) + dy * dy / 15) % 7;
+        if (fold < 2) return y > 32 || x > 30 ? 0x844b49 : 0xa36660;
+        if (fold == 2) return y < 29 && x < 25 ? 0xf2c3a3 : 0xd99b83;
+        return y > 33 || x > 29 ? 0xba796a : 0xe0ab8c;
     }
     case SD_SCENERY_TIKI:
         if (y < 5) return abs(dx) <= 2 + y && (x + y) % 4 < 2 ? 0x5fbf6a : 0;
-        if (x < 12 || x > 27 || y > 37) return 0;
+        if (x < 12 || x > 27 || y > 37 || (y == 37 && (x < 14 || x > 25))) return 0;
+        if (y == 10 && x >= 14 && x <= 25) return 0xc69a62;
         if (y >= 11 && y <= 14 && (abs(x - 16) <= 1 || abs(x - 23) <= 1)) return 0x2a1a12;
+        if (y >= 15 && y <= 20 && x >= 19 && x <= 21) return x == 19 ? 0xc79b64 : 0x6a4934;
         if (y >= 23 && y <= 27 && x >= 15 && x <= 24)
             return y == 24 && x % 2 ? 0xf3e2b8 : 0x2a1a12;
-        if (y == 9 || y == 19 || y == 31) return 0xc4925a;
-        return x < 20 ? 0x9a6a3c : 0x6f4a2a;
+        if (y == 9 || y == 31) return x < 22 ? 0xc4925a : 0x805536;
+        if (y > 32 && (x + y / 2) % 7 < 2) return 0x618563;
+        if ((x + y / 9) % 5 == 0) return 0x795235;
+        return x < 14 || x > 24 ? 0x674b35 : x < 20 ? 0xad7c4f : 0x8c603e;
     case SD_SCENERY_BOTTLE: {
         int ex = x - 18, ey = y - 31;
-        if (x >= 36 && x <= 38 && y >= 29 && y <= 33) return 0x8a5a32;
-        if (x >= 29 && x < 36 && y >= 29 && y <= 33) return y == 29 ? 0xd8fff0 : 0x5fae90;
-        if (ex * ex * 25 + ey * ey * 144 > 3600) return 0;
-        if (x >= 12 && x <= 22 && y >= 30 && y <= 32) return 0xf3e6c4;
-        return y <= 28 ? 0xd8fff0 : 0x7fc8a9;
+        if (x >= 36 && x <= 38 && y >= 29 && y <= 33) return y == 29 ? 0xc59965 : 0x896140;
+        if (x >= 29 && x < 36 && y >= 29 && y <= 33) return x == 30 || y == 33 ? 0x4e8576 : y == 29 ? 0xc2e7d8 : 0x8dbca5;
+        int edge = ex * ex * 25 + ey * ey * 144;
+        if (edge > 3600) return 0;
+        if (x >= 12 && x <= 22 && y >= 30 && y <= 32)
+            return y == 30 ? 0xf2dfb8 : x == 19 || x == 15 ? 0xa08e6b : 0xd7c49b;
+        if (edge > 2800 || y >= 35) return 0x518674;
+        if (y == 28 && x >= 12 && x <= 23) return 0xd2eee0;
+        return y < 31 ? 0x9fc9b5 : 0x7aaa94;
     }
     case SD_SCENERY_ANEMONE: {
         int by = y - 35;
-        if (y >= 30 && y <= 38 && dx * dx * 16 + by * by * 196 <= 3136) return x < 20 ? 0xe07aa0 : 0xb24f78;
+        if (y >= 30 && y <= 38 && dx * dx * 16 + by * by * 196 <= 3136)
+            return y >= 36 ? 0x854965 : y == 31 ? 0xd799b3 : x < 20 ? 0xbb7895 : 0xa25f7f;
         if (y >= 31) return 0;
         for (int k = 0; k < 7; k++) {
-            int top = 8 + (k * 5) % 11, tx = 8 + k * 4 + ((y / 5 + k) % 2);
-            if (y >= top && abs(x - tx) <= 1) return y < top + 3 ? 0xffc2dc : 0xf07aa8;
+            int top = 8 + (k * 5) % 11, bend = (31 - y) * (31 - y) / 90;
+            int tx = 8 + k * 4 + (k < 3 ? -bend : k > 3 ? bend : 0);
+            if (y >= top && abs(x - tx) <= 1)
+                return y < top + 3 ? 0xf4bfd1 : x < tx ? 0xd494b2 : k % 2 ? 0xa96189 : 0xc27c9d;
         }
         return 0;
     }
@@ -3162,8 +3206,12 @@ static uint32_t scenery_pixel(int item, int x, int y) {
         bool handle = x < 9 && ring >= 9 && ring <= 25;
         bool spout = x >= 28 && x <= 37 && y >= 18 && abs(y - (34 - (x - 28) * 3 / 2)) <= 2 - (x > 34);
         if (!body && !lid && !handle && !spout) return 0;
-        if (body && ((x + y) % 7 == 0 || y == 28)) return 0x3e6fb0;
-        return x < 18 && y < 26 ? 0xffffff : 0xdedbd2;
+        if (body && (y == 35 || (abs(ex + 1) + abs(ey + 1) == 3))) return 0x507ca0;
+        if (body && ex == -1 && ey == -1) return 0xd5ad64;
+        if (lid) return y == 18 ? 0x698da5 : x < 20 ? 0xf4ede0 : 0xb3c3bf;
+        if (handle || spout) return y < 26 ? 0xd8e0d5 : 0x9caeaa;
+        if (ex < -6 || ey > 6 || ex > 7) return 0x9aafaf;
+        return ex < -1 && ey < -1 ? 0xf3ecdc : 0xcdd7ce;
     }
     default: return 0;
     }
@@ -3184,15 +3232,27 @@ static uint32_t ornament_pixel(int item, int x, int y) {
         switch (item) {
         case 22: {
             int cy = y < 13 ? 9 : y < 25 ? 20 : 32, rx = y < 13 ? 8 : y < 25 ? 13 : 18;
-            if (dx * dx * 25 + (y - cy) * (y - cy) * rx * rx > rx * rx * 25) return 0;
-            return y < cy - 1 ? 0xc2d5c1 : x < 20 ? 0x809e94 : 0x526f70;
+            int ex = dx - (y < 13 ? -2 : y < 25 ? 2 : 0);
+            int edge = ex * ex * 25 + (y - cy) * (y - cy) * rx * rx;
+            if (edge > rx * rx * 25) return 0;
+            if (edge > rx * rx * 19 || y > cy + 2) return 0x526d70;
+            if (y == cy - 2 && ex >= -rx / 2 && ex < 0) return 0xd2d9c2;
+            if ((ex + 2 * y) % 19 == 0 && y >= cy) return 0x6b8480;
+            return y < cy ? 0xaab9a8 : ex < -2 ? 0x94aaa0 : 0x7f9890;
         }
         case 23:
-            if (dx * dx * 4 + (y - 29) * (y - 29) * 9 <= 1156)
-                return (x + y) % 7 < 2 ? 0xc080b6 : 0xe6b7d4;
-            if (dx * dx + (y - 20) * (y - 20) <= 49)
-                return x < 19 && y < 20 ? 0xffffff : 0xc5e9ed;
-            if (y > 3 && y < 18 && abs(dx) < y) return y % 4 ? 0xbda0cf : 0xf1c7e4;
+            if (dx * dx * 4 + (y - 29) * (y - 29) * 9 <= 1156) {
+                int rib = (abs(dx) + y / 2) % 7;
+                if (y > 33) return rib < 2 ? 0x855f7c : 0xa47c92;
+                return y < 27 ? 0xe4b9c7 : rib < 2 ? 0xb58b9f : 0xd5a7b9;
+            }
+            if (dx * dx + (y - 20) * (y - 20) <= 49) {
+                int pearl = dx * dx + (y - 20) * (y - 20);
+                if (dx >= -3 && dx <= -1 && y >= 16 && y <= 18) return 0xfff4df;
+                return pearl > 32 || y > 22 ? 0x8eafb4 : x < 20 && y < 20 ? 0xe9efe2 : 0xbcd4d1;
+            }
+            if (y > 3 && y < 18 && abs(dx) < y)
+                return y == 17 ? 0x72596f : (abs(dx) * 14 / (20 - y)) % 6 < 2 ? 0xb38aab : 0xd9b4c9;
             return 0;
         case 24:
             if (y >= 19 && y <= 32 && x >= 2 && x <= 37) {
@@ -3205,19 +3265,34 @@ static uint32_t ornament_pixel(int item, int x, int y) {
         case 25: {
             int tube = x / 13, cx = tube * 13 + 6, top = tube == 1 ? 3 : tube == 0 ? 14 : 9;
             if (y < top || y > 37 || abs(x - cx) > 5) return 0;
-            if (y < top + 4) return abs(x - cx) < 3 ? 0x795337 : 0xffd86b;
-            return (x + y * 2) % 11 == 0 ? 0xa67e33 : x < cx ? 0xffc75c : 0xc99739;
+            if (y < top + 4)
+                return abs(x - cx) < 3 && y > top ? 0x6b5340 : y == top ? 0xf0d49a : 0xc19d5b;
+            if ((x + tube * 3) % 5 == 1 && (y + x / 3) % 7 < 2) return 0x9c7949;
+            if (y == 37 || x >= cx + 4) return 0xa27d49;
+            return x <= cx - 3 ? 0xe8c888 : x < cx + 1 ? 0xd8b773 : 0xbd985d;
         }
-        case 26:
-            if (y < 5 || y > 37 || abs(dx) > 12 + (y > 11 && y < 31 ? 4 : 0)) return 0;
-            if (y == 9 || y == 12 || y == 29 || y == 32) return x < 20 ? 0x9aafae : 0x4d6c74;
-            return x % 7 == 0 ? 0x66422c : x < 20 ? 0xbc8755 : 0x95633e;
+        case 26: {
+            int half = 12 + (y - 5) * (37 - y) / 64;
+            if (y < 5 || y > 37 || abs(dx) > half) return 0;
+            if (y == 5 || y == 37) return abs(dx) < 10 ? 0x79573b : 0x4b4438;
+            if ((y >= 9 && y <= 12) || (y >= 29 && y <= 32)) {
+                if ((x == 11 || x == 27) && (y == 10 || y == 30)) return 0xc2c5b0;
+                return y == 9 || y == 29 ? 0xa5b4aa : y == 12 || y == 32 ? 0x435d60 : 0x6e8783;
+            }
+            int stave = (dx + half) * 6 / (half * 2 + 1);
+            if ((dx + half) * 6 % (half * 2 + 1) < 5) return 0x684b36;
+            if (abs(dx) > half - 2 || y > 34) return 0x75513a;
+            return stave < 2 ? 0xba9060 : stave < 4 ? 0xa7784e : 0x8b613f;
+        }
         case 27:
-            if (y >= 32 && y <= 37 && abs(dx) < 18) return 0xb48d49;
+            if (y >= 32 && y <= 37 && abs(dx) < 18)
+                return y == 32 ? 0xd1b879 : y == 37 ? 0x6c5b3e : x < 20 ? 0xb59b62 : 0x947e50;
             if (dx * dx + dy * dy > 225 || y < 7) return 0;
-            if (dx * dx + dy * dy < 49) return (x + y) % 7 == 0 ? 0x8edbd9 : 0x264653;
-            if (dx * dx + dy * dy < 81) return 0xf1d084;
-            return (x + 3 * y) % 23 == 0 ? 0xe7cf84 : x < 20 ? 0xd8af5a : 0x96793d;
+            if (dx * dx + dy * dy < 49)
+                return dx == -3 || dy == -3 ? 0x7caaa6 : dx == 0 || dy == 0 ? 0x8e9b77 : 0x304f57;
+            if (dx * dx + dy * dy < 81) return x < 20 && y < 25 ? 0xe4cf95 : 0x96804f;
+            if ((abs(dx) == 11 && abs(dy) < 2) || (abs(dy) == 11 && abs(dx) < 2)) return 0xf0dba6;
+            return y < 14 && x < 25 ? 0xe0c78a : x > 28 || y > 29 ? 0x8e794e : x < 18 ? 0xc7b079 : 0xb09a64;
         case 28:
             if (dx * dx * 4 + (y - 29) * (y - 29) * 16 < 1024 &&
                 !(x > 20 && abs(y - 29) <= (x - 20) / 3))
@@ -3246,47 +3321,63 @@ static uint32_t ornament_pixel(int item, int x, int y) {
         }
     }
     if (item == 16) {
-        if (y >= 32 && y < 49 && x >= (y - 32) / 2 && x < 64 - (y - 32))
-            return y % 6 == 0 || x % 17 == 0 ? 0x3d2926 : x < 30 ? 0x9d6443 : 0x704832;
-        if (x >= 29 && x <= 31 && y < 36) return 0x9e8054;
-        if (y >= 3 && y < 29 && x > 32 && x < 57 - y / 2)
-            return (x + y) % 13 == 0 ? 0 : x < 40 ? 0xe8d4a3 : 0xb9aa87;
+        if (y >= 32 && y < 49 && x >= (y - 32) / 2 && x < 64 - (y - 32)) {
+            if (y > 43 && (x + y / 3) % 11 < 3) return 0x607c63;
+            if (y % 6 == 0 || (x + (y / 6 % 2) * 8) % 17 == 0) return 0x4a3830;
+            if ((x == 16 || x == 41) && y >= 35 && y <= 38) return 0x433c33;
+            return y == 33 ? 0xc29868 : x < 30 && y < 43 ? 0xa67b51 : 0x79543c;
+        }
+        if (x >= 29 && x <= 31 && y < 36) return x == 29 ? 0xd0ae76 : 0x8d704c;
+        if (y >= 3 && y < 29 && x > 32 && x < 57 - y / 2) {
+            if ((x + y) % 13 == 0) return 0;
+            return x == 33 || y == 28 ? 0x9a8c6c : x < 38 ? 0xeee1bc : x < 44 - y / 6 ? 0xd9cba5 : 0xb9ad8b;
+        }
         return 0;
     }
     if (item == 17) {
         int dx = x - 15;
-        if (y < 7 && abs(dx) < 9) return (x + y) % 7 < 3 ? 0xffd55a : 0xb48932;
-        if (y >= 7 && y < 13 && abs(dx) <= 6) return 0xc27a47;
+        if (y < 7 && abs(dx) < 9)
+            return y > 1 && y < 5 && abs(dx) < 6 ? 0x624538 : y == 0 ? 0xedc68e : 0xb58457;
+        if (y >= 7 && y < 13 && abs(dx) <= 6) return x < 13 ? 0xd6a477 : 0x9e684a;
         if (y >= 13 && y < 35 && dx * dx * 100 + (y - 23) * (y - 23) * 121 <= 12100)
-            return y == 16 || y == 30 ? 0xf1c47b : x < 14 ? 0xdb9561 : 0x8a4d36;
-        return y >= 35 && abs(dx) < 9 ? 0x9b613f : 0;
+            return y == 16 || y == 30 ? 0xdfb78b : dx < -6 || dx > 7 || y > 32 ? 0x855741 :
+                dx < -3 ? 0xd9a678 : dx < 3 ? 0xbe875e : 0xa16c4d;
+        return y >= 35 && abs(dx) < 9 ? y == 35 ? 0xba895f : 0x79553f : 0;
     }
     if (item == 18) {
         static const int cx[3] = {9, 23, 34}, top[3] = {16, 0, 23};
         for (int i = 2; i >= 0; i--) {
             int d = abs(x - cx[i]), tip = top[i];
             if (y >= tip && y < 44 && d <= 6 && (y - tip >= 9 || d <= (y - tip) * 2 / 3))
-                return x < cx[i] ? 0xe3b8ff : x == cx[i] ? 0xa9ecff : 0x8455d9;
+                return y - tip < 9 ? x <= cx[i] ? 0xe7def2 : 0xb7aad9 :
+                    x == cx[i] - 3 ? 0xd8e5ee : x < cx[i] ? 0xbca3d7 : x == cx[i] ? 0x9fc9df :
+                    d == 6 ? 0x5e578b : 0x8277b3;
         }
-        return y >= 43 && abs(x - 21) < 18 ? 0x68577f : 0;
+        return y >= 43 && abs(x - 21) < 18 ? y == 43 ? 0x9991aa : 0x625d78 : 0;
     }
     if (item == 19) {
         int dx = x - 24;
-        if (y >= 51 && abs(dx) <= 2) return 0xc66b79;
+        if (y > 63 && abs(dx) < 9) return y == 64 ? 0xada191 : 0x777e75;
+        if (y >= 51 && abs(dx) <= 2) return x < 24 ? 0xcc8999 : 0x925d7c;
         int height = 54 - y;
         if (height >= 0 && height <= 51 && abs(dx) <= height / 2 + 2) {
             bool branch = abs(dx) <= 1 || abs(abs(dx) * 2 - height) < 2 ||
                 (height + abs(dx) * 2) % 14 < 2 || (y % 9 == 0 && abs(dx) < height / 2);
-            if (branch) return x < 24 ? 0xf0a0bd : 0xb55294;
+            if (branch) return abs(dx) <= 1 ? 0xe3b2bb : x < 24 ? 0xcc8da7 : 0xa76d94;
         }
-        return y > 63 && abs(dx) < 9 ? 0x8b727b : 0;
+        return 0;
     }
     if (item == 20) {
         int dx = x - 29, dy = y - 25, ring = dx * dx + dy * dy;
         bool stone = (y >= 25 && y < 59 && abs(dx) >= 18 && abs(dx) <= 25) ||
             (y < 26 && ring >= 324 && ring <= 625) || (y >= 59 && y <= 63 && abs(dx) <= 28);
         if (!stone) return 0;
-        return y % 9 == 0 || (x + (y / 9 % 2) * 7) % 14 == 0 ? 0x526a65 : y < 15 ? 0xb9c5a4 : x < 29 ? 0x91a38d : 0x6b8278;
+        int joint = (x + (y / 9 % 2) * 7) % 14;
+        if (y % 9 == 0 || joint == 0) return 0x4e6865;
+        if (y > 46 && (x + y / 3) % 9 < 3) return 0x68866a;
+        if (y % 9 == 1 || joint == 1) return 0xb3c0a3;
+        if ((y < 26 && ring < 380) || (y >= 25 && abs(dx) < 20)) return 0x5e7772;
+        return y < 15 ? 0xc0c9ad : x < 29 ? 0x99ad99 : 0x7a9084;
     }
     if (item == 21) {
         int dx = x - 18 - g_buoy_sway, dy = y - 16 - g_buoy_bob;
@@ -3304,7 +3395,8 @@ static uint32_t ornament_pixel(int item, int x, int y) {
         if (y < 19) {
             if (dx * dx * 256 + dy * dy * 289 > 73984) return 0;
             bool rib = (abs(dx) * 18 / (19 - y + 3)) % 5 == 0;
-            return rib ? 0xc58b8e : y < 7 ? 0xffe8cc : 0xe8bcac;
+            if (rib) return x > 22 || y > 15 ? 0xb48087 : 0xd3a0a0;
+            return y < 7 ? 0xf5e2c7 : x > 27 || y > 16 ? 0xc79993 : x < 14 ? 0xebc9b5 : 0xdeafa1;
         }
         return abs(dx) <= 8 - (y - 19) ? 0xf4d8bf : 0;
     }
@@ -3317,7 +3409,8 @@ static uint32_t ornament_pixel(int item, int x, int y) {
                 x < (vx[j] - vx[i]) * (y - vy[i]) / (vy[j] - vy[i]) + vx[i]) inside = !inside;
         }
         if (!inside) return 0;
-        return (x + y * 3) % 11 == 0 ? 0xffd1a0 : x < 16 ? 0xf49b69 : 0xc9614c;
+        if ((x + y * 3) % 11 == 0) return 0xf6d1a3;
+        return x < 16 ? (x + y) % 4 == 0 ? 0xe6b18b : 0xe3a27d : (x + y) % 4 == 0 ? 0xd28d73 : 0xbe7967;
     }
     if (item == 13) {
         int dx = x - 17 - g_buoy_sway, dy = y - 17 - g_buoy_bob;
@@ -3334,7 +3427,8 @@ static uint32_t ornament_pixel(int item, int x, int y) {
         || (y >= 25 && y <= 37 && abs(abs(dx) - (37 - y)) <= 2)
         || (y >= 23 && y <= 29 && abs(dx) >= 10 && abs(dx) <= 14);
     if (!metal) return 0;
-    return (x + 2 * y) % 13 < 3 ? 0x9e704e : x < 15 ? 0x9dafad : 0x526f79;
+    if ((x + 2 * y) % 13 < 3) return 0x9e7c5a;
+    return x < 14 ? 0xb4c6b9 : x < 16 ? 0x92aaa5 : 0x5d7a80;
 }
 static uint32_t locked_rgb(uint16_t v);
 static uint32_t shop_art_color(uint32_t rgb, bool lit, uint32_t background) {

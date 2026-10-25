@@ -20,7 +20,12 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.2.1**, polishing fifteen shared menu/goal stamps, eighteen
+- Source release: **2.2.2**, refining twenty tank ornaments/fixed scenery,
+  jade vegetation and folded sword-leaf shading. Material art stays in the
+  existing `ornament_pixel`/`scenery_pixel` paths, shared with previews and
+  static caches; preserve footprints, openings, night/tile parity and all
+  three detail levels. No new buffers, animation, ownership or save fields.
+  2.2.1 polished fifteen shared menu/goal stamps, eighteen
   game thumbnails and medals. Stamps use static 12x12 indexed art expanded
   within 24x24 page bounds; thumbnails remain 40x32 and medals 20x24.
   Preserve those bounds, low-contrast locked states, full/tile equality and

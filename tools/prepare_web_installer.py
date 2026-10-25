@@ -18,6 +18,8 @@ FEATURE_IMAGES = (
     "clock-jumbo-digital.png", "clock-jumbo-flip.png", "clock-jumbo-analog.png",
     "clock-settings.png", "weather-settings.png", "journal-goals.png",
     "home-collections.png", "games-page-three.png",
+    "tank-crafted-ornaments.png", "tank-crafted-seabed.png",
+    "tank-crafted-reef.png", "tank-crafted-plants.png",
 )
 
 

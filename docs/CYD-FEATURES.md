@@ -2,7 +2,20 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.2.1**
+**An illustrated tour of Pocket Tank CYD 2.2.2**
+
+**2.2.2** brings the polish into the aquarium itself: twenty ornaments and
+fixed sand pieces gain material-specific depth, from chest fittings and
+faceted crystals to rounded stones, pearl sheen, sponge pores and weathered
+wood. Seagrass uses quieter jade tones; sword leaves have a lit face and
+shaded fold. The actual tank and shop previews share the art. Existing
+footprints, ownership, growth, placement, prices, care and saves are preserved;
+no extra graphics buffers, artwork downloads or animations are required.
+
+| Crafted wood, crystal and stone | Rounded seabed materials |
+|---|---|
+| ![Chest fittings, shaded crystals and beveled arch](media/cyd-features/tank-crafted-ornaments.png) | ![Rounded pebbles, pearl clam, tube sponges, barrel and helmet](media/cyd-features/tank-crafted-seabed.png) |
+| ![Sea glass, brain coral, tiki, bottle, anemone and ceramic teapot](media/cyd-features/tank-crafted-reef.png) | ![Jade seagrass and folded sword leaves around an urn and sea fan](media/cyd-features/tank-crafted-plants.png) |
 
 **2.2.1** refines the shared interface artwork: fifteen shaded menu/goal icons,
 eighteen coordinated game thumbnails and faceted reward medals. Cleaner
@@ -907,6 +920,13 @@ included in saves and SD backups.
 ![Demonstration aquarium with the Deep Glow backdrop](media/cyd-features/tank-deep-glow.png)
 
 ## 4. Decorate beyond the original tank
+
+Release 2.2.2 refines twenty of these ornaments and fixed scenery pieces.
+Wood, metal, glass, stone, coral and ceramic have their own restrained
+highlights and shadows, rather than sharing one flat treatment. The same
+procedural art is used in the tank and shop previews. The swim-through arch
+stays open; scenery keeps its fixed sand positions and does not consume
+decoration slots. All three scene details retain the owned artwork.
 
 The fork adds these shop decorations and sets their prices as follows.
 Prices are in sand dollars.
