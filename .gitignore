@@ -3,6 +3,7 @@ __pycache__/
 firmware/build/
 firmware/build_cyd/
 firmware/build_elegoo/
+firmware/build_unified/
 firmware/sdkconfig
 firmware/sdkconfig.old
 firmware/dependencies.lock

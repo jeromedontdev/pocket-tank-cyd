@@ -1,9 +1,10 @@
 # Pocket Tank CYD-only firmware.
 cmake_minimum_required(VERSION 3.16)
 set(IDF_TARGET esp32)
-set(PT_BOARD_VARIANT "cyd" CACHE STRING "Display board: cyd or elegoo")
-set_property(CACHE PT_BOARD_VARIANT PROPERTY STRINGS cyd elegoo)
-if(NOT PT_BOARD_VARIANT STREQUAL "cyd" AND NOT PT_BOARD_VARIANT STREQUAL "elegoo")
+set(PT_BOARD_VARIANT "cyd" CACHE STRING "Display board: cyd, elegoo or unified")
+set_property(CACHE PT_BOARD_VARIANT PROPERTY STRINGS cyd elegoo unified)
+if(NOT PT_BOARD_VARIANT STREQUAL "cyd" AND NOT PT_BOARD_VARIANT STREQUAL "elegoo"
+   AND NOT PT_BOARD_VARIANT STREQUAL "unified")
     message(FATAL_ERROR "Unsupported PT_BOARD_VARIANT: ${PT_BOARD_VARIANT}")
 endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

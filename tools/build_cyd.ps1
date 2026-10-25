@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('cyd', 'elegoo')]
+    [ValidateSet('cyd', 'elegoo', 'unified')]
     [string]$Board = 'cyd',
     [string]$Port = 'COM4',
     [switch]$Flash,
@@ -9,8 +9,11 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not $env:IDF_PATH) { throw 'Run this script from an ESP-IDF PowerShell terminal.' }
+if ($Board -eq 'unified' -and $Flash) {
+    throw 'Unified profile provisioning/migration is still under development. Build-only is supported; use the verified board-specific flash path until migration tooling is ready.'
+}
 $firmware = Join-Path (Split-Path $PSScriptRoot -Parent) 'firmware'
-$build = if ($Board -eq 'elegoo') { 'build_elegoo' } else { 'build_cyd' }
+$build = "build_$Board"
 Push-Location $firmware
 try {
     & cmake -S . -B $build -G Ninja "-DSDKCONFIG=$build\sdkconfig" '-DSDKCONFIG_DEFAULTS=sdkconfig.defaults' "-DPT_BOARD_VARIANT=$Board"

@@ -1,6 +1,7 @@
 /* display_port_cyd.c - CYD SPI LCD with revision-specific initialization. */
 #include "display_port.h"
 #include "board_pins.h"
+#include "board_hardware.h"
 #include "tank.h"
 #include "render.h"
 #include "driver/gpio.h"
@@ -30,8 +31,7 @@ static int s_layout_width, s_layout_height, s_layout_tile;
 static int64_t s_wait_us, s_send_us;
 static unsigned s_blocks_sent, s_blocks_skipped;
 /* Panel-specific power/gamma settings; the original CYD sequence stays unchanged. */
-#if PT_BOARD_ELEGOO
-static const ili9341_lcd_init_cmd_t cyd_init_commands[] = {
+static const ili9341_lcd_init_cmd_t elegoo_init_commands[] = {
     /* Undo the driver's early sleep-out before programming panel power. */
     {0x01, NULL, 0, 150},
     {0xCF, (uint8_t[]){0x00, 0xC9, 0x30}, 3, 0},
@@ -56,7 +56,6 @@ static const ili9341_lcd_init_cmd_t cyd_init_commands[] = {
     {0x2A, (uint8_t[]){0x00, 0x00, 0x00, 0xEF}, 4, 0},
     {0x11, NULL, 0, 120},
 };
-#else
 static const ili9341_lcd_init_cmd_t cyd_init_commands[] = {
     {0xB2, (uint8_t[]){0x0C, 0x0C, 0x00, 0x33, 0x33}, 5, 0},
     {0xB7, (uint8_t[]){0x35}, 1, 0},
@@ -70,7 +69,6 @@ static const ili9341_lcd_init_cmd_t cyd_init_commands[] = {
     {0xE0, (uint8_t[]){0xD0, 0x04, 0x0D, 0x11, 0x13, 0x2B, 0x3F, 0x54, 0x4C, 0x18, 0x0D, 0x0B, 0x1F, 0x23}, 14, 0},
     {0xE1, (uint8_t[]){0xD0, 0x04, 0x0C, 0x11, 0x13, 0x2C, 0x3F, 0x44, 0x51, 0x2F, 0x1F, 0x1F, 0x20, 0x23}, 14, 0},
 };
-#endif
 #define CYD_STRIPE_BYTES (CYD_PANEL_H * CYD_STRIPE_ROWS * sizeof(uint16_t))
 #define CYD_DIAGNOSTIC_PATTERN 0
 #if CYD_DIAGNOSTIC_PATTERN
@@ -124,31 +122,28 @@ bool display_port_init(void) {
         .init_cmds = cyd_init_commands,
         .init_cmds_size = sizeof(cyd_init_commands) / sizeof(cyd_init_commands[0]),
     };
+    const board_hardware_t *hardware = board_hardware_current();
+    if (hardware->id == BOARD_HARDWARE_ELEGOO) {
+        vendor_cfg.init_cmds = elegoo_init_commands;
+        vendor_cfg.init_cmds_size = sizeof(elegoo_init_commands) / sizeof(elegoo_init_commands[0]);
+    }
     esp_lcd_panel_dev_config_t panel_cfg = {
         .reset_gpio_num = CYD_PIN_LCD_RST,
-#if PT_BOARD_ELEGOO
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
-#else
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
-#endif
+        .rgb_ele_order = hardware->id == BOARD_HARDWARE_ELEGOO ?
+                         LCD_RGB_ELEMENT_ORDER_BGR : LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
         .vendor_config = &vendor_cfg,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(io, &panel_cfg, &s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(s_panel));
-#if !PT_BOARD_ELEGOO
-    ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(io, 0x38, NULL, 0));
-    ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(io, 0x13, NULL, 0));
-#endif
+    if (hardware->id == BOARD_HARDWARE_CYD) {
+        ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(io, 0x38, NULL, 0));
+        ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(io, 0x13, NULL, 0));
+    }
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(s_panel, false));
     ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(s_panel, false));
-#if PT_BOARD_ELEGOO
-    /* This panel's native column direction differs from the original CYD. */
-    ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, true, false));
-#else
-    ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, false, false));
-#endif
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, hardware->panel_mirror_columns, false));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(s_panel, true));
 
     ledc_timer_config_t timer = {

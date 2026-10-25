@@ -29,7 +29,7 @@ jobs:
           esp_idf_version: v6.1
           target: esp32
           path: firmware
-          command: idf.py -B build_cyd -DPT_BOARD_VARIANT=cyd build && idf.py -B build_elegoo -DSDKCONFIG=build_elegoo/sdkconfig -DPT_BOARD_VARIANT=elegoo build
+          command: idf.py -B build_cyd -DPT_BOARD_VARIANT=cyd build && idf.py -B build_elegoo -DSDKCONFIG=build_elegoo/sdkconfig -DPT_BOARD_VARIANT=elegoo build && idf.py -B build_unified -DSDKCONFIG=build_unified/sdkconfig -DPT_BOARD_VARIANT=unified build
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -48,6 +48,7 @@ jobs:
       - run: python tools/test_cyd_sd_init.py --cc gcc
       - run: python tools/test_cyd_settings.py --cc gcc
       - run: python tools/test_cyd_touch_defaults.py --cc gcc
+      - run: python tools/test_board_hardware.py --cc gcc
       - run: python tools/test_ambient.py --cc gcc
       - run: python tools/test_brightness.py --cc gcc
       - run: python tools/test_weather.py --cc gcc

@@ -10,7 +10,10 @@
 #define PT_RELEASE_STAGE "CYD"
 #define PT_RELEASE_NUM   ((PT_RELEASE_MAJOR << 16) | (PT_RELEASE_MINOR << 8) | PT_RELEASE_PATCH)
 
-#if PT_BOARD_ELEGOO
+#if PT_BOARD_UNIFIED
+#define PT_BOARD         "cydesp32profiles"
+#define PT_BOARD_NAME    "ESP32 CYD hardware profiles"
+#elif PT_BOARD_ELEGOO
 #define PT_BOARD         "elegoo28"
 #define PT_BOARD_NAME    "ELEGOO ESP32-32E 2.8-inch"
 #else

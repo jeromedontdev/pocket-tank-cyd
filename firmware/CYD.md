@@ -16,6 +16,7 @@ battery/PMIC and IMU drivers have been removed from the source tree.
 |---|---|---|---|---|
 | `cyd` (default) | `cyd2432s028` | Existing CYD custom ST7789-style sequence | 4 | LDR |
 | `elegoo` | `elegoo28` | ELEGOO ILI9341V power/gamma sequence, BGR | 22 | Battery sensing, never read as light |
+| `unified` | `cydesp32profiles` | Saved `cyd` or `elegoo` runtime profile | Profile-specific | Profile-specific |
 
 **Development status:** ELEGOO integration is not yet a verified public
 release. Physical testing identified the white/striped-screen cause: after
@@ -36,12 +37,33 @@ still needs physical verification before release; successful unit tests alone
 are not enough.
 The latest verified public release remains 2.3.5 for the original board.
 
-The intended follow-up is a single image with saved hardware profiles for
-compatible ESP32/4 MiB boards, plus installer/serial/button recovery when a
-wrong profile makes the screen unreadable. Automatic controller ID is not
-sufficient: this test board returns zero IDs even though status/GRAM reads
-work. Different ESP32 families or display buses may still need separate
-builds. Runtime profiles are not implemented by the current build choices.
+The `unified` development image implements saved hardware profiles for these
+two compatible ESP32/4 MiB boards. The same application bytes have been
+installed on both local boards and checked by full app readback and reboot,
+with their aquariums preserved. On first boot it waits for `hardware cyd` or
+`hardware elegoo` over USB serial at 115200 baud, before LCD/peripheral startup.
+The profile is persisted as `pt_hardware` / `profile` in NVS (1 = CYD,
+2 = ELEGOO). It is independent of the application slot and aquarium saves.
+Unknown saved IDs require explicit selection; NVS read failures stop startup
+with an error rather than guessing hardware.
+
+Once running, `hardware` reports the profile and image identity.
+`hardware cyd` / `hardware elegoo` first save the aquarium successfully, then
+persist the selected profile and restart. This recovery command needs no
+readable screen and does not overwrite touch calibration. Profile changes
+are refused in network setup/update mode; queries remain available. Legacy
+board-specific images refuse a saved profile belonging to the other board.
+No automatic controller probing is used: the ELEGOO test board returns zero
+IDs even though status/GRAM reads work. Different ESP32 families, display
+buses, pins or framebuffer budgets may still require separate builds.
+
+**Not yet released:** production USB provisioning, legacy-to-unified update
+migration and unified release/website assets. `build_cyd.ps1 -Board unified`
+is build-only and deliberately refuses `-Flash` until that save-preserving
+installer path is ready. Do not bypass board markers or factory-flash an
+existing aquarium. The unified default Wi-Fi manifest name is
+`unified-ota.json`; that release asset is not published yet. Existing
+board-specific release/update paths are unchanged.
 
 The ELEGOO ESP32-32E 2.8-inch resistive-touch board is documented by
 [ELEGOO](https://wiki.elegoo.com/oshw-parts-&-accessories/esp32-dispaly-introduction).
@@ -58,10 +80,11 @@ From an ESP-IDF PowerShell environment:
 ```powershell
 .\tools\build_cyd.ps1 -Board cyd
 .\tools\build_cyd.ps1 -Board elegoo
+.\tools\build_cyd.ps1 -Board unified
 .\tools\build_cyd.ps1 -Board elegoo -Port COM8 -Flash
 ```
 
-Separate `build_cyd`/`build_elegoo` directories prevent cached board settings
+Separate `build_cyd`/`build_elegoo`/`build_unified` directories prevent cached board settings
 from contaminating the other build. Normal app-only flashing verifies the
 installed marker against the built image; web, SD and Wi-Fi updates also
 refuse another board. ELEGOO release assets use `pocket-tank-elegoo-app.bin`,

@@ -20,7 +20,7 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- 2.3.6 adds an explicit `PT_BOARD_VARIANT=cyd|elegoo`, separate build
+- 2.3.6 development adds `PT_BOARD_VARIANT=cyd|elegoo|unified`, separate build
   directories and `PT_BOARD_ELEGOO=1` propagated from tankcore to HAL.
   Original CYD `cyd2432s028` keeps its custom LCD sequence; ELEGOO `elegoo28`
   uses ELEGOO's ILI9341V power/gamma sequence/BGR with the same LCD/touch/SD pins,
@@ -41,8 +41,10 @@ or deployment is published. Update this file when its contracts change.
   view during ELEGOO testing; COM8 backlight off/on was verified on camera.
   Do not assume it still views COM4. Port numbers are local,
   not a public hardware identifier.
-  Current validation status: COM8 boots the local ELEGOO app, exact image
-  readback and Mira/Bolt/settings persistence passed. White/striped LCD root
+  Current validation status: both local boards have run the byte-identical
+  unified app, with saved runtime profiles and full app readback/reboot/save
+  checks. COM4 retains Bolt/Pip/Kelp/Odie; COM8 retains Mira/Bolt and its saved
+  touch calibration. The camera views COM8, not COM4. White/striped LCD root
   cause identified: failed SD mounting followed by spi_bus_free(SPI3_HOST)
   disrupted the live SPI2 LCD DMA on this ESP32/IDF stack. Keeping SPI3
   allocated for the boot lifetime restores the full UI, not just GRAM reads.
@@ -69,8 +71,8 @@ or deployment is published. Update this file when its contracts change.
   Do not leave
   diagnostic bars, startup delays or alternate-controller tests enabled.
   Do not tag/publish 2.3.6 as verified support until display/touch pass.
-  COM4 is verified on
-  published 2.3.5, including full app readback and another persistence reboot.
+  Public release remains 2.3.5; local unified testing is not a published
+  installer or release.
 - User's requested direction after COM8 is fixed: prefer one binary for
   compatible ESP32/4MiB CYDs, with saved runtime hardware profiles for panel
   initialization/order/inversion, touch and peripheral capabilities. Keep an
@@ -80,7 +82,25 @@ or deployment is published. Update this file when its contracts change.
   old board identities safely during migration, rollback and each profile's
   calibration. Do not promise one binary for different ESP32 chip families,
   parallel/RGB buses, larger framebuffer budgets or untested boards. Current
-  separate builds are interim, not a completed universal-profile feature.
+  runtime implementation is in common/board_hardware.h and
+  firmware/main/board_hardware_esp.c. Unified family identity is
+  `cydesp32profiles`; NVS namespace/key is `pt_hardware` / `profile`
+  (1 CYD, 2 ELEGOO). Missing/unknown IDs wait for explicit `hardware cyd`
+  or `hardware elegoo` over USB before hardware init; NVS read failures
+  stop startup with an error. Running `hardware` queries the profile;
+  a change saves the aquarium first, commits the profile and reboots.
+  Network setup/update mode allows queries only. Saved affine_v1 remains
+  untouched. Runtime selection covers both LCD sequences, RGB order/mirror,
+  touch defaults, LED/audio pins, LDR access and room-light UI. New pet
+  projects (Pocket Terrarium, etc.) should reuse this hardware/persistence
+  boundary rather than put species/game logic in board profiles. Keep
+  capabilities explicit and test native/browser fallback builds.
+  Production USB provisioning, safe legacy migration and unified website/
+  release packaging remain unfinished: build_cyd.ps1 permits unified builds
+  but explicitly refuses unified flashing. Do not publish a nonfunctional
+  universal installer or disable marker checks. `unified-ota.json` is the
+  development image's channel but is not published. Board-specific tooling
+  remains available for its existing identities.
 - 2.3.4 moves all eight aquarium archives to internal SPIFFS; SD is only for
   legacy import, backups, screenshots and offline updates. Firmware owns this
   policy in `persist_port_esp.c`; `sd_port_cyd.c` exposes read-only legacy import.

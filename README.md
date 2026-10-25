@@ -3,8 +3,9 @@
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.3.6**; firmware, update
-packages and the browser installer are published through GitHub Releases.
+now versioned independently. This is **2.3.6 development**; the latest verified
+public release is **2.3.5**. Stable firmware, update packages and the browser
+installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
 permanent game modes, shared multi-aquarium progression, a global Fish Bank,
@@ -12,8 +13,8 @@ inherited genetics, illustrated adventures, a story RPG and eighteen games.
 It retains the original aquarium simulation and credits its origins, but is no
 longer just upstream Pocket Tank running on another display. Older release
 downloads and tags remain unchanged.
-Targets the **ESP32-2432S028 Cheap Yellow Display** and a separate
-**ELEGOO ESP32-32E 2.8-inch ILI9341V** build:
+Targets the **ESP32-2432S028 Cheap Yellow Display** and
+**ELEGOO ESP32-32E 2.8-inch ILI9341V**, with a development shared-image build:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
 are not included. See [LICENSE](LICENSE) for the original project license.
@@ -26,13 +27,16 @@ actual desktop renderer.
 
 ## New in 2.3.6: ELEGOO display support
 
-**Unreleased development:** board-specific builds and installer paths are
-implemented. Physical tests traced the white/striped display to failed-SD
+**Unreleased development:** runtime hardware profiles now let the same
+`unified` application image run on both tested boards. A saved profile selects
+LCD initialization, orientation, touch defaults and peripheral capabilities.
+Physical tests traced the white/striped display to failed-SD
 cleanup disturbing LCD DMA; retaining the SD bus restores visible output.
-The full UI is now upright at normal speed; public support is held pending
-physical touch validation;
-verified public 2.3.5
-continues to target the original board.
+The ELEGOO UI is upright at normal speed. Its default touch transform is
+corrected without invalidating existing calibration; the user confirmed their
+calibrated touch works. Fresh uncalibrated touch still needs physical testing.
+The unified public installer/migration path is not released; verified public
+2.3.5 continues to target the original board.
 
 Choose your exact board in the [website installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html).
 The ELEGOO uses the same LCD/touch SPI pins but an **ILI9341V**, not the original
@@ -41,9 +45,13 @@ is held high to disable the audio amplifier. GPIO34 is battery sensing, **not
 a room-light sensor**: automatic room dimming/night detection is unavailable.
 No audio or battery/charging application is added.
 
-Each board has separate app/factory images, SD packages, Wi-Fi manifests and
-download checksums. Board markers prevent cross-flashing through normal
-updaters; the original CYD retains its existing display initialization.
+The existing board-specific packaging/installer paths still use separate
+app/factory images, SD packages, Wi-Fi manifests and download checksums.
+The development unified image uses its own family marker, `cydesp32profiles`;
+it does not disable old board-marker checks or automatically migrate old
+images. It waits for an explicit USB serial profile on first boot, before
+initializing board-dependent hardware. The original CYD retains its existing
+display initialization.
 If an ELEGOO was already flashed with the original CYD image and shows white,
 the save-preserving web updater will intentionally refuse that identity
 mismatch. A backed-up, explicit **app-only board conversion** is needed;

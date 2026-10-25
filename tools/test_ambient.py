@@ -10,6 +10,7 @@ HARNESS = r"""
 #include <assert.h>
 #include <math.h>
 #include <stdint.h>
+#include "board_hardware.h"
 #include <stdio.h>
 #include <string.h>
 #include "tank.h"
@@ -153,13 +154,11 @@ SENSOR_HARNESS = r"""
 #define CYD_LDR_ADC_CHANNEL 6
 static int writes, reads;
 static uint8_t s_room;
-#if CYD_HAS_LDR
 static int s_adc;
 static bool s_adc_ready = true;
 static int adc_oneshot_read(int unit, int channel, int *raw) {
     (void)unit; (void)channel; reads++; *raw = 123; return ESP_OK;
 }
-#endif
 static bool nvs_put(const char *key, uint8_t value) {
     (void)key; (void)value; writes++; return true;
 }
@@ -215,10 +214,11 @@ def main():
         setter = source[source.index("bool ambient_set_room_mode("):
                         source.index("bool ambient_set_led_mode(")]
         for has_ldr in (0, 1):
-            test.write_text(f"#define CYD_HAS_LDR {has_ldr}\n" + SENSOR_HARNESS +
+            test.write_text(f"#define CYD_HAS_LDR {has_ldr}\n#define PT_BOARD_ELEGOO {1 - has_ldr}\n" +
+                            '#include "board_hardware.h"\n' + SENSOR_HARNESS +
                             sensor + setter + SENSOR_TEST)
             subprocess.run(command + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-                                      str(test), "-o", str(executable)], check=True)
+                                      "-I" + str(root / "common"), str(test), "-o", str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
         print("PASS: CYD LDR works; ELEGOO never reads battery ADC or persists unsupported DIM/NIGHT")
 

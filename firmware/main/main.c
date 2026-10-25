@@ -25,6 +25,7 @@
 #include "brightness.h"
 #include "ambient.h"
 #include "progression.h"
+#include "board_hardware.h"
 #include "companion.h"
 #include "weather.h"
 #include "sd_port_cyd.h"
@@ -475,14 +476,14 @@ static void tank_task(void *arg) {
                   "SCENE SAVE FAILED - UNCHANGED", false);
           }
           else if (w == SET_TAP_ROOM) {
-#if PT_BOARD_ELEGOO
+              if (!board_hardware_current()->has_ldr) {
               ESP_LOGW(TAG, "room-light setting unavailable on this board");
               render_backup_status("THIS BOARD HAS NO ROOM SENSOR", false);
-#else
+              } else {
               int m = (ambient_room_mode() + 1) % ROOM_LIGHT_MODES;
               static const char *const names[] = {"ROOM LIGHT OFF", "ROOM LIGHT DIMS THE SCREEN", "DARK ROOM: SCREEN DIMS, TANK SLEEPS"};
               render_backup_status(ambient_set_room_mode(m) ? names[m] : "ROOM LIGHT SAVE FAILED", false);
-#endif
+              }
           }
           else if (w == SET_TAP_LED) {
               int m = (ambient_led_mode() + 1) % BACK_LED_MODES;
@@ -795,6 +796,10 @@ void app_main(void) {
     gpio_config(&btn);
     gpio_deep_sleep_hold_dis();              /* a deep-sleep wake is a boot: the night's pad holds end here */
     nvs_start();
+    if (!board_hardware_init()) {
+        ESP_LOGE(TAG, "hardware startup stopped; saved aquarium left untouched");
+        return;
+    }
     director_early();                        /* the installer page's handshake, answered from here on (director.c) */
     brightness_init();
     for (int i = 0; i < PLAN_FB_COUNT; i++) {

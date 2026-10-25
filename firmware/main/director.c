@@ -16,6 +16,7 @@
 #include "director.h"
 #include "update.h"
 #include "version.h"
+#include "board_hardware.h"
 #include "esp_ota_ops.h"
 const char *net_port_manifest_url(void);
 bool net_port_set_manifest_url(const char *url);
@@ -163,6 +164,7 @@ static void show_state(const tank_t *t) {
 }
 
 static void help(void) {
+    ESP_LOGI(TAG, "hardware [cyd|elegoo] (query profile, or save aquarium/profile and restart; calibration preserved)");
     ESP_LOGI(TAG, "help | state | hungry [N] [level=9] (N fish starving, water cleared, trickle held)");
     ESP_LOGI(TAG, "fed [level=1] (everyone full, trickle back on) | set <hunger|energy|stress|curiosity|trust> <0-10> [fish name|idx]");
     ESP_LOGI(TAG, "feed [n=3] [x] (keeper drops pellets; trickle back on) | trickle on|off | pellets clear");
@@ -231,8 +233,24 @@ static void run(tank_t *t, char *line) {
     if (!argc) return;
     for (char *p = argv[0]; *p; p++) *p = (char)tolower((unsigned char)*p);
     const char *c = argv[0];
-    if (!t && strcmp(c, "wifi") && strcmp(c, "ota") && strcmp(c, "help") && strcmp(c, "sd")) {   /* update mode: no tank to command */
-        ESP_LOGW(TAG, "update mode: only wifi / ota / help (ota tap <x> <y>, ota page)"); return; }
+    if (!t && strcmp(c, "wifi") && strcmp(c, "ota") && strcmp(c, "help") &&
+        strcmp(c, "sd") && strcmp(c, "hardware")) {   /* update mode: no tank to command */
+        ESP_LOGW(TAG, "update mode: only wifi / ota / sd / hardware / help (hardware query only)"); return; }
+    if (!strcmp(c, "hardware")) {
+        if (argc == 1) {
+            ESP_LOGI(TAG, "hardware profile %s | image %s", board_hardware_current()->name, PT_BOARD);
+            return;
+        }
+        unsigned id = argc == 2 && !strcmp(argv[1], "cyd") ? BOARD_HARDWARE_CYD :
+                      argc == 2 && !strcmp(argv[1], "elegoo") ? BOARD_HARDWARE_ELEGOO : 0;
+        if (!id) { ESP_LOGE(TAG, "use hardware [cyd|elegoo]"); return; }
+        if (!t) { ESP_LOGE(TAG, "profile changes unavailable during network update/setup"); return; }
+        if (!progression_save(t)) { ESP_LOGE(TAG, "profile change canceled: aquarium save failed"); return; }
+        if (!board_hardware_save(id)) return;
+        ESP_LOGI(TAG, "hardware profile saved; restarting without changing calibration");
+        esp_restart();
+        return;
+    }
     if (!strcmp(c, "sd")) { sd_port_command(t, argc, argv); return; }
     if (!strcmp(c, "help")) help();
     else if (!strcmp(c, "benchmark")) device_render_benchmark();

@@ -10,12 +10,14 @@ HARNESS = r"""
 #include <stdbool.h>
 #include <math.h>
 #include <stdio.h>
+#include "board_hardware.h"
 static int TANK_W = 240, TANK_H = 180, s_bias_y;
 static bool s_inverted;
 """
 
 TEST = r"""
 int main(void) {
+    cyd_cal_default();
     float x, y;
     cal_point(40, 20, &x, &y);
     assert(x == 40);
@@ -56,7 +58,8 @@ def main():
         for elegoo in (0, 1):
             executable = folder / f"test-{elegoo}.exe"
             subprocess.run(command + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-                                      f"-DPT_BOARD_ELEGOO={elegoo}", str(test), "-o",
+                                      f"-DPT_BOARD_ELEGOO={elegoo}",
+                                      "-I" + str(Path(__file__).resolve().parent.parent / "common"), str(test), "-o",
                                       str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
 

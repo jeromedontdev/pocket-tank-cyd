@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS main.c director.c brightness.c ambient.c update_mode.c net_port_esp.c weather_port_esp.c
+    SRCS main.c director.c brightness.c ambient.c board_hardware_esp.c update_mode.c net_port_esp.c weather_port_esp.c
          display_port_cyd.c touch_port_xpt2046.c sd_port_cyd.c
     INCLUDE_DIRS "."
     REQUIRES tankcore esp_partition spi_flash esp_timer esp_driver_spi
