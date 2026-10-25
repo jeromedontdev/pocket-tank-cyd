@@ -236,7 +236,10 @@ API int sim_creature_target(int card) {
 }
 
 static void shop_action(int result) {
-    if (result == SHOP_TAP_TANKS) { render_aquariums_open(&tank); page = 7; }
+    if (result >= SHOP_TAP_INVENTORY) {
+        render_shop_inventory_action(&tank, result);
+        if (setup_is_place()) { render_shop_leave(); page = 0; }
+    } else if (result == SHOP_TAP_TANKS) { render_aquariums_open(&tank); page = 7; }
     else if (result == SHOP_TAP_CLOSE) { render_shop_leave(); page = child_parent; }
     else if (result >= SHOP_TAP_FRY) progression_buy_fry(&tank, result - SHOP_TAP_FRY);
     else if (result >= SHOP_TAP_SELL) progression_sell(&tank, result - SHOP_TAP_SELL);

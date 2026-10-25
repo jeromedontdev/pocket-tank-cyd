@@ -900,7 +900,7 @@ bool companion_game_claim(tank_t *t, int game, int score, int moves, int dollars
         if (t->companion.game_medals[game] == 3) t->companion.game_challenges |= (uint8_t)(1u << game);
         if (t->companion.featured == game) t->companion.featured = (uint8_t)((game + 1) % 6);
     }
-    if (dollars ? progression_game_reward(t, dollars) : progression_save(t)) return true;
+    if (dollars ? progression_game_reward(t, game, dollars) : progression_save(t)) return true;
     t->companion = old;
     t->games = old_games;
     t->games_extra = old_extra;

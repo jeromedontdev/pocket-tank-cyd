@@ -3503,6 +3503,8 @@ static uint32_t shop_art_color(uint32_t rgb, bool lit, uint32_t background) {
     return lit ? rgb : mix(background, locked_rgb(rgb565(rgb, 1)), 179 / 255.0f);
 }
 static void draw_ornament(ctx_t *c, int item, int x0, int y0, int scale, bool final, bool lit, uint32_t background) {
+    if (!c->scaled && (x0 >= c->ox + c->w ||
+        x0 + tank_ornament_w(item) * scale <= c->ox)) return;
     int first = 0, last = tank_ornament_h(item) - 1;
     if (!c->scaled) {
         if (y0 < c->oy) first = (c->oy - y0) / scale;
@@ -3520,6 +3522,50 @@ static void draw_ornament(ctx_t *c, int item, int x0, int y0, int scale, bool fi
             if (final) span_final(c, left, left + scale - 1, top + row, &color, 255);
             else span(c, left, left + scale - 1, top + row, &color, 255);
         }
+    }
+}
+static void draw_pearl_mussel(ctx_t *c, float x, float y, float scale, bool ready) {
+    fill_ellipse(c, x, y + 6 * scale, 19 * scale, 3 * scale, 0x081c24, 90);
+    fill_ellipse(c, x, y + 3 * scale, 18 * scale, 6 * scale, 0x26465b, 255);
+    fill_ellipse(c, x, y + scale, 16 * scale, 4 * scale, 0xcdb4bf, 255);
+    fill_ellipse(c, x + scale, y, 13 * scale, 3 * scale, 0xedd2cd, 255);
+    fill_ellipse(c, x - 4 * scale, y - 6 * scale, 15 * scale, 8 * scale, 0x182d45, 255);
+    fill_ellipse(c, x - 5 * scale, y - 7 * scale, 13 * scale, 6 * scale, 0x48627c, 255);
+    for (int i = -2; i <= 2; i++)
+        fill_ellipse(c, x + (i * 4 - 5) * scale, y - 7 * scale,
+                     .6f * scale, (5 - abs(i)) * scale, 0x80959e, 150);
+    fill_ellipse(c, x - 8 * scale, y - 10 * scale, 7 * scale, scale, 0xa5b9bc, 175);
+    fill_ellipse(c, x + 7 * scale, y, 5 * scale, 5 * scale, ready ? 0xe3ba6c : 0x858c9c, 255);
+    fill_ellipse(c, x + 6 * scale, y - scale, 3.7f * scale, 3.6f * scale, ready ? 0xffe7b0 : 0xcbd0d4, 255);
+    fill_ellipse(c, x + 5 * scale, y - 2 * scale, 1.3f * scale, scale, 0xfffaf0, 230);
+}
+static void mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
+    static const float anchors[] = {.82f, .68f, .48f, .30f, .46f, .64f};
+    const float interval = 360, travel = 16;
+    const int stops = sizeof anchors / sizeof *anchors;
+    float clock = fmodf(fmaxf(t->clock, 0), interval * stops);
+    int stop = (int)(clock / interval);
+    float phase = clock - stop * interval, progress = fmaxf(phase - (interval - travel), 0) / travel;
+    float ease = progress * progress * (3 - 2 * progress);
+    float from = anchors[stop], to = anchors[(stop + 1) % stops];
+    *x = (from + (to - from) * ease) * TANK_W;
+    *crawl = progress > 0 ? to > from ? 1 : -1 : 0;
+    *y = TANK_BOT - 11 + (*crawl ? sinf(phase * 3) * .6f : 0);
+}
+static void draw_tank_mussel(ctx_t *c, const tank_t *t) {
+    if (!t->mussel.owned) return;
+    float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
+    if (crawl) fill_ellipse(c, x + crawl * 9, y + 5, 8, 2, 0x769d91, 220);
+    draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0);
+}
+static void draw_inventory_extras(ctx_t *c, const tank_t *t, int depth) {
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+        const inventory_extra_t *copy = &t->inventory.extra[i];
+        if (!copy->item || copy->z != depth) continue;
+        int item = copy->item - 1;
+        int x = (int)copy->x - tank_ornament_w(item) / 2;
+        int y = TANK_BOT - 14 + DECOR_SINK - tank_ornament_h(item);
+        draw_ornament(c, item, x, y, 1, false, true, 0);
     }
 }
 static void rect_fill(ctx_t *c, int x, int y, int w, int h, uint32_t rgb);
@@ -3587,7 +3633,7 @@ static void pieces_build(const tank_t *t, bool cached, bool front) {
         piece_t *p = &g_pc[g_npc];
         p->item = item; p->cx = (int)tank_decor_x(t, item); p->z = tank_decor_z(t, item);
         p->mask = item == 2 || item >= 9 ? -1 : mask++;
-        p->placing = setup_is_place() && setup_item() == item;
+        p->placing = setup_place_original() && setup_item() == item;
         p->baked = cached && item != 13 && item != 21 && !p->placing && (p->z != DECOR_Z_FRONT || front);
         switch (item) {
             case 2:  p->x0 = p->cx - CASTLE_MASK_W / 2; p->y0 = CASTLE_FY - CASTLE_ROWS; p->w = CASTLE_MASK_W; p->rows = CASTLE_ROWS + 12; g_castle_cx = p->cx; break;
@@ -4360,6 +4406,13 @@ void render_damage_begin(const tank_t *t, bool force_full) {
         previous.season != t->season ||
         previous.collections != t->companion.collections || previous.challenges != t->companion.game_challenges ||
         previous.chapters != t->rpg.chapter;
+    static inventory_extra_t previous_extras[DECOR_EXTRA_CAP];
+    if (memcmp(previous_extras, t->inventory.extra, sizeof previous_extras)) full = true;
+    memcpy(previous_extras, t->inventory.extra, sizeof previous_extras);
+    static bool mussel_owned, mussel_ready;
+    bool owned = t->mussel.owned != 0, ready = t->mussel.bank != 0;
+    if (owned != mussel_owned || ready != mussel_ready) full = true;
+    mussel_owned = owned; mussel_ready = ready;
     previous.w = TANK_W; previous.h = TANK_H; previous.theme = t->journal.theme;
     previous.water = t->water_style; previous.sand = t->sand_style;
     previous.night = t->night; previous.unlocks = t->sd_unlocks; previous.scenery = t->polish.scenery_unlocks;
@@ -4368,6 +4421,24 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     previous.challenges = t->companion.game_challenges;
     previous.chapters = t->rpg.chapter;
     memset(g_damage, 0, sizeof g_damage);
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+        const inventory_extra_t *copy = &t->inventory.extra[i];
+        int item = copy->item - 1;
+        if (item == 13 || item == 21) {
+            int half = tank_ornament_w(item) / 2 + 20;
+            damage_rect((int)copy->x - half, TANK_BOT - 34 + DECOR_SINK - tank_ornament_h(item),
+                        (int)copy->x + half, TANK_BOT);
+        }
+    }
+    static float mussel_x, mussel_y;
+    if (owned) {
+        float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
+        if (x != mussel_x || y != mussel_y) {
+            damage_rect((int)mussel_x - 21, (int)mussel_y - 16, (int)mussel_x + 21, (int)mussel_y + 10);
+            damage_rect((int)x - 21, (int)y - 16, (int)x + 21, (int)y + 10);
+        }
+        mussel_x = x; mussel_y = y;
+    }
     for (int cy = 0; cy < ALGAE_ROWS; cy++) for (int cx = 0; cx < ALGAE_COLS; cx++) {
         int index = cy * ALGAE_COLS + cx;
         if (algae[index] != t->algae[index])
@@ -4563,10 +4634,13 @@ static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float d
         }
     }
     PROF_ADD(0, p0);
+    draw_inventory_extras(&c, t, DECOR_Z_BACK);
     for (int i = 0; i < MAX_FOOD; i++) if (t->food[i].alive)
         draw_food_pellet(&c, t->food[i].x, t->food[i].y);
     PROF_ADD(3, p0);
     for (int i = 0; i < t->n_fish; i++) draw_fish(&c, t, &t->fish[i]);
+    draw_inventory_extras(&c, t, DECOR_Z_FRONT);
+    draw_tank_mussel(&c, t);
     PROF_ADD(4, p0);
     draw_algae(&c, t);
     PROF_ADD(6, p0);
@@ -4597,7 +4671,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     bool cached = !g_tile_h && g_scene && g_dirty && stride == TANK_W;
     g_dirty_hold = g_tile_h != 0;                          /* the tank draws in the frame's coordinates: its marks count */
     if (cached) clear_words(g_dirty, TANK_H * DIRTY_WORDS_PER_ROW);
-    struct { short x0, y0, x1, y1; } rects[12 + MAX_FOOD + MAX_BUBBLE + N_FISH_MAX + VEG_BEDS_MAX + SHRIMP_MAX];
+    struct { short x0, y0, x1, y1; } rects[12 + DECOR_EXTRA_CAP + 1 + MAX_FOOD + MAX_BUBBLE + N_FISH_MAX + VEG_BEDS_MAX + SHRIMP_MAX];
     int nr = 0;
 #define DYN_RECT(cx0, cy0, cx1, cy1) do { if (cached && nr < (int)(sizeof rects / sizeof rects[0])) { \
         rects[nr].x0 = (short)(cx0); rects[nr].y0 = (short)(cy0); \
@@ -4668,6 +4742,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     }
     PROF_ADD(0, p0);
 
+    draw_inventory_extras(&c, t, DECOR_Z_BACK);
     /* vegetation, BACK layer: the reef bed (left - milestone lushness widens
        its base, never withers) and two decor beds; all three keep growing up
        and out with tank_t.veg_growth until the keeper trims them (slash the
@@ -4795,6 +4870,18 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     if (tank_snail_upright(t) && t->snail_front) draw_snail(&c, t, true);   /* its front lane: over them (its rect is marked above) */
     if ((t->sd_unlocks & SD_ITEM_SEAHORSE) && t->sh_x >= 0 && t->sh_front) draw_seahorse(&c, t);   /* the seahorse's front lane (its rect is marked above) */
     { int kc = pc_index(2); if (kc >= 0 && g_pc[kc].z == DECOR_Z_FRONT) arch_shade(&c, kc, g_pc[kc].cx, t->night, true); }   /* the tunnel through a castle IN FRONT: shaded, whatever passes it */
+    draw_inventory_extras(&c, t, DECOR_Z_FRONT);
+    if (t->mussel.owned) {
+        float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
+        draw_tank_mussel(&c, t);
+        DYN_RECT((int)x - 21, (int)y - 16, (int)x + 21, (int)y + 10);
+    }
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++) if (t->inventory.extra[i].item) {
+        const inventory_extra_t *copy = &t->inventory.extra[i];
+        int item = copy->item - 1, half = tank_ornament_w(item) / 2 + 2;
+        DYN_RECT((int)copy->x - half, TANK_BOT - 16 + DECOR_SINK - tank_ornament_h(item),
+                 (int)copy->x + half, TANK_BOT);
+    }
     PROF_ADD(4, p0);
     /* porthole vignette: darken corners toward AMOLED black. With a scene
        cache the full-frame pass is baked into the scene and only the dynamic
@@ -6381,6 +6468,45 @@ void render_notice(const tank_t *t, uint16_t *fb, int stride, int kind, int fish
 static int  g_shp_modal = -1;        /* the item whose modal is up, or -1 */
 static bool g_shp_earn;              /* the HOW TO EARN modal is up */
 static bool g_shp_sell_armed;        /* SELL tapped once: the next tap on it sells */
+static bool g_shp_inventory;
+static bool g_shp_mussel;
+static int g_inventory_page, g_inventory_item = -1, g_inventory_copy = -1;
+enum { INV_PLACE = SHOP_TAP_INVENTORY, INV_BUY, INV_STORE, INV_SELL, INV_MOVE, INV_COLLECT };
+static int inventory_first_copy(const tank_t *t, int item) {
+    if (tank_decor_owned(t, item)) return -1;
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++)
+        if (t->inventory.extra[i].item == item + 1) return i;
+    return -2;
+}
+static int inventory_next_copy(const tank_t *t, int item, int copy) {
+    for (int i = copy < 0 ? 0 : copy + 1; i < DECOR_EXTRA_CAP; i++)
+        if (t->inventory.extra[i].item == item + 1) return i;
+    return inventory_first_copy(t, item);
+}
+bool render_shop_inventory_action(tank_t *t, int action) {
+    if (action == INV_COLLECT) { progression_mussel_collect(t); return true; }
+    if (action < INV_PLACE || action > INV_MOVE || !tank_decor_placeable(g_inventory_item)) return false;
+    int item = g_inventory_item;
+    if (action == INV_BUY) progression_inventory_buy(t, item);
+    else if (action == INV_SELL) progression_inventory_sell(t, item);
+    else if (action == INV_STORE) {
+        if (g_inventory_copy != -2 && progression_inventory_store(t, item, g_inventory_copy))
+            g_inventory_copy = inventory_first_copy(t, item);
+    } else if (action == INV_MOVE) {
+        if (g_inventory_copy == -1 && tank_decor_owned(t, item)) setup_begin_place(t, item);
+        else if (g_inventory_copy >= 0) setup_begin_extra_place(t, g_inventory_copy);
+    } else {
+        bool primary = tank_decor_owned(t, item);
+        uint8_t occupied[DECOR_EXTRA_CAP];
+        for (int i = 0; i < DECOR_EXTRA_CAP; i++) occupied[i] = t->inventory.extra[i].item;
+        if (progression_inventory_place(t, item)) {
+            if (!primary) setup_begin_place(t, item);
+            else for (int i = 0; i < DECOR_EXTRA_CAP; i++)
+                if (!occupied[i] && t->inventory.extra[i].item) { setup_begin_extra_place(t, i); break; }
+        }
+    }
+    return true;
+}
 static const icon_t *shop_icon(int item) { return item == 0 ? &icon_shop_plant : item == 1 ? &icon_shop_snail : item == 2 ? &icon_shop_castle : item == 3 ? &icon_shop_coral : item == 4 ? &icon_shop_cluster : item == 5 ? &icon_shop_shrimp : item == 6 ? &icon_shop_urchin : item == 7 ? &icon_shop_seahorse : &icon_shop_pumpkin; }
 void render_decor_thumbnail(uint16_t *fb, int stride, int x, int y, int size, int item, bool lit) {
     if (item < 0 || item >= SD_ITEM_COUNT || size < 1 || size > 64) return;
@@ -6498,13 +6624,148 @@ static void shop_fry_modal(ctx_t *c, const tank_t *t, uint16_t *fb, int stride) 
     if (go) button(c, bx, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_TEAL, "BUY", 2);
     else button(c, bx, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_DIM, "BUY", 2);
 }
+static void render_mussel_panel(const tank_t *t, uint16_t *fb, int stride) {
+    ctx_t c = ctx_page(fb, stride);
+    rect_fill(&c, 48, 48, 352, 260, 0x04141a);
+    rect_edge(&c, 48, 48, 352, 260, MSP_TEAL);
+    draw_text(&c, 64, 64, 3, 0xffffff, "PEARL MUSSEL");
+    draw_pearl_mussel(&c, 224, 122, 2, t->mussel.bank != 0);
+    char line[64];
+    if (t->mussel.owned) {
+        snprintf(line, sizeof line, "READY: %u / %d", t->mussel.bank, MUSSEL_DAILY_LIMIT);
+        draw_text(&c, 64, 154, 2, MSP_TEAL, line);
+        snprintf(line, sizeof line, "GROWN TODAY: %u / %d", t->mussel.generated, MUSSEL_DAILY_LIMIT);
+        draw_text(&c, 64, 180, 1, MSP_TEAL, line);
+        if (t->mussel.generated >= MUSSEL_DAILY_LIMIT)
+            snprintf(line, sizeof line, "DAILY LIMIT - BACK TOMORROW");
+        else if (t->mussel.bank >= MUSSEL_DAILY_LIMIT)
+            snprintf(line, sizeof line, "BANK FULL - COLLECT FIRST");
+        else snprintf(line, sizeof line, "NEXT: %u/%d HEALTHY SEC", t->mussel.seconds, MUSSEL_SECONDS);
+        draw_text(&c, 64, 202, 1, MSP_TEAL, line);
+        draw_text(&c, 64, 224, 1, MSP_DIM, "ONLINE ONLY - NO XP");
+        draw_text(&c, 64, 242, 1, MSP_DIM, "ONE SHARED MUSSEL / PROFILE");
+    } else if (progression_creative(t)) {
+        draw_text(&c, 64, 156, 1, MSP_TEAL, "CREATIVE: NO INCOME");
+        draw_text(&c, 64, 178, 1, MSP_DIM, "NO CARE REWARDS TO UNLOCK.");
+    } else {
+        draw_text(&c, 64, 156, 1, MSP_TEAL, "CLAIM ALL 3 DAILY TASKS");
+        draw_text(&c, 64, 178, 1, MSP_TEAL, "TO WELCOME A FREE MUSSEL.");
+        draw_text(&c, 64, 200, 1, MSP_TEAL, "1 COIN/10 HEALTHY MINUTES");
+        draw_text(&c, 64, 222, 1, MSP_DIM, "15/DAY. BANK HOLDS 15.");
+        draw_text(&c, 64, 242, 1, MSP_DIM, "ONLINE ONLY. NO EXTRA XP.");
+    }
+    button(&c, 64, 260, 154, 34, 0x1c2f36, t->mussel.bank ? MSP_TEAL : MSP_DIM, "COLLECT", 2);
+    button(&c, 230, 260, 154, 34, 0x1c2f36, MSP_TEAL, "BACK", 2);
+    const char *notice = progression_shop_notice();
+    if (notice) draw_text(&c, 24, 314, 1, 0xff8a7a, notice);
+}
+static void render_inventory(const tank_t *t, uint16_t *fb, int stride) {
+    ctx_t c = ctx_page(fb, stride);
+    rect_fill(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, MSP_INK);
+    draw_text(&c, 24, 20, 3, 0xffffff, "DECOR INVENTORY");
+    char line[64];
+    int stored = 0;
+    for (int slot = 0; slot < DECOR_SLOTS; slot++)
+        stored += progression_inventory_stored(t, tank_decor_slot_item(slot));
+    snprintf(line, sizeof line, "SHARED STORAGE %d/%d", stored, DECOR_INVENTORY_CAP);
+    draw_text(&c, 24, 56, 2, MSP_TEAL, line);
+    shop_arrow(&c, SHP_ARROW_X0, SHP_ARROW_Y, false, g_inventory_page ? MSP_TEAL : MSP_DIM);
+    shop_arrow(&c, SHP_ARROW_X1, SHP_ARROW_Y, true, g_inventory_page < (DECOR_SLOTS - 1) / SHP_PER_PAGE ? MSP_TEAL : MSP_DIM);
+    for (int r = 0; r < SHP_PER_PAGE; r++) {
+        int slot = g_inventory_page * SHP_PER_PAGE + r;
+        if (slot >= DECOR_SLOTS) break;
+        int item = tank_decor_slot_item(slot), y = SHP_ROW_Y0 + r * SHP_ROW_DY;
+        render_decor_thumbnail(fb, stride, 24, y, 36, item, true);
+        draw_text(&c, 76, y + 2, 2, 0xffffff, SD_ITEMS[item].name);
+        snprintf(line, sizeof line, "STORED %d / HERE %d",
+                 progression_inventory_stored(t, item), progression_inventory_placed(t, item));
+        draw_text(&c, 76, y + 22, 1, MSP_TEAL, line);
+        button(&c, SHP_BTN_X, y, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "MANAGE", 2);
+    }
+    draw_text(&c, 24, MSP_CLOSE_Y - 20, 1, MSP_TEAL, "STORE > TANKS > PLACE");
+    button(&c, 24, MSP_CLOSE_Y, 156, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "MUSSEL", 2);
+    button(&c, 194, MSP_CLOSE_Y, 116, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "TANKS", 2);
+    button(&c, SHP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
+    if (g_inventory_item >= 0) {
+        int item = g_inventory_item;
+        rect_fill(&c, 48, 40, 352, 268, 0x04141a);
+        rect_edge(&c, 48, 40, 352, 268, MSP_TEAL);
+        draw_text(&c, 64, 56, 2, 0xffffff, SD_ITEMS[item].name);
+        snprintf(line, sizeof line, "STORED %d / HERE %d", progression_inventory_stored(t, item),
+                 progression_inventory_placed(t, item));
+        draw_text(&c, 64, 84, 2, MSP_TEAL, line);
+        snprintf(line, sizeof line, "NEW COPY: %d", progression_creative(t) ? 0 : SD_ITEMS[item].price);
+        draw_text(&c, 64, 110, 2, MSP_DIM, line);
+        button(&c, 64, 138, 154, 34, 0x1c2f36, MSP_TEAL, "PLACE STORED", 2);
+        button(&c, 230, 138, 154, 34, 0x1c2f36, MSP_TEAL, "BUY COPY", 2);
+        if (g_inventory_copy == -2) snprintf(line, sizeof line, "NONE PLACED");
+        else if (g_inventory_copy == -1) snprintf(line, sizeof line, "PRIMARY COPY");
+        else snprintf(line, sizeof line, "EXTRA COPY %d", g_inventory_copy + 1);
+        draw_text(&c, 64, 188, 2, MSP_TEAL, line);
+        button(&c, 304, 180, 80, 28, 0x1c2f36, MSP_TEAL, "NEXT", 2);
+        button(&c, 64, 216, 154, 34, 0x1c2f36, g_inventory_copy != -2 ? MSP_TEAL : MSP_DIM, "MOVE COPY", 2);
+        button(&c, 230, 216, 154, 34, 0x1c2f36, g_inventory_copy != -2 ? MSP_TEAL : MSP_DIM, "STORE COPY", 2);
+        button(&c, 126, 264, 196, 30, 0x1c2f36, MSP_TEAL,
+               g_shp_sell_armed ? "CONFIRM SALE" : "SELL STORED", 2);
+    }
+    const char *notice = progression_shop_notice();
+    if (notice) draw_text(&c, 24, 314, 1, 0xff8a7a, notice);
+    if (g_shp_mussel) render_mussel_panel(t, fb, stride);
+}
+static int inventory_tap(const tank_t *t, float x, float y) {
+    if (g_inventory_item >= 0) {
+        if (y >= 138 && y < 172 && x >= 64 && x < 384) {
+            g_shp_sell_armed = false;
+            return x < 224 ? INV_PLACE : INV_BUY;
+        }
+        if (y >= 180 && y < 208 && x >= 304 && x < 384) {
+            g_inventory_copy = inventory_next_copy(t, g_inventory_item, g_inventory_copy);
+            g_shp_sell_armed = false;
+            return SHOP_TAP_KEPT;
+        }
+        if (y >= 216 && y < 250 && x >= 64 && x < 384 && g_inventory_copy != -2) {
+            g_shp_sell_armed = false;
+            return x < 224 ? INV_MOVE : INV_STORE;
+        }
+        if (y >= 264 && y < 294 && x >= 126 && x < 322) {
+            if (!g_shp_sell_armed) { g_shp_sell_armed = true; return SHOP_TAP_KEPT; }
+            g_shp_sell_armed = false;
+            return INV_SELL;
+        }
+        g_shp_sell_armed = false;
+        if (x < 48 || x >= 400 || y < 40 || y >= 308) g_inventory_item = -1;
+        return SHOP_TAP_KEPT;
+    }
+    if (y >= MSP_CLOSE_Y - 4) {
+        if (x >= 20 && x < 184) { g_shp_mussel = true; return SHOP_TAP_KEPT; }
+        if (x >= SHP_CLOSE_X - 6) { g_shp_inventory = false; return SHOP_TAP_KEPT; }
+        if (x >= 190 && x < 316) return SHOP_TAP_TANKS;
+    }
+    if (y < SHP_ROW_Y0 - 10 && x >= SHP_ARROW_X0 - 8) {
+        if (x < SHP_ARROW_X1 - 4) { if (g_inventory_page) g_inventory_page--; }
+        else if (g_inventory_page < (DECOR_SLOTS - 1) / SHP_PER_PAGE) g_inventory_page++;
+        return SHOP_TAP_KEPT;
+    }
+    for (int r = 0; r < SHP_PER_PAGE; r++) {
+        int slot = g_inventory_page * SHP_PER_PAGE + r, top = SHP_ROW_Y0 + r * SHP_ROW_DY;
+        if (slot < DECOR_SLOTS && x >= 20 && y >= top - 8 && y < top + SHP_ROW_DY - 8) {
+            g_inventory_item = tank_decor_slot_item(slot);
+            g_inventory_copy = inventory_first_copy(t, g_inventory_item);
+            return SHOP_TAP_KEPT;
+        }
+    }
+    return SHOP_TAP_KEPT;
+}
 void render_shop(const tank_t *t, uint16_t *fb, int stride) {
+    if (g_shp_inventory) { render_inventory(t, fb, stride); return; }
     ctx_t c = ctx_page(fb, stride);
     rect_fill(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, MSP_INK);
     blit_icon(&c, SHP_COIN_X, SHP_COIN_Y, &icon_shop_sand_dollar_64, 255);
     draw_text(&c, SHP_HEAD_X, SHP_COIN_Y + 6, 2, MSP_TEAL, "SAND DOLLARS");
     char bal[16]; snprintf(bal, sizeof bal, "%d", (int)t->sd_balance);
     draw_text(&c, SHP_HEAD_X, SHP_COIN_Y + 28, 4, 0xffffff, bal);
+    button(&c, SHP_HEAD_X, 66, 174, 22, 0x1c2f36, MSP_TEAL, "INVENTORY", 2);
+    button(&c, 300, 66, 124, 22, 0x1c2f36, MSP_TEAL, "MUSSEL", 2);
     for (int x = 24; x < PAGE_W - 24; x++) px_blend(&c, x, SHP_ROW_Y0 - 10, MSP_DIM, 200);
     if (shp_pages(t) > 1) {
         shop_arrow(&c, SHP_ARROW_X0, SHP_ARROW_Y, false, g_shp_page > 0 ? MSP_TEAL : MSP_DIM);
@@ -6514,8 +6775,9 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         int top = SHP_ROW_Y0 + (r - g_shp_page * SHP_PER_PAGE) * SHP_ROW_DY, i = shp_item(t, r);
         if (i < 0) { shop_fry_row(&c, t, fb, stride, top); continue; }
         const sd_item_t *it = &SD_ITEMS[i];
-        bool owned = progression_item_owned(t, i), unlocked = progression_item_unlocked(t, i);
-        bool can = unlocked || t->sd_balance >= it->price;
+        bool owned = progression_item_owned(t, i);
+        int price = progression_item_price_for(t, i);
+        bool can = t->sd_balance >= price;
         if (i >= 9 && i <= 12) draw_ornament(&c, i, 24, top, 1, false, owned, MSP_INK);
         else if (i == 13) draw_buoy_icon(&c, 24, top, 1, owned, MSP_INK);
         else if (i >= 16) draw_ornament_icon(&c, i, 24, top, 36, owned, MSP_INK);
@@ -6528,10 +6790,11 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         draw_text(&c, 76, top + 2, 2, 0xffffff, it->name);
         if (owned) draw_text(&c, 76, top + 20, 2, MSP_TEAL, "IN THE TANK");
         else if (progression_creative(t)) draw_text(&c, 76, top + 20, 2, MSP_TEAL, "CREATIVE: FREE");
-        else if (unlocked) draw_text(&c, 76, top + 20, 2, MSP_TEAL, "UNLOCKED: FREE");
-        else price_tag(&c, 76, top + 20, it->price, can ? MSP_TEAL : MSP_DIM);
+        else if (!price) draw_text(&c, 76, top + 20, 2, MSP_TEAL,
+                                  progression_inventory_stored(t, i) ? "STORED: PLACE" : "UNLOCKED: FREE");
+        else price_tag(&c, 76, top + 20, price, can ? MSP_TEAL : MSP_DIM);
         if (owned)     button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, MSP_INK, MSP_DIM, "IN TANK", 2);
-        else if (can) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, unlocked ? "ADD" : "UNLOCK", 2);
+        else if (can) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, !price ? "ADD" : "BUY", 2);
         else           button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_DIM, "UNLOCK", 2);
     }
     const char *notice = progression_shop_notice();
@@ -6544,6 +6807,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
     button(&c, SHP_EARN_X, MSP_CLOSE_Y, SHP_EARN_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "HOW TO EARN", 2);
     button(&c, 194, MSP_CLOSE_Y, 116, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "TANKS", 2);
     button(&c, SHP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
+    if (g_shp_mussel) { render_mussel_panel(t, fb, stride); return; }
     if (g_shp_modal < 0 && !g_shp_earn) return;
     for (int y = render_tile_top(); y < render_tile_bottom(); y++)
         for (int x = 0; x < TANK_W; x++) fb[(y - g_tile_y) * stride + x] = (uint16_t)((fb[(y - g_tile_y) * stride + x] >> 1) & 0x7bef);
@@ -6561,8 +6825,9 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
     if (g_shp_modal == SHP_MODAL_FRY) { shop_fry_modal(&c, t, fb, stride); return; }
     const sd_item_t *it = &SD_ITEMS[g_shp_modal];
     const int Y = SHP_MODAL_Y, H = SHP_MODAL_H;
-    bool owned = progression_item_owned(t, g_shp_modal), unlocked = progression_item_unlocked(t, g_shp_modal);
-    bool can = unlocked || t->sd_balance >= it->price;
+    bool owned = progression_item_owned(t, g_shp_modal);
+    int price = progression_item_price_for(t, g_shp_modal);
+    bool can = t->sd_balance >= price;
     rect_fill(&c, X, Y, W, H, 0x04141a);
     rect_edge(&c, X, Y, W, H, MSP_TEAL); rect_edge(&c, X + 1, Y + 1, W - 2, H - 2, 0x1c2f36);
     if (g_shp_modal >= 9 && g_shp_modal <= 12) draw_ornament(&c, g_shp_modal, X + (W - tank_ornament_w(g_shp_modal) * 2) / 2, Y + 8, 2, false, owned, 0x04141a);
@@ -6581,7 +6846,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
     draw_text(&c, X + (W - text_w(it->words2, 2)) / 2, Y + 138, 2, MSP_TEAL, it->words2);
     const int bx = X + (W - MSP_HOW_W) / 2, by = Y + H - 12 - MSP_HOW_H;
     if (owned && tank_decor_placeable(g_shp_modal)) {         /* a placeable piece: MOVE re-opens the placement page, SELL (twice) sells it back */
-        char sell[24]; snprintf(sell, sizeof sell, "REFUND %d - UNLOCK KEPT", progression_sell_value_for(t, g_shp_modal));
+        char sell[32]; snprintf(sell, sizeof sell, "REFUND %d - COPY SOLD", progression_sell_value_for(t, g_shp_modal));
         draw_text(&c, X + (W - text_w("IN THE TANK", 2)) / 2, Y + 164, 2, MSP_TEAL, "IN THE TANK");
         draw_text(&c, X + (W - text_w(sell, 2)) / 2, Y + 184, 2, MSP_DIM, sell);
         button(&c, SHP_TWO_X0, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_TEAL, "MOVE", 2);
@@ -6597,18 +6862,33 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         button(&c, bx, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, g_shp_sell_armed ? 0xffffff : MSP_TEAL, sell, 2);
     } else if (owned) draw_text(&c, X + (W - text_w("IN THE TANK", 2)) / 2, by + 8, 2, MSP_TEAL, "IN THE TANK");   /* the snail: a permanent resident */
     else {
-        char line[32]; snprintf(line, sizeof line, "%d", it->price);
+        char line[32]; snprintf(line, sizeof line, "%d", price);
         int pw = 20 + text_w(line, 2);
-        price_tag(&c, X + (W - pw) / 2, Y + 164, unlocked ? 0 : it->price, can ? 0xffffff : MSP_DIM);
+        price_tag(&c, X + (W - pw) / 2, Y + 164, price, can ? 0xffffff : MSP_DIM);
         if (!can) { snprintf(line, sizeof line, "YOU HAVE %d", (int)t->sd_balance);
                     draw_text(&c, X + (W - text_w(line, 2)) / 2, Y + 184, 2, MSP_DIM, line); }
-        if (can) button(&c, bx, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_TEAL, unlocked ? "ADD FREE" : "UNLOCK", 2);
+        if (can) button(&c, bx, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_TEAL,
+                        !price ? progression_inventory_stored(t, g_shp_modal) ? "PLACE" : "ADD FREE" : "BUY", 2);
         else button(&c, bx, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_DIM, "UNLOCK", 2);
     }
 }
 int render_shop_tap(const tank_t *t, float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
     progression_shop_notice_clear();
+    if (g_shp_mussel) {
+        if (x >= 64 && x < 218 && y >= 260 && y < 294) return INV_COLLECT;
+        if ((x >= 230 && x < 384 && y >= 260 && y < 294) ||
+            x < 48 || x >= 400 || y < 48 || y >= 308) g_shp_mussel = false;
+        return SHOP_TAP_KEPT;
+    }
+    if (g_shp_inventory) return inventory_tap(t, x, y);
+    if (g_shp_modal < 0 && !g_shp_earn && x >= 300 && x < 424 && y >= 66 && y < 88) {
+        g_shp_mussel = true; return SHOP_TAP_KEPT;
+    }
+    if (g_shp_modal < 0 && !g_shp_earn && x >= SHP_HEAD_X && x < SHP_HEAD_X + 174 && y >= 66 && y < 88) {
+        g_shp_inventory = true; g_inventory_item = -1; g_inventory_page = 0;
+        return SHOP_TAP_KEPT;
+    }
     if (g_shp_earn) { g_shp_earn = false; return SHOP_TAP_KEPT; }
     if (g_shp_modal == SHP_MODAL_FRY) {                       /* the fry: a box picks, BUY buys the pick, elsewhere closes */
         if (y >= SHP_FRY_BOX_Y - 8 && y < SHP_FRY_BOX_Y + SHP_FRY_BOX_H + 6)
@@ -6626,8 +6906,8 @@ int render_shop_tap(const tank_t *t, float x, float y) {
         return SHOP_TAP_KEPT;
     }
     if (g_shp_modal >= 0) {
-        int item = g_shp_modal; const sd_item_t *it = &SD_ITEMS[item];
-        bool owned = progression_item_owned(t, item), can = progression_item_unlocked(t, item) || t->sd_balance >= it->price;
+        int item = g_shp_modal;
+        bool owned = progression_item_owned(t, item), can = t->sd_balance >= progression_item_price_for(t, item);
         const int bx = SHP_MODAL_X + (SHP_MODAL_W - MSP_HOW_W) / 2, by = SHP_MODAL_Y + SHP_MODAL_H - 12 - MSP_HOW_H;
         bool row = y >= by - MSP_HOW_SLOP_UP && y < by + MSP_HOW_H + MSP_HOW_SLOP_DN;
         bool on_btn = row && x >= bx - MSP_HOW_SLOP_X && x < bx + MSP_HOW_W + MSP_HOW_SLOP_X;
@@ -6667,7 +6947,11 @@ int render_shop_tap(const tank_t *t, float x, float y) {
     }
     return SHOP_TAP_NONE;
 }
-void render_shop_leave(void) { g_shp_modal = -1; g_shp_earn = false; g_shp_page = 0; g_shp_sell_armed = false; }
+void render_shop_leave(void) {
+    g_shp_modal = -1; g_shp_earn = false; g_shp_page = 0; g_shp_sell_armed = false;
+    g_shp_inventory = g_shp_mussel = false;
+    g_inventory_item = -1; g_inventory_page = 0; g_inventory_copy = -1;
+}
 
 /* the toast: "+N" by a coin, top centre, for TOAST_S on the tank clock */
 #define TOAST_S 2.5f
@@ -7959,9 +8243,12 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
         }
     }
     draw_text_wrap(&c, 24, 280, 400, 0xffffff, g_journal_message);
-    if (g_journal_tab == 0 && !progression_creative(t))
+    if (g_journal_tab == 0 && !progression_creative(t)) {
+        snprintf(line, sizeof line, "TODAY %uC/%uXP > MILESTONES",
+                 CARE_COINS[0] + CARE_COINS[1] + CARE_COINS[2], CARE_XP[0] + CARE_XP[1] + CARE_XP[2]);
         button(&c, 24, 316, 400, 32, 0x1c2f36, MSP_TEAL,
-               g_journal_daily ? "TODAY 100C/50XP > MILESTONES" : "MILESTONES > TODAY", 1);
+               g_journal_daily ? line : "MILESTONES > TODAY", 1);
+    }
     else draw_text(&c, 24, 320, 2, MSP_TEAL,
                    g_journal_tab == 1 ? "ALBUM - YOUR DISCOVERED LOOKS" : g_journal_tab == 2 ? "THEMES - CHOOSE YOUR BACKDROP" : "CREATIVE - CARE AT YOUR PACE");
     draw_text(&c, 24, 352, 1, MSP_TEAL, g_journal_tab == 0 && g_journal_daily ?
@@ -7981,9 +8268,12 @@ int render_journal_tap(tank_t *t, float x, float y) {
             int task = (int)((y - JOURNAL_GOAL_Y) / JOURNAL_GOAL_DY);
             if (task < CARE_TASK_COUNT) {
                 if (t->care.claimed & (1u << task)) snprintf(g_journal_message, sizeof g_journal_message, "SAVED - COME BACK ANOTHER DAY");
-                else if (t->care.ready & (1u << task))
-                    snprintf(g_journal_message, sizeof g_journal_message, "%s", progression_care_claim(t, task) ?
-                             "CARE REWARD SAVED!" : "SAVE FAILED - RETRY YOUR REWARD");
+                else if (t->care.ready & (1u << task)) {
+                    bool had_mussel = t->mussel.owned != 0;
+                    bool saved = progression_care_claim(t, task);
+                    snprintf(g_journal_message, sizeof g_journal_message, "%s", !saved ? "SAVE FAILED - RETRY YOUR REWARD" :
+                             !had_mussel && t->mussel.owned ? "CARE SAVED - PEARL MUSSEL JOINED!" : "CARE REWARD SAVED!");
+                }
                 else snprintf(g_journal_message, sizeof g_journal_message, "CARE AT YOUR PACE - NO PURCHASE NEEDED");
             }
             return 0;

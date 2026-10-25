@@ -160,6 +160,9 @@ static void invalid_object(cJSON *root) {
 }
 static void replace_number(cJSON *object, const char *key, double value) {
     assert(cJSON_ReplaceItemInObjectCaseSensitive(object, key, cJSON_CreateNumber(value)));
+    if (!strcmp(key, "schema") && value < 18) cJSON_DeleteItemFromObjectCaseSensitive(object, "inventory");
+    if (!strcmp(key, "schema") && value < 18) cJSON_DeleteItemFromObjectCaseSensitive(object, "mussel");
+    if (!strcmp(key, "schema") && value < 18) cJSON_DeleteItemFromObjectCaseSensitive(object, "game_income");
     if (!strcmp(key, "schema") && value < 17) cJSON_DeleteItemFromObjectCaseSensitive(object, "care");
     if (!strcmp(key, "schema") && value < 5) cJSON_DeleteItemFromObjectCaseSensitive(object, "bank");
     if (!strcmp(key, "schema") && value < 6) cJSON_DeleteItemFromObjectCaseSensitive(object, "companion");
@@ -1198,7 +1201,7 @@ static void test_daily_care(void) {
     reject_write = true;
     assert(!progression_care_claim(&t, 0) && !t.care.claimed && !t.sd_balance && !t.journal.xp);
     reject_write = false;
-    assert(progression_care_claim(&t, 0) && t.sd_balance == 25 && t.journal.xp == 12);
+    assert(progression_care_claim(&t, 0) && t.sd_balance == 30 && t.journal.xp == 12);
     assert(!progression_care_claim(&t, 0));
     care_state_t before = t.care;
     reject_write = true;
@@ -1213,7 +1216,7 @@ static void test_daily_care(void) {
     progression_tick(&t, 1); assert(t.care.ready == 7);
     int coins = t.sd_balance; uint32_t xp = t.journal.xp;
     assert(progression_care_claim(&t, 1) && progression_care_claim(&t, 2));
-    assert(t.sd_balance == coins + 75 && t.journal.xp == xp + 38 && t.care.claimed == 7);
+    assert(t.sd_balance == coins + 95 && t.journal.xp == xp + 38 && t.care.claimed == 7);
     for (int i = 0; i < 100; i++) {
         t.player_feedings++; t.algae_colonies++; t.trim_px += 10 * PX_PER_CM;
         journal_tick(&t);
@@ -1224,27 +1227,28 @@ static void test_daily_care(void) {
         int reward = game < 12 ? 10 : companion_game_reward(game, game == 12 ? 16 : game == 13 ? 8 : 2048, 8);
         assert(companion_game_claim(&t, game, game == 12 ? 16 : game == 13 ? 8 : 2048, 8, reward, false));
     }
-    assert(t.care.game_paid == 5 && t.journal.xp == xp + 38);
+    assert(t.care.game_paid == 18 && t.journal.xp == xp + 38);
     assert(progression_save(&t));
     tank_init(&loaded, 43); boot_enlarged(&loaded);
-    assert(loaded.care.claimed == 7 && loaded.care.game_paid == 5 && loaded.journal.xp == t.journal.xp);
+    assert(loaded.care.claimed == 7 && loaded.care.game_paid == 18 && loaded.journal.xp == t.journal.xp);
     saved_size = 6008;
     tank_init(&loaded, 43); boot_enlarged(&loaded);
     assert(progression_storage_ready() && loaded.sd_balance == t.sd_balance && loaded.journal.xp == t.journal.xp);
     assert(loaded.care.version == 1 && !loaded.care.claimed && !loaded.care.game_paid);
     for (size_t partial = 6009; partial < AQUARIUM_SAVE_BYTES; partial++) {
+        if (partial == 6032) continue; /* complete schema-17 prefix remains loadable */
         saved_size = partial;
         tank_init(&loaded, 43); boot_enlarged(&loaded);
         assert(!progression_storage_ready() && saved_size == partial);
     }
     saved_size = AQUARIUM_SAVE_BYTES;
     tank_init(&loaded, 43); boot_enlarged(&loaded);
-    assert(progression_storage_ready() && loaded.care.claimed == 7 && loaded.care.game_paid == 5);
+    assert(progression_storage_ready() && loaded.care.claimed == 7 && loaded.care.game_paid == 18);
     char *json = progression_backup_json(&loaded); assert(json);
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     cJSON *root = cJSON_Parse(json); assert(root);
     cJSON *care = cJSON_GetObjectItemCaseSensitive(root, "care");
-    replace_number(care, "game_paid", 6); invalid_object(root);
+    replace_number(care, "game_paid", 91); invalid_object(root);
     root = cJSON_Parse(json); care = cJSON_GetObjectItemCaseSensitive(root, "care");
     replace_number(care, "ready", 0); invalid_object(root);
     root = cJSON_Parse(json);
@@ -1257,13 +1261,14 @@ static void test_daily_care(void) {
     /* Current-save reload, not the explicit old-backup restore, retains today's quota. */
     assert(progression_save(&t));
     test_unix -= 86400;
-    progression_care_refresh(&t); assert(t.care.claimed == 7 && t.care.game_paid == 5);
+    progression_care_refresh(&t); assert(t.care.claimed == 7 && t.care.game_paid == 18);
     test_unix += 86400 * 8;
     progression_care_refresh(&t);
     assert(!t.care.claimed && !t.care.ready && !t.care.game_paid);
     assert(!progression_care_claim(&t, 0)); /* No back-pay for missed days. */
     test_unix = 0;
     t.care.claimed = t.care.ready = 7; t.care.game_paid = 5;
+    memset(&t.game_income, 0, sizeof t.game_income); t.game_income.version = 1; t.game_income.legacy = 5;
     t.care.elapsed_s = 86399;
     progression_tick(&t, 1);
     assert(!t.care.claimed && !t.care.game_paid);
@@ -1274,6 +1279,7 @@ static void test_daily_care(void) {
     progression_tick(&t, 1);
     assert(t.care.fallback && !t.care.claimed);
     t.care.claimed = t.care.ready = 7; t.care.game_paid = 5;
+    memset(&t.game_income, 0, sizeof t.game_income); t.game_income.version = 1; t.game_income.legacy = 5;
     assert(progression_save(&t));
     tank_init(&loaded, 43); boot_enlarged(&loaded);
     assert(loaded.care.fallback && loaded.care.claimed == 7 && loaded.care.game_paid == 5);
@@ -1302,7 +1308,7 @@ static void test_daily_care(void) {
         int start_coins = t.sd_balance; uint32_t start_xp = t.journal.xp;
         for (int task = 0; task < CARE_TASK_COUNT; task++) assert(progression_care_claim(&t, task));
         earned += t.sd_balance - start_coins; earned_xp += t.journal.xp - start_xp;
-        assert(earned == (unsigned)day * 100 && earned_xp == (unsigned)day * 50);
+        assert(earned == (unsigned)day * 125 && earned_xp == (unsigned)day * 50);
         if (day == 28) assert(earned_xp + goal_xp < journal_level_xp(15));
         if (day == 56) assert(earned_xp + goal_xp >= journal_level_xp(15) && earned + goal_coins >= shop);
         if (day == 84) assert(earned + goal_coins >= shop + 7 * AQUARIUM_PRICE);
@@ -1313,25 +1319,25 @@ static void test_daily_care(void) {
 static void test_game_rewards(void) {
     tank_t t, loaded; saved_size = 0; tank_init(&t, 42); boot_enlarged(&t);
     int previous_writes = writes;
-    assert(!progression_game_reward(&t, 0) && !progression_game_reward(&t, 11) && writes == previous_writes);
+    assert(!progression_game_reward(&t, 0, 0) && !progression_game_reward(&t, 0, 11) && writes == previous_writes);
     reject_write = true;
-    assert(!progression_game_reward(&t, 8) && !t.sd_balance && !t.sd_earned && !t.journal.xp);
+    assert(!progression_game_reward(&t, 0, 8) && !t.sd_balance && !t.sd_earned && !t.journal.xp);
     reject_write = false;
     for (int reward = 1; reward <= 10; reward++) {
         int balance = t.sd_balance; uint32_t xp = t.journal.xp;
         uint32_t goals = t.journal.claimed;
-        assert(progression_game_reward(&t, reward));
+        assert(progression_game_reward(&t, 0, reward));
         assert(t.sd_balance == balance + (reward <= CARE_GAME_LIMIT) && t.sd_earned == t.sd_balance);
         assert(t.journal.xp == xp && t.journal.claimed == goals);
         tank_init(&loaded, 43); boot_enlarged(&loaded);
         assert(loaded.sd_balance == t.sd_balance && loaded.journal.xp == t.journal.xp);
     }
     t.journal.xp = JOURNAL_XP_MAX - 1;
-    assert(progression_game_reward(&t, 10) && t.journal.xp == JOURNAL_XP_MAX - 1);
+    assert(progression_game_reward(&t, 0, 10) && t.journal.xp == JOURNAL_XP_MAX - 1);
     previous_writes = writes; t.sd_balance = INT_MAX;
-    assert(!progression_game_reward(&t, 1) && writes == previous_writes);
+    assert(!progression_game_reward(&t, 0, 1) && writes == previous_writes);
     t.sd_balance = 0; t.sd_earned = INT_MAX;
-    assert(!progression_game_reward(&t, 1) && writes == previous_writes);
+    assert(!progression_game_reward(&t, 0, 1) && writes == previous_writes);
     uint16_t *frame = calloc(TANK_W * TANK_H + 2, sizeof *frame); assert(frame);
     frame[0] = frame[TANK_W * TANK_H + 1] = 0xbeef;
     for (int empty = 0; empty < 2; empty++) {
@@ -1543,7 +1549,7 @@ static void test_companion(void) {
     assert(loaded.companion.game_best[1] == 16 && loaded.companion.game_best[5] == 18);
     state = loaded.companion; coins = loaded.sd_balance;
     assert(companion_game_claim(&loaded, 0, 100, 0, 1, true));
-    assert(!memcmp(&state, &loaded.companion, sizeof state) && loaded.sd_balance == coins);
+    assert(!memcmp(&state, &loaded.companion, sizeof state) && loaded.sd_balance == coins + 1);
     reject_write = true; coins = loaded.sd_balance; xp = loaded.journal.xp;
     assert(!companion_game_claim(&loaded, 0, 200, 0, 2, false));
     assert(!memcmp(&state, &loaded.companion, sizeof state) && coins == loaded.sd_balance && xp == loaded.journal.xp);
@@ -2769,7 +2775,7 @@ static void test_story(void) {
     assert(progression_save(&t));
     tank_init(&loaded, 5); progression_boot(&loaded);
     assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
-    char *json = progression_backup_json(&t);     assert(json && strstr(json, "\"schema\":17") && strstr(json, "\"story\":{") && strstr(json, "\"games\":{") && strstr(json, "\"rpg\":{") && strstr(json, "\"creative\":{") && strstr(json, "\"profile\":{") && strstr(json, "\"games_extra\":{") && strstr(json, "\"care\":{"));
+    char *json = progression_backup_json(&t);     assert(json && strstr(json, "\"schema\":18") && strstr(json, "\"story\":{") && strstr(json, "\"games\":{") && strstr(json, "\"rpg\":{") && strstr(json, "\"creative\":{") && strstr(json, "\"profile\":{") && strstr(json, "\"games_extra\":{") && strstr(json, "\"care\":{") && strstr(json, "\"inventory\":{"));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     tank_init(&loaded, 6); progression_boot(&loaded);
     assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
@@ -2914,7 +2920,15 @@ static void test_name_wheel(void) {
     for (int compact = 0; compact < 2; compact++) {
         saved_size = 0; tank_resolution(compact != 0); tank_init(&t, 19); boot_enlarged(&t);
         tank_resolution(compact != 0);
-        progression_setup_done(&t); setup_cancel(&t);
+        setup_cancel(&t); setup_begin(&t);
+        while (setup_page() != SETUP_PG_CARE) setup_activate(&t, SETUP_HIT_NEXT);
+        reject_write = true;
+        setup_activate(&t, SETUP_HIT_NEXT);
+        assert(setup_active() && progression_setup_pending());
+        reject_write = false;
+        setup_activate(&t, SETUP_HIT_NEXT);
+        assert(!setup_active() && !progression_setup_pending());
+        setup_cancel(&t);
         setup_begin(&t);
         while (setup_page() != SETUP_PG_NAME_A) {
             assert(setup_page() < SETUP_PG_NAME_A);
@@ -2956,9 +2970,43 @@ static void test_name_wheel(void) {
         assert(!setup_active() && setup_take_renamed() == 0);
         tank_init(&loaded, 20); boot_enlarged(&loaded);
         assert(!strcmp(loaded.fish[0].name, "acc"));
+        assert(!progression_setup_pending());
+        progression_force_arrival(&loaded);
+        int newborn = progression_newborn();
+        assert(newborn >= 0 && loaded.fish[newborn].stage == STAGE_FRY);
+        assert(progression_save(&loaded));
+        setup_cancel(&loaded);
+        assert(setup_poll_birth(&loaded) == newborn);
+        setup_cancel(&loaded);
+        tank_init(&t, 21); boot_enlarged(&t);
+        assert(progression_newborn() == newborn); /* genuine unacknowledged fry remains owed */
+        setup_begin_birth(&t, newborn);
+        setup_activate(&t, SETUP_HIT_NEXT); setup_activate(&t, SETUP_HIT_NEXT);
+        assert(setup_page() == SETUP_PG_FAMILY);
+        reject_write = true; setup_activate(&t, SETUP_HIT_NEXT);
+        assert(setup_is_birth() && progression_newborn() == newborn);
+        reject_write = false; setup_activate(&t, SETUP_HIT_NEXT);
+        assert(!setup_active() && progression_newborn() == -1);
+        tank_init(&loaded, 22); boot_enlarged(&loaded);
+        assert(progression_newborn() == -1);
+        /* Reproduce an old saved welcome bit attached to a fish that grew up. */
+        char *json = progression_backup_json(&loaded); assert(json);
+        cJSON *root = cJSON_Parse(json); free(json); assert(root);
+        replace_number(cJSON_GetObjectItemCaseSensitive(root, "tank"), "newborn_p1", newborn + 1);
+        cJSON *fish = cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(root, "fish"), newborn);
+        replace_number(fish, "stage", STAGE_ADULT);
+        json = cJSON_PrintUnformatted(root); cJSON_Delete(root); assert(json);
+        char error[160];
+        assert(progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);
+        tank_init(&t, 23); boot_enlarged(&t);
+        assert(t.fish[newborn].stage == STAGE_ADULT && progression_newborn() == -1);
+        assert(setup_poll_birth(&t) == -1 && !setup_active());
+        assert(progression_save(&t));
+        tank_init(&loaded, 24); boot_enlarged(&loaded);
+        assert(progression_newborn() == -1 && loaded.fish[newborn].stage == STAGE_ADULT);
     }
     tank_resolution(true);
-    puts("PASS: first-run/birth letter-wheel navigation, touch, retired key isolation, rename cancel/save/retry and reload at both scales");
+    puts("PASS: first-run/birth/rename navigation and save retry, genuine pending fry retained, established-fish welcome flags retired durably at both scales");
 }
 
 static void test_simple_scene(void) {
@@ -3091,9 +3139,415 @@ static void test_simple_scene(void) {
     tank_resolution(false);
     puts("PASS: Simple scene static grass/hidden helpers/bubbles, visible food, no tank mutation, guarded tiles, both scales and reversible settings/damage");
 }
+static void inventory_reload(tank_t *t) {
+    tank_init(t, 710); boot_enlarged(t);
+    assert(progression_storage_ready());
+}
+static void test_inventory(void) {
+    tank_t t, loaded, before;
+    saved_size = 0; memset(slot_exists, 0, sizeof slot_exists);
+    tank_init(&t, 710); boot_enlarged(&t); progression_setup_done(&t);
+    t.sd_balance = 10000; assert(progression_save(&t));
+    int slot = tank_decor_slot(9), earned = t.sd_earned;
+    assert(AQUARIUM_SAVE_BYTES == 6168);
+    assert(progression_buy(&t, 9));
+    assert(progression_item_price_for(&t, 9) == SD_ITEMS[9].price);
+    assert(progression_sell_value_for(&t, 9) == progression_sell_value(9));
+    tank_decor_set(&t, 9, 120, DECOR_Z_FRONT);
+    assert(progression_inventory_store(&t, 9, -1));
+    assert(progression_item_price_for(&t, 9) == 0);
+    assert(t.chest_x == 120 && !progression_item_owned(&t, 9));
+    assert(t.inventory.stored[slot] == 1 && t.inventory.paid[slot] == 1);
+    assert(progression_inventory_buy(&t, 9));
+    assert(t.inventory.stored[slot] == 2 && t.inventory.paid[slot] == 2);
+    assert(progression_inventory_place(&t, 9) && t.chest_x == 120);
+    assert(progression_inventory_place(&t, 9));
+    assert(t.inventory.extra[0].item == 10 && t.inventory.extra[0].paid);
+    assert(progression_inventory_placed(&t, 9) == 2);
+    assert(progression_sell(&t, 9)); /* extras do not depend on primary ownership */
+    assert(progression_inventory_placed(&t, 9) == 1 && t.inventory.extra[0].item == 10);
+    assert(progression_inventory_store(&t, 9, 0));
+    assert(progression_inventory_place(&t, 9));
+    assert(progression_inventory_placed(&t, 9) == 1 && progression_item_owned(&t, 9));
+    assert(t.sd_earned == earned);
+    int wallet = t.sd_balance;
+    assert(progression_inventory_buy(&t, 9) && t.sd_balance == wallet - SD_ITEMS[9].price);
+    before = t; reject_write = true;
+    assert(!progression_inventory_buy(&t, 9) && !memcmp(&t, &before, sizeof t));
+    assert(!progression_inventory_store(&t, 9, -1) && !memcmp(&t, &before, sizeof t));
+    assert(!progression_inventory_place(&t, 9) && !memcmp(&t, &before, sizeof t));
+    assert(!progression_inventory_sell(&t, 9) && !memcmp(&t, &before, sizeof t));
+    assert(progression_shop_notice()); reject_write = false;
+    /* Free first copies and paid duplicates retain independent provenance. */
+    t.profile.paid_items &= ~(UINT64_C(1) << 9);
+    assert(progression_inventory_store(&t, 9, -1));
+    assert(t.inventory.stored[slot] == 2 && t.inventory.paid[slot] == 1);
+    inventory_reload(&loaded);
+    assert(loaded.inventory.stored[slot] == 2 && loaded.inventory.paid[slot] == 1);
+    char *mixed = progression_backup_json(&loaded); assert(mixed);
+    assert(progression_restore_json(mixed, strlen(mixed), true, error, sizeof error)); free(mixed);
+    inventory_reload(&t);
+    wallet = t.sd_balance;
+    assert(progression_inventory_sell(&t, 9) && t.sd_balance == wallet);
+    assert(progression_inventory_sell(&t, 9) && t.sd_balance == wallet + progression_sell_value(9));
+    assert(!progression_inventory_sell(&t, 9));
+    assert(progression_item_price_for(&t, 9) == SD_ITEMS[9].price);
+    wallet = t.sd_balance; t.sd_balance = SD_ITEMS[9].price - 1;
+    assert(!progression_buy(&t, 9) && strstr(progression_shop_notice(), "NOT ENOUGH"));
+    t.sd_balance = wallet;
+    assert(!progression_inventory_buy(&t, 1) && !progression_inventory_duplicate(0));
+    for (int item = 0; item <= 8; item++) {
+        if (!tank_decor_placeable(item)) continue;
+        assert(progression_inventory_buy(&t, item));
+        assert(progression_inventory_buy(&t, item));
+        assert(progression_inventory_place(&t, item));
+        assert(!progression_inventory_place(&t, item));
+        assert(strstr(progression_shop_notice(), "ONE LIVING/LARGE"));
+    }
+    t.coral_growth = 0.42f; tank_coral_set_rgb(&t, 0x123456);
+    t.cluster_growth = 0.57f; tank_cluster_set_scheme(&t, 2);
+    tank_veg_set(&t, 3, 0.63f);
+    const int complex[] = {0, 2, 3, 4, 8};
+    for (unsigned i = 0; i < sizeof complex / sizeof *complex; i++) {
+        int item = complex[i];
+        tank_decor_set(&t, item, 100 + (float)i * 15, DECOR_Z_FRONT);
+        assert(t.profile.paid_items & (UINT64_C(1) << item));
+        assert(progression_inventory_store(&t, item, -1));
+    }
+    inventory_reload(&loaded);
+    for (unsigned i = 0; i < sizeof complex / sizeof *complex; i++) {
+        int item = complex[i];
+        assert(progression_inventory_place(&loaded, item));
+        assert(loaded.profile.paid_items & (UINT64_C(1) << item));
+        assert(tank_decor_x(&loaded, item) == tank_decor_x(&t, item));
+        assert(tank_decor_z(&loaded, item) == DECOR_Z_FRONT);
+    }
+    assert(loaded.coral_growth == 0.42f && loaded.coral_rgb == 0x123456);
+    assert(loaded.cluster_growth == 0.57f && tank_cluster_scheme(&loaded) == 2);
+    for (int i = 0; i < VEG_FRONDS_MAX; i++) assert(fabsf(loaded.veg_h[3][i] - 0.63f) < 0.00001f);
+    t = loaded;
+    assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+        assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
+        assert(t.inventory.extra[i].paid);
+    }
+    for (int scale = 0; scale < 2; scale++) {
+        float old_w = TANK_W, old_x = t.inventory.extra[0].x;
+        tank_reframe(&t, scale != 0);
+        t.companion.display_compact = scale != 0;
+        assert(fabsf(t.inventory.extra[0].x - old_x * TANK_W / old_w) < 0.0001f);
+        assert(progression_save(&t));
+        inventory_reload(&loaded);
+        assert(!memcmp(&loaded.inventory, &t.inventory, sizeof t.inventory));
+        t = loaded;
+    }
+    assert(progression_inventory_buy(&t, 9));
+    before = t;
+    assert(!progression_inventory_place(&t, 9) && !memcmp(&before, &t, sizeof t));
+    while (true) {
+        unsigned total = 0; for (int i = 0; i < DECOR_SLOTS; i++) total += t.inventory.stored[i];
+        if (total == DECOR_INVENTORY_CAP) break;
+        t.sd_balance = 10000; assert(progression_inventory_buy(&t, 9));
+    }
+    before = t;
+    assert(!progression_inventory_buy(&t, 9) && !memcmp(&before, &t, sizeof t));
+    assert(!progression_inventory_store(&t, 9, -1) && !memcmp(&before, &t, sizeof t));
+    char *json = progression_backup_json(&t); assert(json && strstr(json, "\"schema\":18"));
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+    inventory_reload(&loaded); assert(!memcmp(&t.inventory, &loaded.inventory, sizeof t.inventory));
+    /* Reject aggregate overcapacity and paid provenance exceeding ownership. */
+    cJSON *root = cJSON_Parse(json), *inv = cJSON_GetObjectItemCaseSensitive(root, "inventory");
+    cJSON *hex = cJSON_GetObjectItemCaseSensitive(inv, "stored");
+    assert(cJSON_IsString(hex) && strlen(hex->valuestring) == 32);
+    memcpy(hex->valuestring + slot * 2, "40", 2);
+    invalid_object(root);
+    root = cJSON_Parse(json); inv = cJSON_GetObjectItemCaseSensitive(root, "inventory");
+    hex = cJSON_GetObjectItemCaseSensitive(inv, "paid");
+    assert(cJSON_IsString(hex) && strlen(hex->valuestring) == 32);
+    memcpy(hex->valuestring, "40", 2);
+    invalid_object(root);
+    root = cJSON_Parse(json); inv = cJSON_GetObjectItemCaseSensitive(root, "inventory");
+    hex = cJSON_GetObjectItemCaseSensitive(inv, "extra");
+    assert(cJSON_IsString(hex) && strlen(hex->valuestring) == 128);
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++) assert(!strncmp(hex->valuestring + i * 16, "0a", 2));
+    hex->valuestring[0] = '0'; hex->valuestring[1] = '1'; /* plant is not extra-eligible */
+    invalid_object(root);
+    root = cJSON_Parse(json); inv = cJSON_GetObjectItemCaseSensitive(root, "inventory");
+    hex = cJSON_GetObjectItemCaseSensitive(inv, "extra");
+    hex->valuestring[2] = '0'; hex->valuestring[3] = '1'; /* middle not supported */
+    invalid_object(root);
+    root = cJSON_Parse(json); inv = cJSON_GetObjectItemCaseSensitive(root, "inventory");
+    hex = cJSON_GetObjectItemCaseSensitive(inv, "extra");
+    memcpy(hex->valuestring + 8, "0000c07f", 8); /* NaN x */
+    invalid_object(root);
+    /* A complete but corrupted binary tail must be rejected, not migrated. */
+    unsigned char good[AQUARIUM_SAVE_BYTES]; memcpy(good, saved, sizeof good);
+    const unsigned offsets[] = {6032, 6032 + 16, 6032 + 32, 6032 + 33, 6032 + 34, 6032 + 96, 6032 + 97};
+    const unsigned char corrupt[] = {255, 255, 1, 1, 2, 2, 1};
+    for (unsigned i = 0; i < sizeof offsets / sizeof *offsets; i++) {
+        memcpy(saved, good, sizeof good); saved[offsets[i]] = corrupt[i];
+        tank_init(&loaded, 710); progression_boot(&loaded);
+        assert(!progression_storage_ready());
+    }
+    memcpy(saved, good, sizeof good);
+    /* Prefix migration is append-only: no invented stored copies or extras. */
+    saved_size = 6032; inventory_reload(&loaded);
+    inventory_state_t empty = {0}; assert(!memcmp(&loaded.inventory, &empty, sizeof empty));
+    root = cJSON_Parse(json); replace_number(root, "schema", 17);
+    char *legacy = cJSON_PrintUnformatted(root); cJSON_Delete(root); assert(legacy);
+    assert(progression_restore_json(legacy, strlen(legacy), true, error, sizeof error));
+    inventory_reload(&loaded); assert(!memcmp(&loaded.inventory, &empty, sizeof empty));
+    free(legacy); free(json);
+    /* Shared storage follows the active profile, placements stay aquarium-local. */
+    saved_size = 0; memset(slot_exists, 0, sizeof slot_exists);
+    tank_init(&t, 810); boot_enlarged(&t); progression_setup_done(&t);
+    t.sd_balance = 10000;
+    assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
+    assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
+    assert(progression_inventory_store(&t, 9, 0));
+    json = progression_backup_json(&t); assert(json);
+    assert(!progression_aquarium_move(&t, 1)); progression_setup_done(&t);
+    assert(progression_inventory_stored(&t, 9) == 1 && !progression_inventory_placed(&t, 9));
+    assert(progression_inventory_place(&t, 9));
+    assert(!progression_aquarium_move(&t, 0));
+    assert(progression_inventory_stored(&t, 9) == 0 && progression_inventory_placed(&t, 9) == 1);
+    assert(!progression_restore_json(json, strlen(json), false, error, sizeof error));
+    assert(!progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);
+    assert(progression_inventory_store(&t, 9, -1));
+    before = t; reject_write = true;
+    assert(progression_aquarium_move(&t, 1) && !memcmp(&before, &t, sizeof t));
+    reject_write = false; assert(!progression_aquarium_move(&t, 1));
+    assert(progression_inventory_stored(&t, 9) == 1 && progression_inventory_placed(&t, 9) == 1);
+    assert(progression_inventory_place(&t, 9) && t.inventory.extra[0].paid);
+    assert(!progression_aquarium_move(&t, 0));
+    assert(!progression_inventory_stored(&t, 9) && !progression_inventory_placed(&t, 9));
+    assert(!progression_aquarium_move(&t, 1) && progression_inventory_placed(&t, 9) == 2);
+    saved_size = 0; tank_init(&t, 910); progression_boot(&t);
+    assert(!progression_mode_select(&t, GAME_MODE_CREATIVE));
+    assert(progression_item_price_for(&t, 9) == 0);
+    progression_setup_done(&t);
+    wallet = t.sd_balance; earned = t.sd_earned;
+    assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
+    assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
+    assert(!t.inventory.extra[0].paid && !(t.profile.paid_items & (UINT64_C(1) << 9)));
+    assert(progression_inventory_store(&t, 9, 0) && progression_inventory_sell(&t, 9));
+    assert(t.sd_balance == wallet && t.sd_earned == earned);
+    /* Creative layout restoration has no economic conservation restriction. */
+    assert(!progression_aquarium_move(&t, 1)); progression_setup_done(&t);
+    json = progression_backup_json(&t); assert(json);
+    assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
+    assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);
+    inventory_reload(&loaded); assert(!progression_inventory_placed(&loaded, 9));
+    puts("PASS: inventory atomic buy/store/place/sell, paid/free provenance, 64/8 caps, heavy singleton, binary/JSON migrations and cross-aquarium transfers");
+}
+static void mussel_run(tank_t *t, int n, float dt) {
+    for (int i = 0; i < n; i++) {
+        for (int f = 0; f < t->n_fish; f++) { t->fish[f].hunger = 2; t->fish[f].stress = 1; }
+        progression_tick(t, dt);
+    }
+}
+static void test_per_game_income(void) {
+    tank_t t, loaded;
+    saved_size = 0; memset(slot_exists, 0, sizeof slot_exists);
+    int64_t now = test_unix;
+    tank_init(&t, 930); boot_enlarged(&t); progression_setup_done(&t);
+    assert(GAME_INCOME_COUNT == 18 && GAME_DAILY_TOTAL == 90 && CARE_GAME_LIMIT == 5);
+    char *stale = progression_backup_json(&t); assert(stale);
+    for (int game = 0; game < GAME_INCOME_COUNT; game++) {
+        for (int round = 0; round < 7; round++) {
+            int wallet = t.sd_balance; uint32_t xp = t.journal.xp;
+            int score = game == 12 ? 16 : game == 13 ? 8 : 2048;
+            int reward = game >= 12 ? companion_game_reward(game, score, 8) : 8;
+            assert(progression_game_payout(&t, game, 8) == (round < 5));
+            assert(companion_game_claim(&t, game, score, 8, reward, (round & 1) != 0));
+            assert(t.sd_balance == wallet + (round < 5) && t.journal.xp == xp);
+        }
+        assert(t.game_income.paid[game] == 5);
+    }
+    assert(t.care.game_paid == 90 && t.sd_balance == 90 && t.sd_earned == 90);
+    assert(progression_restore_json(stale, strlen(stale), false, error, sizeof error));
+    assert(progression_restore_json(stale, strlen(stale), true, error, sizeof error)); free(stale);
+    inventory_reload(&loaded); t = loaded;
+    assert(t.care.game_paid == 90 && !progression_game_payout(&t, 17, 8));
+    t.sd_balance = 10000;
+    assert(!progression_aquarium_move(&t, 1)); progression_setup_done(&t);
+    assert(t.care.game_paid == 90 && !progression_game_payout(&t, 0, 8));
+    assert(!progression_aquarium_move(&t, 0));
+    test_unix -= 86400; progression_care_refresh(&t); assert(t.care.game_paid == 90);
+    test_unix += 2 * 86400; progression_care_refresh(&t);
+    assert(!t.care.game_paid && progression_game_payout(&t, 17, 8));
+    tank_t before = t; reject_write = true;
+    assert(!companion_game_claim(&t, 17, 2048, 8, 10, false));
+    reject_write = false;
+    assert(!memcmp(&before, &t, sizeof t));
+    assert(progression_game_reward(&t, 17, 8) && t.game_income.paid[17] == 1 && t.care.game_paid == 1);
+    assert(!progression_game_reward(&t, -1, 8) && !progression_game_reward(&t, 18, 8));
+    test_unix = 0; t.care.elapsed_s = 86399;
+    progression_tick(&t, 1);
+    assert(!t.care.game_paid && !t.game_income.paid[17]);
+    t.care.game_paid = 3; memset(&t.game_income, 0, sizeof t.game_income);
+    assert(progression_save(&t));
+    /* Published schema17 prefix migrates its existing shared payments. */
+    saved_size = 6032; inventory_reload(&loaded); t = loaded;
+    assert(t.game_income.legacy == 3 && t.care.game_paid == 3);
+    for (int game = 0; game < GAME_INCOME_COUNT; game++) {
+        assert(progression_game_reward(&t, game, 8));
+        assert(progression_game_reward(&t, game, 8));
+        assert(!progression_game_payout(&t, game, 8));
+    }
+    assert(t.care.game_paid == 39);
+    char *json = progression_backup_json(&t); assert(json);
+    cJSON *root = cJSON_Parse(json), *income = cJSON_GetObjectItemCaseSensitive(root, "game_income");
+    cJSON_ReplaceItemInArray(cJSON_GetObjectItemCaseSensitive(income, "paid"), 0, cJSON_CreateNumber(6));
+    invalid_object(root);
+    root = cJSON_Parse(json); income = cJSON_GetObjectItemCaseSensitive(root, "game_income");
+    replace_number(income, "legacy", 5); invalid_object(root);
+    free(json);
+    assert(progression_save(&t)); unsigned char good[AQUARIUM_SAVE_BYTES]; memcpy(good, saved, sizeof good);
+    saved[6140] = 6; tank_init(&loaded, 931); progression_boot(&loaded);
+    assert(!progression_storage_ready());
+    memcpy(saved, good, sizeof good); test_unix = now;
+    puts("PASS: 18 independent game quotas, 1/round 5/game 90/day, practice/challenge sharing, transactional records/wallet, switch/restore conservation, legacy quota migration and malformed state");
+}
+static void test_mussel(void) {
+    tank_t t, loaded;
+    saved_size = 0; memset(slot_exists, 0, sizeof slot_exists);
+    int64_t now = test_unix;
+    tank_init(&t, 920); boot_enlarged(&t); progression_setup_done(&t);
+    assert(CARE_COINS[0] == 30 && CARE_COINS[1] == 30 && CARE_COINS[2] == 65);
+    assert(CARE_XP[0] + CARE_XP[1] + CARE_XP[2] == 50 && CARE_GAME_LIMIT == 5);
+    t.care.ready = 7;
+    int wallet = t.sd_balance, earned = t.sd_earned; uint32_t xp = t.journal.xp;
+    assert(progression_care_claim(&t, 0) && progression_care_claim(&t, 1));
+    assert(!t.mussel.owned);
+    reject_write = true; assert(!progression_care_claim(&t, 2)); reject_write = false;
+    assert(!t.mussel.owned && t.care.claimed == 3);
+    assert(progression_care_claim(&t, 2) && t.mussel.owned);
+    assert(t.sd_balance == wallet + 125 && t.sd_earned == earned + 125 && t.journal.xp == xp + 50);
+    wallet = t.sd_balance; earned = t.sd_earned; xp = t.journal.xp;
+    char *preunlock;
+    {
+        mussel_state_t owned = t.mussel;
+        memset(&t.mussel, 0, sizeof t.mussel);
+        preunlock = progression_backup_json(&t); assert(preunlock);
+        t.mussel = owned;
+    }
+    t.ui_cover = true; t.night = true;
+    mussel_run(&t, 599, 1);
+    assert(t.mussel.seconds == 599 && !t.mussel.bank);
+    progression_tick(&t, NAN); progression_tick(&t, INFINITY);
+    progression_tick(&t, -1); progression_tick(&t, 0);
+    assert(t.mussel.seconds == 599 && !t.mussel.bank && !t.mussel_fraction);
+    t.fish[t.n_fish - 1].hunger = 8.5f; progression_tick(&t, 1);
+    assert(t.mussel.seconds == 599);
+    t.fish[t.n_fish - 1].hunger = 2; t.fish[0].stress = 7; progression_tick(&t, 1);
+    assert(t.mussel.seconds == 599);
+    mussel_run(&t, 3, 0.25f);
+    assert(t.mussel.seconds == 599 && t.mussel_fraction == 0.75);
+    mussel_run(&t, 1, 0.25f);
+    assert(!t.mussel.seconds && t.mussel.bank == 1 && t.mussel.generated == 1);
+    assert(t.sd_balance == wallet && t.sd_earned == earned && t.journal.xp == xp);
+    mussel_run(&t, 1, 600);
+    assert(t.mussel.seconds == 1); /* suspended frame gives at most one healthy second */
+    int n = t.n_fish; t.n_fish = 0; progression_tick(&t, 1); t.n_fish = n;
+    assert(t.mussel.seconds == 1);
+    reject_write = true;
+    assert(!progression_mussel_collect(&t) && t.mussel.bank == 1 && t.sd_balance == wallet && t.sd_earned == earned);
+    assert(progression_shop_notice()); reject_write = false;
+    char *stale = progression_backup_json(&t); assert(stale);
+    assert(progression_mussel_collect(&t) && !t.mussel.bank);
+    assert(t.sd_balance == wallet + 1 && t.sd_earned == earned + 1 && t.journal.xp == xp);
+    assert(progression_restore_json(stale, strlen(stale), true, error, sizeof error)); free(stale);
+    inventory_reload(&loaded); t = loaded;
+    assert(!t.mussel.bank && t.mussel.generated == 1 && t.mussel.seconds == 1);
+    assert(progression_restore_json(preunlock, strlen(preunlock), false, error, sizeof error));
+    assert(progression_restore_json(preunlock, strlen(preunlock), true, error, sizeof error)); free(preunlock);
+    inventory_reload(&t);
+    assert(t.mussel.owned && !t.mussel.bank && t.mussel.generated == 1 && t.mussel.seconds == 1);
+    mussel_run(&t, 2400, 0.25f);
+    assert(t.mussel.bank == 1 && t.mussel.seconds == 1);
+    t.mussel.generated = 14; t.mussel.bank = 14; t.mussel.seconds = 599;
+    mussel_run(&t, 1, 1);
+    assert(t.mussel.generated == 15 && t.mussel.bank == 15 && !t.mussel.seconds);
+    mussel_run(&t, 20, 1);
+    assert(!t.mussel.seconds);
+    test_unix += 86400; progression_care_refresh(&t);
+    assert(!t.mussel.generated && t.mussel.bank == 15);
+    mussel_run(&t, 20, 1); assert(!t.mussel.seconds);
+    assert(progression_mussel_collect(&t));
+    mussel_run(&t, 600, 1);
+    assert(t.mussel.bank == 1 && t.mussel.generated == 1);
+    test_unix -= 86400; progression_care_refresh(&t); assert(t.mussel.generated == 1);
+    test_unix = 0; t.care.elapsed_s = 86399;
+    mussel_run(&t, 1, 1); assert(!t.mussel.generated && t.mussel.bank == 1);
+    t.mussel.generated = 2;
+    test_unix = now + 2 * 86400; progression_care_refresh(&t);
+    assert(t.mussel.generated == 2); /* clock sync adopts fallback allowance */
+    assert(progression_save(&t)); int seconds = t.mussel.seconds;
+    test_unix += 86400;
+    inventory_reload(&loaded);
+    assert(loaded.mussel.seconds == seconds && loaded.mussel.bank == 1 && !loaded.mussel.generated);
+    t = loaded; mussel_run(&t, 1, 0.25f);
+    /* A backup can recover an earned creature/bank onto a never-unlocked profile. */
+    char *recovery = progression_backup_json(&t); assert(recovery);
+    saved_size = 0; tank_init(&loaded, 923); boot_enlarged(&loaded);
+    assert(!loaded.mussel.owned);
+    assert(progression_restore_json(recovery, strlen(recovery), false, error, sizeof error));
+    assert(progression_restore_json(recovery, strlen(recovery), true, error, sizeof error)); free(recovery);
+    inventory_reload(&loaded);
+    assert(loaded.mussel.owned && loaded.mussel.bank == t.mussel.bank &&
+           loaded.mussel.generated == t.mussel.generated && loaded.mussel.seconds == t.mussel.seconds);
+    assert(progression_save(&t));
+    double fraction = t.mussel_fraction;
+    t.sd_balance = 10000; progression_setup_done(&t);
+    assert(!progression_aquarium_move(&t, 1)); progression_setup_done(&t);
+    assert(t.mussel.owned && t.mussel.bank == 1 && t.mussel_fraction == fraction);
+    assert(progression_mussel_collect(&t));
+    assert(!progression_aquarium_move(&t, 0) && !t.mussel.bank);
+    char *json = progression_backup_json(&t); assert(json);
+    assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
+    cJSON *root = cJSON_Parse(json);
+    replace_number(cJSON_GetObjectItemCaseSensitive(root, "mussel"), "seconds", 600); invalid_object(root);
+    root = cJSON_Parse(json);
+    replace_number(cJSON_GetObjectItemCaseSensitive(root, "mussel"), "generated", 16); invalid_object(root);
+    root = cJSON_Parse(json);
+    replace_number(cJSON_GetObjectItemCaseSensitive(root, "mussel"), "bank", 16); invalid_object(root);
+    free(json);
+    assert(progression_save(&t));
+    unsigned char good[AQUARIUM_SAVE_BYTES]; memcpy(good, saved, sizeof good);
+    const unsigned offsets[] = {6132, 6134, 6135, 6136, 6137, 6138};
+    const unsigned char corrupt[] = {255, 2, 16, 16, 2, 1};
+    for (unsigned i = 0; i < sizeof offsets / sizeof *offsets; i++) {
+        memcpy(saved, good, sizeof good); saved[offsets[i]] = corrupt[i];
+        if (offsets[i] == 6132) saved[6133] = 255;
+        tank_init(&loaded, 921); progression_boot(&loaded); assert(!progression_storage_ready());
+    }
+    memcpy(saved, good, sizeof good);
+    saved_size = 0; tank_init(&t, 922); progression_boot(&t);
+    assert(!progression_mode_select(&t, GAME_MODE_CREATIVE));
+    t.care.ready = 7;
+    assert(!progression_care_claim(&t, 0) && !t.mussel.owned);
+    assert(!progression_mussel_collect(&t));
+    test_unix = now;
+    puts("PASS: pearl mussel care unlock/rollback, healthy fractional live accrual, 599/600 threshold, daily/bank caps, clock rollback/fallback, restore/switch, corrupt binary/JSON and Creative exclusion");
+}
 int main(int argc, char **argv) {
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
+    if (argc >= 2 && !strcmp(argv[1], "--inventory-only")) {
+        test_inventory();
+        test_mussel();
+        test_per_game_income();
+        for (int i = 2; i < argc; i++) {
+            FILE *f = fopen(argv[i], "rb"); assert(f);
+            saved_size = fread(saved, 1, sizeof saved, f); fclose(f);
+            tank_t t; inventory_reload(&t);
+            inventory_state_t empty = {0}; assert(!memcmp(&t.inventory, &empty, sizeof empty));
+        }
+        puts("PASS: all historical binary save fixtures migrate with empty inventory");
+        return 0;
+    }
     test_tank_polish();
     test_story();
     test_genetics();
@@ -3156,10 +3610,13 @@ int main(int argc, char **argv) {
     assert(progression_sell(&restored, 9) && restored.sd_balance == 44);
     assert(!(restored.sd_unlocks & SD_ITEM_CHEST));
     restored.sd_balance = 119;
-    assert(progression_item_unlocked(&restored, 9) && progression_buy(&restored, 9) && restored.sd_balance == 119);
-    assert(!progression_sell_value_for(&restored, 9));
-    assert(progression_sell(&restored, 9) && restored.sd_balance == 119);
-    assert(progression_buy(&restored, 9) && restored.sd_balance == 119);
+    assert(progression_item_unlocked(&restored, 9) && !progression_buy(&restored, 9));
+    restored.sd_balance = 120;
+    assert(progression_buy(&restored, 9) && restored.sd_balance == 0);
+    assert(progression_sell_value_for(&restored, 9) == 24);
+    assert(progression_sell(&restored, 9) && restored.sd_balance == 24);
+    restored.sd_balance = 120;
+    assert(progression_buy(&restored, 9) && restored.sd_balance == 0);
     invalid(text, strlen(text) - 1);
     invalid("{}", 2);
     invalid("null", 4);

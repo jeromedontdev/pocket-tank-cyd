@@ -43,7 +43,7 @@ int main(void) {
     assert(companion_rpg_choose(&t, 0, 0));
     assert(!memcmp(fish_before, t.fish, sizeof fish_before));
     assert(t.rpg.step == 1 && t.rpg.skills[0] == 1 && t.rpg.participant == id);
-    assert(saved_size == AQUARIUM_SAVE_BYTES && saved_size == 6032);
+    assert(saved_size == AQUARIUM_SAVE_BYTES);
     rpg_reload(&t);
     assert(t.rpg.step == 1 && t.rpg.participant == id);
     tank_rpg_t before = t.rpg;
@@ -76,7 +76,7 @@ int main(void) {
     rpg_reload(&t);
     assert(companion_rpg_contributor(&t, id) && companion_rpg_legacy(&t, 0));
     char *json = progression_backup_json(&t);
-    assert(json && strstr(json, "\"schema\":17") && strstr(json, "\"rpg\":"));
+    assert(json && strstr(json, "\"schema\":18") && strstr(json, "\"rpg\":"));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     free(json);
     rpg_reload(&t);
@@ -124,6 +124,9 @@ int main(void) {
     cJSON_DeleteItemFromObjectCaseSensitive(root, "creative");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "profile");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "care");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "inventory");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "mussel");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "game_income");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "games_extra");
     assert(cJSON_ReplaceItemInObjectCaseSensitive(root, "schema", cJSON_CreateNumber(13)));
     json = cJSON_PrintUnformatted(root); cJSON_Delete(root);

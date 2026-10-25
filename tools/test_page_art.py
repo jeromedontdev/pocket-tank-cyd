@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import struct
+import os
 
 
 def main():
@@ -42,7 +43,10 @@ def main():
             args.gallery.mkdir(parents=True, exist_ok=True)
             run.append(str(args.gallery.resolve()))
         subprocess.run(run,
-                       check=True, cwd=root)
+                       check=True, cwd=root, env=dict(os.environ,
+                           POCKET_TANK_SAVE=str(build / "synthetic.sav"),
+                           POCKET_TANK_WIFI=str(build / "wifi.txt"),
+                           POCKET_TANK_WEATHER=str(build / "weather.bin")))
         if args.gallery:
             from capture_cyd_gallery import png
             for width, height in ((240, 180), (320, 240)):

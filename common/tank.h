@@ -473,6 +473,30 @@ typedef struct {
 typedef struct { float x, y, vy, wobble; bool column; } bubble_t;
 
 #define DECOR_SLOTS 16
+#define DECOR_INVENTORY_CAP 64
+#define DECOR_EXTRA_CAP 8
+typedef struct {
+    uint8_t item, z, paid, rank; /* item = SD item ID + 1; zero is unused */
+    float x;
+} inventory_extra_t;
+typedef struct {
+    uint8_t stored[DECOR_SLOTS], paid[DECOR_SLOTS]; /* counts; paid <= stored */
+    inventory_extra_t extra[DECOR_EXTRA_CAP];     /* aquarium-local copies */
+    uint8_t version, reserved[3];
+} inventory_state_t;
+_Static_assert(sizeof(inventory_extra_t) == 8, "inventory copy save layout");
+_Static_assert(sizeof(inventory_state_t) == 100, "inventory append-only save layout");
+typedef struct {
+    uint16_t seconds;
+    uint8_t owned, bank, generated, version, reserved[2];
+} mussel_state_t;
+_Static_assert(sizeof(mussel_state_t) == 8, "mussel save layout");
+#define GAME_INCOME_COUNT 18
+#define GAME_DAILY_TOTAL 90
+typedef struct {
+    uint8_t paid[GAME_INCOME_COUNT], version, legacy, reserved[4];
+} game_income_state_t;
+_Static_assert(sizeof(game_income_state_t) == 24, "game income save layout");
 typedef struct {
     uint32_t xp, claimed, seen, grown, baseline[4];
     uint8_t initialized, trust, population, theme;
@@ -828,6 +852,10 @@ typedef struct tank {
     game_records_t games_extra;
     profile_state_t profile;
     care_state_t care;
+    inventory_state_t inventory;
+    mussel_state_t mussel;
+    game_income_state_t game_income;
+    double mussel_fraction;
     float care_fraction;
     float visitor_left;
     float companion_fraction;      /* powered-on fractional second; not saved */

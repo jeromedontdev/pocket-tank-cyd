@@ -567,7 +567,7 @@ bool render_games_tap(tank_t *t, float x, float y) {
     } else if (g_game.page == GAME_RESULT && x >= 32 && x < 428) {
         if (y >= 196 && y < 240 && game_result_pending(t)) {
             progression_care_refresh(t);
-            int paid = progression_game_payout(t, g_game.reward);
+            int paid = progression_game_payout(t, game_index(g_game.kind), g_game.reward);
             if (companion_game_claim(t, game_index(g_game.kind), g_game.score, g_game.moves, g_game.reward, g_game_relaxed)) {
                 g_game.paid = paid;
                 g_game.claimed = true; g_game.save_failed = false; g_game.discard = 0;
@@ -1018,7 +1018,7 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
         render_internal_text(&c, 32, 126, 2, MSP_TEAL, text);
         snprintf(text, sizeof text, "WALLET: %ld SAND DOLLARS", (long)t->sd_balance);
         render_internal_text(&c, 32, 164, 2, MSP_TEAL, text);
-        int payout = progression_game_payout(t, g_game.reward);
+        int payout = progression_game_payout(t, game_index(g_game.kind), g_game.reward);
         snprintf(text, sizeof text, g_game.claimed ? "SAVED +%d SAND DOLLARS" :
                  payout ? "SAVE RESULT +%d DOLLAR" : "SAVE RESULT - NO BONUS",
                  g_game.claimed ? g_game.paid : payout);
@@ -1027,7 +1027,8 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
         if (progression_creative(t)) snprintf(text, sizeof text, "CREATIVE - PRACTICE ONLY");
         render_internal_button(&c, 32, 196, 396, 44, 0x1c2f36, MSP_TEAL, text, 2);
         render_internal_button(&c, 32, 278, 396, 44, 0x1c2f36, MSP_TEAL, "PLAY AGAIN", 2);
-        snprintf(text, sizeof text, "GAMES: %d/5C TODAY - NO XP", t->care.game_paid);
+        snprintf(text, sizeof text, "THIS GAME %d/5 TODAY - NO XP",
+                 t->game_income.paid[game_index(g_game.kind)] + t->game_income.legacy);
         if (progression_creative(t)) snprintf(text, sizeof text, "NO COINS, XP OR RECORDS");
         render_internal_text(&c, 32, 248, 2, MSP_TEAL, text);
     }
@@ -1036,7 +1037,7 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
         render_internal_button(&c, 164, 8, 72, 36, 0x1c2f36, MSP_TEAL, "HELP", 1);
         if (g_game.help || g_game.paused) {
             static const char *const help[18][5] = {
-                {"Tap rising bubbles.", "Gold bubbles score three.", "Challenge lasts 30 seconds.", "Relaxed: FINISH when ready.", "Games share 5 coins/day; no XP."},
+                {"Tap rising bubbles.", "Gold bubbles score three.", "Challenge lasts 30 seconds.", "Practice shares this game cap.", "+1/round; 5/game/day; no XP."},
                 {"Tap two cards to reveal.", "Match all six pearl pairs.", "Fewer moves earn medals.", "Mismatch hides after a moment.", "No timer."},
                 {"Use LEFT / RIGHT to swim.", "Follow the gold open gate.", "Twelve gates per round.", "Each clear gate scores two.", "Relaxed gates move slower."},
                 {"Tap CAST over the treasure.", "Watch the moving hook.", "Five casts per round.", "Each accurate cast scores two.", "Relaxed hook moves slower."},
@@ -1050,10 +1051,10 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
                 {"Choose one of three routes.", "Costs and loot shown on cards.", "Keys open ruins; food heals.", "RETURN banks loot plus hull.", "8 depths. No air/hull: 1/2 loot."},
                 {"Tap a lamp: it and its four", "neighbors switch on or off.", "Solve for +1 (daily cap).", "Gold: solve in 8 moves or less.", "FINISH saves; unsolved: no pay."},
                 {"Tap a tile beside the gap.", "Slide numbers into order 1-8.", "Solve for +1 (daily cap).", "Gold: solve in 24 moves.", "FINISH saves; unsolved: no pay."},
-                {"Find five pearls in the grid.", "Gold: total pearls per row/col.", "15 probes; Relaxed gives 20.", "2+ pearls qualify; five: gold.", "Bonus: +1, shared max 5/day."},
-                {"Use arrows to slide all tiles.", "Equal neighbors merge once.", "New tiles appear after moves.", "128+ qualifies; 2048: gold.", "Bonus: +1, shared max 5/day."},
-                {"Tap DROP to place the gold bar.", "Only the overlap stays; missed", "edges are lost. Stack 12 layers.", "30+ qualifies; 120: gold.", "Bonus: +1, shared max 5/day."},
-                {"Watch the numbered pads flash.", "Repeat the sequence by tapping.", "One new note per round, to 12.", "3+ qualifies; 12: gold.", "Bonus: +1, shared max 5/day."}
+                {"Find five pearls in the grid.", "Gold: total pearls per row/col.", "15 probes; Relaxed gives 20.", "2+ pearls qualify; five: gold.", "+1/round; max 5/game/day."},
+                {"Use arrows to slide all tiles.", "Equal neighbors merge once.", "New tiles appear after moves.", "128+ qualifies; 2048: gold.", "+1/round; max 5/game/day."},
+                {"Tap DROP to place the gold bar.", "Only the overlap stays; missed", "edges are lost. Stack 12 layers.", "30+ qualifies; 120: gold.", "+1/round; max 5/game/day."},
+                {"Watch the numbered pads flash.", "Repeat the sequence by tapping.", "One new note per round, to 12.", "3+ qualifies; 12: gold.", "+1/round; max 5/game/day."}
             };
             render_internal_rect_fill(&c, 24, 94, 400, 234, MSP_INK);
             render_internal_rect_edge(&c, 24, 94, 400, 234, MSP_TEAL);
@@ -1066,11 +1067,9 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
     if (!g_game.help && !g_game.paused && g_game_relaxed && (g_game.page == GAME_BUBBLES || g_game.page == GAME_FRENZY))
         render_internal_button(&c, 280, 54, 144, 34, 0x1c2f36, MSP_TEAL, "FINISH", 2);
     if (g_game.page == GAME_MENU) {
-        static const char *const featured[] = {"BUBBLES", "MATCH", "SLALOM", "CAST", "FRENZY", "REEF"};
         if (progression_creative(t)) snprintf(text, sizeof text, "CREATIVE: NO COINS, XP OR RECORDS");
-        else if (g_game_menu == 2) snprintf(text, sizeof text, "+1, SHARED 5/DAY - NO XP");
-        else snprintf(text, sizeof text, "SUGGESTED: %s - NO EXPIRY", featured[t->companion.featured]);
-        render_internal_text(&c, 24, 350, progression_creative(t) ? 1 : 2, MSP_TEAL, text);
+        else snprintf(text, sizeof text, "+1/ROUND, 5 EACH/DAY: ALL 18 + PRACTICE");
+        render_internal_text(&c, 24, 350, 1, MSP_TEAL, text);
     } else render_internal_text(&c, 24, 340, 2,
                     g_game.save_failed ? 0xff8173 : MSP_TEAL,
                     g_game.save_failed ? "SAVE FAILED - TAP CLAIM TO RETRY" :

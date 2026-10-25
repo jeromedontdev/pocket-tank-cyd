@@ -29,10 +29,13 @@ static uint8_t s_old_variety, s_old_pattern;
 static fish_t s_custom_draft;
 static bool s_save_error;
 static setup_place_snapshot_t s_place_original;
+static int s_extra = -1;
+static inventory_extra_t s_extra_original;
 const setup_place_snapshot_t *setup_place_original(void) {
-    return s_active && s_place ? &s_place_original : NULL;
+    return s_active && s_place && s_extra < 0 ? &s_place_original : NULL;
 }
 static float *place_x(tank_t *t, int item) {
+    if (s_extra >= 0) return &t->inventory.extra[s_extra].x;
     switch (item) {
     case 0: return &t->plant_x; case 2: return &t->castle_x;
     case 3: return &t->coral_x; case 4: return &t->cluster_x;
@@ -42,6 +45,19 @@ static float *place_x(tank_t *t, int item) {
 }
 static int  s_renamed;         /* a rename page just closed: the fish's slot + 1, until the platform takes it */
 static int  s_item;            /* placement: the SD item being placed */
+static float placed_x(const tank_t *t) {
+    return s_extra < 0 ? tank_decor_x(t, s_item) : t->inventory.extra[s_extra].x;
+}
+static int placed_z(const tank_t *t) {
+    return s_extra < 0 ? tank_decor_z(t, s_item) : t->inventory.extra[s_extra].z;
+}
+static void placed_set(tank_t *t, float x, int z) {
+    if (s_extra < 0) { tank_decor_set(t, s_item, x, z); return; }
+    float half = tank_decor_half_w(s_item);
+    float lo = TANK_FX0 + DECOR_MARGIN + half, hi = TANK_FX1 - DECOR_MARGIN - half;
+    t->inventory.extra[s_extra].x = fmaxf(lo, fminf(hi, x));
+    t->inventory.extra[s_extra].z = z == DECOR_Z_BACK ? DECOR_Z_BACK : DECOR_Z_FRONT;
+}
 static int  s_fish;            /* birth flow: the newborn's slot */
 static int  s_birth_offered = -1;   /* setup_poll_birth: the arrival already opened for (-1 = none since boot) */
 static int  s_page;
@@ -70,6 +86,7 @@ static void tidy_name(tank_t *t, int fish);
 
 void setup_begin(tank_t *t) {
     if (t->n_fish < 2) { progression_setup_done(t); s_active = false; return; }   /* nothing to name */
+    s_save_error = false;
     s_active = true; s_birth = false; s_place = false; s_rename = false; s_fish = -1; s_page = SETUP_PG_WELCOME; s_slot = 0; s_down = false;
     if (!progression_mode_chosen(t)) s_page = SETUP_PG_MODE;
     s_mode_pick = GAME_MODE_NORMAL; s_mode_error[0] = 0;
@@ -77,6 +94,7 @@ void setup_begin(tank_t *t) {
 }
 void setup_begin_birth(tank_t *t, int slot) {
     if (slot < 0 || slot >= t->n_fish) { s_active = false; return; }
+    s_save_error = false;
     s_active = true; s_birth = true; s_place = false; s_rename = false; s_fish = slot; s_page = SETUP_PG_BORN; s_slot = 0; s_down = false;
 }
 void setup_begin_rename(tank_t *t, int fish) {
@@ -96,6 +114,7 @@ bool setup_is_rename(void) { return s_active && s_rename; }
 int  setup_take_renamed(void) { int f = s_renamed - 1; s_renamed = 0; return f; }
 void setup_begin_place(tank_t *t, int item) {
     if (!tank_decor_placeable(item) || s_active) return;
+    s_extra = -1;
     s_place_original.item = item; s_place_original.x = *place_x(t, item);
     s_place_original.z = (uint8_t)tank_decor_z(t, item);
     s_place_original.rgb = t->coral_rgb; s_place_original.scheme = t->cluster_scheme;
@@ -105,12 +124,21 @@ void setup_begin_place(tank_t *t, int item) {
     s_sell_armed = false;
     stage(t);
 }
+void setup_begin_extra_place(tank_t *t, int copy) {
+    if (s_active || copy < 0 || copy >= DECOR_EXTRA_CAP || !t->inventory.extra[copy].item) return;
+    setup_begin_place(t, t->inventory.extra[copy].item - 1);
+    s_extra = copy;
+    s_extra_original = t->inventory.extra[copy];
+}
 int setup_poll_birth(tank_t *t) {
     int nb = progression_newborn();
     if (nb < 0) { s_birth_offered = -1; return -1; }    /* nothing owed: a later arrival in the same slot is new */
     if (s_active || nb == s_birth_offered) return -1;   /* a flow is up, or this one was offered (and dropped) already */
+    if (nb >= t->n_fish || t->fish[nb].stage != STAGE_FRY) {
+        progression_newborn_done(t);
+        return -1;
+    }
     s_birth_offered = nb;
-    if (nb >= t->n_fish) { progression_newborn_done(t); return -1; }   /* a stale debt (a staged tank) */
     setup_begin_birth(t, nb);
     return nb;
 }
@@ -161,10 +189,13 @@ static void stage(tank_t *t) {                          /* who is on stage, and 
 void setup_cancel(tank_t *t) {
     if (s_active && s_rename) { rename_end(t, false); s_renamed = 0; return; }   /* the old name back, no card to return to */
     if (s_active && s_place) {
-        tank_decor_set(t, s_item, tank_decor_x(t, s_item), s_place_original.z);
-        *place_x(t, s_item) = s_place_original.x;
-        t->coral_rgb = s_place_original.rgb; t->cluster_scheme = s_place_original.scheme;
-        memcpy(t->decor_rank, s_place_original.rank, sizeof t->decor_rank);
+        if (s_extra >= 0) t->inventory.extra[s_extra] = s_extra_original;
+        else {
+            tank_decor_set(t, s_item, tank_decor_x(t, s_item), s_place_original.z);
+            *place_x(t, s_item) = s_place_original.x;
+            t->coral_rgb = s_place_original.rgb; t->cluster_scheme = s_place_original.scheme;
+            memcpy(t->decor_rank, s_place_original.rank, sizeof t->decor_rank);
+        }
     }
     s_active = false; stage(t);
 }
@@ -356,7 +387,8 @@ void setup_activate(tank_t *t, int id) {
             if (!s_sell_armed) { s_sell_armed = true; return; }
             s_sell_armed = false;
             s_place = false;
-            if (progression_sell(t, s_item)) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
+            bool ok = s_extra >= 0 ? progression_inventory_store(t, s_item, s_extra) : progression_sell(t, s_item);
+            if (ok) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
             else { s_place = true; s_save_error = true; }
             return;
         }
@@ -366,9 +398,9 @@ void setup_activate(tank_t *t, int id) {
             if (progression_save(t)) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
             else { s_place = true; s_save_error = true; }
         }
-        else if (id == SETUP_HIT_BCK || id == SETUP_HIT_FWD) tank_decor_shift(t, s_item, id == SETUP_HIT_FWD ? 1 : -1);   /* the stack: a step; DONE saves it */
+        else if ((id == SETUP_HIT_BCK || id == SETUP_HIT_FWD) && s_extra < 0) tank_decor_shift(t, s_item, id == SETUP_HIT_FWD ? 1 : -1);
         else if (id >= SETUP_HIT_Z0 && id < SETUP_HIT_Z0 + DECOR_Z_N)
-            tank_decor_set(t, s_item, tank_decor_x(t, s_item), id - SETUP_HIT_Z0);
+            placed_set(t, placed_x(t), id - SETUP_HIT_Z0);
         else if (s_item == 3 && id >= SETUP_HIT_COLOR0 && id < SETUP_HIT_COLOR0 + CORAL_N)
             tank_coral_set_rgb(t, CORAL_PAL[id - SETUP_HIT_COLOR0]);   /* the coral wears it at once; DONE saves it */
         else if (s_item == 4 && id >= SETUP_HIT_COLOR0 && id < SETUP_HIT_COLOR0 + CLUSTER_SCHEME_N)
@@ -382,9 +414,10 @@ void setup_activate(tank_t *t, int id) {
     if (id == SETUP_HIT_NEXT) {
         if (page_is_name()) tidy_name(t, page_fish());
         if (page_is_last()) {                           /* BEGIN / DONE: the debt is paid, the names saved */
-            s_active = false; stage(t);
+            bool saved = s_birth ? progression_newborn_done(t) : progression_setup_done(t);
+            if (!saved) { s_save_error = true; return; }
+            s_save_error = false; s_active = false; stage(t);
             tank_emit(TEV_CONFIRM, -1);
-            if (s_birth) progression_newborn_done(t); else progression_setup_done(t);
             return;
         }
         s_page++; s_slot = 0; stage(t);
@@ -418,12 +451,12 @@ void setup_touch(tank_t *t, float x, float y, bool down) {
             tank_set_bubble_x(t, x); s_spun = true;         /* the column comes to the finger */
         }
         if (s_page == SETUP_PG_PLACE && !h && render_page_y(y) > place_y()) {
-            tank_decor_set(t, s_item, x, tank_decor_z(t, s_item)); s_spun = true;   /* the piece comes to the finger */
+            placed_set(t, x, placed_z(t)); s_spun = true;
         }
     } else if (down && s_page == SETUP_PG_BUBBLES && s_spun) {
         tank_set_bubble_x(t, x);                            /* ... and follows it */
     } else if (down && s_page == SETUP_PG_PLACE && s_spun) {
-        tank_decor_set(t, s_item, x, tank_decor_z(t, s_item));
+        placed_set(t, x, placed_z(t));
     } else if (down && page_is_name()) {                /* the wheel: vertical travel spins the letter */
         int h0 = setup_hit(s_px, s_py);
         if (h0 >= SETUP_HIT_SLOT0 && h0 < SETUP_HIT_SLOT0 + FISH_NAME_MAX) {
@@ -699,15 +732,18 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, "DONE", 2);
         /* SELL, top left (2026-09-24): a tap arms it and names the refund, a
            second tap sells the piece back to the shop and closes the page */
-        if (s_sell_armed) { char ok[16]; snprintf(ok, sizeof ok, "+%d OK?", progression_sell_value_for(t, s_item));
+        if (s_sell_armed) { char ok[16];
+                            if (s_extra >= 0) snprintf(ok, sizeof ok, "STORE OK?");
+                            else snprintf(ok, sizeof ok, "+%d OK?", progression_sell_value_for(t, s_item));
                             render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, ok, 2); }
         else render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_INNER, C_DIM,
-                           progression_sell_value_for(t, s_item) ? "SELL" : "REMOVE", 2);
+                           s_extra >= 0 ? "STORE" : progression_sell_value_for(t, s_item) ? "SELL" : "REMOVE", 2);
         render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, C_INNER, C_DIM, "CANCEL", 1);
         /* the ORDER arrows (2026-10-17): a step back / forward in the stack of
            pieces at this depth, lit when there is a piece to pass; the relation
            is named on the hint line ("UNDER THE CORAL") */
-        int below = tank_decor_neighbor(t, s_item, -1), above = tank_decor_neighbor(t, s_item, 1);
+        int below = s_extra < 0 ? tank_decor_neighbor(t, s_item, -1) : -1;
+        int above = s_extra < 0 ? tank_decor_neighbor(t, s_item, 1) : -1;
         ord_arrow(fb, stride, SETUP_ORD_X0, SETUP_TOP_BTN_Y, false, below >= 0);
         ord_arrow(fb, stride, SETUP_ORD_X1, SETUP_TOP_BTN_Y, true, above >= 0);
         /* the relation, in the depth bar's own words (Strato 2026-10-17: "behind
@@ -729,7 +765,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         static const char *const hint[DECOR_Z_N] = { "THE FISH SWIM IN FRONT OF IT", "THE FISH SWIM THROUGH IT", "THE FISH SWIM BEHIND IT" };
         static const char *const castle_hint[DECOR_Z_N] = { "THE PLANTS GROW IN FRONT OF IT", "", "IT STANDS IN FRONT OF THE PLANTS" };
         static const char *const coral_hint[DECOR_Z_N] = { "BEHIND THE GRASS AND THE FISH", "", "IN FRONT OF EVERYTHING" };
-        int z = tank_decor_z(t, s_item), zi = tank_decor_z_index(s_item, z);
+        int z = placed_z(t), zi = tank_decor_z_index(s_item, z);
         int n = tank_decor_z_count(s_item), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;   /* the item's own depths */
         text_c(fb, stride, CX, SETUP_DEPTH_Y - 18, 2, C_CAPT, "DEPTH");
         render_rect(fb, stride, bx, SETUP_DEPTH_Y, bw, SETUP_DEPTH_H, C_KEY);
@@ -778,7 +814,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                 if (on) render_rect_edge(fb, stride, x + 1, SETUP_COL_Y + 1, SETUP_COL_W - 2, SETUP_COL_H - 2, C_TEXT);
             }
         } else text_c(fb, stride, CX, SETUP_DEPTH_HINT_Y, 2, C_CAPT, rel[0] ? rel : s_item == 2 || s_item >= 8 ? castle_hint[z] : hint[z]);
-        float x0 = tank_decor_x(t, s_item) - tank_decor_half_w(s_item) - 10, x1 = tank_decor_x(t, s_item) + tank_decor_half_w(s_item) + 10, top = TANK_BOT - 16 - 40;
+        float x0 = placed_x(t) - tank_decor_half_w(s_item) - 10, x1 = placed_x(t) + tank_decor_half_w(s_item) + 10, top = TANK_BOT - 16 - 40;
         if (s_item == 0) tank_veg_bed(t, 3, NULL, NULL, &top, NULL);   /* the leaves' reach */
         if (s_item == 2) top = TANK_BOT - 16 - 146;                    /* the tallest spire */
         if (s_item == 3) top = TANK_BOT - 14 + DECOR_SINK - 92;        /* the coral's top tip */
@@ -926,5 +962,9 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         lines_c(fb, stride, SETUP_Y + 66, 24, C_CAPT, ls, 7);
         nav(fb, stride, false, "BEGIN", true);
         dots(fb, stride, SETUP_Y + SETUP_H - 8);
+    }
+    if (s_save_error && !s_place && !s_rename) {
+        render_rect(fb, stride, 0, 0, PAGE_W, 28, C_PANEL);
+        text_c(fb, stride, CX, 10, 2, C_TEXT, "SAVE FAILED - RETRY");
     }
 }

@@ -14,6 +14,7 @@ def main():
     parser.add_argument("--frames", type=int, default=120)
     parser.add_argument("--seconds", type=int, default=30)
     parser.add_argument("--baseline", help="Git revision supplying the reference renderer")
+    parser.add_argument("--rounded-edges", action="store_true", help="Also exercise the non-CYD vignette paths")
     parser.add_argument("--out", type=Path, help="Write JSON benchmark records")
     args = parser.parse_args()
     if args.frames < 1 or args.seconds < 0:
@@ -29,7 +30,7 @@ def main():
         if Path(args.cc).stem.lower() == "zig":
             command.append("cc")
         command += ["-std=c11", "-O2", "-g", "-Wall", "-Wextra", "-Werror",
-                    "-DPOP_CAP=5", "-DCYD_FLAT_EDGES=1",
+                    "-DPOP_CAP=5", "-DCYD_FLAT_EDGES=" + ("0" if args.rounded_edges else "1"),
                     "-I" + str(common), "-I" + str(cjson), "-I" + str(build)]
         if args.baseline:
             (build / "render-baseline.c").write_bytes(subprocess.check_output(

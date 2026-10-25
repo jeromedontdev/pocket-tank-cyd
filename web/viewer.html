@@ -218,7 +218,11 @@ function show(save) {
     ["Journal XP", t.journal_xp], ["Sand dollars", t.sd_balance],
     ["Mode", gameMode],
     ["Daily care rewards", save.care ? `${[0, 1, 2].filter(i => save.care.claimed & (1 << i)).length}/3 saved` : "Predates daily care"],
-    ["Game bonus today", save.care ? `${save.care.game_paid}/5 sand dollars; no XP` : "Predates daily bonus limit"],
+    ["Game bonus today", save.game_income ? `${save.care.game_paid}/90 sand dollars; up to 5 per game; no XP` :
+      save.care ? `${save.care.game_paid}/5 sand dollars; no XP` : "Predates daily bonus limit"],
+    ["Shared decoration storage", save.inventory ? `${hex(save.inventory.stored).reduce((sum, n) => sum + n, 0)}/64 pieces` : "Predates inventory"],
+    ["Extra ornaments here", save.inventory ? `${hex(save.inventory.extra).filter((n, i) => i % 8 === 0 && n !== 0).length}/8 placed` : "Predates inventory"],
+    ["Pearl mussel", save.mussel ? save.mussel.owned ? `${save.mussel.bank}/15 ready; ${save.mussel.generated}/15 grown today` : "Earned by completing daily care" : "Predates pearl mussel"],
     ["Born in this tank", story ? story.births : "-"],
     ["Seasons", !story ? "-" : story.flags & 1 ? "off" : story.flags & 2 ? "southern hemisphere" : "northern hemisphere"],
     ["Founded", pol.founded_unix ? new Date(pol.founded_unix * 1000).toLocaleDateString() : "unknown"],

@@ -74,6 +74,7 @@ typedef struct {
     uint32_t rgb;
 } setup_place_snapshot_t;
 const setup_place_snapshot_t *setup_place_original(void);
+void setup_begin_extra_place(tank_t *t, int copy);
 /* RENAME A FISH (2026-10-01, Strato: "when you tap a fish and see its card
  * there should be a change name button"): the letter wheel again, one page
  * over the live tank with the fish ringed on its stage - the name page of

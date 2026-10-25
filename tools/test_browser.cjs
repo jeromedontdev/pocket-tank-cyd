@@ -53,6 +53,13 @@ async function main() {
     async function snapshot() {
       return native(`const p = game._sim_backup(); try {return JSON.parse(game.UTF8ToString(p));} finally {game._sim_free(p);}`);
     }
+    async function restoreFixture(fixture) {
+      assert.equal(await native(`
+        const bytes = new TextEncoder().encode(${JSON.stringify(JSON.stringify(fixture))});
+        const pointer = game._malloc(bytes.length);
+        try { game.HEAPU8.set(bytes, pointer); return game._sim_restore(pointer, bytes.length); }
+        finally { game._free(pointer); }`), 1);
+    }
     async function tap(x, y) {
       await page.locator("#screen").scrollIntoViewIfNeeded();
       const position = await canvasPoint(x / 448, y / 368);
@@ -234,9 +241,19 @@ async function main() {
     }
     for (let scale = 0; scale < 2; scale++) {
       const fixture = await snapshot();
+      fixture.tank.sd_balance = 2000;
       fixture.care.ready = 7; fixture.care.claimed = 0; fixture.care.game_paid = 5;
+      fixture.game_income.version = 1; fixture.game_income.legacy = 0;
+      fixture.game_income.paid = Array(18).fill(0); fixture.game_income.paid[0] = 5;
       fixture.tank.setup_pending = 0; fixture.tank.newborn_p1 = 0;
       assert.equal(await native(`
+        // Bootstrap a synthetic profile once; later restores must preserve live quotas.
+        if (${scale} === 0) {
+          for (const path of ["tank.sav", ...["0.a","0.b","1.a","1.b"].map(
+            suffix => "tank.sav.profiles/5052463141435456-" + suffix)]) {
+            if (game.FS.analyzePath(path).exists) game.FS.unlink(path);
+          }
+        }
         const bytes = new TextEncoder().encode(${JSON.stringify(JSON.stringify(fixture))});
         const pointer = game._malloc(bytes.length);
         try { game.HEAPU8.set(bytes, pointer); return game._sim_restore(pointer, bytes.length); }
@@ -268,7 +285,10 @@ async function main() {
       await tap(375,25);
       await tap(330,180); await tap(100,100);
       const daily = await menuImage(`daily-care-${scale}`);
-      const balance = (await snapshot()).tank.sd_balance, xp = (await snapshot()).tank.journal_xp;
+      const beforeCare = await snapshot();
+      const balance = beforeCare.tank.sd_balance, xp = beforeCare.tank.journal_xp;
+      const remainingReward = rewards => rewards.reduce((sum, reward, task) =>
+        sum + (beforeCare.care.claimed & (1 << task) ? 0 : reward), 0);
       await tap(350,330);
       assert.notEqual(await menuImage(`milestones-${scale}`), daily);
       await tap(350,330);
@@ -276,12 +296,71 @@ async function main() {
       const careSaved = await snapshot();
       assert.equal(careSaved.care.claimed, 7);
       assert.equal(careSaved.care.game_paid, 5);
-      assert.equal(careSaved.tank.sd_balance, balance + 100);
-      assert.equal(careSaved.tank.journal_xp, xp + 50);
+      assert.equal(careSaved.tank.sd_balance, balance + remainingReward([30,30,65]));
+      assert.equal(careSaved.tank.journal_xp, xp + remainingReward([12,13,25]));
+      assert.equal(careSaved.mussel.owned, 1, "Full daily care welcomes the profile's pearl mussel");
       await menuImage(`daily-care-saved-${scale}`);
       await page.locator("#save").click(); await page.reload(); await ready();
       assert.equal((await snapshot()).care.claimed, 7, "Daily care allowance survives browser reload");
       assert.equal((await snapshot()).care.game_paid, 5, "Games share a persistent profile allowance");
+      const pearlFixture = await snapshot();
+      for (const fish of pearlFixture.fish) { fish.hunger = 2; fish.stress = 0; }
+      await restoreFixture(pearlFixture);
+      await page.locator('[data-action="0"]').click();
+      await native("for (let i = 0; i < 2404; i++) game._sim_frame(.25)");
+      const beforeCollect = await snapshot();
+      assert.equal(beforeCollect.mussel.bank, 1, "Healthy live simulation grows a real pearl");
+      await page.locator('[data-action="3"]').click(); await tap(350,77);
+      await menuImage(`pearl-mussel-${scale}`);
+      await tap(120,276);
+      assert.equal((await snapshot()).tank.sd_balance, beforeCollect.tank.sd_balance + 1);
+      assert.equal((await snapshot()).tank.journal_xp, beforeCollect.tank.journal_xp);
+      assert.equal((await snapshot()).mussel.bank, 0);
+      await tap(120,276);
+      assert.equal((await snapshot()).tank.sd_balance, beforeCollect.tank.sd_balance + 1, "Empty pearls cannot be collected twice");
+      await tap(280,276); await tap(180,77);
+      await menuImage(`inventory-${scale}`);
+      await tap(400,50); await tap(120,164);
+      await menuImage(`inventory-copy-${scale}`);
+      const inventoryBefore = await snapshot();
+      const storedBefore = Buffer.from(inventoryBefore.inventory.stored, "hex")[5];
+      const chestCount = save => ((save.tank.sd_unlocks >>> 9) & 1) +
+        [...Buffer.from(save.inventory.extra, "hex")].filter((n, i) => i % 8 === 0 && n === 10).length;
+      const placedBefore = chestCount(inventoryBefore);
+      await tap(280,150); await tap(280,150);
+      assert.equal(Buffer.from((await snapshot()).inventory.stored, "hex")[5], storedBefore + 2);
+      assert.equal((await snapshot()).tank.sd_balance, inventoryBefore.tank.sd_balance - 240);
+      for (let copy = 0; copy < 2; copy++) {
+        await tap(120,150);
+        assert.equal(await native("return game._sim_page()"), 0);
+        await menuImage(`inventory-place-${scale}-${copy}`);
+        await tap(375,28);
+        await page.locator('[data-action="3"]').click();
+        await tap(180,77); await tap(400,50); await tap(120,164);
+      }
+      assert.equal(chestCount(await snapshot()), placedBefore + 2);
+      await tap(280,230);
+      assert.equal(chestCount(await snapshot()), placedBefore + 1);
+      const inventorySaved = (await snapshot()).inventory;
+      await page.locator("#save").click(); await page.reload(); await ready();
+      assert.deepEqual((await snapshot()).inventory, inventorySaved, "Duplicate placements and shared storage survive reload");
+      const viewerSave = await snapshot();
+      const viewer = await context.newPage();
+      await viewer.setContent(fs.readFileSync(path.join(__dirname, "..", "web", "viewer.html"), "utf8"));
+      await viewer.locator("#file").setInputFiles({name: "synthetic-inventory.json", mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(viewerSave))});
+      await viewer.waitForSelector("#out:not([hidden])");
+      assert.equal(await viewer.locator("#error").textContent(), "");
+      const viewerFact = name => viewer.locator("#overview tr").filter({hasText: name}).locator("td").textContent();
+      assert.equal(await viewerFact("Shared decoration storage"),
+        `${[...Buffer.from(viewerSave.inventory.stored, "hex")].reduce((sum, n) => sum + n, 0)}/64 pieces`);
+      assert.equal(await viewerFact("Extra ornaments here"),
+        `${[...Buffer.from(viewerSave.inventory.extra, "hex")].filter((n, i) => i % 8 === 0 && n !== 0).length}/8 placed`);
+      assert.equal(await viewerFact("Pearl mussel"),
+        `${viewerSave.mussel.bank}/15 ready; ${viewerSave.mussel.generated}/15 grown today`);
+      assert.equal(await viewerFact("Game bonus today"),
+        `${viewerSave.care.game_paid}/90 sand dollars; up to 5 per game; no XP`);
+      await viewer.close();
       await page.locator('[data-action="2"]').click();
       await menuImage(`settings-${scale}`);
       await tap(330, 100);
@@ -350,7 +429,9 @@ async function main() {
     const beforeResult = await snapshot();
     await tap(224,218);
     const afterResult = await snapshot();
-    assert.equal(afterResult.tank.sd_balance, beforeResult.tank.sd_balance, "No payout beyond shared five-dollar allowance");
+    assert.equal(afterResult.tank.sd_balance, beforeResult.tank.sd_balance, "No payout beyond this game's five-dollar allowance");
+    assert.equal(afterResult.game_income.paid[0], 5);
+    assert.equal(afterResult.game_income.paid[1], 0, "Other games retain independent daily allowances");
     assert.equal(afterResult.tank.journal_xp, beforeResult.tank.journal_xp, "Games never award journal XP");
     assert.equal(afterResult.companion.game_rounds[0], beforeResult.companion.game_rounds[0] + 1, "Records still save after daily bonus is exhausted");
     await menuImage("game-rewards-saved");
@@ -548,7 +629,7 @@ async function main() {
       fs.rmSync(profile, {recursive: true, force: true});
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: organized Settings/Clock/Weather navigation, weather sizing, row gaps, single-level BACK, query validation and Auto Feed at both scales; fish-card lock persistence/tools; fullscreen, tap-to-place without presets, mobile; gameplay, all modes, durable saves/restart, exclusive tabs and corruption/quota recovery.");
+    console.log("PASS: duplicate inventory buy/place/store/reload, healthy live-time pearl growth/collection, care125 with unchanged XP and per-game5/day caps, schema18 viewer facts at both scales; Settings/Clock/Weather, fish-card tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
   } finally {
     await browser.close();
   }

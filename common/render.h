@@ -289,7 +289,9 @@ void render_milestones_leave(void);
  * SHOP_TAP_KEPT when a modal opened or closed. Page state is render-local;
  * render_shop_leave clears it when the page closes. */
 enum { SHOP_TAP_NONE = 0, SHOP_TAP_KEPT = 1, SHOP_TAP_CLOSE = 2, SHOP_TAP_TANKS = 3, SHOP_TAP_BUY = 16, SHOP_TAP_MOVE = 64, SHOP_TAP_SELL = 128,
-       SHOP_TAP_FRY = 256 };   /* Non-overlapping ranges for all 32 stable item IDs. */
+       SHOP_TAP_FRY = 256, SHOP_TAP_INVENTORY = 512 };
+/* Inventory actions execute transactionally; placement opens setup on success. */
+bool render_shop_inventory_action(tank_t *t, int action);
 void render_aquariums_open(const tank_t *t);
 void render_aquariums(const tank_t *t, uint16_t *fb, int stride);
 /* 1 closes to shop, 2 means a different tank was loaded. */

@@ -27,6 +27,7 @@ void tank_reframe(tank_t *t, bool compact) {
     SCALE(castle_x); SCALE(coral_x); SCALE(cluster_x); SCALE(pumpkin_x); SCALE(chest_x); SCALE(plant_x);
     SCALE(stage_x); SCALE(stage_y); SCALE(startle_x); SCALE(startle_y); SCALE(tap_x); SCALE(tap_y);
     for (int i = 0; i < 10; i++) SCALE(ornament_x[i]);
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++) SCALE(inventory.extra[i].x);
     for (int i = 0; i < t->n_fish; i++) {
         SCALE(fish[i].x); SCALE(fish[i].y); SCALE(fish[i].explore_x); SCALE(fish[i].explore_y);
         SCALE(fish[i].dart_x); SCALE(fish[i].dart_y);
@@ -732,6 +733,10 @@ void tank_init(tank_t *t, uint32_t seed) {
     t->pumpkin_x = 0; t->pumpkin_z = DECOR_Z_BACK;
     t->chest_x = 0; t->chest_z = DECOR_Z_BACK;
     memset(t->ornament_x, 0, sizeof t->ornament_x);
+    memset(&t->inventory, 0, sizeof t->inventory);
+    memset(&t->mussel, 0, sizeof t->mussel);
+    t->mussel_fraction = 0;
+    memset(&t->game_income, 0, sizeof t->game_income);
     memset(t->ornament_z, DECOR_Z_BACK, sizeof t->ornament_z);
     t->sand_style = t->water_style = 0;
     memset(t->decor_rank, 0, sizeof t->decor_rank);

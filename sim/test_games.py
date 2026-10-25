@@ -174,7 +174,7 @@ def exercise(lib, backup, output):
         tap(224, 226)
         claimed = snapshot()
         dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
-        assert dollars == (1 if before["care"]["game_paid"] < 5 else 0), ("Shared daily game limit", game, dollars)
+        assert dollars == (1 if before["game_income"]["paid"][game] + before["game_income"]["legacy"] < 5 else 0), ("Per-game daily limit", game, dollars)
         assert claimed["tank"]["sd_earned"] - before["tank"]["sd_earned"] == dollars
         assert claimed["tank"]["journal_xp"] == before["tank"]["journal_xp"]
         expected = json.loads(json.dumps(before))
@@ -182,6 +182,7 @@ def exercise(lib, backup, output):
             expected["tank"][key] = claimed["tank"][key]
         expected["companion"] = claimed["companion"]
         expected["care"] = claimed["care"]
+        expected["game_income"] = claimed["game_income"]
         assert claimed == expected, "Only bounded coins, daily quota and companion game achievements may change"
         assert claimed["companion"]["game_rounds"][game] >= 1
         tap(224, 226)
@@ -330,7 +331,7 @@ def exercise(lib, backup, output):
         tap(224, 226)
         claimed = snapshot()
         dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
-        assert dollars == (1 if before["care"]["game_paid"] < 5 else 0), ("Shared daily game limit", game, dollars)
+        assert dollars == (1 if before["game_income"]["paid"][game + 6] + before["game_income"]["legacy"] < 5 else 0), ("Per-game daily limit", game, dollars)
         assert claimed["games"]["rounds"][game] == before["games"]["rounds"][game] + 1
         assert claimed["games"]["best"][game] >= 4
         assert claimed["companion"] == old_six, "Original six records must remain byte-for-byte unchanged"
@@ -529,7 +530,7 @@ def exercise(lib, backup, output):
         tap(224, 226)
         claimed = snapshot()
         dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
-        assert dollars == (1 if before["care"]["game_paid"] < 5 else 0), ("Shared daily game limit", game, dollars)
+        assert dollars == (1 if before["game_income"]["paid"][game + 12] + before["game_income"]["legacy"] < 5 else 0), ("Per-game daily limit", game, dollars)
         assert claimed["tank"]["sd_earned"] - before["tank"]["sd_earned"] == dollars
         assert claimed["tank"]["journal_xp"] == before["tank"]["journal_xp"]
         assert claimed["games_extra"]["rounds"][game] == before["games_extra"]["rounds"][game] + 1
@@ -629,6 +630,9 @@ def exercise(lib, backup, output):
     legacy.pop("creative", None)
     legacy.pop("profile", None)
     legacy.pop("care", None)
+    legacy.pop("inventory", None)
+    legacy.pop("mussel", None)
+    legacy.pop("game_income", None)
     encoded = json.dumps(legacy).encode()
     if original.get("profile", {}).get("mode", 0) == 2:
         before = snapshot()

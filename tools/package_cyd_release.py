@@ -89,7 +89,16 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.2.7: measured CYD performance improvements
+### New in 2.3.0: shared decoration inventory and care-first income
+
+- Shop > Inventory stores up to 64 physical pieces profile-wide. Buy duplicate copies, place owned pieces, move a selected copy, or store without selling; store/switch/place transfers between aquariums. Up to eight extra basic ornaments per tank have independent positions and front/back depths. Complex growing decorations remain one placed copy per type per tank; helpers, upgrades, themes and fixed scenery remain outside inventory.
+- Existing layouts and purchases migrate intact. Paid/free resale provenance, two-tap stored sales, transactional save rollback and stale-backup transfer protection prevent duplicate refunds or reclaimed copies.
+- Daily care pays 30/30/65 sand dollars (125 total), with unchanged 50 XP. Claiming all three tasks unlocks one free profile-wide pearl mussel. It earns one coin per 600 healthy running seconds, up to 15/day and 15 banked, collected explicitly through Shop or Inventory. No offline income, extra XP or multiplied income from extra tanks. It rests for 344 seconds then gently crawls for 16 seconds.
+- Each of eighteen games now pays one dollar per qualifying saved round, up to five per game per day (90 total), with no XP. Challenge/Relaxed and all aquariums share each game's quota; save failures roll back rewards and records. Old same-day shared payouts conservatively reduce each game's remaining allowance until reset.
+- Retire obsolete new-fry welcome flags for fish that have already grown. Genuine unfinished fry welcomes still resume. Welcome completion only closes after a successful save; failed saves show a retry message. No fish, names or family history are reset.
+- Schema 18 / 6,168-byte saves preserve the previous 6,032-byte prefix. Back up before upgrading and do not downgrade an upgraded profile. Use the save-preserving app/OTA update, never the factory image for an ordinary upgrade.
+
+### Previously in 2.2.7: measured CYD performance improvements
 
 - LCD transfers fill the existing DMA halves instead of capping an 80-column band at 16 rows. Normal full-frame submissions fall from 60 to 42 without additional image buffers or a faster 40 MHz SPI clock.
 - Skip vertically clipped polygon palettes, reuse identical fish-pitch calculations, shade urchin tones per row, conservatively cull seahorse coronet distance tests and memoize exact quantized tail-width math in 96 bytes. Cached translucent clock runs replay as clipped spans while preserving alpha-255 blending.

@@ -108,7 +108,8 @@ def exercise(lib, backup):
             restore(saved)
             open_story()
             resumed = snapshot()
-            assert resumed == completed, "Completed campaign survives a binary save and JSON reload"
+            differences = {key: (completed[key], resumed[key]) for key in completed if completed[key] != resumed[key]}
+            assert resumed == completed, ("Completed campaign survives a binary save and JSON reload", differences)
             for _ in range(4):
                 tap(180, 246)
             assert snapshot() == completed, "Completed chapters cannot be replayed to farm rewards"

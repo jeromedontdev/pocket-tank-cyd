@@ -305,8 +305,8 @@ static void render_benchmark(uint16_t *buffer) {
         return;
     }
     ESP_LOGI("benchmark", "BEGIN RAM-only five-fish Normal Balanced; no progression or save writes");
-    ESP_LOGI("benchmark", "Two fixed scenes then live-copy decor/clock; includes 5 ms/frame service reserve, not network/menu testing");
-    for (int fixture = 0; fixture < 3; fixture++) {
+    ESP_LOGI("benchmark", "Two fixed scenes, live-copy decor/clock, then maximum extra ornaments; includes 5 ms/frame service reserve");
+    for (int fixture = 0; fixture < 4; fixture++) {
         if (fixture == 2) {
             *sample = tank;
             for (int i = sample->n_fish; i < 5; i++) {
@@ -331,7 +331,7 @@ static void render_benchmark(uint16_t *buffer) {
                 SD_ITEM_PEBBLES | SD_ITEM_PEARL | SD_ITEM_SPONGES | SD_ITEM_BARREL;
             sample->journal.xp = journal_level_xp(20);
             sample->journal.initialized = 1;
-            sample->journal.theme = (uint8_t)fixture;
+            sample->journal.theme = (uint8_t)(fixture % 2);
             sample->clock = 10;
             sample->clock_requested = false;
             sample->aquariums.clock_theme = CLOCK_OFF;
@@ -340,7 +340,7 @@ static void render_benchmark(uint16_t *buffer) {
             for (int i = 0; i < 5; i++) {
                 sample->fish[i].stage = i == 4 ? STAGE_ELDER : STAGE_ADULT;
                 sample->fish[i].size = i == 4 ? 1.25f : 1.05f;
-                sample->fish[i].variety = (uint8_t)(fixture * 5 + i);
+                sample->fish[i].variety = (uint8_t)(fixture % 2 * 5 + i);
                 sample->fish[i].pattern = (uint8_t)(i % 4);
                 sample->fish[i].wearable = (uint8_t)(1 + i % (WEAR_COUNT - 1));
                 sample->fish[i].hunger = 3; sample->fish[i].energy = 7;
@@ -348,6 +348,14 @@ static void render_benchmark(uint16_t *buffer) {
                 sample->fish[i].y = TANK_BOT * (0.25f + i % 3 * .22f);
                 sample->fish[i].heading = i * .7f;
                 sample->fish[i].goal.id = GOAL_EXPLORE;
+            }
+            if (fixture == 3) {
+                sample->mussel.owned = sample->mussel.bank = 1;
+                for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+                    sample->inventory.extra[i].item = 17;
+                    sample->inventory.extra[i].x = TANK_W * (i + 1) / (float)(DECOR_EXTRA_CAP + 1);
+                    sample->inventory.extra[i].z = i % 2 ? DECOR_Z_FRONT : DECOR_Z_BACK;
+                }
             }
         }
         sample->ui_cover = sample->hold_active = sample->drag_active = false;
@@ -501,7 +509,10 @@ static void tank_task(void *arg) {
             sd_port_update_action(&tank);
         }
         { int r = touch_port_take_shop();                               /* the shop's UNLOCK / MOVE / SELL */
-          if (r >= SHOP_TAP_FRY) {                                      /* a fry bought (0.3.5): the shop closes, the birth flow welcomes it */
+          if (r >= SHOP_TAP_INVENTORY) {
+              render_shop_inventory_action(&tank, r);
+              if (setup_is_place()) touch_port_show_shop(false);
+          } else if (r >= SHOP_TAP_FRY) {                                      /* a fry bought (0.3.5): the shop closes, the birth flow welcomes it */
               int k = r - SHOP_TAP_FRY;
               if (progression_buy_fry(&tank, k)) { touch_port_show_shop(false);
                   ESP_LOGI(TAG, "shop: fry %d bought, %d sand dollars left, %d of %d left today", k, (int)tank.sd_balance, progression_fry_left(), FRY_OFFER_N); }

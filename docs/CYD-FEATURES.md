@@ -2,7 +2,49 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.2.7**
+**An illustrated tour of Pocket Tank CYD 2.3.0**
+
+### New in 2.3.0: decoration inventory and pearl-mussel income
+
+Available in 2.3.0 and newer. **Shop > Inventory** opens
+profile-wide decoration storage. Select a type to **BUY COPY**, **PLACE STORED**,
+cycle placed copies with **NEXT**, **MOVE COPY**, or **STORE COPY**. Storing
+does not sell or refund a piece; moving and placing owned items do not charge
+again. **SELL STORED** requires a second confirmation and only pays the resale
+value of a paid copy, never a free/Creative one.
+
+Use **TANKS** after storing to switch aquariums, then place from the same
+inventory. Existing tank layouts remain local. Storage is limited to 64
+pieces, with up to eight additional basic ornaments per tank. Extra ornaments
+have independent positions and front/back depths; **CANCEL** discards only
+the selected copy's positioning draft. They are decorative copies, not extra
+helper anchors. Complex plants/castles/living coral/reef clusters/pumpkins
+remain one placed copy of each type per tank, but additional owned copies can
+be stored or placed in other aquariums. Helpers, upgrades, themes and fixed
+background scenery retain their existing behavior outside inventory.
+
+Daily care pays **30 + 30 + 65 = 125 sand dollars**; XP remains 50 per day.
+Claiming all three tasks welcomes one free **pearl mussel** for the profile.
+All fish must have hunger below 8.5 and stress below 7 for its live-time
+progress to advance. Ten healthy running minutes grow one coin, at most 15
+per care day. **Shop > Mussel**, also available from Inventory, shows progress
+and collects the bank. The bank holds 15 and survives midnight; daily
+generation follows the same clock/fallback protections as care. There are no
+offline earnings or XP, no duplicate mussels, and no multiplied income from
+extra tanks. Games now allow **five dollars per game per day** (one per qualifying
+saved round, 90 across all 18), with Challenge/Relaxed and all tanks sharing
+each game's allowance. No game XP. Most of the time the
+mussel rests; roughly every six minutes it slowly crawls to a nearby sand
+position over 16 seconds, with a small foot movement and shell bob.
+
+Version 2.3.0 saves use schema 18 / 6,168 bytes, with the previous 6,032-byte prefix
+unchanged. Back up before upgrading and do not downgrade an upgraded profile
+to firmware that cannot read inventory or mussel state.
+
+Obsolete pending “new fry” flags are retired when that fish is no longer a
+fry; fish, names and family history are not reset. Genuine unfinished fry
+welcomes still resume. Finishing the welcome now requires a successful save,
+with an explicit retry message on storage failure instead of silently closing.
 
 **2.2.7** improves real CYD throughput without reducing artwork or detail.
 LCD transfers use the full capacity of the existing DMA halves at the same
@@ -176,7 +218,7 @@ The headline additions:
 - **An Aquarium Journal** with 15 Keeper levels, objectives, an appearance
   album and unlockable backdrops.
 - **Eighteen mini-games** across three pages, with records, medals and
-  one shared five-dollar daily bonus in Normal and Hard; no game XP.
+  five daily bonus dollars per game in 2.3.0 and newer; no game XP.
 - **A desk-companion hub:** optional Cozy Care, fish bonds, discoveries,
   collections and safe story adventures.
 - **Game records and medals**, permanent challenges and relaxed play without
@@ -253,8 +295,9 @@ Discoveries no longer duplicates Display Rewards.
 **Games page 3** adds six games: Lighthouse (cross-toggle logic),
 Shell Slide (sliding puzzle), Sonar Sweep (row/column clues), Tide 2048
 (merging tiles), Harbor Stack (timed stacking), and Echo Reef (sequence memory).
-All have help, pause, replay, saved records and medals. All eighteen share
-five bonus dollars per day in Normal/Hard, with no XP and save-failure rollback.
+All have help, pause, replay, saved records and medals. Version 2.3.0
+allows five bonus dollars per game per day in Normal/Hard, with no XP and
+save-failure rollback (2.2.7 and earlier had five total).
 
 ![Third games page with six distinct compact illustrations](media/cyd-features/games-page-three.png)
 

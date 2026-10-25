@@ -132,6 +132,7 @@ static void test_aquariums(tank_t *t) {
     t->trim_px = 50 * PX_PER_CM; t->hold_approaches = 2;
     journal_tick(t);
     t->care.ready = t->care.claimed = 7; t->care.game_paid = CARE_GAME_LIMIT;
+    t->game_income.version = 1; t->game_income.paid[0] = CARE_GAME_LIMIT;
     t->companion.discoveries = 63; t->companion.collections = 1;
     t->companion.active[0].bond = 80; tank_set_name(t, 0, "LOCAL");
     assert(progression_buy(t, 0)); assert(t->sd_balance == 1160);
@@ -152,9 +153,9 @@ static void test_aquariums(tank_t *t) {
     assert(t->companion.active[0].bond == 0 && strcmp(t->fish[0].name, "local"));
     assert(!progression_item_owned(t, 0)); /* globally unlocked, not cloned */
     assert(!progression_item_owned(t, SD_SCENERY_FIRST) && progression_item_unlocked(t, SD_SCENERY_FIRST));
-    assert(progression_buy(t, 0) && t->sd_balance == 660); /* free local placement */
-    assert(progression_sell_value_for(t, 0) == 0);
-    assert(progression_sell(t, 0) && t->sd_balance == 660); /* cannot farm a free copy */
+    assert(progression_buy(t, 0) && t->sd_balance == 660 - SD_ITEMS[0].price);
+    assert(progression_sell_value_for(t, 0) == progression_sell_value(0));
+    assert(progression_sell(t, 0) && t->sd_balance == 660 - SD_ITEMS[0].price + progression_sell_value(0));
     t->journal.xp = 700; t->companion.discoveries = 127; t->sd_balance = 777;
     t->games_extra.version = 1; t->games_extra.rounds[0] = 2; t->games_extra.best[0] = 2;
     assert(!progression_aquarium_move(t, 0));
@@ -169,7 +170,7 @@ static void test_aquariums(tank_t *t) {
     reject_slot_read = false;
     char *json = progression_backup_json(t); assert(json);
     char error[160];
-    assert(strstr(json, "\"schema\":17") && strstr(json, "\"games_extra\":") && strstr(json, "\"profile\":"));
+    assert(strstr(json, "\"schema\":18") && strstr(json, "\"games_extra\":") && strstr(json, "\"profile\":"));
     assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     free(json); reload(t);
@@ -198,17 +199,23 @@ static void test_refunds(tank_t *t) {
         reload(t);
         int balance = t->sd_balance;
         for (int repeat = 0; repeat < 3; repeat++) {
-            assert(progression_buy(t, item) && t->sd_balance == balance);
-            assert(progression_sell_value_for(t, item) == 0);
-            assert(progression_sell(t, item) && t->sd_balance == balance);
+            int price = progression_item_price_for(t, item);
+            int resale = price ? refund : 0;
+            assert(progression_buy(t, item) && t->sd_balance == balance - price);
+            assert(progression_sell_value_for(t, item) == resale);
+            assert(progression_sell(t, item) && t->sd_balance == balance - price + resale);
+            assert(t->sd_balance <= balance); balance = t->sd_balance;
             reload(t);
         }
         assert(!progression_aquarium_move(t, 1)); progression_setup_done(t);
         balance = t->sd_balance;
         for (int repeat = 0; repeat < 3; repeat++) {
-            assert(progression_buy(t, item) && t->sd_balance == balance);
-            assert(progression_sell_value_for(t, item) == 0);
-            assert(progression_sell(t, item) && t->sd_balance == balance);
+            int price = progression_item_price_for(t, item);
+            int resale = price ? refund : 0;
+            assert(progression_buy(t, item) && t->sd_balance == balance - price);
+            assert(progression_sell_value_for(t, item) == resale);
+            assert(progression_sell(t, item) && t->sd_balance == balance - price + resale);
+            assert(t->sd_balance <= balance); balance = t->sd_balance;
             assert(!progression_aquarium_move(t, 0));
             assert(!progression_aquarium_move(t, 1));
             assert(t->sd_balance == balance);

@@ -204,6 +204,16 @@ static void soak(int seconds) {
     while (micros() < end) {
         tank_t t;
         fixture(&t, checks % 2 != 0, (int)(checks / 2 % 2));
+#ifndef RENDER_BASELINE
+        static const uint8_t duplicates[] = {9, 10, 11, 12, 13, 16, 20, 21};
+        if (checks % 3) for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+            t.inventory.extra[i].item = (uint8_t)(duplicates[i] + 1);
+            t.inventory.extra[i].x = TANK_W * (i + 1) / (float)(DECOR_EXTRA_CAP + 1);
+            t.inventory.extra[i].z = i % 2 ? DECOR_Z_FRONT : DECOR_Z_BACK;
+        }
+        t.mussel.owned = 1;
+        t.mussel.bank = checks % 2 ? 1 : 0;
+#endif
         int detail = (int)(checks / 4 % SCENE_DETAIL_COUNT);
         render_device_t device = {0, 0, false, -1, (uint8_t)detail};
         render_set_device(&device);
@@ -218,8 +228,17 @@ static void soak(int seconds) {
         render_work_caches(checks % 3 != 0);
         render_tank(&t, frame, TANK_W);
         for (int step = 0; step < 7; step++) {
+#ifndef RENDER_BASELINE
+            if (step == 3) memset(&t.inventory.extra[0], 0, sizeof t.inventory.extra[0]);
+            if (step == 4 && t.inventory.extra[1].item) t.inventory.extra[1].x += 12;
+            if (step == 2) t.mussel.bank = 1;
+            if (step == 5) t.mussel.owned = 0;
+#endif
             tank_tick(&t, 0.04f, advisor_rules);
             pose(&t, (int)(checks % 1000) + step);
+#ifndef RENDER_BASELINE
+            t.clock = (float)(checks % 6 * 360) + (checks % 3 ? 344 + checks % 100 * .16f : 100) + step * .04f;
+#endif
             tank_t before = t;
             render_tank(&t, frame, TANK_W);
             render_tank(&t, fish_frame, TANK_W);

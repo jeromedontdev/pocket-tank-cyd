@@ -56,7 +56,10 @@ bool journal_claim(tank_t *t, int goal);
 const char *progression_bank_move(tank_t *t, int bank, int active);
 #define AQUARIUM_CAP 8
 #define AQUARIUM_PRICE 500
-#define AQUARIUM_SAVE_BYTES (5920 + sizeof(game_records_t) + sizeof(profile_state_t) + sizeof(care_state_t))
+#define AQUARIUM_SAVE_BYTES (6032 + sizeof(inventory_state_t) + sizeof(mussel_state_t) + sizeof(game_income_state_t) + 4)
+#define MUSSEL_SECONDS 600
+#define MUSSEL_DAILY_LIMIT 15
+bool progression_mussel_collect(tank_t *t);
 #define CARE_TASK_COUNT 3
 #define CARE_GAME_LIMIT 5
 #define CARE_VIEW_SECONDS 300
@@ -67,7 +70,7 @@ extern const uint8_t CARE_COINS[CARE_TASK_COUNT], CARE_XP[CARE_TASK_COUNT];
 void progression_care_refresh(tank_t *t);
 bool progression_care_claim(tank_t *t, int task);
 void progression_care_greet(tank_t *t);
-int progression_game_payout(const tank_t *t, int dollars);
+int progression_game_payout(const tank_t *t, int game, int dollars);
 game_mode_t progression_mode(const tank_t *t);
 bool progression_mode_chosen(const tank_t *t);
 /* False after blocked/corrupt load; never treat that as an empty new profile. */
@@ -205,14 +208,14 @@ bool progression_reset(tank_t *t, uint32_t seed);
  * and saves the names and looks at once. Tanks saved before the flag read as
  * done (nobody's running tank gets the tutorial after an update). */
 bool progression_setup_pending(void);
-void progression_setup_done(tank_t *t);
+bool progression_setup_done(tank_t *t);
 /* the birth flow (setup.c, 2026-09-14): every arrival is owed a visit - the
  * announcement, a name, the family page - until the keeper walks it.
  * progression_newborn is the slot still owed (-1 = none); it rides in the
  * save, so a reboot mid-flow brings it back. progression_newborn_done clears
  * it and saves the name at once. */
 int  progression_newborn(void);
-void progression_newborn_done(tank_t *t);
+bool progression_newborn_done(tank_t *t);
 /* milestones page (2026-09-13): the keeper closed it - everything earned so
  * far counts as seen (badges earned later wear a "new" ring until the next
  * look). Rides in the save. */
@@ -295,6 +298,7 @@ void progression_shop_notice_clear(void);
  * true = unlocked, placed in the tank (tank_plant_place / tank_snail_place)
  * and saved at once */
 bool progression_buy(tank_t *t, int item);
+int progression_item_price_for(const tank_t *t, int item);
 /* the seasonal pumpkin (0.3.6): sold while SD_PUMPKIN_IN_SHOP - the first
  * release after October 31 sets it to 0 (Strato: no date check, a board
  * keeps selling it until it is updated). One bought stays in its tank, so
@@ -310,6 +314,16 @@ int  progression_sell_value(int item);
 /* Refund eligibility is local: free unlocked placements always return zero. */
 int  progression_sell_value_for(const tank_t *t, int item);
 bool progression_sell(tank_t *t, int item);
+/* Stored counts are shared across aquariums; primary/extra placements are local.
+ * copy = -1 selects the legacy primary, otherwise an inventory.extra index.
+ * Free copies leave storage before paid copies. All mutations save atomically. */
+bool progression_inventory_buy(tank_t *t, int item);
+bool progression_inventory_store(tank_t *t, int item, int copy);
+bool progression_inventory_place(tank_t *t, int item);
+bool progression_inventory_sell(tank_t *t, int item);
+int progression_inventory_stored(const tank_t *t, int item);
+int progression_inventory_placed(const tank_t *t, int item);
+bool progression_inventory_duplicate(int item);
 /* a fish sold (2026-10-01, Strato: a SELL button on the milestones page's
  * fish card - "the more mature a fish is, the more sand dollars it is
  * worth. once a fish is sold it opens up a slot for a new fry"). The price
@@ -363,7 +377,7 @@ bool progression_sell_fish(tank_t *t, int fish);
 int  progression_sd_take_award(void);
 /* director / tests: dollars from nowhere (negative takes them away) */
 void progression_sd_grant(tank_t *t, int n);
-bool progression_game_reward(tank_t *t, int dollars);
+bool progression_game_reward(tank_t *t, int game, int dollars);
 /* the earn table for the shop page: one line per source, "+N WORDS" */
 #define SD_EARN_LINES 7
 const char *const *progression_sd_earn_lines(void);

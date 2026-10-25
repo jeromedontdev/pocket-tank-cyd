@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.2.7
+# Pocket Tank CYD 2.3.0
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.2.7**; firmware, update
+now versioned independently. This is **release 2.3.0**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -22,6 +22,44 @@ covers named tanks, the bank, creature customization, Journal, mini-games,
 decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
+
+## New in 2.3.0: shared decoration inventory and care-first income
+
+The source adds **Shop > Inventory** for physical decorations. Buy additional
+copies into shared storage, place an owned copy without paying again, move a
+selected placed copy, or store it without selling. To transfer a piece, store
+it, switch aquariums with **TANKS**, then place it from the same shared storage.
+Selling a stored copy is a separate, two-tap action; free/Creative copies
+do not generate resale money.
+
+Storage holds up to 64 pieces. A tank retains its existing primary placements
+and can display up to eight additional basic ornaments, each with its own
+position and front/back depth. Plants, castles, living coral, reef clusters
+and pumpkins can have multiple owned copies in storage or different tanks,
+but only one of each is placed per tank: their vegetation, lighting, growth
+and helper-anchor systems remain single-instance. Helpers, permanent upgrades,
+themes and fixed background scenery are not inventory objects.
+
+Existing purchases and layouts remain in place. Storage is profile-wide,
+extra placements are local to their aquarium, and saves migrate through an
+append-only inventory tail. These features require 2.3.0 or newer.
+
+Daily care now offers **125 sand dollars** (30 + 30 + 65), with the same
+**50 XP**. Completing and claiming all three daily tasks welcomes a free,
+profile-wide **pearl mussel**. While all resident fish are fed and calm, it
+grows one coin per ten minutes of live simulation, up to 15 per day. Its bank
+holds 15; collect through **Shop > Mussel** or **Inventory > Mussel**.
+Banked coins survive midnight. There is no offline accumulation or extra XP,
+and extra aquariums do not multiply the allowance. The mussel normally rests,
+then makes a gentle 16-second crawl along the sand about once every six minutes.
+Games now offer **up to five dollars per game per day**: one dollar per
+qualifying saved round, up to 90 across all 18 games. Challenge and Relaxed
+share each game's allowance, and switching tanks does not reset it. Games
+still give no XP; daily care remains the larger, much quicker source.
+
+The update also retires obsolete “new fry” welcome flags when the referenced
+fish has already grown past fry. Genuine unfinished fry welcomes still resume,
+and completing a welcome only dismisses it after a successful save.
 
 ## New in 2.2.6: cleaner navigation and leaner five-fish rendering
 
@@ -633,11 +671,11 @@ original 15 one-time objectives; **TODAY** returns to daily care.
 
 | Daily activity | Sand dollars | XP |
 |---|---:|---:|
-| One player feeding actually eaten | 25 | 12 |
-| Say Hello, or hold calmly near a fish for 60 seconds | 25 | 13 |
-| Clean an algae colony, trim through a 10 cm counter step, or watch a settled tank for five minutes | 50 | 25 |
+| One player feeding actually eaten | 30 | 12 |
+| Say Hello, or hold calmly near a fish for 60 seconds | 30 | 13 |
+| Clean an algae colony, trim through a 10 cm counter step, or watch a settled tank for five minutes | 65 | 25 |
 
-Tap each ready **CLAIM** to save it, once per profile per day: **100 dollars
+Tap each ready **CLAIM** to save it, once per profile per day: **125 dollars
 and 50 XP** in total. Watching requires an uncovered, lit aquarium with at
 least one fed, non-distressed fish; menus and mini-games do not count.
 The alternatives need no purchased helpers, forced fish sales or excessive feeding.
@@ -659,9 +697,11 @@ rewards are not removed. The three postcard adventures still add 180 XP total.
 
 **Pacing budget, not a promise of individual playtime:** completing daily care
 needs around 5-10 minutes including navigation. With milestone rewards, the
-5,265-dollar shop is affordable in roughly 6-8 weeks, maximum Keeper level in
-about 8 weeks, and all seven 500-dollar aquarium expansions in roughly 10-12
-weeks total. Daily care alone reaches level 15 in 84 visits; milestones and
+5,265-dollar shop takes at most 43 fully completed daily check-ins at the new
+125-dollar allowance before any milestone, adventure or mussel income.
+Seven 500-dollar aquarium expansions add another 28 such check-ins; duplicate
+decorations are optional extra spending, not part of that single-copy budget.
+XP pacing is unchanged: daily care alone reaches level 15 in 84 visits; milestones and
 adventures shorten that. Wearables cost another 250 dollars per fully equipped
 fish and new fry cost 200 each, so optional collection spending extends the
 budget. Games are not required for these targets. No currency or existing
@@ -732,7 +772,7 @@ Slalom uses that fish's real appearance, Feed Frenzy visits the tank's fish,
 and Treasure Cast shows existing fish among the hazards. These are portraits,
 not fish transfers: games cannot injure, feed, train or change the actual fish.
 
-| Game | How to play | Qualifies for the shared daily bonus |
+| Game | How to play | Qualifies for its daily bonus |
 |---|---|---|
 | Bubble Pop | Pop rising bubbles for 30 seconds; gold bubbles score 3. | Score 3+ |
 | Pearl Match | Reveal cards and remember six pearl pairs; untimed. | Solve all pairs |
@@ -751,7 +791,7 @@ Use the page arrows to browse three pages. Page three adds **Lighthouse**
 (cross-toggle logic), **Shell Slide** (sliding puzzle), **Sonar Sweep**
 (row/column clue hunt), **Tide 2048** (tile merging), **Harbor Stack**
 (timed stacking), and **Echo Reef** (sequence memory). These six are
-integrated with persistent records, medals, and the shared daily coin bonus, just like the
+integrated with persistent records, medals, and a per-game daily coin allowance, just like the
 original twelve. Extended save storage avoids growing the crowded NVS blob.
 
 | Page-three game | Qualifies for daily bonus | Bronze / Silver / Gold |
@@ -784,13 +824,17 @@ mode, but only challenge play records personal bests and medals.
 | Reef Architect | 12 | 24 | 36 |
 | Deep Expedition | 10 | 24 | 40 |
 
-Each qualifying round offers **1 sand dollar**, up to **5 dollars per UTC day
-across all eighteen games, Challenge and Relaxed combined**. Games give **no
+Each qualifying round offers **1 sand dollar**, up to **5 dollars per game per UTC day**
+and **90 across all eighteen games**. Challenge and Relaxed share each game's
+allowance across every aquarium in the profile. Games give **no
 Journal XP**. Further play remains unlimited; Challenge still saves records
 and medals even when the coin allowance is exhausted.
 **SAVE RESULT** saves the actual bonus, daily allowance and game records together; a failed save changes none and
 leaves the claim available to retry. A round can only be claimed once.
 BACK or PLAY AGAIN requires a second tap before discarding an unclaimed reward.
+On upgrading from the old shared allowance, dollars already earned that day
+conservatively reduce each game's remaining allowance until the next daily
+reset. No existing earnings are removed.
 
 Aquarium care, growth and care progression pause throughout the games menu,
 round and results. Leaving resumes normal care; manually sleeping/rebooting
@@ -802,7 +846,7 @@ There are no entry fees, wagers or penalties to your actual aquarium.
 Use **CHALLENGE / RELAXED** on the games menu to switch modes. Relaxed Bubble
 Pop and Feed Frenzy have no countdown: tap **FINISH** whenever you like.
 Relaxed Slalom and Treasure Cast move at half speed; Match and Reef remain
-untimed. Relaxed play shares the five-dollar daily game allowance, gives no XP and does not
+untimed. Relaxed play shares each game's five-dollar daily allowance, gives no XP and does not
 set records or medals. **RECORDS** shows personal bests and permanent gold
 challenge targets: 24 Bubble points, Match in 16 moves, 24 Slalom points,
 10 Cast points, 40 Frenzy points, and Reef in 18 moves. Meeting a move target
@@ -1053,9 +1097,11 @@ after buying aquariums: older builds do not preserve collection metadata.
 This is intentionally no longer a multi-board tree. Upstream gameplay changes
 can still be ported manually, but merges and release compatibility are not
 automatic. Preserve existing binary offsets and append new fields; the save
-is now 6032 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
+is now 6168 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
 progress, an 8-byte compatibility Creative marker, 40 more game-record bytes
-and 48 bytes of mode/starvation/unlock/refund state, plus 24 bytes of shared daily care), with the previous 4520-byte layout and the
+and 48 bytes of mode/starvation/unlock/refund state, plus 24 bytes of shared daily care,
+100 bytes of inventory, eight bytes of mussel state, 24 bytes of per-game income
+and four alignment bytes), with the previous 4520-byte layout and the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
 aquarium metadata identifies the purchased collection, active slot, its name and
@@ -1106,10 +1152,13 @@ instead use the existing 128 KiB SPIFFS partition, with alternating CRC-checked,
 readback-verified copies and a durable wipe marker. Legacy NVS is migration
 input only; corrupt storage never silently falls back to stale NVS or formats
 nonblank data. No partition-table change or SD card is needed for the active save.
-JSON exports use schema 17 for an individual aquarium, including shared daily care and its fixed mode,
+The 2.3.0 binary save is 6,168 bytes: the previous 6,032-byte prefix
+is unchanged, with bounded inventory, pearl-mussel state and per-game quotas appended.
+JSON exports use schema 18 for an individual aquarium, including shared inventory,
+pearl-mussel income, daily care, its fixed mode, individual game-income allowances,
 Lost Current progress and eighteen-game records,
 the polish and story tails and saved Enlarged/Normal scale; schema
-1 through 15 backups remain importable when valid for the selected mode.
+1 through 17 backups remain importable when valid for the selected mode.
 Cross-mode restores cannot bypass a
 chosen game mode: changing modes requires a confirmed full wipe.
 Older firmware cannot restore newer-schema backups; keep a matching

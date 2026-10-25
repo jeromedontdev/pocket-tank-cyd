@@ -525,7 +525,7 @@ void touch_port_poll(tank_t *t) {
                     goto released;
                 }
                 int r = render_shop_tap(t, s_px, s_py);
-                ESP_LOGI(TAG, "shop tap at %.0f,%.0f -> %s", s_px, s_py, r == SHOP_TAP_CLOSE ? "CLOSE" : r >= SHOP_TAP_FRY ? "BUY A FRY" : r >= SHOP_TAP_SELL ? "SELL" : r >= SHOP_TAP_MOVE ? "MOVE" : r >= SHOP_TAP_BUY ? "UNLOCK" : r == SHOP_TAP_KEPT ? "modal" : "nothing");
+                ESP_LOGI(TAG, "shop tap at %.0f,%.0f -> %s", s_px, s_py, r == SHOP_TAP_CLOSE ? "CLOSE" : r >= SHOP_TAP_INVENTORY ? "INVENTORY" : r >= SHOP_TAP_FRY ? "BUY A FRY" : r >= SHOP_TAP_SELL ? "SELL" : r >= SHOP_TAP_MOVE ? "MOVE" : r >= SHOP_TAP_BUY ? "UNLOCK" : r == SHOP_TAP_KEPT ? "modal" : "nothing");
                 if (r == SHOP_TAP_TANKS) { s_aquariums = true; render_aquariums_open(t); }
                 else if (r == SHOP_TAP_CLOSE) { s_shop = false; render_shop_leave(); s_ms = true; s_life = s_from_home && !s_child_from_keeper; }   /* back to the milestones page (2026-09-16) */
                 else if (r >= SHOP_TAP_BUY) s_shop_act = r;   /* main.c buys (and plays the cue) or opens the placement page */

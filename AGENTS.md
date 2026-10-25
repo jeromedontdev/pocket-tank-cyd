@@ -20,13 +20,34 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.2.7**, full-capacity LCD DMA halves at unchanged 40 MHz,
+- Release 2.3.0 inventory/income: schema 18 / 6168-byte binary, frozen
+  previous schema-17 prefix unchanged. Shared storage holds 64 physical
+  pieces; eight additional simple ornaments per aquarium have independent
+  position/depth. Complex plants/castles/coral/clusters/pumpkins stay one of
+  each placed type per tank. Store/switch/place preserves copies; paid/free
+  provenance, failed saves and stale snapshot transfers are tested.
+  Care now pays 30/30/65 coins (125 total), unchanged 50 XP; games pay 1/round,
+  up to 5/game/day (90 across 18), practice/challenge and tanks share each
+  game's quota. Legacy same-day earnings conservatively reduce each allowance;
+  day/fallback rollover resets all. No game XP or snapshot quota rewinds.
+  Non-fry pending birth welcomes retire on load/poll without changing fish.
+  Welcome and birth completion save transactionally; failure keeps UI open
+  with a retry banner instead of silently leaving a persistent old flag.
+  Claiming all three tasks unlocks one profile-wide pearl mussel: one coin
+  per 600 healthy live seconds, max 15/day and 15 banked, explicit collection,
+  no offline income or XP. It rests for 344 seconds then crawls for 16,
+  with bounded old/new damage; no new art buffer. Shared state follows the
+  active tank; backups cannot rewind an already-owned mussel/quota but can
+  recover it onto a never-unlocked profile. Creative has no income and keeps
+  free-copy restore behavior.
+- Performance baseline from **2.2.7**: full-capacity LCD DMA halves at unchanged 40 MHz,
   off-tile polygon palette culling, identical-input pitch memo, row-shaded
   urchins, conservative seahorse coronet culling/exact 96-byte tail-width memo,
   and clipped clock-span replay (retain alpha-255 blend semantics).
   Both scales/all details/gameplay modes benefit; LCD transfers are CYD-only.
   RAM-only serial `benchmark` pauses real care, never runs progression/saves,
   uses two seeded fixtures and one evolving current-tank copy with clock.
+  Unreleased source adds a fourth maximum-extra-ornament/mussel fixture.
   Local Normal/Balanced five-fish copy: 10.79 FPS, lowest 120-frame window
   10.22 with 5 ms/frame service reserve; not full gameplay/network timing or
   a universal minimum. Ordinary four-fish windows included sub-10 results.
@@ -209,7 +230,7 @@ or further split modules without a concrete maintenance benefit.
 
 ## Persistence and memory: hard constraints
 
-- Current binary save **6032 bytes**, JSON **schema 17**; imports schemas 1-16.
+- Current source binary save **6168 bytes**, JSON **schema 18**; imports schemas 1-17.
   The 24-byte `care_state_t` appends at offset 6008; quotas and care progress
   follow shared progression, never stale parked snapshots. Validate JSON and
   binary tails; retain zero-tail migration without changing existing XP.
