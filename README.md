@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.5
+# Pocket Tank CYD 2.3.6
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.3.5**; firmware, update
+now versioned independently. This is **release 2.3.6**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -12,7 +12,8 @@ inherited genetics, illustrated adventures, a story RPG and eighteen games.
 It retains the original aquarium simulation and credits its origins, but is no
 longer just upstream Pocket Tank running on another display. Older release
 downloads and tags remain unchanged.
-Targets the **ESP32-2432S028 Cheap Yellow Display**:
+Targets the **ESP32-2432S028 Cheap Yellow Display** and a separate
+**ELEGOO ESP32-32E 2.8-inch ILI9341V** build:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
 are not included. See [LICENSE](LICENSE) for the original project license.
@@ -23,7 +24,25 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.5: consistent menus and clearer updates
+## New in 2.3.6: ELEGOO display support
+
+Choose your exact board in the [website installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html).
+The ELEGOO uses the same LCD/touch SPI pins but an **ILI9341V**, not the original
+supported CYD revision's custom initialization. Its red LED is GPIO22; GPIO4
+is held high to disable the audio amplifier. GPIO34 is battery sensing, **not
+a room-light sensor**: automatic room dimming/night detection is unavailable.
+No audio or battery/charging application is added.
+
+Each board has separate app/factory images, SD packages, Wi-Fi manifests and
+download checksums. Board markers prevent cross-flashing through normal
+updaters; the original CYD retains its existing display initialization.
+If an ELEGOO was already flashed with the original CYD image and shows white,
+the save-preserving web updater will intentionally refuse that identity
+mismatch. A backed-up, explicit **app-only board conversion** is needed;
+do not use factory installation to preserve an existing aquarium.
+See [hardware and recovery instructions](firmware/CYD.md#supported-board-variants).
+
+## Previously in 2.3.5: consistent menus and clearer updates
 
 The source now calls **Settings > Device > Firmware Updates** what it is:
 one page with separate **Check SD Card** and **Check GitHub via Wi-Fi** actions.

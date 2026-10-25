@@ -3,6 +3,7 @@ import {
   BOARD_MARKER, SLOT_SIZE, parseOTA, identifyFirmware, validateManifest,
   verifyApp, validatePartitions, validateOTAData, flashOptions,
 } from "../web/update-core.mjs";
+import { boardMarker, boardProfile } from "../web/board-profiles.mjs";
 
 export async function runTests() {
   let count = 0;
@@ -74,6 +75,22 @@ export async function runTests() {
     sha256: hex(await crypto.subtle.digest("SHA-256", image)), md5: "0".repeat(32) };
   validateManifest(manifest);
   await verifyApp(image, manifest);
+  const elegoo = image.slice();
+  elegoo.set(boardMarker("elegoo28"), 0x120);
+  const elegooManifest = { ...manifest, board: "elegoo28", app: "pocket-tank-elegoo-app.bin",
+    sha256: hex(await crypto.subtle.digest("SHA-256", elegoo)) };
+  validateManifest(elegooManifest, "elegoo28");
+  assert(identifyFirmware(banner("1.0.0", "elegoo28") + ota(), "1.0.1", "elegoo28").slot === "ota_0");
+  await verifyApp(elegoo, elegooManifest);
+  refuses(() => identifyFirmware(banner() + ota(), "1.0.1", "elegoo28"));
+  refuses(() => identifyFirmware(banner("1.0.0", "elegoo28") + ota(), "1.0.1"));
+  refuses(() => validateManifest(manifest, "elegoo28"));
+  refuses(() => validateManifest(elegooManifest, "cyd2432s028"));
+  refuses(() => validateManifest({ ...manifest, board: "elegoo28" }));
+  refuses(() => boardProfile("unknown"));
+  refuses(() => boardProfile("__proto__"));
+  await rejects(() => verifyApp(image, { ...elegooManifest, sha256: manifest.sha256 }));
+  await rejects(() => verifyApp(elegoo, { ...manifest, sha256: elegooManifest.sha256 }));
   for (const change of [
     { format: 2 }, { board: "other" }, { app: "pocket-tank-cyd-factory.bin" },
     { app: "https://example.test/image.bin" }, { size: 0 }, { size: SLOT_SIZE + 1 },

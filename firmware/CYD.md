@@ -1,14 +1,63 @@
-# ESP32-2432S028 CYD
+# CYD and ELEGOO 2.8-inch display boards
 
 <p align="center"><img src="../web/logo.svg" width="200" alt="Pocket Tank CYD aquarium logo"></p>
 
-This fork targets only the 2.8-inch Cheap Yellow Display with an ESP32, SPI LCD,
+This fork targets two explicit 2.8-inch display variants with an ESP32, SPI LCD,
 and XPT2046 resistive touch. It uses a 320x240 landscape LCD, an internal-RAM
 framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB flash
-layout has no model partition. Other board support, model/training code, audio,
+layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.5 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.6 is a distinct aquarium game, not just a board port.**
+
+## Supported board variants
+
+| Build choice | Board identity | LCD initialization | Red LED | GPIO34 |
+|---|---|---|---|---|
+| `cyd` (default) | `cyd2432s028` | Existing CYD custom ST7789-style sequence | 4 | LDR |
+| `elegoo` | `elegoo28` | ILI9341 driver defaults, BGR order | 22 | Battery sensing, never read as light |
+
+The ELEGOO ESP32-32E 2.8-inch resistive-touch board is documented by
+[ELEGOO](https://wiki.elegoo.com/oshw-parts-&-accessories/esp32-dispaly-introduction).
+LCD CS15/DC2/SCLK14/MOSI13/MISO12/backlight21 and
+XPT2046 CS33/clock25/MOSI32/MISO39/IRQ36 match the existing CYD pins.
+LCD reset is tied to EN. ELEGOO audio enable GPIO4 is held high (disabled);
+green/blue LEDs are 16/17. The SD SPI pins also match. There is no LDR,
+so room-light settings report unavailable; manual brightness still works.
+An ESP32-32E module label alone is not sufficient to identify other boards.
+No battery, charger or audio application is implemented.
+
+From an ESP-IDF PowerShell environment:
+
+```powershell
+.\tools\build_cyd.ps1 -Board cyd
+.\tools\build_cyd.ps1 -Board elegoo
+.\tools\build_cyd.ps1 -Board elegoo -Port COM8 -Flash
+```
+
+Separate `build_cyd`/`build_elegoo` directories prevent cached board settings
+from contaminating the other build. Normal app-only flashing verifies the
+installed marker against the built image; web, SD and Wi-Fi updates also
+refuse another board. ELEGOO release assets use `pocket-tank-elegoo-app.bin`,
+`pocket-tank-elegoo-factory.bin`, `elegoo-update.ptu`, `elegoo-ota.json`,
+`elegoo-SHA256SUMS.txt` and a separate ZIP. The original names remain unchanged.
+Rename `elegoo-update.ptu` to `update.ptu` when placing it at an SD search path.
+
+### Recovering a wrong CYD image on ELEGOO without resetting fish
+
+First make a complete 4 MiB flash backup and save the running aquarium.
+Positively detect its running and next-boot slots using the `ota` serial command;
+they must agree. Factory flashing overwrites saves and is not this procedure.
+For a confirmed `ota_0`, explicit conversion is:
+
+```powershell
+.\tools\build_cyd.ps1 -Board elegoo -Port COM8 -Flash -AppSlot ota_0 -AllowBoardMigration
+```
+
+Use `ota_1` instead only if that is the verified active slot. This escape hatch
+is restricted to the local recovery script and known board markers; it does
+not relax browser/SD/Wi-Fi checks. The app starts with the correct new identity
+while the partition table, NVS, internal archives and SD stay untouched.
 
 ### Firmware-space audit after 2.3.0
 

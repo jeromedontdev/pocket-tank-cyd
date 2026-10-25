@@ -10,7 +10,9 @@
 #include <math.h>
 
 static const char *TAG = "ambient";
+#if CYD_HAS_LDR
 static adc_oneshot_unit_handle_t s_adc;
+#endif
 static bool s_led_ready, s_adc_ready;
 static uint8_t s_room = ROOM_LIGHT_OFF, s_led = BACK_LED_GLOW, s_auto_backup = 1;
 static uint8_t s_scene_detail;
@@ -41,6 +43,10 @@ static bool nvs_put(const char *key, uint8_t v) {
 }
 
 void ambient_init(void) {
+#if PT_BOARD_ELEGOO
+    ESP_ERROR_CHECK(gpio_set_direction(CYD_PIN_AUDIO_EN, GPIO_MODE_OUTPUT));
+    ESP_ERROR_CHECK(gpio_set_level(CYD_PIN_AUDIO_EN, 1));
+#endif
     s_room = nvs_get("room", ROOM_LIGHT_OFF, ROOM_LIGHT_MODES - 1);
     s_led = nvs_get("led", BACK_LED_GLOW, BACK_LED_MODES - 1);
     s_auto_backup = nvs_get("autobk", 1, 1);
@@ -61,13 +67,18 @@ void ambient_init(void) {
         };
         if (ledc_channel_config(&ch) != ESP_OK) s_led_ready = false;
     }
+#if CYD_HAS_LDR
     adc_oneshot_unit_init_cfg_t unit = { .unit_id = ADC_UNIT_1 };
     adc_oneshot_chan_cfg_t chan = { .atten = ADC_ATTEN_DB_0, .bitwidth = ADC_BITWIDTH_12 };
     s_adc_ready = adc_oneshot_new_unit(&unit, &s_adc) == ESP_OK &&
                   adc_oneshot_config_channel(s_adc, CYD_LDR_ADC_CHANNEL, &chan) == ESP_OK;
+#else
+    s_room = ROOM_LIGHT_OFF;
+    ESP_LOGI(TAG, "no room-light sensor on this board; GPIO34 is battery sensing");
+#endif
     ambient_led(0, 0, 0);
     ESP_LOGI(TAG, "back LED %s, room sensor %s (raw %d) | room %d led %d auto backup %d",
-             s_led_ready ? "ready" : "FAILED", s_adc_ready ? "ready" : "FAILED", ambient_ldr_raw(),
+             s_led_ready ? "ready" : "FAILED", s_adc_ready ? "ready" : CYD_HAS_LDR ? "FAILED" : "not fitted", ambient_ldr_raw(),
              s_room, s_led, s_auto_backup);
 }
 
@@ -94,9 +105,13 @@ void ambient_off_for_sleep(void) {
 }
 
 int ambient_ldr_raw(void) {
+#if CYD_HAS_LDR
     int raw = -1;
     if (!s_adc_ready || adc_oneshot_read(s_adc, CYD_LDR_ADC_CHANNEL, &raw) != ESP_OK) return -1;
     return raw;
+#else
+    return -1;
+#endif
 }
 /* The CYD's sensor reads higher as the room darkens and its range differs from board to board, so
  * by default the tank learns the lit room's reading and judges darkness on a log scale from it. */
@@ -132,6 +147,12 @@ bool ambient_set_scene_detail(int detail) {
     return true;
 }
 bool ambient_set_room_mode(int mode) {
+#if !CYD_HAS_LDR
+    if (mode != ROOM_LIGHT_OFF) {
+        ESP_LOGE(TAG, "room-light mode unavailable: this board has no LDR");
+        return false;
+    }
+#endif
     if (mode < 0 || mode >= ROOM_LIGHT_MODES || !nvs_put("room", (uint8_t)mode)) return false;
     s_room = (uint8_t)mode; return true;
 }

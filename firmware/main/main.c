@@ -475,9 +475,14 @@ static void tank_task(void *arg) {
                   "SCENE SAVE FAILED - UNCHANGED", false);
           }
           else if (w == SET_TAP_ROOM) {
+#if PT_BOARD_ELEGOO
+              ESP_LOGW(TAG, "room-light setting unavailable on this board");
+              render_backup_status("THIS BOARD HAS NO ROOM SENSOR", false);
+#else
               int m = (ambient_room_mode() + 1) % ROOM_LIGHT_MODES;
               static const char *const names[] = {"ROOM LIGHT OFF", "ROOM LIGHT DIMS THE SCREEN", "DARK ROOM: SCREEN DIMS, TANK SLEEPS"};
               render_backup_status(ambient_set_room_mode(m) ? names[m] : "ROOM LIGHT SAVE FAILED", false);
+#endif
           }
           else if (w == SET_TAP_LED) {
               int m = (ambient_led_mode() + 1) % BACK_LED_MODES;

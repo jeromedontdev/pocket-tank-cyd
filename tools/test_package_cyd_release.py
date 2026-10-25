@@ -7,9 +7,48 @@ from unittest.mock import patch
 import zipfile
 
 from package_cyd_release import create_bundle, release_version
+from board_profiles import BOARDS
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_elegoo_bundle_identity_names_and_wrong_board_refusal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / "build"
+            build.mkdir()
+            image = bytearray(4096)
+            image[0] = 0xe9
+            image[48:80] = b"2.3.6".ljust(32, b"\0")
+            image[0x120:0x140] = BOARDS["elegoo"].marker
+            (build / "pocket_tank.bin").write_bytes(image)
+            flash = {"flash_files": {"0x1000": "bootloader.bin", "0x8000": "partitions.bin",
+                                    "0xf000": "ota.bin", "0x20000": "pocket_tank.bin"},
+                     "extra_esptool_args": {"chip": "esp32"}, "write_flash_args": []}
+            (build / "flasher_args.json").write_text(json.dumps(flash))
+
+            def merge(command, check):
+                self.assertTrue(check)
+                Path(command[command.index("-o") + 1]).write_bytes(b"factory")
+
+            output = root / "dist"
+            with patch("package_cyd_release.subprocess.run", side_effect=merge):
+                archive = create_bundle(build, output, "2.3.6", "elegoo")
+            self.assertEqual(archive.name, "pocket-tank-elegoo-2.3.6.zip")
+            with zipfile.ZipFile(archive) as bundle:
+                self.assertIn("elegoo-update.ptu", bundle.namelist())
+                self.assertIn("pocket-tank-elegoo-factory.bin", bundle.namelist())
+                ota = json.loads(bundle.read("elegoo-ota.json"))
+                self.assertEqual(ota["board"], "elegoo28")
+                self.assertTrue(ota["app"]["url"].endswith("/pocket-tank-elegoo-app.bin"))
+                instructions = bundle.read("elegoo-INSTALL.txt").decode()
+                self.assertIn("-Board elegoo", instructions)
+                self.assertNotIn("pocket-tank-cyd-app.bin", instructions)
+            for line in (output / "elegoo-SHA256SUMS.txt").read_text().splitlines():
+                digest, filename = line.split("  ", 1)
+                self.assertEqual(digest, hashlib.sha256((output / filename).read_bytes()).hexdigest())
+            with self.assertRaisesRegex(ValueError, "board"):
+                create_bundle(build, root / "wrong-board", "2.3.6", "cyd")
+
     def test_version(self):
         self.assertEqual(release_version("v1.0.0"), "1.0.0")
         for value in ("1.0", "v0.3.8-cyd.1", "../bad", "1.2.3-cyd.123456", "x';exit",

@@ -94,7 +94,11 @@ bool net_port_creds_forget(void) {
 const char *net_port_manifest_url(void) {                   /* the director's override, else the release channel */
     static char url[NET_URL_MAX + 1];
     if (nvs_get_str_ns("url", url, sizeof url) && url[0]) return url;
+#if PT_BOARD_ELEGOO
+    return "https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/elegoo-ota.json";
+#else
     return CONFIG_POCKET_TANK_OTA_URL;
+#endif
 }
 bool net_port_set_manifest_url(const char *url) {           /* NULL / "" = back to the default */
     nvs_handle_t h; if (nvs_open(WIFI_NVS_NS, NVS_READWRITE, &h) != ESP_OK) return false;

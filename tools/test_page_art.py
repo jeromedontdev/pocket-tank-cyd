@@ -11,6 +11,7 @@ import os
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="cc")
+    parser.add_argument("--board", choices=("cyd", "elegoo"), default="cyd")
     parser.add_argument("--gallery", type=Path, help="Capture audited menus, typography, fish, accessories and aquarium details from the actual renderer")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
@@ -29,6 +30,8 @@ def main():
                     "-DPOP_CAP=5", "-DCYD_FLAT_EDGES=1",
                     "-I" + str(common), "-I" + str(cjson),
                     str(root / "tools" / "test_page_art.c")]
+        if args.board == "elegoo":
+            command.append("-DPT_BOARD_ELEGOO=1")
         command += [str(common / name) for name in (
             "tank.c", "progression.c", "advisor.c", "games.c", "setup.c", "notice.c",
             "update.c", "aquarium_store.c", "companion.c", "companion_ui.c", "weather.c")]

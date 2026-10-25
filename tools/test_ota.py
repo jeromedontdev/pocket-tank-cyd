@@ -18,11 +18,17 @@ static void check(cJSON *root, bool expected) {
 }
 int main(void) {
     const char *valid = "{\"format\":1,\"fork\":\"pocket-tank-cyd\","
-        "\"board\":\"cyd2432s028\",\"release\":\"2.3.2\",\"min_from\":\"2.3.1\","
+        "\"board\":\"" PT_BOARD "\",\"release\":\"2.3.2\",\"min_from\":\"2.3.1\","
         "\"app\":{\"url\":\"https://github.com/example/app.bin\",\"size\":1234,"
         "\"sha256\":\"0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789abcdef\"}}";
     cJSON *base = cJSON_Parse(valid);
     check(base, true);
+    const char *boards[] = {"cyd2432s028", "elegoo28", "unknown"};
+    for (unsigned i=0; i<sizeof boards/sizeof *boards; i++) {
+        cJSON *r = cJSON_Duplicate(base, true);
+        cJSON_ReplaceItemInObject(r, "board", cJSON_CreateString(boards[i]));
+        check(r, !strcmp(boards[i], PT_BOARD)); cJSON_Delete(r);
+    }
     update_manifest_t m; char url[NET_URL_MAX + 1];
     assert(update_parse_manifest(valid, &m, url, sizeof url));
     assert(m.sha256[0] == 1 && m.sha256[7] == 0xef && m.sha256[31] == 0xef);
@@ -61,7 +67,7 @@ int main(void) {
     }
     cJSON_AddNumberToObject(base,"release_num",1); check(base,false);
     cJSON_Delete(base);
-    puts("PASS: actual OTA parser requires CYD format/board, bounded strict versions, HTTPS URL, exact size and SHA-256");
+    puts("PASS: actual OTA parser requires current board " PT_BOARD ", bounded strict versions, HTTPS URL, exact size and SHA-256");
 }
 '''
 
@@ -154,15 +160,19 @@ def main():
     assert install.index("verify_download(") < install.index("esp_https_ota_finish(")
     with tempfile.TemporaryDirectory(prefix="cyd-ota-test-") as folder:
         folder = Path(folder)
-        for name, text in (("manifest", source + PARSER_TEST), ("verify", VERIFY_STUBS + verify + VERIFY_TEST)):
-            test = folder / (name + ".c")
+        for board, name, text in ((board, name, text) for board in ("cyd", "elegoo")
+                                 for name, text in (("manifest", source + PARSER_TEST),
+                                                    ("verify", VERIFY_STUBS + verify + VERIFY_TEST))):
+            test = folder / (board + "-" + name + ".c")
             test.write_text(text)
             command = [args.cc] + (["cc"] if Path(args.cc).stem.lower() == "zig" else [])
             command += ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
                         "-I" + str(ROOT / "common"), "-I" + str(cjson), str(test)]
+            if board == "elegoo":
+                command.append("-DPT_BOARD_ELEGOO=1")
             if name == "manifest":
                 command += [str(cjson / "cJSON.c")]
-            executable = folder / (name + ".exe")
+            executable = folder / (board + "-" + name + ".exe")
             command += ["-o", str(executable)]
             if __import__("sys").platform != "win32":
                 command.append("-lm")

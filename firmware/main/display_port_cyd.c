@@ -30,6 +30,7 @@ static int s_layout_width, s_layout_height, s_layout_tile;
 static int64_t s_wait_us, s_send_us;
 static unsigned s_blocks_sent, s_blocks_skipped;
 /* This CYD revision needs ST7789-style timing/gamma, not the ILI9341 defaults. */
+#if !PT_BOARD_ELEGOO
 static const ili9341_lcd_init_cmd_t cyd_init_commands[] = {
     {0xB2, (uint8_t[]){0x0C, 0x0C, 0x00, 0x33, 0x33}, 5, 0},
     {0xB7, (uint8_t[]){0x35}, 1, 0},
@@ -43,6 +44,7 @@ static const ili9341_lcd_init_cmd_t cyd_init_commands[] = {
     {0xE0, (uint8_t[]){0xD0, 0x04, 0x0D, 0x11, 0x13, 0x2B, 0x3F, 0x54, 0x4C, 0x18, 0x0D, 0x0B, 0x1F, 0x23}, 14, 0},
     {0xE1, (uint8_t[]){0xD0, 0x04, 0x0C, 0x11, 0x13, 0x2C, 0x3F, 0x44, 0x51, 0x2F, 0x1F, 0x1F, 0x20, 0x23}, 14, 0},
 };
+#endif
 #define CYD_STRIPE_BYTES (CYD_PANEL_H * CYD_STRIPE_ROWS * sizeof(uint16_t))
 #define CYD_DIAGNOSTIC_PATTERN 0
 #if CYD_DIAGNOSTIC_PATTERN
@@ -92,15 +94,23 @@ bool display_port_init(void) {
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST, &io_cfg, &io));
 
+#if !PT_BOARD_ELEGOO
     ili9341_vendor_config_t vendor_cfg = {
         .init_cmds = cyd_init_commands,
         .init_cmds_size = sizeof(cyd_init_commands) / sizeof(cyd_init_commands[0]),
     };
+#endif
     esp_lcd_panel_dev_config_t panel_cfg = {
         .reset_gpio_num = CYD_PIN_LCD_RST,
+#if PT_BOARD_ELEGOO
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
+#else
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+#endif
         .bits_per_pixel = 16,
+#if !PT_BOARD_ELEGOO
         .vendor_config = &vendor_cfg,
+#endif
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(io, &panel_cfg, &s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(s_panel));

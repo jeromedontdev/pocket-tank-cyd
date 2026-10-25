@@ -10,6 +10,7 @@ import sys
 import zipfile
 
 from make_sd_update import package
+from board_profiles import BOARDS
 
 
 def release_version(value):
@@ -20,13 +21,15 @@ def release_version(value):
     return value
 
 
-def create_bundle(build, output, version):
+def create_bundle(build, output, version, board="cyd"):
+    profile = BOARDS[board]
+    prefix, asset_prefix = profile.image_prefix, profile.asset_prefix
     version = release_version(version)
     build, output = Path(build), Path(output)
     image = (build / "pocket_tank.bin").read_bytes()
     if image[48:80].split(b"\0", 1)[0] != version.encode("ascii"):
         raise ValueError("Embedded ESP-IDF app release differs from the requested release")
-    update = package(image, version)
+    update = package(image, version, profile.identity.encode("ascii"))
     args = json.loads((build / "flasher_args.json").read_text())
     expected = {0x1000, 0x8000, 0xf000, 0x20000}
     if ({int(offset, 0) for offset in args["flash_files"]} != expected or
@@ -35,26 +38,26 @@ def create_bundle(build, output, version):
     if output.exists():
         raise FileExistsError(f"Release output already exists: {output}")
     output.mkdir(parents=True)
-    factory = output / "pocket-tank-cyd-factory.bin"
+    factory = output / f"{prefix}-factory.bin"
     command = [sys.executable, "-m", "esptool", "--chip", "esp32", "merge-bin",
                "-o", str(factory.resolve()), *args["write_flash_args"]]
     for offset, name in args["flash_files"].items():
         command.extend((offset, str((build / name).resolve())))
     subprocess.run(command, check=True)
     # These assets are shared by the standalone downloads and the all-in-one ZIP.
-    (output / "pocket-tank-cyd-app.bin").write_bytes(image)
-    (output / "ota.json").write_text(json.dumps({
-        "format": 1, "fork": "pocket-tank-cyd", "board": "cyd2432s028",
+    (output / f"{prefix}-app.bin").write_bytes(image)
+    (output / f"{asset_prefix}ota.json").write_text(json.dumps({
+        "format": 1, "fork": "pocket-tank-cyd", "board": profile.identity,
         "release": version, "min_from": "2.3.1",
         "note": "Stable CYD release. Back up your aquarium before updating.",
         "app": {
-            "url": f"https://github.com/jeromedontdev/pocket-tank-cyd/releases/download/v{version}/pocket-tank-cyd-app.bin",
+            "url": f"https://github.com/jeromedontdev/pocket-tank-cyd/releases/download/v{version}/{prefix}-app.bin",
             "size": len(image), "sha256": hashlib.sha256(image).hexdigest(),
         },
     }, indent=2) + "\n", encoding="utf-8")
-    (output / "update.ptu").write_bytes(update)
+    (output / f"{asset_prefix}update.ptu").write_bytes(update)
     source = Path(__file__).resolve().parent.parent
-    shutil.copyfile(source / "LICENSE", output / "LICENSE")
+    shutil.copyfile(source / "LICENSE", output / f"{asset_prefix}LICENSE")
     instructions = f"""Pocket Tank CYD {version}
 ESP32-2432S028 only. Not for other ESP32 displays.
 
@@ -109,7 +112,16 @@ Do not downgrade: the extended CYD save format is not supported upstream.
 Source, build instructions, full feature guide and screenshots:
 https://github.com/jeromedontdev/pocket-tank-cyd
 """
-    (output / "INSTALL.txt").write_text(instructions, encoding="utf-8")
+    if board == "elegoo":
+        instructions = instructions.replace("ESP32-2432S028 only", profile.name + " only")
+        instructions = instructions.replace("pocket-tank-cyd-app.bin", f"{prefix}-app.bin")
+        instructions = instructions.replace("pocket-tank-cyd-factory.bin", f"{prefix}-factory.bin")
+        instructions = instructions.replace("Copy update.ptu", "Copy elegoo-update.ptu")
+        instructions = instructions.replace("tools\\build_cyd.ps1 -Flash", "tools\\build_cyd.ps1 -Board elegoo -Port YOUR_PORT -Flash")
+        instructions = instructions.replace("--port COM4", "--port YOUR_PORT")
+        instructions = instructions.replace("Read INSTALL.txt", "Read elegoo-INSTALL.txt")
+        instructions += "\nSelect ELEGOO in the web installer. Do not use the original CYD image.\nReplace YOUR_PORT with the verified ELEGOO port; never guess another aquarium's port.\nIf the board already has the wrong CYD identity/white LCD, use the documented backed-up app-only board conversion, not factory reset.\nGPIO34 is battery sensing, not room light; audio and battery charging are not game features.\n"
+    (output / f"{asset_prefix}INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
 ## Pocket Tank CYD {version}
@@ -120,7 +132,13 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.5: consistent menus and clearer updates
+### New in 2.3.6: separate ELEGOO display support
+
+- Select the original CYD or ELEGOO ESP32-32E 2.8-inch ILI9341V in the website installer. Each board has its own factory/app/SD/OTA downloads and embedded identity; wrong-board updates are refused.
+- ELEGOO uses ILI9341 initialization, red LED GPIO22 and disabled audio enable GPIO4. GPIO34 is battery sensing, not an LDR; automatic room-light dimming is unavailable. Touch and SD use the documented matching pins. No battery charging/audio application is added.
+- The original CYD keeps its proven display initialization and pins. Both boards retain the same saves, partitions, games and menu fixes.
+
+### Previously in 2.3.5: consistent menus and clearer updates
 
 - Settings > Device > Firmware Updates exposes separate Check SD Card and Check GitHub via Wi-Fi actions. Versions 2.3.4 and older called this page SD Updates.
 - Screenshot to SD is only under Device; weather text size is only under Clock/Weather > Weather. Removed duplicate shortcuts without removing either feature.
@@ -378,15 +396,23 @@ Read INSTALL.txt before flashing. Do not downgrade to upstream firmware.
 
 [Illustrated guide](https://github.com/jeromedontdev/pocket-tank-cyd/blob/v{version}/docs/CYD-FEATURES.md)
 """
-    (output / "RELEASE-NOTES.md").write_text(notes, encoding="utf-8")
-    archive = output / f"pocket-tank-cyd-{version}.zip"
+    if board == "elegoo":
+        notes = notes.replace("ESP32-2432S028 CYD only", profile.name + " only")
+        notes = notes.replace("pocket-tank-cyd-app.bin", f"{prefix}-app.bin")
+        notes = notes.replace("pocket-tank-cyd-factory.bin", f"{prefix}-factory.bin")
+        notes = notes.replace(f"pocket-tank-cyd-{version}.zip", f"{prefix}-{version}.zip")
+        notes = notes.replace("**update.ptu**", "**elegoo-update.ptu**")
+        notes = notes.replace("**SHA256SUMS.txt**", "**elegoo-SHA256SUMS.txt**")
+        notes = notes.replace("Read INSTALL.txt", "Read elegoo-INSTALL.txt")
+    (output / f"{asset_prefix}RELEASE-NOTES.md").write_text(notes, encoding="utf-8")
+    archive = output / f"{prefix}-{version}.zip"
     members = sorted(path for path in output.iterdir() if path.is_file())
     with zipfile.ZipFile(archive, "x", zipfile.ZIP_DEFLATED) as bundle:
         for path in members:
             bundle.write(path, path.name)
     checksums = "".join(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
                         for path in sorted(output.iterdir()) if path.is_file())
-    (output / "SHA256SUMS.txt").write_text(checksums, encoding="ascii")
+    (output / f"{asset_prefix}SHA256SUMS.txt").write_text(checksums, encoding="ascii")
     return archive
 
 
@@ -395,8 +421,9 @@ def main():
     parser.add_argument("--build", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--board", choices=BOARDS, default="cyd")
     args = parser.parse_args()
-    print(create_bundle(args.build, args.out, args.version))
+    print(create_bundle(args.build, args.out, args.version, args.board))
 
 
 if __name__ == "__main__":

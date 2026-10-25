@@ -141,6 +141,45 @@ int main(void) {
 }
 """
 
+SENSOR_HARNESS = r"""
+#undef NDEBUG
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#define ESP_OK 0
+#define ESP_LOGE(...) ((void)0)
+#define ROOM_LIGHT_OFF 0
+#define ROOM_LIGHT_MODES 3
+#define CYD_LDR_ADC_CHANNEL 6
+static int writes, reads;
+static uint8_t s_room;
+#if CYD_HAS_LDR
+static int s_adc;
+static bool s_adc_ready = true;
+static int adc_oneshot_read(int unit, int channel, int *raw) {
+    (void)unit; (void)channel; reads++; *raw = 123; return ESP_OK;
+}
+#endif
+static bool nvs_put(const char *key, uint8_t value) {
+    (void)key; (void)value; writes++; return true;
+}
+"""
+
+SENSOR_TEST = r"""
+int main(void) {
+    assert(ambient_set_room_mode(0) && s_room == 0 && writes == 1);
+#if CYD_HAS_LDR
+    assert(ambient_ldr_raw() == 123 && reads == 1);
+    assert(ambient_set_room_mode(1) && s_room == 1 && writes == 2);
+    assert(ambient_set_room_mode(2) && s_room == 2 && writes == 3);
+#else
+    assert(ambient_ldr_raw() == -1 && reads == 0);
+    assert(!ambient_set_room_mode(1) && s_room == 0 && writes == 1);
+    assert(!ambient_set_room_mode(2) && s_room == 0 && writes == 1);
+#endif
+    assert(!ambient_set_room_mode(-1) && !ambient_set_room_mode(3));
+}
+"""
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -171,6 +210,17 @@ def main():
                                   "-I" + str(root / "common"), str(test),
                                   "-o", str(executable), "-lm"], check=True)
         subprocess.run([str(executable)], check=True)
+        sensor = source[source.index("int ambient_ldr_raw("):
+                        source.index("/* The CYD's sensor")]
+        setter = source[source.index("bool ambient_set_room_mode("):
+                        source.index("bool ambient_set_led_mode(")]
+        for has_ldr in (0, 1):
+            test.write_text(f"#define CYD_HAS_LDR {has_ldr}\n" + SENSOR_HARNESS +
+                            sensor + setter + SENSOR_TEST)
+            subprocess.run(command + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+                                      str(test), "-o", str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+        print("PASS: CYD LDR works; ELEGOO never reads battery ADC or persists unsupported DIM/NIGHT")
 
 
 if __name__ == "__main__":

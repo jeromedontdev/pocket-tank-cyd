@@ -2,6 +2,7 @@ __pycache__/
 .DS_Store
 firmware/build/
 firmware/build_cyd/
+firmware/build_elegoo/
 firmware/sdkconfig
 firmware/sdkconfig.old
 firmware/dependencies.lock

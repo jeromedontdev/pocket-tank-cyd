@@ -7659,12 +7659,19 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
     rect_fill(&c, knob - 8, SET_SLIDER_Y - 10, 16, 20, MSP_TEAL);
     button(&c, 32, 120, 384, 36, 0x1c2f36, MSP_TEAL,
            t->companion.display_compact ? "SCALE: NORMAL" : "SCALE: ENLARGED", 2);
+#if !PT_BOARD_ELEGOO
     static const char *const room_names[] = {"ROOM LIGHT: OFF", "ROOM LIGHT: DIM", "ROOM LIGHT: DIM+NIGHT"};
+#endif
     static const char *const led_names[] = {"BACK LED: OFF", "BACK LED: GLOW", "BACK LED: ALERTS"};
     button(&c, 32, 164, 384, 36, 0x1c2f36, MSP_TEAL,
            render_simple_scene() ? "SCENE: SIMPLE" :
            render_scene_detail() == SCENE_ENHANCED ? "SCENE: ENHANCED" : "SCENE: BALANCED", 2);
-    button(&c, 32, 208, 384, 36, 0x1c2f36, MSP_TEAL, room_names[g_device.room_mode % 3], 2);
+    button(&c, 32, 208, 384, 36, 0x1c2f36, MSP_TEAL,
+#if PT_BOARD_ELEGOO
+           "ROOM LIGHT: UNAVAILABLE", 2);
+#else
+           room_names[g_device.room_mode % 3], 2);
+#endif
     button(&c, 32, 252, 384, 36, 0x1c2f36, MSP_TEAL, led_names[g_device.led_mode % 3], 2);
     char room[40];
     if (g_device.room_pct < 0) snprintf(room, sizeof room, "ROOM SENSOR: NOT FOUND");

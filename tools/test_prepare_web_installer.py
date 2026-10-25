@@ -8,6 +8,7 @@ import unittest
 import uuid
 
 from prepare_web_installer import APP, BOARD_MARKER, FACTORY, FEATURE_IMAGES, SLOT_SIZE, stage_site
+from board_profiles import BOARDS
 
 
 class WebInstallerTests(unittest.TestCase):
@@ -113,6 +114,32 @@ class WebInstallerTests(unittest.TestCase):
         self.image[0x20128] = 0
         with self.assertRaisesRegex(ValueError, "Factory"):
             self.stage()
+
+    def test_two_board_staging_and_identity_checks(self):
+        profile = BOARDS["elegoo"]
+        app = bytearray(self.app)
+        app[0x120:0x140] = profile.marker
+        factory = bytearray(0x20000) + app
+        sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in (
+            ("pocket-tank-elegoo-factory.bin", factory), ("pocket-tank-elegoo-app.bin", app)))
+        for wrong in ((factory, sums, self.app), (self.image, sums, app),
+                      (factory, sums.replace("elegoo-app", "cyd-app"), app)):
+            with self.assertRaises(ValueError):
+                stage_site(self.source, self.root / "site", "2.3.6",
+                           self.image, self.checksums(), self.app, elegoo=wrong)
+            self.assertFalse((self.root / "site").exists())
+        stage_site(self.source, self.root / "site", "2.3.6",
+                   self.image, self.checksums(), self.app, elegoo=(factory, sums, app))
+        output = self.root / "site"
+        manifest = json.loads((output / "elegoo-manifest.json").read_text())
+        update = json.loads((output / "elegoo-update.json").read_text())
+        self.assertEqual(manifest["version"], "2.3.6")
+        self.assertEqual(manifest["builds"][0]["parts"][0]["path"], "pocket-tank-elegoo-factory.bin")
+        self.assertEqual(update["board"], "elegoo28")
+        self.assertEqual(update["app"], "pocket-tank-elegoo-app.bin")
+        self.assertEqual(update["sha256"], hashlib.sha256(app).hexdigest())
+        self.assertEqual((output / APP).read_bytes(), self.app)
+        self.assertEqual((output / "pocket-tank-elegoo-app.bin").read_bytes(), app)
 
     def test_invalid_app_images(self):
         variants = [self.app[:0x100], self.app + bytes(SLOT_SIZE),

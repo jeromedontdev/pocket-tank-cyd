@@ -1,5 +1,6 @@
 import unittest
 from make_ota_manifest import make_manifest
+from board_profiles import BOARDS
 
 
 class ManifestTests(unittest.TestCase):
@@ -27,6 +28,16 @@ class ManifestTests(unittest.TestCase):
                 data[offset] ^= 0xFF
                 with self.assertRaises(ValueError):
                     make_manifest(data, "0.3.9", "https://example.com", "")
+
+    def test_signed_elegoo_manifest_and_cross_board_refusal(self):
+        image = self.image()
+        image[0x120:0x140] = BOARDS["elegoo"].marker
+        name, manifest = make_manifest(image, "2.3.6", "https://example.com", "", "elegoo")
+        self.assertEqual(manifest["board"], "elegoo28")
+        self.assertIn("elegoo28", name)
+        for data, board in ((image, "cyd"), (self.image(), "elegoo")):
+            with self.assertRaises(ValueError):
+                make_manifest(data, "2.3.6", "https://example.com", "", board)
 
     def test_refuses_oversized_image_and_bad_release_channel(self):
         data = self.image()

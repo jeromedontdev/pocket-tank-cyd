@@ -2,6 +2,7 @@ import hashlib
 import unittest
 
 from make_sd_update import HEADER, package
+from board_profiles import BOARDS
 
 
 class SDUpdateTests(unittest.TestCase):
@@ -38,6 +39,16 @@ class SDUpdateTests(unittest.TestCase):
         for image in (b"", self.image()[:128], self.image() + bytes(0x1e0000)):
             with self.assertRaises(ValueError):
                 package(image, "0.3.8")
+
+    def test_elegoo_identity_and_cross_board_refusal(self):
+        image = bytearray(self.image())
+        image[0x120:0x140] = BOARDS["elegoo"].marker
+        result = package(image, "2.3.6", b"elegoo28")
+        self.assertEqual(HEADER.unpack(result[:HEADER.size])[1].rstrip(b"\0"), b"elegoo28")
+        for data, board in ((image, b"cyd2432s028"), (self.image(), b"elegoo28"),
+                            (image, b"unknown")):
+            with self.subTest(board=board), self.assertRaises(ValueError):
+                package(data, "2.3.6", board)
 
     def test_reject_invalid_labels(self):
         for label in ("", "x" * 16, "bad\nlabel", "\x7f"):

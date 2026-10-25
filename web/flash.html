@@ -11,6 +11,7 @@
     h1, a { color: #78e3cf; }
     .warning { border: 2px solid #ffc26f; padding: 1rem; border-radius: .5rem; }
     button { padding: .8rem 1.2rem; font: inherit; cursor: pointer; }
+    select { max-width: 100%; padding: .65rem; font: inherit; }
     label { display: block; margin: 1.5rem 0; }
     #status { min-height: 2rem; }
     section { margin: 2rem 0; padding: 1.25rem; border: 1px solid #527782; border-radius: .5rem; }
@@ -25,10 +26,22 @@
 <main>
   <nav aria-label="Main navigation"><a href="./">Features &amp; home</a> &middot; <a href="./play.html">Play in browser</a> &middot; <a href="./viewer.html">Save viewer</a></nav>
   <header class="brand"><img src="./logo.svg" alt="" width="128" height="96"><h1>Pocket Tank CYD</h1></header>
-  <p>For the <strong>ESP32-2432S028 Cheap Yellow Display only</strong>
-    (4 MB flash, 2.8-inch display). Not for other ESP32 boards.
+  <p>For the original <strong>ESP32-2432S028 CYD</strong> and
+    <strong>ELEGOO ESP32-32E 2.8-inch ILI9341V</strong>
+    (4 MB flash, resistive touch). Not for other ESP32 boards.
     The factory installer checks the ESP32 chip family, but cannot identify your display model.
     The save-preserving updater additionally verifies Pocket Tank CYD's identity and layout.</p>
+  <label for="board">Choose your exact display board</label>
+  <select id="board">
+    <option value="cyd2432s028">ESP32-2432S028 CYD (original supported display revision)</option>
+    <option value="elegoo28">ELEGOO ESP32-32E 2.8-inch ILI9341V</option>
+  </select>
+  <p>Selecting the correct image matters: an ESP32-32E module label alone does not identify the LCD.
+    ELEGOO has no room-light sensor; GPIO34 measures battery voltage instead.</p>
+  <p>If an ELEGOO board already has the original CYD firmware and shows white,
+    its installed identity is wrong for the selected board. The safe updater will
+    refuse it. Use an expert app-only conversion with a full-flash backup;
+    do not factory-reset an aquarium you want to keep.</p>
   <p id="release-status" role="status">This flasher installs the latest published stable release. The current release includes clearer Firmware Updates menus, all eight internally stored aquariums, shared decoration inventory and eighteen games. Back up before updating.</p>
   <p>Use desktop <strong>Chrome or Edge over HTTPS</strong> with a USB data cable.
     Close all serial monitors first. Choose one of these separate operations;
@@ -80,7 +93,7 @@
       All artwork is embedded; no SD icons are needed.</li>
   </ol>
   <label><input id="acknowledge" type="checkbox" disabled>
-    I have an ESP32-2432S028 CYD and understand this factory installation
+    I have the exact board selected above and understand this factory installation
     overwrites my saved tanks and settings.</label>
   <esp-web-install-button manifest="./manifest.json" hidden>
     <button slot="activate">Connect for FACTORY RESET</button>
@@ -107,10 +120,12 @@
 </main>
 <script type="module" src="./usb-update.mjs"></script>
 <script type="module">
+  import { boardProfile } from "./board-profiles.mjs";
   const status = document.querySelector("#status");
   const acknowledge = document.querySelector("#acknowledge");
   const installer = document.querySelector("esp-web-install-button");
   const updateAcknowledgement = document.querySelector("#update-acknowledge");
+  const board = document.querySelector("#board");
   updateAcknowledgement.addEventListener("change", () => {
     acknowledge.disabled = updateAcknowledgement.checked || !factoryReady;
     if (updateAcknowledgement.checked) {
@@ -119,27 +134,46 @@
     }
   });
   let factoryReady = false;
-  try {
+  async function loadFactory() {
+    factoryReady = false;
+    acknowledge.checked = false;
+    acknowledge.disabled = true;
+    updateAcknowledgement.checked = false;
+    updateAcknowledgement.disabled = true;
+    updateAcknowledgement.dispatchEvent(new Event("change"));
+    installer.hidden = true;
+    board.disabled = true;
+    try {
     if (!window.isSecureContext || !("serial" in navigator)) {
       throw new Error("USB flashing requires desktop Chrome or Edge over HTTPS.");
     }
-    const response = await fetch("./manifest.json", { cache: "no-store" });
+    const profile = boardProfile(board.value);
+    installer.setAttribute("manifest", profile.manifest);
+    const response = await fetch(profile.manifest, { cache: "no-store" });
     if (!response.ok) throw new Error(`Firmware manifest unavailable (${response.status}).`);
     const manifest = await response.json();
     document.querySelector("#release-status").textContent =
-      `Published firmware: ${manifest.version}. Scene details, Tiny/Jumbo clocks, resizable supporting text and linked screen/LED dimming require 2.1.0 or newer. Illustrated menus, eighteen games, permanent modes and the global Bank require 2.0.0 or newer.`;
+      `Published firmware: ${manifest.version} for ${profile.name}. Separate board images; same games, internal aquariums and menu improvements.`;
     await import("https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module");
     await customElements.whenDefined("esp-web-install-button");
-    status.textContent = `Ready to install Pocket Tank CYD ${manifest.version}.`;
+    status.textContent = `Ready to install Pocket Tank ${manifest.version} for ${profile.name}.`;
     factoryReady = true;
     acknowledge.disabled = updateAcknowledgement.checked;
-    acknowledge.addEventListener("change", () => {
-      installer.hidden = !acknowledge.checked;
-      updateAcknowledgement.disabled = acknowledge.checked;
-    });
   } catch (error) {
     status.textContent = `Installer unavailable: ${error.message} Use the GitHub release downloads instead.`;
+  } finally {
+    board.disabled = false;
+    updateAcknowledgement.disabled = false;
+    updateAcknowledgement.dispatchEvent(new Event("change"));
   }
+  }
+  acknowledge.addEventListener("change", () => {
+    installer.hidden = !factoryReady || !acknowledge.checked;
+    updateAcknowledgement.disabled = acknowledge.checked;
+    board.disabled = acknowledge.checked;
+  });
+  board.addEventListener("change", loadFactory);
+  await loadFactory();
 </script>
 </body>
 </html>

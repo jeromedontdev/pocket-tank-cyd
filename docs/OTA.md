@@ -4,6 +4,15 @@
 
 ## Save-preserving browser USB updates
 
+Since 2.3.6, select the exact **original CYD** or **ELEGOO ESP32-32E 2.8-inch
+ILI9341V** first. Each choice binds the manifest, running boot identity and
+embedded app marker; a different board is refused. ELEGOO uses
+`pocket-tank-elegoo-app.bin`, `elegoo-update.ptu`, `elegoo-ota.json` and
+`elegoo-SHA256SUMS.txt`, with a separate ZIP/factory image. Original CYD asset
+names remain unchanged. If original CYD firmware was mistakenly installed on
+ELEGOO, use the backed-up [explicit app-only conversion](../firmware/CYD.md#recovering-a-wrong-cyd-image-on-elegoo-without-resetting-fish),
+not a factory reset or an unrestricted cross-board update.
+
 Open the [USB installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html) in
 desktop Chrome or Edge and choose **save-preserving USB update**. Make an SD backup first
 and close serial monitors. The updater normally resets the board, checks its
@@ -32,6 +41,8 @@ Prebuilt packages are available from
 Download the bundle, read `INSTALL.txt`, and verify `SHA256SUMS.txt`.
 Copy `update.ptu` to
 `pocket-tank/update.ptu` while powered off. Follow steps 3 and 4 below.
+For ELEGOO, copy **elegoo-update.ptu** to that same `pocket-tank/update.ptu`
+path (rename it on the card); do not copy the original CYD package.
 Artwork is embedded in firmware; no SD icons are needed.
 The application-only binary and factory image are not SD update packages.
 **Do not factory-flash an existing tank: it overwrites NVS and loses saved
@@ -127,6 +138,9 @@ certificate and image verification are never disabled to recover memory.
 
 The stable channel is
 `https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/ota.json`.
+The ELEGOO build instead defaults to
+`https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/elegoo-ota.json`.
+Both channels enforce their distinct board marker.
 Each release workflow packages this small manifest alongside the application.
 It pins the download URL to that exact release tag, never `main` or an
 unversioned app URL, so a changing latest release cannot mix version and image.

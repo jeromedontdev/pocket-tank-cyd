@@ -24,7 +24,14 @@
 #define CYD_LCD_MIRROR_X   0
 #define CYD_LCD_MIRROR_Y   1
 /* the back RGB LED (active low) and the room-light sensor (LDR divider on an ADC1 pin) */
+#if PT_BOARD_ELEGOO
+#define CYD_PIN_LED_R      22
+#define CYD_HAS_LDR        0
+#define CYD_PIN_AUDIO_EN   4
+#else
 #define CYD_PIN_LED_R      4
+#define CYD_HAS_LDR        1
+#endif
 #define CYD_PIN_LED_G      16
 #define CYD_PIN_LED_B      17
 #define CYD_PIN_LDR        34

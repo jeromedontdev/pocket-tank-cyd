@@ -77,7 +77,8 @@
         <a class="button" href="./play.html">Play in your browser</a>
         <a class="button" href="#features">Explore the features</a>
       </div>
-      <p>Made for <strong>ESP32-2432S028 CYD</strong>: 2.8-inch touchscreen,
+      <p>Made for <strong>ESP32-2432S028 CYD</strong> and
+        <strong>ELEGOO ESP32-32E 2.8-inch ILI9341V</strong>: resistive touchscreen,
         4 MB flash, no PSRAM required.</p>
     </div>
     <figure>
@@ -92,12 +93,27 @@
     <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">GitHub release</a>.
     The current release includes all eight internally stored aquariums, shared
     inventory, pearl-mussel income, eighteen games and the audited menus below.
-    <strong>2.3.5</strong> clarifies update navigation and removes duplicate
+    <strong>2.3.6</strong> adds a separate ELEGOO display build and board selection
+    in the installer. <strong>2.3.5</strong> clarifies update navigation and removes duplicate
     controls; GitHub Wi-Fi updating requires 2.3.2 or newer, and SD-free tank
     switching requires 2.3.4 or newer.
     Check the published version above before installing. Older releases remain
     available, but cannot load the expanded current save format.
   </aside>
+
+  <section class="card" aria-labelledby="boards-heading">
+    <p class="eyebrow">New in 2.3.6</p>
+    <h2 id="boards-heading">Two displays, the same little aquarium</h2>
+    <p>The USB installer now offers the original CYD and the ELEGOO
+      ESP32-32E 2.8-inch ILI9341V separately. Each has its own app, factory image,
+      SD update and GitHub Wi-Fi channel; normal updates refuse a different board.</p>
+    <p>The ELEGOO needs different LCD initialization, not different touch pins.
+      Its GPIO34 senses a battery, so automatic room-light dimming is unavailable;
+      manual brightness, touch, games and internal tanks still work.
+      No battery or audio application is included. An ESP32-32E module label
+      alone does not identify other display boards.</p>
+    <a href="./flash.html">Choose your exact board in the installer</a>
+  </section>
 
   <section id="menu-updates" aria-labelledby="menu-updates-heading">
     <p class="eyebrow">New in 2.3.5</p>
@@ -521,7 +537,8 @@
   <section class="card" aria-labelledby="install-heading">
     <h2 id="install-heading">Ready to give your CYD a little world?</h2>
     <ol>
-      <li>Check that your board is the supported <strong>ESP32-2432S028 CYD</strong>.</li>
+      <li>Check that your board is the supported <strong>ESP32-2432S028 CYD</strong>
+        or <strong>ELEGOO ESP32-32E 2.8-inch ILI9341V</strong>, then select it in the flasher.</li>
       <li>Use desktop Chrome or Edge and a USB data cable.</li>
       <li>Open the flasher and choose a save-preserving update for an existing tank,
         or a factory installation for a new board.</li>

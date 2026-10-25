@@ -2,12 +2,14 @@ import {
   cleanLines, parseOTA, identifyFirmware, validateManifest, verifyApp,
   matchesMarker, validatePartitions, validateOTAData, flashOptions,
 } from "./update-core.mjs";
+import { boardProfile } from "./board-profiles.mjs";
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const button = document.querySelector("#safe-update");
 const status = document.querySelector("#update-status");
 const progress = document.querySelector("#update-progress");
 const acknowledge = document.querySelector("#update-acknowledge");
+const boardSelect = document.querySelector("#board");
 let busy = false;
 
 function available() {
@@ -26,7 +28,7 @@ async function fetchFile(path, type) {
 }
 
 // Read the console without taking ownership of the port away from this update.
-async function inspectFirmware(port, version) {
+async function inspectFirmware(port, version, board) {
   await port.open({ baudRate: 115200, bufferSize: 65536 });
   const reader = port.readable.getReader();
   const decoder = new TextDecoder();
@@ -80,7 +82,7 @@ async function inspectFirmware(port, version) {
     await waitUntil(complete => cleanLines(complete).some(line => line.startsWith("pocket-tank ")),
       15000, "CYD boot identity was not received after reset. Nothing was flashed.");
     const identity = identifyFirmware(await waitUntil(hasOTA, 12000,
-      "The rebooted firmware did not answer ota. Nothing was flashed.", true), version);
+      "The rebooted firmware did not answer ota. Nothing was flashed.", true), version, board);
     if (identity.slot !== before.slot || identity.version !== before.version || identity.build !== before.build) {
       throw new Error("Firmware/slot changed during detection. No flash was written; finish pending updates first.");
     }
@@ -95,7 +97,9 @@ async function inspectFirmware(port, version) {
 
 button.addEventListener("click", async () => {
   if (busy) return;
+  const board = boardSelect.value;
   busy = true;
+  boardSelect.disabled = true;
   available();
   const factory = document.querySelector("#factory-section");
   factory.inert = true;
@@ -105,12 +109,12 @@ button.addEventListener("click", async () => {
     // Port selection must be the first await, while the click still has user activation.
     port = await navigator.serial.requestPort();
     status.textContent = "Downloading and checking the app-only release…";
-    const manifest = validateManifest(await fetchFile("./update.json", "json"));
+    const manifest = validateManifest(await fetchFile(boardProfile(board).update, "json"), board);
     const bytes = await fetchFile(`./${manifest.app}`, "bytes");
     await verifyApp(bytes, manifest);
     status.textContent = "Checking running/boot slots, then restarting to verify the CYD board identity…";
-    identity = await inspectFirmware(port, manifest.version);
-    if (!window.confirm(`Verified Pocket Tank CYD ${identity.version}, ${identity.slot}.\n\n` +
+    identity = await inspectFirmware(port, manifest.version, board);
+    if (!window.confirm(`Verified ${boardProfile(board).name}, Pocket Tank ${identity.version}, ${identity.slot}.\n\n` +
         `Update to ${manifest.version} at 0x${identity.address.toString(16)}?\n` +
         "Only the running app will be replaced. NVS, saved tanks and the partition table will not be written.\n\n" +
         "Keep USB power connected. An interrupted active-slot write may require USB recovery. Continue?")) {
@@ -127,7 +131,7 @@ button.addEventListener("click", async () => {
     if (loader.chip?.CHIP_NAME !== "ESP32") throw new Error("Wrong chip family. No flash was written.");
     validatePartitions(await loader.readFlash(0x8000, 0x1000));
     validateOTAData(await loader.readFlash(0xf000, 0x2000), identity);
-    if (!matchesMarker(await loader.readFlash(identity.address + 0x120, 32))) {
+    if (!matchesMarker(await loader.readFlash(identity.address + 0x120, 32), board)) {
       throw new Error("Installed app is not the verified CYD firmware. No flash was written.");
     }
     const options = flashOptions(identity, bytes, (_file, written, total) => {
@@ -158,6 +162,7 @@ button.addEventListener("click", async () => {
       status.textContent += ` Port cleanup failed: ${error.message}. Close this tab before reconnecting.`;
     }
     busy = false;
+    boardSelect.disabled = false;
     factory.inert = false;
     available();
   }

@@ -20,6 +20,30 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- 2.3.6 adds an explicit `PT_BOARD_VARIANT=cyd|elegoo`, separate build
+  directories and `PT_BOARD_ELEGOO=1` propagated from tankcore to HAL.
+  Original CYD `cyd2432s028` keeps its custom LCD sequence; ELEGOO `elegoo28`
+  uses ILI9341V default initialization/BGR with the same LCD/touch/SD pins,
+  red LED22 and audio-enable4 high. GPIO34 is battery sensing: never initialize
+  its ADC as an LDR; report room-light controls unavailable, retain manual
+  brightness. An ESP32-32E module label alone does not identify a display.
+  Exact official source and app-only conversion instructions are in CYD.md.
+  Preserve all partitions/saves. Normal USB/SD/Wi-Fi updates refuse board
+  mismatches; deliberate local recovery requires a full dump, positively
+  detected slot and `-AllowBoardMigration -AppSlot ...`. Do not make a general
+  cross-board bypass. Separate ELEGOO assets use `pocket-tank-elegoo-*`,
+  `elegoo-update.ptu`, `elegoo-ota.json` and `elegoo-SHA256SUMS.txt`;
+  SD discovery still uses `update.ptu` so rename when copying. Website has an
+  explicit selector; freeze selection during USB operations and bind fetched
+  manifest, banner and app marker to that identity. Compile/runtime tests
+  cannot establish physical LCD colors/touch: require a view of the actual
+  board or user confirmation. The authorized webcam currently views COM4,
+  not COM8; port numbers are local, not a public hardware identifier.
+  Current validation status: COM8 boots the local ELEGOO app, exact image
+  readback and Mira/Bolt/settings persistence passed. Physical COM8 LCD,
+  colors/orientation/touch remain unconfirmed. Do not tag/publish 2.3.6 as
+  verified hardware support until that check passes. COM4 is verified on
+  published 2.3.5, including full app readback and another persistence reboot.
 - 2.3.4 moves all eight aquarium archives to internal SPIFFS; SD is only for
   legacy import, backups, screenshots and offline updates. Firmware owns this
   policy in `persist_port_esp.c`; `sd_port_cyd.c` exposes read-only legacy import.
@@ -218,7 +242,8 @@ or deployment is published. Update this file when its contracts change.
 
 ## Product constraints
 
-- Supported board only: **ESP32-2432S028 CYD**, ESP32, 4 MB flash, no PSRAM,
+- Supported boards: **ESP32-2432S028 CYD** (existing revision) and
+  **ELEGOO ESP32-32E 2.8-inch ILI9341V**, ESP32, 4 MB flash, no PSRAM,
   320x240 SPI LCD, XPT2046 resistive touch. Do not restore generic-board,
   model inference/training, audio, battery/PMIC, or IMU dependencies.
 - This is a quiet, local, rules-based aquarium. Wi-Fi is optional for normal
@@ -525,13 +550,13 @@ For feature work, update the relevant entries in:
 - Tag the verified release commit `vMAJOR.MINOR.PATCH` and push that tag.
   `.github/workflows/release.yml` builds/tests/packages and publishes.
   Never move an existing tag or replace historical firmware assets.
-- Verify the release action, nine download assets (ZIP, app, factory, PTU,
- ota.json, checksums, notes, install instructions, license), checksums, board/version
+- Verify the release action, nine download assets per board (ZIP, app, factory,
+  PTU, OTA JSON, checksums, notes, install instructions, license), checksums, board/version
   markers and stable/latest status. Check actual package contents, not only
   the presence of a release page.
 - Pages uses `tools/prepare_web_installer.py` to fetch the latest stable release,
-  verify checksums/board/layout/app match, then stage the site and both firmware
-  images. Release workflow explicitly dispatches Pages after publication.
+  verify checksums/board/layout/app match, then stage the site and both boards'
+  app/factory images and manifests. Release workflow explicitly dispatches Pages after publication.
 - Wait for Pages success; verify public home/flasher/viewer/images, manifest
   version, app checksum and latest download. Keep update/factory warnings.
 - Use available GitHub tools or authenticated REST without exposing tokens.

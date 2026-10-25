@@ -54,10 +54,15 @@ jobs:
           p = Path('_site')
           b = json.loads((p/'play-build.json').read_text())
           f = json.loads((p/'manifest.json').read_text())
+          e = json.loads((p/'elegoo-manifest.json').read_text())
+          u = json.loads((p/'update.json').read_text())
+          eu = json.loads((p/'elegoo-update.json').read_text())
           tag = os.environ['RELEASE_TAG']
           commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
           tagged = subprocess.check_output(['git', 'rev-parse', tag+'^{commit}'], text=True).strip()
           assert b['version'] == f['version'] and tag == 'v'+f['version'] and commit == tagged and b.get('commit', commit) == commit, 'Browser/installer release mismatch'
+          assert e['version'] == u['version'] == eu['version'] == f['version'], 'Board installer versions differ'
+          assert u['board'] == 'cyd2432s028' and eu['board'] == 'elegoo28', 'Board identities differ'
           b.update(release=tag, commit=commit)
           (p/'play-build.json').write_text(json.dumps(b)+'\n')
           PY
@@ -69,6 +74,7 @@ jobs:
           npm install --prefix .browser-tools --no-save playwright@1.56.1
           .browser-tools/node_modules/.bin/playwright install --with-deps chromium
           node tools/test_browser.cjs
+          node tools/test_usb_installer.cjs
       - name: Reject deployment if latest stable release changed during the build
         env:
           GH_TOKEN: ${{ github.token }}

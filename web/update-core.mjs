@@ -1,7 +1,8 @@
 // Fixed CYD layout; never take a flash address from a downloaded manifest or user input.
+import { boardProfile, boardMarker } from "./board-profiles.mjs";
 export const SLOT_SIZE = 0x1e0000;
 const SLOTS = Object.freeze({ ota_0: 0x20000, ota_1: 0x200000 });
-export const BOARD_MARKER = new TextEncoder().encode("PTBOARD\0" + "cyd2432s028".padEnd(24, "\0"));
+export const BOARD_MARKER = boardMarker("cyd2432s028");
 
 function versionParts(version) {
   if (typeof version !== "string" || !/^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(version)) {
@@ -38,10 +39,11 @@ export function parseOTA(text) {
   return results[0];
 }
 
-export function identifyFirmware(text, targetVersion) {
+export function identifyFirmware(text, targetVersion, board = "cyd2432s028") {
+  boardProfile(board);
   const ota = parseOTA(text);
   const banners = cleanLines(text).filter(line => line.startsWith("pocket-tank "));
-  const expected = `pocket-tank v${ota.version} CYD (build ${ota.build}) for cyd2432s028 boot`;
+  const expected = `pocket-tank v${ota.version} CYD (build ${ota.build}) for ${board} boot`;
   if (!banners.length || banners.some(line => line !== expected &&
       line !== `${expected} (woken by button)`)) {
     throw new Error("Missing or mismatched CYD board/firmware boot identity. No flash was written.");
@@ -52,9 +54,10 @@ export function identifyFirmware(text, targetVersion) {
   return ota;
 }
 
-export function validateManifest(manifest) {
-  if (!manifest || manifest.format !== 1 || manifest.board !== "cyd2432s028" ||
-      manifest.app !== "pocket-tank-cyd-app.bin" ||
+export function validateManifest(manifest, board = manifest?.board) {
+  const profile = boardProfile(board);
+  if (!manifest || manifest.format !== 1 || manifest.board !== board ||
+      manifest.app !== profile.app ||
       !Number.isInteger(manifest.size) || manifest.size < 0x140 || manifest.size > SLOT_SIZE ||
       !/^[a-f0-9]{64}$/.test(manifest.sha256) || !/^[a-f0-9]{32}$/.test(manifest.md5)) {
     throw new Error("Invalid save-preserving update manifest.");
@@ -63,15 +66,16 @@ export function validateManifest(manifest) {
   return manifest;
 }
 
-export function matchesMarker(bytes) {
-  return bytes.length === BOARD_MARKER.length &&
-    bytes.every((value, index) => value === BOARD_MARKER[index]);
+export function matchesMarker(bytes, board = "cyd2432s028") {
+  const marker = boardMarker(board);
+  return bytes.length === marker.length &&
+    bytes.every((value, index) => value === marker[index]);
 }
 
 export async function verifyApp(bytes, manifest) {
   validateManifest(manifest);
   if (bytes.length !== manifest.size || bytes[0] !== 0xe9 || bytes[12] !== 0 ||
-      bytes[13] !== 0 || !matchesMarker(bytes.slice(0x120, 0x140))) {
+      bytes[13] !== 0 || !matchesMarker(bytes.slice(0x120, 0x140), manifest.board)) {
     throw new Error("Downloaded app has the wrong size, chip or CYD board marker.");
   }
   const digest = await crypto.subtle.digest("SHA-256", bytes);

@@ -2,7 +2,14 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.5**
+**An illustrated tour of Pocket Tank CYD 2.3.6**
+
+**2.3.6 board support:** the website installer offers separate original CYD
+and ELEGOO ESP32-32E 2.8-inch ILI9341V images. Both run the same aquarium;
+ELEGOO uses different LCD initialization and has no room-light sensor.
+Select the exact board for USB, SD or Wi-Fi updates. A module's ESP32-32E
+label alone is not enough to identify it. See the
+[hardware/board-conversion guide](../firmware/CYD.md#supported-board-variants).
 
 **2.3.5 menu cleanup:** use **Settings > Device >
 Firmware Updates** for both SD and GitHub Wi-Fi updates (called **SD Updates**
@@ -228,7 +235,8 @@ not merely the original game on a different board. It credits and retains
 Pocket Tank's feeding, growth, personality, trust and
 aquarium care, while adding more ways to decorate, collect, progress and
 keep favorite fish. It is built specifically for the **ESP32-2432S028
-Cheap Yellow Display**, rather than trying to fit every supported board.
+Cheap Yellow Display** and **ELEGOO ESP32-32E 2.8-inch ILI9341V**,
+rather than trying to fit every ESP32 display.
 
 The headline additions:
 
@@ -363,6 +371,7 @@ The story artwork adds no new quest obligations; game modes are separately
 chosen at first run.
 These are independently versioned CYD-only releases, not upstream multi-board releases.
 Read the included `INSTALL.txt` and check `SHA256SUMS.txt`.
+For ELEGOO use `elegoo-INSTALL.txt` and `elegoo-SHA256SUMS.txt` instead.
 
 **New-board browser flashing:** the
 [USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html) works in
@@ -379,6 +388,7 @@ when Wi-Fi is unavailable. Standard releases are not publisher-signed.
 - **Already using this CYD fork:** back up your active aquarium, power off
   before moving SD, copy `update.ptu` to `pocket-tank/update.ptu`, then install
   through Settings > Device > Firmware Updates > Check SD Card. No SD artwork is required.
+  ELEGOO uses `elegoo-update.ptu`, renamed to `pocket-tank/update.ptu` on the card.
 - **New board:** use the factory image at `0x0`; all artwork is embedded in firmware.
   **Factory flashing overwrites saved tanks, Wi-Fi credentials, calibration
   and collection identity. Never use it for a normal upgrade.**

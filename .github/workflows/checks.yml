@@ -29,7 +29,7 @@ jobs:
           esp_idf_version: v6.1
           target: esp32
           path: firmware
-          command: idf.py -B build_cyd build
+          command: idf.py -B build_cyd -DPT_BOARD_VARIANT=cyd build && idf.py -B build_elegoo -DSDKCONFIG=build_elegoo/sdkconfig -DPT_BOARD_VARIANT=elegoo build
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -38,6 +38,7 @@ jobs:
       - run: python tools/test_tank_backup.py --cc gcc --flat-edges
       - run: python tools/test_rpg.py --cc gcc
       - run: python tools/test_page_art.py --cc gcc
+      - run: python tools/test_page_art.py --cc gcc --board elegoo
       - run: python tools/test_renderer_stress.py --cc gcc --frames 1200 --seconds 30
       - run: python tools/test_creative.py --cc gcc
       - run: python tools/test_profiles.py --cc gcc
