@@ -23,7 +23,7 @@ or deployment is published. Update this file when its contracts change.
 - 2.3.6 adds an explicit `PT_BOARD_VARIANT=cyd|elegoo`, separate build
   directories and `PT_BOARD_ELEGOO=1` propagated from tankcore to HAL.
   Original CYD `cyd2432s028` keeps its custom LCD sequence; ELEGOO `elegoo28`
-  uses ILI9341V default initialization/BGR with the same LCD/touch/SD pins,
+  uses ELEGOO's ILI9341V power/gamma sequence/BGR with the same LCD/touch/SD pins,
   red LED22 and audio-enable4 high. GPIO34 is battery sensing: never initialize
   its ADC as an LDR; report room-light controls unavailable, retain manual
   brightness. An ESP32-32E module label alone does not identify a display.
@@ -37,13 +37,44 @@ or deployment is published. Update this file when its contracts change.
   explicit selector; freeze selection during USB operations and bind fetched
   manifest, banner and app marker to that identity. Compile/runtime tests
   cannot establish physical LCD colors/touch: require a view of the actual
-  board or user confirmation. The authorized webcam currently views COM4,
-  not COM8; port numbers are local, not a public hardware identifier.
+  board or user confirmation. The user moved COM8 into the authorized webcam
+  view during ELEGOO testing; COM8 backlight off/on was verified on camera.
+  Do not assume it still views COM4. Port numbers are local,
+  not a public hardware identifier.
   Current validation status: COM8 boots the local ELEGOO app, exact image
-  readback and Mira/Bolt/settings persistence passed. Physical COM8 LCD,
-  colors/orientation/touch remain unconfirmed. Do not tag/publish 2.3.6 as
-  verified hardware support until that check passes. COM4 is verified on
+  readback and Mira/Bolt/settings persistence passed. White/striped LCD root
+  cause identified: failed SD mounting followed by spi_bus_free(SPI3_HOST)
+  disrupted the live SPI2 LCD DMA on this ESP32/IDF stack. Keeping SPI3
+  allocated for the boot lifetime restores the full UI, not just GRAM reads.
+  Preserve that intentional failure-path allocation; do not "clean it up"
+  without testing actual LCD updates after a missing/failed SD card. Native
+  test_cyd_sd_init.py covers bus failure, mount failure and mounted SD.
+  Isolated no-save tests using both raw polling SPI and ESP LCD DMA showed
+  correct RGB bars; the factory program also worked. A full power cycle did
+  not fix the failure. No evidence supports presuming defective hardware.
+  Controller IDs 04/D3/DA/DB/DC are zero despite valid status/RGB GRAM reads:
+  never use those zero IDs for automatic profile detection.
+  The recovered 1 MHz diagnostic UI was mirrored/upside-down and slow.
+  Restored 40 MHz and automatic CS; ELEGOO mirror(true, false) now gives
+  upright/readable text on the webcam. Measured 16.5-16.6 fps, 60-61 ms/frame,
+  17.5-18.1 ms flush on the full-resolution saved welcome screen.
+  Physical touch validation is still pending; the user was unavailable for
+  the NEXT-button test. Do not assume touch is verified or erase calibration.
+  Do not leave
+  diagnostic bars, startup delays or alternate-controller tests enabled.
+  Do not tag/publish 2.3.6 as verified support until display/touch pass.
+  COM4 is verified on
   published 2.3.5, including full app readback and another persistence reboot.
+- User's requested direction after COM8 is fixed: prefer one binary for
+  compatible ESP32/4MiB CYDs, with saved runtime hardware profiles for panel
+  initialization/order/inversion, touch and peripheral capabilities. Keep an
+  installer/serial/BOOT-button recovery selection because a wrong profile
+  can hide the screen. Use detection only when trustworthy, never all-zero
+  IDs; don't guess pins or probe active outputs indiscriminately. Preserve
+  old board identities safely during migration, rollback and each profile's
+  calibration. Do not promise one binary for different ESP32 chip families,
+  parallel/RGB buses, larger framebuffer budgets or untested boards. Current
+  separate builds are interim, not a completed universal-profile feature.
 - 2.3.4 moves all eight aquarium archives to internal SPIFFS; SD is only for
   legacy import, backups, screenshots and offline updates. Firmware owns this
   policy in `persist_port_esp.c`; `sd_port_cyd.c` exposes read-only legacy import.

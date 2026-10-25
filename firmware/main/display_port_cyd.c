@@ -29,8 +29,34 @@ static bool s_block_valid[3][CYD_PANEL_W / (CYD_STRIPE_ROWS / 2)];
 static int s_layout_width, s_layout_height, s_layout_tile;
 static int64_t s_wait_us, s_send_us;
 static unsigned s_blocks_sent, s_blocks_skipped;
-/* This CYD revision needs ST7789-style timing/gamma, not the ILI9341 defaults. */
-#if !PT_BOARD_ELEGOO
+/* Panel-specific power/gamma settings; the original CYD sequence stays unchanged. */
+#if PT_BOARD_ELEGOO
+static const ili9341_lcd_init_cmd_t cyd_init_commands[] = {
+    /* Undo the driver's early sleep-out before programming panel power. */
+    {0x01, NULL, 0, 150},
+    {0xCF, (uint8_t[]){0x00, 0xC9, 0x30}, 3, 0},
+    {0xED, (uint8_t[]){0x64, 0x03, 0x12, 0x81}, 4, 0},
+    {0xE8, (uint8_t[]){0x85, 0x10, 0x7A}, 3, 0},
+    {0xCB, (uint8_t[]){0x39, 0x2C, 0x00, 0x34, 0x02}, 5, 0},
+    {0xF7, (uint8_t[]){0x20}, 1, 0},
+    {0xEA, (uint8_t[]){0x00, 0x00}, 2, 0},
+    {0xC0, (uint8_t[]){0x1B}, 1, 0},
+    {0xC1, (uint8_t[]){0x00}, 1, 0},
+    {0xC5, (uint8_t[]){0x44, 0x30}, 2, 0},
+    {0xC7, (uint8_t[]){0xB6}, 1, 0},
+    {0x36, (uint8_t[]){0x08}, 1, 0},
+    {0x3A, (uint8_t[]){0x55}, 1, 0},
+    {0xB1, (uint8_t[]){0x00, 0x1A}, 2, 0},
+    {0xB6, (uint8_t[]){0x0A, 0x82}, 2, 0},
+    {0xF2, (uint8_t[]){0x00}, 1, 0},
+    {0x26, (uint8_t[]){0x01}, 1, 0},
+    {0xE0, (uint8_t[]){0x0F, 0x2A, 0x28, 0x08, 0x0E, 0x08, 0x54, 0xA9, 0x43, 0x0A, 0x0F, 0x00, 0x00, 0x00, 0x00}, 15, 0},
+    {0xE1, (uint8_t[]){0x00, 0x15, 0x17, 0x07, 0x11, 0x06, 0x2B, 0x56, 0x3C, 0x05, 0x10, 0x0F, 0x3F, 0x3F, 0x0F}, 15, 0},
+    {0x2B, (uint8_t[]){0x00, 0x00, 0x01, 0x3F}, 4, 0},
+    {0x2A, (uint8_t[]){0x00, 0x00, 0x00, 0xEF}, 4, 0},
+    {0x11, NULL, 0, 120},
+};
+#else
 static const ili9341_lcd_init_cmd_t cyd_init_commands[] = {
     {0xB2, (uint8_t[]){0x0C, 0x0C, 0x00, 0x33, 0x33}, 5, 0},
     {0xB7, (uint8_t[]){0x35}, 1, 0},
@@ -94,12 +120,10 @@ bool display_port_init(void) {
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST, &io_cfg, &io));
 
-#if !PT_BOARD_ELEGOO
     ili9341_vendor_config_t vendor_cfg = {
         .init_cmds = cyd_init_commands,
         .init_cmds_size = sizeof(cyd_init_commands) / sizeof(cyd_init_commands[0]),
     };
-#endif
     esp_lcd_panel_dev_config_t panel_cfg = {
         .reset_gpio_num = CYD_PIN_LCD_RST,
 #if PT_BOARD_ELEGOO
@@ -108,18 +132,23 @@ bool display_port_init(void) {
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
 #endif
         .bits_per_pixel = 16,
-#if !PT_BOARD_ELEGOO
         .vendor_config = &vendor_cfg,
-#endif
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(io, &panel_cfg, &s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(s_panel));
+#if !PT_BOARD_ELEGOO
     ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(io, 0x38, NULL, 0));
     ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(io, 0x13, NULL, 0));
+#endif
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(s_panel, false));
     ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(s_panel, false));
+#if PT_BOARD_ELEGOO
+    /* This panel's native column direction differs from the original CYD. */
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, true, false));
+#else
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, false, false));
+#endif
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(s_panel, true));
 
     ledc_timer_config_t timer = {

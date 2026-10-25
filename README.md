@@ -26,6 +26,14 @@ actual desktop renderer.
 
 ## New in 2.3.6: ELEGOO display support
 
+**Unreleased development:** board-specific builds and installer paths are
+implemented. Physical tests traced the white/striped display to failed-SD
+cleanup disturbing LCD DMA; retaining the SD bus restores visible output.
+The full UI is now upright at normal speed; public support is held pending
+physical touch validation;
+verified public 2.3.5
+continues to target the original board.
+
 Choose your exact board in the [website installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html).
 The ELEGOO uses the same LCD/touch SPI pins but an **ILI9341V**, not the original
 supported CYD revision's custom initialization. Its red LED is GPIO22; GPIO4

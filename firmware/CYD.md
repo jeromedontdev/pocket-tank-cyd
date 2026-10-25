@@ -15,7 +15,29 @@ battery/PMIC and IMU drivers have been removed from the source tree.
 | Build choice | Board identity | LCD initialization | Red LED | GPIO34 |
 |---|---|---|---|---|
 | `cyd` (default) | `cyd2432s028` | Existing CYD custom ST7789-style sequence | 4 | LDR |
-| `elegoo` | `elegoo28` | ILI9341 driver defaults, BGR order | 22 | Battery sensing, never read as light |
+| `elegoo` | `elegoo28` | ELEGOO ILI9341V power/gamma sequence, BGR | 22 | Battery sensing, never read as light |
+
+**Development status:** ELEGOO integration is not yet a verified public
+release. Physical testing identified the white/striped-screen cause: after
+an absent/failed SD card, freeing SPI3 disrupted the already-running SPI2
+LCD DMA on the tested ESP32/ESP-IDF stack. The SD failure path now logs its
+error without formatting the card and retains the SPI3 bus for the boot's
+lifetime. Independent display tests and the full UI then displayed correctly.
+The small retained bus allocation is intentional, not a mounted SD card.
+SD features still report unavailable when mounting fails.
+Normal 40 MHz SPI and automatic chip-select are restored. ELEGOO-specific
+panel mirroring produces upright, readable text on the webcam; the measured
+full-resolution welcome screen runs at 16.5-16.6 fps (60-61 ms/frame).
+Physical touch validation is still pending before release; successful SPI
+writes or unit tests alone are not enough.
+The latest verified public release remains 2.3.5 for the original board.
+
+The intended follow-up is a single image with saved hardware profiles for
+compatible ESP32/4 MiB boards, plus installer/serial/button recovery when a
+wrong profile makes the screen unreadable. Automatic controller ID is not
+sufficient: this test board returns zero IDs even though status/GRAM reads
+work. Different ESP32 families or display buses may still need separate
+builds. Runtime profiles are not implemented by the current build choices.
 
 The ELEGOO ESP32-32E 2.8-inch resistive-touch board is documented by
 [ELEGOO](https://wiki.elegoo.com/oshw-parts-&-accessories/esp32-dispaly-introduction).

@@ -83,7 +83,8 @@ bool sd_port_init(void) {
     err = esp_vfs_fat_sdspi_mount("/sdcard", &host, &device, &mount, &card);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "SD mount failed: %s; card NOT formatted", esp_err_to_name(err));
-        spi_bus_free(SPI3_HOST); return false;
+        /* Keep SPI3 allocated: ESP32 DMA teardown also stops the live SPI2 LCD. */
+        return false;
     }
     s_mounted = true;
     ESP_LOGI(TAG, "SD mounted: %llu MiB", (unsigned long long)card->csd.capacity * card->csd.sector_size / (1024 * 1024));
