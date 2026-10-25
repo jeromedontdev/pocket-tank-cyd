@@ -53,7 +53,12 @@ void touch_port_set_bias(int px) { s_bias_y = px; }
 int  touch_port_bias(void) { return s_bias_y; }
 
 typedef struct { float x[3], y[3]; } cyd_cal_t;
+#if PT_BOARD_ELEGOO
+/* Keep the raw coordinate basis stable for existing saved calibrations. */
+static cyd_cal_t s_calibration = {{1, 0, 0}, {0, -1, 179}};
+#else
 static cyd_cal_t s_calibration = {{1, 0, 0}, {0, 1, 0}};
+#endif
 static int s_cal_target = -1;
 static float s_cal_x[5], s_cal_y[5], s_cal_sum_x, s_cal_sum_y;
 static unsigned s_cal_samples;

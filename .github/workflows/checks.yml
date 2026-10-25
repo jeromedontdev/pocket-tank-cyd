@@ -47,6 +47,7 @@ jobs:
       - run: python tools/test_cyd_display.py --cc gcc
       - run: python tools/test_cyd_sd_init.py --cc gcc
       - run: python tools/test_cyd_settings.py --cc gcc
+      - run: python tools/test_cyd_touch_defaults.py --cc gcc
       - run: python tools/test_ambient.py --cc gcc
       - run: python tools/test_brightness.py --cc gcc
       - run: python tools/test_weather.py --cc gcc

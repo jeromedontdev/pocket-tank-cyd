@@ -58,8 +58,14 @@ or deployment is published. Update this file when its contracts change.
   Restored 40 MHz and automatic CS; ELEGOO mirror(true, false) now gives
   upright/readable text on the webcam. Measured 16.5-16.6 fps, 60-61 ms/frame,
   17.5-18.1 ms flush on the full-resolution saved welcome screen.
-  Physical touch validation is still pending; the user was unavailable for
-  the NEXT-button test. Do not assume touch is verified or erase calibration.
+  User reported backwards touch and then fixed it using the calibration tool.
+  ELEGOO's uncalibrated affine default now flips logical Y: {{1,0,0},{0,-1,179}}.
+  Keep the raw XPT coordinate basis unchanged so existing saved affine_v1
+  calibration still overrides defaults without invalidation. A temporary raw
+  Y-mirror build was replaced with this compatible fix; COM8's boot confirms
+  its saved calibration loads. test_cyd_touch_defaults.py tests both boards,
+  both UI sizes and a saved affine override. Fresh uncalibrated physical touch
+  still needs checking; do not erase the user's working calibration to test it.
   Do not leave
   diagnostic bars, startup delays or alternate-controller tests enabled.
   Do not tag/publish 2.3.6 as verified support until display/touch pass.

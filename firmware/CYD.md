@@ -28,8 +28,12 @@ SD features still report unavailable when mounting fails.
 Normal 40 MHz SPI and automatic chip-select are restored. ELEGOO-specific
 panel mirroring produces upright, readable text on the webcam; the measured
 full-resolution welcome screen runs at 16.5-16.6 fps (60-61 ms/frame).
-Physical touch validation is still pending before release; successful SPI
-writes or unit tests alone are not enough.
+The user corrected backwards touch using calibration. ELEGOO's uncalibrated
+default now reverses logical Y to match the upright panel; saved affine
+calibration overrides that default using the unchanged raw coordinate basis.
+Existing calibrations are not erased or invalidated. The fresh-board default
+still needs physical verification before release; successful unit tests alone
+are not enough.
 The latest verified public release remains 2.3.5 for the original board.
 
 The intended follow-up is a single image with saved hardware profiles for
