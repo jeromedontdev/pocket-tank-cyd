@@ -618,11 +618,16 @@ bool progression_mussel_collect(tank_t *t) {
     t->mussel.bank = (uint8_t)coins; t->sd_balance -= coins; t->sd_earned -= coins;
     s_shop_notice = "SAVE FAILED - PEARLS KEPT"; return false;
 }
+bool progression_mussel_healthy(const tank_t *t) {
+    if (!t || !t->n_fish) return false;
+    for (int i = 0; i < t->n_fish; i++)
+        if (!(t->fish[i].hunger < 8.5f) || !(t->fish[i].stress < 7)) return false;
+    return true;
+}
 static void mussel_tick(tank_t *t, float dt) {
     if (!isfinite(dt) || dt <= 0 || progression_creative(t) || !t->mussel.owned ||
         !t->n_fish || t->mussel.generated >= MUSSEL_DAILY_LIMIT || t->mussel.bank >= MUSSEL_DAILY_LIMIT) return;
-    for (int i = 0; i < t->n_fish; i++)
-        if (!(t->fish[i].hunger < 8.5f) || !(t->fish[i].stress < 7)) return;
+    if (!progression_mussel_healthy(t)) return;
     double total = t->mussel_fraction + fminf(dt, 1);
     unsigned seconds = (unsigned)total;
     t->mussel_fraction = total - seconds;

@@ -2,7 +2,14 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.0**
+**An illustrated tour of Pocket Tank CYD 2.3.1**
+
+Version 2.3.1 adds an explicit inventory-item **BACK**, cancels
+unconfirmed sales when returning to the list, and explains when the mussel
+is paused for hungry/stressed fish. The list footer is hidden behind the item
+panel so there is only one Back. It saves 19,312 bytes versus 2.3.0 while
+retaining the two-slot update layout and certificate-verified HTTPS client.
+Weather and GitHub Pages certificate validation passed on the actual CYD.
 
 ### New in 2.3.0: decoration inventory and pearl-mussel income
 

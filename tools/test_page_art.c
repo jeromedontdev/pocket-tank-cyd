@@ -48,6 +48,7 @@ static void check_inventory_ui(void) {
     assert(text_w("1 COIN/10 HEALTHY MINUTES", 1) <= 320);
     assert(text_w("NO CARE REWARDS TO UNLOCK.", 1) <= 320);
     assert(text_w("DAILY LIMIT - BACK TOMORROW", 1) <= 320);
+    assert(text_w("PAUSED - FEED AND CALM FISH", 1) <= 320);
     assert(text_w("STORE > TANKS > PLACE", 1) <= 400);
     render_shop_leave();
     assert(inventory_touch(&t, 180, 77) == SHOP_TAP_KEPT && g_shp_inventory);
@@ -85,6 +86,13 @@ static void check_inventory_ui(void) {
     action = inventory_touch(&t, 220, 276);
     assert(action == INV_SELL && render_shop_inventory_action(&t, action));
     assert(progression_inventory_stored(&t, 9) == 0);
+    assert(inventory_touch(&t, 220, 276) == SHOP_TAP_KEPT && g_shp_sell_armed);
+    tank_t before_back = t;
+    assert(inventory_touch(&t, 344, 64) == SHOP_TAP_KEPT);
+    assert(g_inventory_item == -1 && !g_shp_sell_armed && g_shp_inventory);
+    assert(!memcmp(&t, &before_back, sizeof t));
+    assert(inventory_touch(&t, 120, SHP_ROW_Y0 + slot % SHP_PER_PAGE * SHP_ROW_DY + 10) == SHOP_TAP_KEPT);
+    assert(g_inventory_item == 9 && !g_shp_sell_armed);
     render_shop_leave();
     assert(inventory_touch(&t, 350, 77) == SHOP_TAP_KEPT && g_shp_mussel);
     t.mussel.version = t.mussel.owned = 1;
@@ -96,9 +104,34 @@ static void check_inventory_ui(void) {
     assert(inventory_touch(&t, 280, 276) == SHOP_TAP_KEPT && !g_shp_mussel);
     assert(inventory_touch(&t, 180, 77) == SHOP_TAP_KEPT && g_shp_inventory);
     assert(inventory_touch(&t, 100, MSP_CLOSE_Y + 10) == SHOP_TAP_KEPT && g_shp_mussel);
-    for (int state = 0; state < 4; state++) {
+    for (int i = 0; i < t.n_fish; i++) { t.fish[i].hunger = 2; t.fish[i].stress = 0; }
+    assert(progression_mussel_healthy(&t));
+    assert(!progression_mussel_healthy(NULL));
+    t.fish[t.n_fish - 1].hunger = 8.5f;
+    assert(!progression_mussel_healthy(&t));
+    t.fish[t.n_fish - 1].hunger = 2;
+    t.fish[t.n_fish - 1].stress = 7;
+    assert(!progression_mussel_healthy(&t));
+    t.fish[t.n_fish - 1].stress = NAN;
+    assert(!progression_mussel_healthy(&t));
+    t.fish[t.n_fish - 1].stress = 0;
+    t.fish[t.n_fish - 1].hunger = NAN;
+    assert(!progression_mussel_healthy(&t));
+    t.fish[t.n_fish - 1].hunger = 2;
+    render_tile(0, 0);
+    render_mussel_panel(&t, full_frame, TANK_W);
+    t.fish[0].hunger = 8.5f;
+    render_mussel_panel(&t, repeated, TANK_W);
+    assert(memcmp(full_frame, repeated, TANK_W * TANK_H * sizeof *full_frame));
+    t.fish[0].hunger = 2;
+    for (int state = 0; state < 8; state++) {
         g_shp_mussel = state >= 2;
         t.mussel.owned = state != 3;
+        t.mussel.generated = state == 4 ? MUSSEL_DAILY_LIMIT : 3;
+        t.mussel.bank = state == 5 ? MUSSEL_DAILY_LIMIT : 0;
+        t.fish[0].hunger = state == 6 ? 8.5f : 2;
+        int residents = t.n_fish;
+        if (state == 7) t.n_fish = 0;
         g_inventory_item = state ? -1 : 9;
         render_tile(0, 0);
         render_shop(&t, full_frame, TANK_W);
@@ -107,9 +140,10 @@ static void check_inventory_ui(void) {
             assert(!memcmp(tile_frame + 1, full_frame + y * TANK_W, TANK_W * 2));
         }
         render_tile(0, 0);
+        t.n_fish = residents;
     }
     render_shop_leave();
-    puts("Inventory/mussel: duplicate buy/place/store/sale, isolated cancel, both collect routes, no XP, and one-row UI parity.");
+    puts("Inventory/mussel: duplicate buy/place/store/sale, explicit Back disarms sale without mutation, healthy boundaries/NaNs, paused/limit panels, isolated cancel, both collect routes, no XP, and one-row UI parity.");
 }
 
 static void check_font_coverage(void) {

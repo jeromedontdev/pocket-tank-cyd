@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.0
+# Pocket Tank CYD 2.3.1
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.3.0**; firmware, update
+now versioned independently. This is **release 2.3.1**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -22,6 +22,28 @@ covers named tanks, the bank, creature customization, Journal, mini-games,
 decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
+
+## New in 2.3.1: smaller firmware and clearer inventory
+
+Version 2.3.1 adds an explicit **BACK** inside the inventory item panel;
+it returns to the list and cancels sale confirmation without selling or
+moving anything. The panel hides the list footer to avoid duplicate Back
+buttons. The mussel panel explains when coin growth is paused because fish
+need feeding/calming, rather than showing an apparently stalled counter.
+
+A measured CYD build uses size optimization for setup, update UI, companion
+menus, snapshot I/O, device-management and weather code while keeping simulation,
+rendering, games and per-frame progression speed-optimized. TLS is configured
+for the outbound HTTPS client role only; certificate verification stays enabled.
+The app is **19,312 bytes smaller** than published 2.3.0, leaving **188,240 bytes**
+(about 184 KiB) in each OTA slot.
+No features, certificate checks, artwork or safe-update slots were removed.
+These are build-size results, not a new hardware FPS claim. See the
+[firmware-space audit](firmware/CYD.md#firmware-space-audit-after-230).
+Client-only TLS was tested on the actual CYD: weather and GitHub Pages
+HTTPS certificate validation passed, followed by a safe return to the aquarium.
+The intentionally unconfigured legacy Wi-Fi OTA channel remains unchanged;
+this is not a claim of an end-to-end Wi-Fi firmware installation.
 
 ## New in 2.3.0: shared decoration inventory and care-first income
 

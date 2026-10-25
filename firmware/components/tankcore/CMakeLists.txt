@@ -21,3 +21,6 @@ target_compile_options(${COMPONENT_LIB} PRIVATE -O2 -ffast-math)
 target_compile_definitions(${COMPONENT_LIB} PUBLIC POP_CAP=5 CYD_FLAT_EDGES=1)
 set_source_files_properties("${COMMON}/progression.c" "${COMMON}/weather.c" "${COMMON}/companion.c"
     PROPERTIES COMPILE_OPTIONS "-fno-fast-math")
+set_property(SOURCE "${COMMON}/setup.c" "${COMMON}/update.c" "${COMMON}/companion_ui.c"
+    "${COMMON}/aquarium_store.c" "${COMMON}/weather.c"
+    APPEND PROPERTY COMPILE_OPTIONS "-Os")

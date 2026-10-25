@@ -12,5 +12,7 @@ target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_BINARY_DIR}/cyd_ass
 add_dependencies(${COMPONENT_LIB} cyd_icon_assets)
 set_source_files_properties(sd_port_cyd.c PROPERTIES
     OBJECT_DEPENDS "${CMAKE_BINARY_DIR}/cyd_assets/icons_sd_bank.h")
+set_property(SOURCE director.c update_mode.c net_port_esp.c weather_port_esp.c sd_port_cyd.c
+    APPEND PROPERTY COMPILE_OPTIONS "-Os")
 # The shared core references the weather backend in this archive.
 target_link_libraries(${COMPONENT_LIB} INTERFACE "-u pt_board_marker" "-u weather_port_init")

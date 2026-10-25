@@ -89,7 +89,17 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.0: shared decoration inventory and care-first income
+### New in 2.3.1: smaller firmware and clearer inventory
+
+- Inventory item panels have one explicit Back button. Returning to the list cancels unconfirmed sales without changing items or money; inactive list-footer controls are hidden.
+- The pearl mussel explains when growth is paused because fish need feeding/calming. UI and income use the same health predicate, with bank/day-limit messages taking precedence.
+- Selective size optimization for setup/menus, snapshot I/O, weather and device-management paths leaves simulation, rendering, games and per-frame progression speed-optimized. TLS is client-only because firmware initiates HTTPS rather than serving it; certificate verification and rollback stay enabled.
+- Local CYD app size is 1,777,840 bytes, 19,312 smaller than 2.3.0, leaving 188,240 bytes per OTA slot. No features, artwork, save storage or update slots removed.
+- Actual CYD weather and GitHub Pages HTTPS certificate validation passed. The temporary test URL was removed; the intentionally unconfigured legacy Wi-Fi OTA channel remains unchanged. The installer JSON was fetched over HTTPS but is not a legacy OTA manifest; no end-to-end Wi-Fi firmware installation is claimed.
+- Extended five-fish tests passed 161,728 flat-edge and 35,175 rounded-edge full/tiled/retained frame sets. All twelve fixed aquarium reference scenes matched 2.3.0. Storage corruption, migration, weather, DMA, settings, brightness, ambient-light and browser inventory/save regressions passed.
+- Existing schema-18 saves remain compatible. Use the save-preserving app update, not Factory reset.
+
+### Previously in 2.3.0: shared decoration inventory and care-first income
 
 - Shop > Inventory stores up to 64 physical pieces profile-wide. Buy duplicate copies, place owned pieces, move a selected copy, or store without selling; store/switch/place transfers between aquariums. Up to eight extra basic ornaments per tank have independent positions and front/back depths. Complex growing decorations remain one placed copy per type per tank; helpers, upgrades, themes and fixed scenery remain outside inventory.
 - Existing layouts and purchases migrate intact. Paid/free resale provenance, two-tap stored sales, transactional save rollback and stale-backup transfer protection prevent duplicate refunds or reclaimed copies.

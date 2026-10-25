@@ -8,7 +8,99 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.2.5 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.1 is a distinct aquarium game, not just a board port.**
+
+### Firmware-space audit after 2.3.0
+
+The local follow-up keeps the existing two `0x1e0000` application slots,
+the 40 MHz SPI clock, certificates, embedded artwork and all features.
+It does not change the schema-18 save contract or require an aquarium reset.
+
+| Actual CYD application | Bytes | Free per 1,966,080-byte slot |
+|---|---:|---:|
+| Published 2.3.0 | 1,797,152 | 168,928 |
+| First local selective-size pass | 1,788,752 | 177,328 |
+| 2.3.1: client-only TLS and device-management size flags | 1,777,840 | 188,240 |
+
+Net saving: **19,312 bytes**; headroom increases from about **165 KiB to
+184 KiB**.
+Setup, update UI, companion menus, snapshot storage and weather use `-Os`.
+The fish simulation, renderer, games, companion tick and progression retain
+`-O2`; progression/weather/companion retain their existing `-fno-fast-math`
+guards. No new decoded-image or font buffers are introduced.
+The extended pass also uses `-Os` for director commands, update mode, outbound
+network/weather services and SD management. Main frame-loop, LCD, touch,
+brightness and ambient-light sources retain their existing optimization.
+TLS is client-only: firmware initiates HTTPS for weather/updates and does not
+serve HTTPS. The linked image retains the client handshake and
+`esp_crt_bundle_attach`; the TLS server handshake is absent. Certificate
+bundle, hostname checks, supported client cipher configuration and OTA
+rollback stay intact. Both checked-in CYD configuration entry points carry
+the client-only setting, with regression guards for trust and partition layout.
+
+The link-map audit shows approximately 505 KiB of flash code/data in tankcore,
+156 KiB in `net80211`, 126 KiB in `esp_stdio`, 120 KiB in PSA crypto,
+93 KiB in lwIP and 75 KiB in WPA supplicant. These are separate archive
+contributions, not independent feature sizes; dependencies and other archives
+also consume flash. The largest individual application functions include
+fish simulation, tank rendering, companion/setup screens and director commands.
+The certificate bundle is about 16 KiB. Native ELF debug sections do not go
+into the flashed application and stripping them would not recover OTA space.
+Removing networking or certificate verification, moving mandatory UI artwork
+to SD, and dropping an OTA slot were deliberately avoided.
+
+Reproduce with the ESP-IDF environment active, from `firmware`:
+
+```powershell
+idf.py -B build_cyd build
+python -m esp_idf_size --archives build_cyd\pocket_tank.map --format csv
+```
+
+The inventory item panel has one explicit Back and hides inactive list-footer
+controls while open. Back cancels sale confirmation without mutating inventory.
+The mussel panel displays `PAUSED - FEED AND CALM FISH` using the same health
+predicate as income generation (all fish hunger below 8.5 and stress below 7;
+no residents also pauses). Daily/bank-limit messages take precedence.
+Both scales, threshold/NaN guards, sale cancellation and one-row UI parity
+are covered by page-art tests; browser acceptance covers the actual Back path,
+duplicate storage/placement, collection and reload.
+
+A read-only check of the actual board running published 2.3.0 retained bolt,
+pip, kelp and odie and verified SD backup I/O without changing the tank.
+One live four-fish sample was 11.2 FPS; this is neither a minimum nor a
+measurement of the new build. The selective size flags have been built and
+tested on CYD, but no new controlled hardware FPS benchmark is claimed.
+Client-only TLS passed certificate validation on actual CYD weather requests
+and an HTTPS request to GitHub Pages. The temporary installer-JSON URL was
+removed after the test and the original empty legacy OTA channel restored.
+The installer JSON is not a legacy Wi-Fi OTA manifest and was rejected by that
+parser after HTTPS succeeded; no end-to-end Wi-Fi firmware install is claimed.
+Extended validation passed a 180-second five-fish stress run with 23,104
+cases / 161,728 full/tiled/retained frame sets, both scales, all details,
+day/night, palettes and clock layouts, without simulation mutation.
+All twelve fixed reference scenes matched published 2.3.0. Profile corruption,
+storage formatting guards, weather mailbox/backoff, actual DMA ownership/pixels,
+settings actions, ambient thresholds, brightness save failures and complete
+flat-edge backup regressions also passed.
+
+#### Why two application slots?
+
+The 4 MiB flash is already almost completely assigned: two 1,920 KiB app
+slots (3,840 KiB total), 128 KiB save storage and the first 128 KiB for boot,
+partition metadata, NVS, OTA selection, PHY data and alignment gaps.
+OTA writes a new image into the inactive slot without erasing the running
+image. After validation it selects the new image for boot; enabled rollback
+can return to the prior image if the new one is not confirmed healthy.
+The second slot is not a second aquarium or interchangeable feature pack.
+
+A single large app partition would require a deliberate partition-layout and
+update/recovery redesign, incompatible with the current save-preserving OTA
+contract. USB recovery could still be possible, but ordinary updates would
+lose the current A/B safety. Enlarging partitions is not an app-only upgrade
+and must not be done by flashing a factory image over an existing aquarium.
+Even shrinking the separate 128 KiB save filesystem would recover relatively
+little per equal-size app slot while compromising persistence capacity.
+Keep A/B updates; measure code/data savings before considering such trade-offs.
 
 Release 2.2.5 replaces uneven nearest-neighbor font expansion with exact
 integer box coverage at fractional sizes. Native 5x7/integer-size text remains

@@ -60,6 +60,7 @@ const char *progression_bank_move(tank_t *t, int bank, int active);
 #define MUSSEL_SECONDS 600
 #define MUSSEL_DAILY_LIMIT 15
 bool progression_mussel_collect(tank_t *t);
+bool progression_mussel_healthy(const tank_t *t);
 #define CARE_TASK_COUNT 3
 #define CARE_GAME_LIMIT 5
 #define CARE_VIEW_SECONDS 300

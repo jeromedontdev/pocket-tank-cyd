@@ -327,6 +327,14 @@ async function main() {
       const chestCount = save => ((save.tank.sd_unlocks >>> 9) & 1) +
         [...Buffer.from(save.inventory.extra, "hex")].filter((n, i) => i % 8 === 0 && n === 10).length;
       const placedBefore = chestCount(inventoryBefore);
+      await tap(220,276);
+      const armedSale = await menuImage(`inventory-sale-armed-${scale}`);
+      await tap(344,64);
+      assert.notEqual(await menuImage(`inventory-back-${scale}`), armedSale, "Explicit Back closes the item panel");
+      await tap(120,164);
+      assert.notEqual(await menuImage(`inventory-reopened-${scale}`), armedSale, "Back disarms an unconfirmed sale");
+      assert.deepEqual((await snapshot()).inventory, inventoryBefore.inventory, "Back never sells or moves a copy");
+      assert.equal((await snapshot()).tank.sd_balance, inventoryBefore.tank.sd_balance);
       await tap(280,150); await tap(280,150);
       assert.equal(Buffer.from((await snapshot()).inventory.stored, "hex")[5], storedBefore + 2);
       assert.equal((await snapshot()).tank.sd_balance, inventoryBefore.tank.sd_balance - 240);

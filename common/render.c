@@ -6640,6 +6640,8 @@ static void render_mussel_panel(const tank_t *t, uint16_t *fb, int stride) {
             snprintf(line, sizeof line, "DAILY LIMIT - BACK TOMORROW");
         else if (t->mussel.bank >= MUSSEL_DAILY_LIMIT)
             snprintf(line, sizeof line, "BANK FULL - COLLECT FIRST");
+        else if (!progression_mussel_healthy(t))
+            snprintf(line, sizeof line, "PAUSED - FEED AND CALM FISH");
         else snprintf(line, sizeof line, "NEXT: %u/%d HEALTHY SEC", t->mussel.seconds, MUSSEL_SECONDS);
         draw_text(&c, 64, 202, 1, MSP_TEAL, line);
         draw_text(&c, 64, 224, 1, MSP_DIM, "ONLINE ONLY - NO XP");
@@ -6682,15 +6684,18 @@ static void render_inventory(const tank_t *t, uint16_t *fb, int stride) {
         draw_text(&c, 76, y + 22, 1, MSP_TEAL, line);
         button(&c, SHP_BTN_X, y, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "MANAGE", 2);
     }
-    draw_text(&c, 24, MSP_CLOSE_Y - 20, 1, MSP_TEAL, "STORE > TANKS > PLACE");
-    button(&c, 24, MSP_CLOSE_Y, 156, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "MUSSEL", 2);
-    button(&c, 194, MSP_CLOSE_Y, 116, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "TANKS", 2);
-    button(&c, SHP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
+    if (g_inventory_item < 0) {
+        draw_text(&c, 24, MSP_CLOSE_Y - 20, 1, MSP_TEAL, "STORE > TANKS > PLACE");
+        button(&c, 24, MSP_CLOSE_Y, 156, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "MUSSEL", 2);
+        button(&c, 194, MSP_CLOSE_Y, 116, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "TANKS", 2);
+        button(&c, SHP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
+    }
     if (g_inventory_item >= 0) {
         int item = g_inventory_item;
         rect_fill(&c, 48, 40, 352, 268, 0x04141a);
         rect_edge(&c, 48, 40, 352, 268, MSP_TEAL);
         draw_text(&c, 64, 56, 2, 0xffffff, SD_ITEMS[item].name);
+        button(&c, 304, 50, 80, 28, 0x1c2f36, MSP_TEAL, "BACK", 2);
         snprintf(line, sizeof line, "STORED %d / HERE %d", progression_inventory_stored(t, item),
                  progression_inventory_placed(t, item));
         draw_text(&c, 64, 84, 2, MSP_TEAL, line);
@@ -6714,6 +6719,11 @@ static void render_inventory(const tank_t *t, uint16_t *fb, int stride) {
 }
 static int inventory_tap(const tank_t *t, float x, float y) {
     if (g_inventory_item >= 0) {
+        if (y >= 50 && y < 78 && x >= 304 && x < 384) {
+            g_inventory_item = -1;
+            g_shp_sell_armed = false;
+            return SHOP_TAP_KEPT;
+        }
         if (y >= 138 && y < 172 && x >= 64 && x < 384) {
             g_shp_sell_armed = false;
             return x < 224 ? INV_PLACE : INV_BUY;
