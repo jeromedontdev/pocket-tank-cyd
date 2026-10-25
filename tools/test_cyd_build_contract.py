@@ -18,6 +18,8 @@ class CydBuildContractTests(unittest.TestCase):
                                 "BOOTLOADER_APP_ROLLBACK_ENABLE"):
                     self.assertIn("CONFIG_" + setting + "=y", text)
                 self.assertNotIn("CONFIG_MBEDTLS_TLS_SERVER_AND_CLIENT=y", text)
+                self.assertIn('CONFIG_POCKET_TANK_OTA_URL="https://github.com/jeromedontdev/'
+                              'pocket-tank-cyd/releases/latest/download/ota.json"', text)
         for name in ("net_port_esp.c", "weather_port_esp.c"):
             self.assertIn(".crt_bundle_attach = esp_crt_bundle_attach",
                           (FIRMWARE / "main" / name).read_text())

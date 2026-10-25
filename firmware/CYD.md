@@ -8,7 +8,7 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.1 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.2 is a distinct aquarium game, not just a board port.**
 
 ### Firmware-space audit after 2.3.0
 
@@ -21,6 +21,7 @@ It does not change the schema-18 save contract or require an aquarium reset.
 | Published 2.3.0 | 1,797,152 | 168,928 |
 | First local selective-size pass | 1,788,752 | 177,328 |
 | 2.3.1: client-only TLS and device-management size flags | 1,777,840 | 188,240 |
+| 2.3.2 local build: GitHub manifest, full-file OTA checks and Wi-Fi entry | 1,780,160 | 185,920 |
 
 Net saving: **19,312 bytes**; headroom increases from about **165 KiB to
 184 KiB**.
@@ -631,12 +632,13 @@ calibration), `led <mode>`, `led <r> <g> <b> [ms]`, `photo`,
 - Fish goals use the rules advisor, not the upstream local LLM. This build
   has no model partition and the connected board has no PSRAM.
 - Wi-Fi scanning, saved-network reconnect and certificate-verified weather
-  requests have been verified on the board. Scan records and manifests
-  use internal RAM. There is no default firmware update server: an unconfigured
-  fork reports **NO UPDATE CHANNEL** after connecting. Manifests must identify
-  `pocket-tank-cyd`; stock upstream manifests are rejected. Complete signed
-  OTA installation still requires separate validation.
-  See [OTA](../docs/OTA.md) before enabling a fork release channel.
+  use internal RAM. From 2.3.2, Settings > Device > SD Updates also offers
+  **Check GitHub via Wi-Fi** against the latest stable release of this fork.
+  The download is checked for exact size, board, embedded version and full-file
+  SHA-256 before selecting the inactive app slot. The channel trusts GitHub
+  HTTPS and the release account, not publisher signatures or secure boot.
+  Older boards need a one-time USB/SD upgrade to enable the default channel.
+  See [OTA](../docs/OTA.md) for confirmation, rollback and trust details.
 - SD adds asset storage, not RAM; it does not transparently replace model PSRAM.
 - Audio output, sound-bank/mixer sources, the codec driver, PMIC driver,
   battery history/logging and IMU implementation have been deleted.

@@ -448,7 +448,7 @@ void touch_port_poll(tank_t *t) {
     if (s_upd && !s_cf && !su) {                             /* the UPDATES page: CHECK (main restarts), FORGET, CLOSE */
         int r = updates_page_touch(tx, ty, touched);
         if (r == UPD_TAP_CLOSE) { s_upd = false; s_set = true; s_back = true; ESP_LOGI(TAG, "updates page: CLOSE -> settings"); }
-        else if (r == UPD_TAP_CHECK) { s_upd_act = r; ESP_LOGI(TAG, "updates page: CHECK FOR UPDATES"); }
+        else if (r == UPD_TAP_CHECK || r == UPD_TAP_WIFI) { s_upd_act = r; ESP_LOGI(TAG, "updates page: %s", r == UPD_TAP_WIFI ? "CHECK GITHUB VIA WI-FI" : "CHECK SD CARD"); }
         else if (r == UPD_TAP_FORGET) ESP_LOGI(TAG, "updates page: network forgotten");
     }
     if (su && !s_cf) {

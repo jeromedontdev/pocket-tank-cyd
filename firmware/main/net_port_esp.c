@@ -1,6 +1,6 @@
 /* net_port_esp.c - the update flow's net port on the tank (common/update.h,
  * docs/OTA.md): the credential store, the Wi-Fi station, the manifest fetch
- * and the signed download into the other app slot.
+ * and the verified download into the other app slot.
  *
  * Runs only in update mode, at boot, before the tank exists (update_mode.c),
  * so the driver has the whole internal heap. Every call from the flow
@@ -11,16 +11,16 @@
  *   the store     NVS namespace "wifi": ssid, pass, url (the director's
  *                 manifest override - the test channel). Its own namespace:
  *                 the tank's reset wipes "tank", never this.
- *   the manifest  no default server. A configured fork channel must name
- *                 fork "pocket-tank-cyd", release, board, and app{url,size}.
+ *   the manifest  latest stable GitHub release, with a tag-pinned app URL;
+ *                 requires fork, board, release and app{url,size,sha256}.
  *                 See common/update.c for the shared parser and board gate.
  *   the board     every image carries a board marker right after its app
  *                 descriptor (pt_board_marker below, PT_BOARD_MARKER_OFFSET):
  *                 the download reads it back from the slot at the first
  *                 sector and stops if it is not the CYD board marker.
- *   the download  esp_https_ota into the other slot; the image must carry
- *                 the project's signature (SECURE_SIGNED_ON_UPDATE, verified
- *                 against the running image's own key) or it is refused
+ *   the download  esp_https_ota into the other slot; exact size, board,
+ *                 embedded release and full-file SHA-256 before activation.
+ *                 Standard releases trust HTTPS, not publisher signatures.
  *   transport     HTTPS with the IDF certificate bundle; redirects followed
  *                 (GitHub's release assets redirect to a second host) */
 #include "update.h"
@@ -36,6 +36,7 @@
 #include "esp_partition.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include "psa/crypto.h"
 #include "nvs.h"
 #include "net_time.h"
 #include "lwip/sockets.h"
@@ -346,6 +347,10 @@ static void do_check(void) {
         ESP_LOGW(TAG, "no CYD fork OTA channel configured; Wi-Fi remains available");
         s_err = NET_ERR_CHANNEL; s_state = NET_FAILED; return;
     }
+    if (strncmp(url, "https://", 8)) {
+        ESP_LOGE(TAG, "update manifest requires HTTPS");
+        s_err = NET_ERR_BAD_MANIFEST; s_state = NET_FAILED; return;
+    }
     ESP_LOGI(TAG, "manifest: %s", url);
     esp_http_client_config_t hc = { .url = url, .crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 12000,
                                     .buffer_size = 2048, .buffer_size_tx = 2048, .max_redirection_count = 8 };
@@ -369,13 +374,20 @@ static void do_check(void) {
         if (status != 301 && status != 302 && status != 303 && status != 307 && status != 308) break;
         ESP_LOGI(TAG, "manifest: HTTP %d, following the redirect (hop %d)", status, hop + 1);
         if (esp_http_client_set_redirection(c) != ESP_OK) break;
+        char redirect[1024];
+        if (esp_http_client_get_url(c, redirect, sizeof redirect) != ESP_OK ||
+            strncmp(redirect, "https://", 8)) {
+            ESP_LOGE(TAG, "refusing update manifest redirect outside HTTPS");
+            status = 0; break;
+        }
         int drained = 0; esp_http_client_flush_response(c, &drained);
         esp_http_client_close(c);
     }
     if (buf && status) {
         while (n < 4095) { int r = esp_http_client_read(c, buf + n, 4095 - n); if (r <= 0) break; n += r; }
         buf[n] = 0;
-        if (status == 200 && n > 0) err = update_parse_manifest(buf, &s_m, s_app_url, sizeof s_app_url) ? NET_ERR_NONE : NET_ERR_BAD_MANIFEST;
+        if (status == 200 && n > 0 && n < 4095 && esp_http_client_is_complete_data_received(c))
+            err = update_parse_manifest(buf, &s_m, s_app_url, sizeof s_app_url) ? NET_ERR_NONE : NET_ERR_BAD_MANIFEST;
         else { ESP_LOGW(TAG, "manifest: HTTP %d, %d bytes", status, n); err = status == 404 ? NET_ERR_BAD_MANIFEST : NET_ERR_NO_NET; }
     }
     esp_http_client_close(c); esp_http_client_cleanup(c); free(buf);
@@ -384,6 +396,40 @@ static void do_check(void) {
                  (unsigned long)s_m.app_size, s_app_url, s_m.needs_cable ? " - NEEDS THE CABLE" : "");
         s_state = NET_DONE;
     } else { s_err = err; s_state = NET_FAILED; }
+}
+static bool verify_download(const esp_partition_t *slot, int received) {
+    if (received <= 0 || (uint32_t)received != s_m.app_size) {
+        ESP_LOGE(TAG, "download size differs from release manifest");
+        return false;
+    }
+    pt_board_marker_t marker = {0};
+    esp_app_desc_t descriptor = {0};
+    if (esp_partition_read(slot, PT_BOARD_MARKER_OFFSET, &marker, sizeof marker) != ESP_OK ||
+        memcmp(marker.magic, PT_BOARD_MAGIC, sizeof marker.magic) ||
+        memcmp(marker.board, PT_BOARD, sizeof PT_BOARD) ||
+        esp_partition_read(slot, 32, &descriptor, sizeof descriptor) != ESP_OK ||
+        strncmp(descriptor.version, s_m.release, sizeof descriptor.version)) {
+        ESP_LOGE(TAG, "download board/version differs from release manifest");
+        return false;
+    }
+    psa_hash_operation_t hash = PSA_HASH_OPERATION_INIT;
+    bool ok = psa_crypto_init() == PSA_SUCCESS && psa_hash_setup(&hash, PSA_ALG_SHA_256) == PSA_SUCCESS;
+    uint8_t buffer[1024], digest[32];
+    for (uint32_t offset = 0; ok && offset < s_m.app_size;) {
+        if (s_abort) { ok = false; break; }
+        size_t count = s_m.app_size - offset;
+        if (count > sizeof buffer) count = sizeof buffer;
+        ok = esp_partition_read(slot, offset, buffer, count) == ESP_OK &&
+             psa_hash_update(&hash, buffer, count) == PSA_SUCCESS;
+        offset += count;
+    }
+    size_t length = 0;
+    ok = ok && psa_hash_finish(&hash, digest, sizeof digest, &length) == PSA_SUCCESS &&
+         length == sizeof digest && !memcmp(digest, s_m.sha256, sizeof digest);
+    psa_hash_abort(&hash);
+    if (!ok) ESP_LOGE(TAG, "download SHA-256 verification failed");
+    else ESP_LOGI(TAG, "download board, release, exact size and SHA-256 verified");
+    return ok;
 }
 static void do_install(void) {
     esp_http_client_config_t hc = { .url = s_app_url, .crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 20000,
@@ -404,7 +450,7 @@ static void do_install(void) {
         if (e != ESP_ERR_HTTPS_OTA_IN_PROGRESS) break;
         int got = esp_https_ota_get_image_len_read(s_ota);
         if (!board_checked && got >= 4096) {                 /* the marker is in the first sector, written by now */
-            pt_board_marker_t mk; board_checked = true;
+            pt_board_marker_t mk = {0}; board_checked = true;
             bool ok = esp_partition_read(slot, PT_BOARD_MARKER_OFFSET, &mk, sizeof mk) == ESP_OK
                    && !memcmp(mk.magic, PT_BOARD_MAGIC, sizeof mk.magic) && !strncmp(mk.board, PT_BOARD, sizeof mk.board);
             if (!ok) {
@@ -424,7 +470,11 @@ static void do_install(void) {
         esp_https_ota_abort(s_ota); s_ota = NULL;
         s_err = e == ESP_ERR_OTA_VALIDATE_FAILED || e == ESP_ERR_IMAGE_INVALID ? NET_ERR_VERIFY : NET_ERR_DOWNLOAD; s_state = NET_FAILED; return;
     }
-    e = esp_https_ota_finish(s_ota); s_ota = NULL;          /* verifies the image (the signature too) and arms the slot */
+    if (!verify_download(slot, esp_https_ota_get_image_len_read(s_ota)) || s_abort) {
+        esp_https_ota_abort(s_ota); s_ota = NULL;
+        s_err = s_abort ? NET_ERR_ABORTED : NET_ERR_VERIFY; s_state = NET_FAILED; return;
+    }
+    e = esp_https_ota_finish(s_ota); s_ota = NULL;          /* validates the ESP image, then selects the boot slot */
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "ota finish: %s", esp_err_to_name(e));
         s_err = e == ESP_ERR_OTA_VALIDATE_FAILED || e == ESP_ERR_IMAGE_INVALID ? NET_ERR_VERIFY : NET_ERR_DOWNLOAD; s_state = NET_FAILED; return;

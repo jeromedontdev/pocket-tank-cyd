@@ -27,7 +27,7 @@ def make_manifest(data, release, base_url, note):
         raise ValueError("Release components must fit in one byte")
     name = f"pocket_tank-v{release}-{BOARD}.bin"
     manifest = {
-        "fork": FORK, "board": BOARD, "release": release,
+        "format": 1, "fork": FORK, "board": BOARD, "release": release,
         "release_num": (parts[0] << 16) | (parts[1] << 8) | parts[2],
         "note": note[:70], "needs_cable": False,
         "app": {"url": f"{base_url.rstrip('/')}/{name}", "size": len(data),

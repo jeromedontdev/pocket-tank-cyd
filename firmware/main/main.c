@@ -497,7 +497,9 @@ static void tank_task(void *arg) {
               if (!progression_save(&tank)) ESP_LOGE(TAG, "could not save palette selection");
           }
           }
-        if (touch_port_take_update() == UPD_TAP_CHECK) {
+        int update_action = touch_port_take_update();
+        if (update_action == UPD_TAP_WIFI) request_update();
+        if (update_action == UPD_TAP_CHECK) {
             updates_sd_status("CHECKING / INSTALLING - KEEP POWER ON", false);
             int height = tank.companion.display_compact ? 80 : TANK_H;
             for (int y = 0; y < TANK_H; y += height) {
@@ -704,7 +706,7 @@ static void tank_task(void *arg) {
    with `git describe --always --tags --dirty` of the checkout at build (the
    installer's Actions job checks out with the full history), the same words
    the installer page shows for what it would write */
-const char *version_port_string(void) { return esp_app_get_description()->version; }
+const char *version_port_string(void) { return PT_BUILD_ID; }
 
 /* NVS holds the keeper's tank, so it is never erased on a guess. Only "no
  * free pages" (a partition that can't mount at all) is answered with an
@@ -743,8 +745,11 @@ static void nvs_start(void) {
  * mode (update_mode.c) - the radio never runs beside the tank */
 static void request_update(void) {
     touch_port_confirm_answer(-1);
-    progression_save(&tank);
-
+    if (!progression_save(&tank)) {
+        ESP_LOGE(TAG, "Wi-Fi update canceled: could not save aquarium");
+        updates_sd_status("SAVE FAILED - WIFI NOT OPENED", false);
+        return;
+    }
     update_mode_request();                   /* restarts */
 }
 void device_update_check(void) { request_update(); }

@@ -1,7 +1,7 @@
 menu "Pocket Tank CYD"
     config POCKET_TANK_OTA_URL
         string "CYD fork OTA manifest URL (empty disables firmware downloads)"
-        default ""
+        default "https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/ota.json"
         help
             Set only to a release channel for this CYD fork. The upstream
             Waveshare firmware and models are not compatible.

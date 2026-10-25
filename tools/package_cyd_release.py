@@ -14,7 +14,8 @@ from make_sd_update import package
 
 def release_version(value):
     value = value.removeprefix("v")
-    if not re.fullmatch(r"\d+\.\d+\.\d+", value) or len(value) > 15:
+    if (not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", value) or len(value) > 15 or
+            any(int(part) > 255 for part in value.split(".")) or value == "0.0.0"):
         raise ValueError("Use vMAJOR.MINOR.PATCH, at most 15 characters without v")
     return value
 
@@ -23,6 +24,8 @@ def create_bundle(build, output, version):
     version = release_version(version)
     build, output = Path(build), Path(output)
     image = (build / "pocket_tank.bin").read_bytes()
+    if image[48:80].split(b"\0", 1)[0] != version.encode("ascii"):
+        raise ValueError("Embedded ESP-IDF app release differs from the requested release")
     update = package(image, version)
     args = json.loads((build / "flasher_args.json").read_text())
     expected = {0x1000, 0x8000, 0xf000, 0x20000}
@@ -40,6 +43,15 @@ def create_bundle(build, output, version):
     subprocess.run(command, check=True)
     # These assets are shared by the standalone downloads and the all-in-one ZIP.
     (output / "pocket-tank-cyd-app.bin").write_bytes(image)
+    (output / "ota.json").write_text(json.dumps({
+        "format": 1, "fork": "pocket-tank-cyd", "board": "cyd2432s028",
+        "release": version, "min_from": "2.3.1",
+        "note": "Stable CYD release. Back up your aquarium before updating.",
+        "app": {
+            "url": f"https://github.com/jeromedontdev/pocket-tank-cyd/releases/download/v{version}/pocket-tank-cyd-app.bin",
+            "size": len(image), "sha256": hashlib.sha256(image).hexdigest(),
+        },
+    }, indent=2) + "\n", encoding="utf-8")
     (output / "update.ptu").write_bytes(update)
     source = Path(__file__).resolve().parent.parent
     shutil.copyfile(source / "LICENSE", output / "LICENSE")
@@ -54,6 +66,14 @@ EXISTING CYD INSTALLATION (preserve your tanks)
 5. Reinsert the card, power on, and use Settings > Device > SD Updates to install.
 The SD updater verifies board, size and SHA-256. Packages are not signed:
 only install files from a source you trust.
+
+WI-FI UPGRADE (once running 2.3.2 or newer)
+Settings > Device > SD Updates > Check GitHub via Wi-Fi checks the latest
+stable release from this fork and asks before installing a newer version.
+The aquarium must save before restarting into update mode. Keep power on.
+HTTPS, exact size, CYD board, embedded release and full-file SHA-256 are checked
+before the inactive slot is selected. Standard images are not publisher-signed:
+this trusts the GitHub release account. USB/SD remain available offline.
 
 USB APP-ONLY UPGRADE
 pocket-tank-cyd-app.bin is NOT a factory image.
@@ -89,7 +109,16 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.1: smaller firmware and clearer inventory
+### New in 2.3.2: on-device GitHub updates
+
+- Settings > Device > SD Updates now includes Check GitHub via Wi-Fi, alongside the existing offline SD flow. The aquarium must save before entering update mode.
+- The default channel checks this fork's latest stable GitHub release via ota.json. Each release manifest pins its app download to the exact release tag. Newer versions require explicit UPDATE confirmation; equal/older versions report UP TO DATE.
+- Require format/fork/board, strict version, HTTPS app URL, bounded exact size and SHA-256. Follow HTTPS manifest redirects without permitting an HTTP downgrade. Reject incomplete/oversized manifests.
+- Verify the complete downloaded asset's SHA-256, board marker, embedded release and exact length before selecting the inactive slot. Cancellation or verification failure leaves the old boot selection intact. ESP-IDF image validation and A/B rollback remain enabled; no partition/save erase or factory image download.
+- Standard releases use certificate-verified HTTPS and manifest hashes, not publisher signatures or secure boot. This trusts the release host/account; hashes do not protect against a compromised publisher. USB and SD remain supported.
+- Install 2.3.2 once over save-preserving USB/SD to enable the default channel on boards running older firmware. Keep power connected and back up first.
+
+### Previously in 2.3.1: smaller firmware and clearer inventory
 
 - Inventory item panels have one explicit Back button. Returning to the list cancels unconfirmed sales without changing items or money; inactive list-footer controls are hidden.
 - The pearl mussel explains when growth is paused because fish need feeding/calming. UI and income use the same health predicate, with bank/day-limit messages taking precedence.

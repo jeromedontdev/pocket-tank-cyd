@@ -44,6 +44,7 @@ jobs:
           python tools/test_ambient.py --cc gcc
           python tools/test_brightness.py --cc gcc
           python tools/test_weather.py --cc gcc
+          python tools/test_ota.py --cc gcc
           python sim/run.py --cc gcc --smoke
       - name: Package verified firmware
         env:

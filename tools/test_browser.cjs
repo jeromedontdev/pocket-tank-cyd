@@ -371,6 +371,15 @@ async function main() {
       await viewer.close();
       await page.locator('[data-action="2"]').click();
       await menuImage(`settings-${scale}`);
+      await tap(330, 260); // Device.
+      const beforeWifi = (await snapshot()).tank;
+      await tap(200, 122); // Firmware installation deliberately stays hardware-only.
+      assert.equal(await native("return game._sim_page()"), 2);
+      assert.equal(await native("return game.UTF8ToString(game._sim_error())"), "FIRMWARE UPDATES ARE ON THE CYD");
+      const afterWifi = (await snapshot()).tank;
+      for (const key of ["sd_balance", "journal_xp", "sd_unlocks", "newborn_p1"])
+        assert.equal(afterWifi[key], beforeWifi[key], `Firmware notice must preserve ${key}`);
+      await tap(380, 28); // Device -> settings hub.
       await tap(330, 100);
       const hub = await menuImage(`clock-hub-${scale}`);
       const beforeMenus = (await snapshot()).tank;

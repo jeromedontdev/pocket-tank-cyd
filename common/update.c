@@ -8,10 +8,20 @@
 #include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 static uint32_t parse_release(const char *s) {
-    int a = 0, b = 0, c = 0; if (sscanf(s, "%d.%d.%d", &a, &b, &c) < 2) return 0;
+    unsigned a = 0, b = 0, c = 0; char extra;
+    if (!s || strlen(s) > 15 || sscanf(s, "%u.%u.%u%c", &a, &b, &c, &extra) != 3 ||
+        a > 255 || b > 255 || c > 255) return 0;
+    for (const char *p = s; *p; p++) if ((*p < '0' || *p > '9') && *p != '.') return 0;
     return ((uint32_t)a << 16) | ((uint32_t)b << 8) | (uint32_t)c;
+}
+static int hex_digit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
 }
 bool update_parse_manifest(const char *json, update_manifest_t *m, char *app_url, size_t url_size) {
     if (!json || !m || !app_url || !url_size) return false;
@@ -19,23 +29,52 @@ bool update_parse_manifest(const char *json, update_manifest_t *m, char *app_url
     memset(m, 0, sizeof *m); app_url[0] = 0;
     const cJSON *rel = cJSON_GetObjectItem(root, "release"), *app = cJSON_GetObjectItem(root, "app");
     const cJSON *fork = cJSON_GetObjectItem(root, "fork");
+    const cJSON *format = cJSON_GetObjectItem(root, "format");
+    const cJSON *board = cJSON_GetObjectItem(root, "board");
     if (!cJSON_IsString(fork) || strcmp(fork->valuestring, "pocket-tank-cyd") ||
-        !cJSON_IsString(rel) || !cJSON_IsObject(app)) { cJSON_Delete(root); return false; }
+        !cJSON_IsNumber(format) || format->valuedouble != 1 ||
+        !cJSON_IsString(board) || strcmp(board->valuestring, PT_BOARD) ||
+        !cJSON_IsString(rel) || !parse_release(rel->valuestring) || !cJSON_IsObject(app)) {
+        cJSON_Delete(root); return false;
+    }
     snprintf(m->release, sizeof m->release, "%s", rel->valuestring);
     const cJSON *num = cJSON_GetObjectItem(root, "release_num");
-    m->release_num = cJSON_IsNumber(num) ? (uint32_t)num->valuedouble : parse_release(m->release);
+    m->release_num = parse_release(m->release);
+    if (num && (!cJSON_IsNumber(num) || num->valuedouble != m->release_num)) {
+        cJSON_Delete(root); return false;
+    }
     const cJSON *v;
     if (cJSON_IsString(v = cJSON_GetObjectItem(root, "build"))) snprintf(m->build, sizeof m->build, "%s", v->valuestring);
     if (cJSON_IsString(v = cJSON_GetObjectItem(root, "board"))) snprintf(m->board, sizeof m->board, "%s", v->valuestring);
-    if (cJSON_IsString(v = cJSON_GetObjectItem(root, "min_from"))) m->min_from = parse_release(v->valuestring);
-    else if (cJSON_IsNumber(v)) m->min_from = (uint32_t)v->valuedouble;
+    if ((v = cJSON_GetObjectItem(root, "min_from"))) {
+        if (!cJSON_IsString(v) || !(m->min_from = parse_release(v->valuestring))) {
+            cJSON_Delete(root); return false;
+        }
+    }
     if (cJSON_IsString(v = cJSON_GetObjectItem(root, "note"))) snprintf(m->note, sizeof m->note, "%s", v->valuestring);
     if (cJSON_IsBool(v = cJSON_GetObjectItem(root, "needs_cable"))) m->needs_cable = cJSON_IsTrue(v);
     if (cJSON_IsString(v = cJSON_GetObjectItem(app, "url"))) {
-        if (strlen(v->valuestring) >= url_size) { cJSON_Delete(root); return false; }
+        const char *url = v->valuestring;
+        bool valid = !strncmp(url, "https://", 8) && url[8] && url[8] != '/' &&
+                     strlen(url) < url_size && strlen(url) <= NET_URL_MAX;
+        for (const char *p = url; *p; p++)
+            if ((unsigned char)*p <= 32 || (unsigned char)*p >= 127 || *p == '@' || *p == '#' || *p == '\\') valid = false;
+        if (!valid) { cJSON_Delete(root); return false; }
         snprintf(app_url, url_size, "%s", v->valuestring);
     }
-    if (cJSON_IsNumber(v = cJSON_GetObjectItem(app, "size"))) m->app_size = (uint32_t)v->valuedouble;
+    v = cJSON_GetObjectItem(app, "size");
+    if (!cJSON_IsNumber(v) || !isfinite(v->valuedouble) || v->valuedouble < 0x140 ||
+        v->valuedouble > 0x1e0000 || floor(v->valuedouble) != v->valuedouble) {
+        cJSON_Delete(root); return false;
+    }
+    m->app_size = (uint32_t)v->valuedouble;
+    v = cJSON_GetObjectItem(app, "sha256");
+    if (!cJSON_IsString(v) || strlen(v->valuestring) != 64) { cJSON_Delete(root); return false; }
+    for (int i = 0; i < 32; i++) {
+        int a = hex_digit(v->valuestring[i * 2]), b = hex_digit(v->valuestring[i * 2 + 1]);
+        if (a < 0 || b < 0) { cJSON_Delete(root); return false; }
+        m->sha256[i] = (uint8_t)((a << 4) | b);
+    }
     cJSON_Delete(root);
     return app_url[0] != 0 && m->release_num != 0;
 }
@@ -206,13 +245,14 @@ void render_updates_page(uint16_t *fb, int stride) {
     render_text_wrap(fb, stride, 32, 146, 384, C_TEXT, s_sd_message);
     render_text(fb, stride, 32, 184, 2, C_CAPT, "TRUSTED FILES ONLY - NOT SIGNED");
     render_button(fb, stride, UPD_CHECK_X, UPD_CHECK_Y, UPD_CHECK_W, UPD_CHECK_H, C_GO, C_GO_E, s_sd_ready ? "INSTALL AND RESTART" : "CHECK SD CARD", 2);
-    render_text(fb, stride, 32, 268, 2, C_CAPT, "KEEP POWER ON WHILE INSTALLING");
-    render_text(fb, stride, 32, 286, 2, C_CAPT, "TANK AND BACKUP ARE PRESERVED");
+    render_button(fb, stride, 32, 264, 384, 34, C_INNER, C_EDGE, "CHECK GITHUB VIA WI-FI", 2);
+    render_text(fb, stride, 32, 312, 1, C_CAPT, "BACK UP FIRST. KEEP POWER ON.");
     render_button(fb, stride, UPD_CLOSE_X, UPD_CLOSE_Y, UPD_CLOSE_W, UPD_CLOSE_H, C_INNER, C_EDGE, "BACK", 2);
 }
 int updates_page_tap(float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
     if (x >= UPD_CLOSE_X - 8 && y >= UPD_CLOSE_Y - 4) return UPD_TAP_CLOSE;
+    if (in_box(x, y, 32, 264, 384, 34, 4)) return UPD_TAP_WIFI;
     if (in_box(x, y, UPD_CHECK_X, UPD_CHECK_Y, UPD_CHECK_W, UPD_CHECK_H, 8)) return UPD_TAP_CHECK;
     return UPD_TAP_NONE;
 }
@@ -438,7 +478,7 @@ static void fail(int err) {
     case NET_ERR_NO_NET:    message("NO ANSWER", "THE UPDATE SERVER DID NOT", false, "ANSWER. IS THE INTERNET UP?", "TRY AGAIN", ACT_RETRY_CHECK, "OTHER NETWORK", ACT_SCAN); break;
     case NET_ERR_BAD_MANIFEST: message("ODD ANSWER", "THE UPDATE SERVER SENT", false, "SOMETHING THIS TANK CANNOT READ", "TRY AGAIN", ACT_RETRY_CHECK, NULL, 0); break;
     case NET_ERR_DOWNLOAD:  message("DOWNLOAD STOPPED", "NOTHING HAS CHANGED", false, "", "TRY AGAIN", ACT_RETRY_INSTALL, NULL, 0); break;
-    case NET_ERR_VERIFY:    message("NOT VERIFIED", "THE UPDATE WAS NOT SIGNED", false, "BY POCKET TANK. NOTHING CHANGED", NULL, 0, NULL, 0); break;
+    case NET_ERR_VERIFY:    message("NOT VERIFIED", "SIZE, HASH OR IMAGE CHECK FAILED", false, "NOTHING CHANGED. TRY USB / SD", NULL, 0, NULL, 0); break;
     case NET_ERR_SPACE:     message("TOO BIG", "THE UPDATE DOES NOT FIT", false, "THIS TANK. NOTHING CHANGED", NULL, 0, NULL, 0); break;
     case NET_ERR_ABORTED:   message("CANCELED", "NOTHING HAS CHANGED", false, "", NULL, 0, NULL, 0); break;
     case NET_ERR_RADIO:     message("NO RADIO", "THE WI-FI RADIO DID NOT", false, "START. TRY AGAIN LATER", NULL, 0, NULL, 0); break;

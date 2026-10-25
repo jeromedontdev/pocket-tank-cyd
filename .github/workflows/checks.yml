@@ -47,4 +47,5 @@ jobs:
       - run: python tools/test_ambient.py --cc gcc
       - run: python tools/test_brightness.py --cc gcc
       - run: python tools/test_weather.py --cc gcc
+      - run: python tools/test_ota.py --cc gcc
       - run: python sim/run.py --cc gcc --smoke

@@ -337,6 +337,7 @@ API void sim_touch(float x, float y, int down) {
             int result = updates_page_touch(x, y, false);
             if (result == UPD_TAP_CLOSE) page = 2;
             else if (result == UPD_TAP_CHECK) updates_sd_status("SD INSTALLATION IS ON THE CYD", false);
+            else if (result == UPD_TAP_WIFI) updates_sd_status("WI-FI UPDATES ARE ON THE CYD", false);
         } else if (page == 0 && held < 0.35f && hypotf(x - px, y - py) < 12) {
             if (!notice_dismiss()) {
                 if (tank.tool != TOOL_HAND) {

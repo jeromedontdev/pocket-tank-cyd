@@ -77,9 +77,9 @@ slot identity or the entire aquarium collection. Also archive the SD tank
 snapshot directory and avoid erasing NVS.
 
 **Trust model:** these are local, unsigned packages. SHA-256 detects corruption,
-not malicious modifications. Only install packages you trust. The existing
-signed HTTPS update policy is not relaxed: this is a separate, explicitly
-local installation path.
+not malicious modifications. Only install packages you trust. SD installation
+is a separate, explicitly local path; standard Wi-Fi releases use the trusted
+HTTPS/manifest model described below, not publisher signatures.
 
 The package format is an 84-byte little-endian header followed by the
 application: magic `PTCYDSD1` (8 bytes), board (24-byte NUL-padded ASCII),
@@ -99,46 +99,56 @@ On returning to the tank, boot-time NTP synchronizes the optional clock and
 switches the radio off. After power loss a fresh sync is needed; without it,
 the overlay says **SYNC NEEDED**. See [clock setup and time limitations](../firmware/CYD.md#optional-tank-clock-and-on-screen-wi-fi-setup).
 
-## Legacy Wi-Fi firmware channel (serial only)
+## GitHub Wi-Fi updates (2.3.2 and newer)
 
-The default manifest URL is empty. Checking for firmware updates can still
-scan, provision and connect Wi-Fi, but without a configured channel it reports
-**NO UPDATE CHANNEL** rather than contacting upstream releases. Publishing GitHub releases does not enable this signed Wi-Fi channel.
-SD installation and active-slot USB upgrades remain the supported methods.
-The legacy Wi-Fi flow remains available through the serial command
-`ota check`, not through Settings.
+Install 2.3.2 once by save-preserving USB or SD update to enable the default
+channel. Earlier releases had no default Wi-Fi firmware channel.
 
-To opt in later:
+1. Make an SD backup if available and keep USB power connected.
+2. Open **Settings > Device > SD Updates > Check GitHub via Wi-Fi**.
+   The page retains its existing SD entry for compatibility; the Wi-Fi button
+   is separate from **Check SD Card / Install and Restart**.
+3. The aquarium must save successfully before restarting into update mode.
+   Choose a network if needed, or let the saved network connect.
+4. The board checks the latest stable release from this fork. An equal or
+   older version reports **UP TO DATE**. A newer compatible version shows
+   an offer; only **UPDATE** starts the download. **NOT NOW** returns to care.
+5. Keep power connected through verification and restart.
 
-1. Establish a release host for this fork, not the upstream Waveshare project.
-2. Configure `POCKET_TANK_OTA_URL` in ESP-IDF menuconfig, or set a deliberate
-   serial override with `ota url https://your-host/latest-cyd2432s028.json`.
-   `ota url default` removes the override; the default is empty.
-3. Set up and validate ESP-IDF image signing for the existing ESP32 partition
-   layout. Never check a private signing key into source control. The current
-   USB build is not a verified OTA signing/installation setup.
-4. Package a signed image with:
+The stable channel is
+`https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/ota.json`.
+Each release workflow packages this small manifest alongside the application.
+It pins the download URL to that exact release tag, never `main` or an
+unversioned app URL, so a changing latest release cannot mix version and image.
+Only the app binary is downloaded, never a factory image.
 
-   ```powershell
-   python tools\make_ota_manifest.py --base-url https://your-host/releases/v0.3.9 --out ota
-   ```
+The format-1 manifest requires `fork: pocket-tank-cyd`, the exact CYD board,
+a bounded three-part `release`, and `app` with HTTPS `url`, integer `size`
+and 64-hex-digit `sha256`. Optional fields are matching `release_num`, `build`,
+`min_from`, `note` and `needs_cable`. Unsupported, incomplete, oversized and
+wrong-board manifests fail explicitly. HTTPS manifest redirects are bounded
+and cannot downgrade to HTTP; image downloads also require HTTPS.
 
-The packager refuses unsigned images, non-CYD markers, invalid release
-numbers, non-HTTPS hosts and images larger than the existing 0x1e0000 app slot.
-The version comes from `common/version.h`.
+Before selecting the inactive slot, the updater checks complete reception,
+exact manifest size, the image board marker, embedded application version,
+and SHA-256 of the entire downloaded asset. ESP-IDF then validates the image
+and selects it for boot. Cancellation, read/hash failure, a mismatched digest
+or an invalid image aborts without selecting that slot. Existing A/B boot
+confirmation/rollback is retained; no save/partition erase occurs.
 
-The firmware requires `"fork": "pocket-tank-cyd"` in the manifest as well as
-the existing CYD board ID and image marker checks. Stock upstream manifests
-therefore cannot be offered, even through a stale saved URL override.
-There is no model partition, model version negotiation or model download.
+**Trust model:** standard release images are not publisher-signed. HTTPS
+certificate validation authenticates the release host, and the manifest hash
+detects mismatched/corrupt assets; it does not protect against a compromised
+release account publishing both a malicious image and its matching hash.
+This is the same trusted-release model as USB/SD downloads, not secure boot.
+Do not disable TLS verification or claim SHA-256 is a digital signature.
+The optional `make_ota_manifest.py` tool still requires signed images for
+separately managed signing deployments; it is not the standard release path.
 
-Manifest fields: `fork`, `board`, `release`, `release_num`, optional `build`,
-`min_from`, `note`, `needs_cable`, and `app` (`url`, `size`, `sha256`).
-Existing image verification and rollback protections remain in place.
-
-End-to-end Wi-Fi connection, signed OTA installation and rollback still need
-hardware validation before publishing a channel. Do not bypass verification
-or replace signing failures with unsigned downloads.
+The serial `ota check` command opens the same flow. `ota url <https-url>`
+sets a deliberate channel override; `ota url default` removes it and restores
+the GitHub channel. Never point it at upstream firmware or the website's
+`update.json`: that separate file describes the USB installer, not Wi-Fi OTA.
 
 ## Publishing CYD releases
 

@@ -12,7 +12,8 @@ from package_cyd_release import create_bundle, release_version
 class ReleaseTests(unittest.TestCase):
     def test_version(self):
         self.assertEqual(release_version("v1.0.0"), "1.0.0")
-        for value in ("1.0", "v0.3.8-cyd.1", "../bad", "1.2.3-cyd.123456", "x';exit"):
+        for value in ("1.0", "v0.3.8-cyd.1", "../bad", "1.2.3-cyd.123456", "x';exit",
+                      "256.1.1", "0.0.0", "１.0.0"):
             with self.assertRaises(ValueError):
                 release_version(value)
 
@@ -23,6 +24,7 @@ class ReleaseTests(unittest.TestCase):
             build.mkdir()
             image = bytearray(4096)
             image[0] = 0xe9
+            image[48:80] = b"1.0.0".ljust(32, b"\0")
             image[0x120:0x128] = b"PTBOARD\0"
             image[0x128:0x140] = b"cyd2432s028".ljust(24, b"\0")
             (build / "pocket_tank.bin").write_bytes(image)
@@ -41,6 +43,16 @@ class ReleaseTests(unittest.TestCase):
             self.assertFalse(any(path.name.startswith("icons-") for path in output.iterdir()))
             with zipfile.ZipFile(archive) as bundle:
                 self.assertIn("update.ptu", bundle.namelist())
+                ota = json.loads(bundle.read("ota.json"))
+                self.assertEqual(ota["format"], 1)
+                self.assertEqual(ota["fork"], "pocket-tank-cyd")
+                self.assertEqual(ota["board"], "cyd2432s028")
+                self.assertEqual(ota["release"], "1.0.0")
+                self.assertEqual(ota["min_from"], "2.3.1")
+                self.assertEqual(ota["app"]["url"],
+                    "https://github.com/jeromedontdev/pocket-tank-cyd/releases/download/v1.0.0/pocket-tank-cyd-app.bin")
+                self.assertEqual(ota["app"]["size"], len(image))
+                self.assertEqual(ota["app"]["sha256"], hashlib.sha256(image).hexdigest())
                 self.assertIn("INSTALL.txt", bundle.namelist())
                 self.assertFalse(any("tank.sav" in entry for entry in bundle.namelist()))
                 self.assertFalse(any(entry.startswith("icons-") for entry in bundle.namelist()))
@@ -64,6 +76,8 @@ class ReleaseTests(unittest.TestCase):
             (build / "flasher_args.json").write_text(json.dumps(flash))
             with self.assertRaises(ValueError):
                 create_bundle(build, root / "bad", "v1.0.0")
+            with self.assertRaisesRegex(ValueError, "Embedded ESP-IDF app release"):
+                create_bundle(build, root / "wrong-version", "v1.0.1")
 
 
 if __name__ == "__main__":

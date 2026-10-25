@@ -3723,7 +3723,8 @@ int main(int argc, char **argv) {
     updates_sd_status("READY: 0.3.8 - TAP INSTALL TO CONFIRM", true);
     render_updates_page(fb, TANK_W);
     assert(updates_page_tap(render_frame_x(200), render_frame_y(UPD_CHECK_Y + 20)) == UPD_TAP_CHECK);
-    assert(updates_page_tap(render_frame_x(100), render_frame_y(UPD_FORGET_Y + 10)) == UPD_TAP_NONE);
+    assert(updates_page_tap(render_frame_x(100), render_frame_y(UPD_FORGET_Y + 10)) == UPD_TAP_WIFI);
+    assert(render_text_w("CHECK GITHUB VIA WI-FI", 2) < 384 - 16);
     updates_sd_status("NO POCKET-TANK/UPDATE.PTU", false);
     render_updates_page(fb, TANK_W);
     float cx = render_frame_x(392), cy = render_frame_y(19);
@@ -4111,12 +4112,21 @@ int main(int argc, char **argv) {
                                  &manifest, app_url, sizeof app_url));
     assert(!update_parse_manifest("{\"fork\":\"upstream\",\"release\":\"0.9.9\",\"app\":{\"url\":\"https://example.invalid/app.bin\"}}",
                                  &manifest, app_url, sizeof app_url));
-    assert(update_parse_manifest("{\"fork\":\"pocket-tank-cyd\",\"board\":\"cyd2432s028\",\"release\":\"0.9.9\","
-                                 "\"app\":{\"url\":\"https://example.invalid/app.bin\",\"size\":1234}}",
+    assert(update_parse_manifest("{\"format\":1,\"fork\":\"pocket-tank-cyd\",\"board\":\"cyd2432s028\",\"release\":\"0.9.9\","
+                                 "\"app\":{\"url\":\"https://example.invalid/app.bin\",\"size\":1234,"
+                                 "\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
                                  &manifest, app_url, sizeof app_url));
     assert(!strcmp(manifest.board, PT_BOARD) && manifest.app_size == 1234);
     assert(manifest.release_num == ((9u << 8) | 9u));
     assert(!strcmp(app_url, "https://example.invalid/app.bin"));
+    assert(updates_page_tap(render_frame_x(224), render_frame_y(281)) == UPD_TAP_WIFI);
+    assert(updates_page_tap(render_frame_x(224), render_frame_y(228)) == UPD_TAP_CHECK);
+    assert(updates_page_tap(render_frame_x(370), render_frame_y(326)) == UPD_TAP_CLOSE);
+    updates_page_touch(render_frame_x(224), render_frame_y(281), true);
+    assert(updates_page_touch(0, 0, false) == UPD_TAP_WIFI);
+    updates_page_touch(render_frame_x(224), render_frame_y(281), true);
+    updates_page_touch(render_frame_x(224), render_frame_y(200), true);
+    assert(updates_page_touch(0, 0, false) == UPD_TAP_NONE);
     int update_writes = writes;
     net_port_creds_forget();
     update_begin();

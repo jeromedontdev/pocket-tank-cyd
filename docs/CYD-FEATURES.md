@@ -2,7 +2,14 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.1**
+**An illustrated tour of Pocket Tank CYD 2.3.2**
+
+Version 2.3.2 adds **Check GitHub via Wi-Fi** to Settings > Device > SD Updates.
+It checks this fork's latest stable release and asks before installing newer
+firmware. Exact size, board, embedded version and full-file SHA-256 are checked
+before switching the inactive boot slot. Install this version once by USB/SD
+to enable the channel on older boards; keep power connected and back up first.
+See the [Wi-Fi flow and trust model](OTA.md#github-wi-fi-updates-232-and-newer).
 
 Version 2.3.1 adds an explicit inventory-item **BACK**, cancels
 unconfirmed sales when returning to the list, and explains when the mussel
@@ -347,6 +354,10 @@ an existing CYD installation: the updater validates the live board and active OT
 slot, then writes only the application. The **factory installer** remains separate and
 overwrites saved tanks, Wi-Fi, calibration and collection identity.
 Back up first; SD updates remain available.
+
+From 2.3.2, **Check GitHub via Wi-Fi** on the SD Updates page offers newer
+stable CYD releases after saving the aquarium. SD and USB remain available
+when Wi-Fi is unavailable. Standard releases are not publisher-signed.
 
 - **Already using this CYD fork:** back up your active aquarium, power off
   before moving SD, copy `update.ptu` to `pocket-tank/update.ptu`, then install

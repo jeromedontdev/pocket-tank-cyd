@@ -50,6 +50,7 @@ typedef struct {
     uint32_t min_from;           /* the oldest release this one updates from (0 = any) */
     char     note[72];           /* one plain line for the offer page */
     uint32_t app_size;           /* bytes */
+    uint8_t  sha256[32];         /* full release asset, including appended image digest */
     bool     needs_cable;
     char     board[24];          /* the board the image is for (PT_BOARD); another board's manifest is refused */
 } update_manifest_t;
@@ -87,7 +88,7 @@ int  net_port_fail_reason(void);
 const char *update_message_title(void);
 
 /* ---- the UPDATES page in the tank ---- */
-enum { UPD_TAP_NONE = 0, UPD_TAP_CLOSE, UPD_TAP_CHECK, UPD_TAP_FORGET };
+enum { UPD_TAP_NONE = 0, UPD_TAP_CLOSE, UPD_TAP_CHECK, UPD_TAP_FORGET, UPD_TAP_WIFI };
 void render_updates_page(uint16_t *fb, int stride);
 void updates_sd_status(const char *message, bool ready);
 int  updates_page_tap(float x, float y);                    /* the bare hit test */
