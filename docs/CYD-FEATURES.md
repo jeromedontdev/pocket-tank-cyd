@@ -2,7 +2,22 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.2.4**
+**An illustrated tour of Pocket Tank CYD 2.2.5**
+
+**2.2.5** fixes the uneven stroke weight caused by fractional font scaling,
+most visible in Normal. Shared 5x7 text now uses exact pixel coverage rather
+than arbitrarily repeating rows/columns. Native-size text stays pixel-exact,
+including Enlarged's small labels; integer-size clock text stays sharp.
+Menus, cards, setup, games, stories, notices, weather and clock captions share
+the fix. Jumbo text/Flip numerals use the same rasterizer while other clock
+face styles stay distinct. Case-sensitive Wi-Fi text keeps its exact case
+with matching metrics at every size. Common punctuation no longer disappears.
+Existing layout, wrapping, touch targets, colors, saves and gameplay stay;
+no new buffers, font downloads or per-frame allocations are introduced.
+
+| Normal typography | Enlarged typography |
+|---|---|
+| ![Actual font rasterization in Normal](media/cyd-features/typography-normal.png) | ![The same text in Enlarged](media/cyd-features/typography-enlarged.png) |
 
 **2.2.4** refines sand grain, sparse pebbles and low distant ridges, with
 quieter layered kelp, coral, ruins and ice backgrounds. Lily pad, duck, log,

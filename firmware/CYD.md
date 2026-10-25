@@ -8,7 +8,17 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.2.4 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.2.5 is a distinct aquarium game, not just a board port.**
+
+Release 2.2.5 replaces uneven nearest-neighbor font expansion with exact
+integer box coverage at fractional sizes. Native 5x7/integer-size text remains
+pixel-exact. Shared menus/cards/setup/games/stories/notices and case-sensitive
+Wi-Fi text use the same rasterizer; Jumbo text/Flip numerals share it while
+clock-face styles stay distinct. Wi-Fi scale-1 metrics/advance match regular
+UI text. Common UI punctuation is present rather than blank. Native and
+fractional glyph coverage, conserved ink area, row/region clipping, both
+resolutions and retained clock output are tested. No new font buffers,
+downloads, PSRAM, save fields or gameplay/layout/touch-target changes.
 
 Release 2.2.4 adds restrained sand grain/depth and sparse pebbles, low distant
 ridges and quieter layered background silhouettes. Lily pad, duck, floating

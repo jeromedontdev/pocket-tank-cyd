@@ -161,9 +161,11 @@ static const uint8_t ASCII5X7[95][7] = {
     { 0x08, 0x04, 0x04, 0x02, 0x04, 0x04, 0x08 }, /* } */
     { 0x00, 0x00, 0x08, 0x15, 0x02, 0x00, 0x00 }, /* ~ */
 };
-int update_text_w(const char *s, int scale) { int n = (int)strlen(s); return n ? n * 6 * scale - scale : 0; }
+int update_text_w(const char *s, int scale) { return render_text_w(s, scale); }
 void update_text(uint16_t *fb, int stride, int x, int y, int scale, uint32_t rgb, const char *s) {
-    for (; *s; s++, x += 6 * scale) {
+    if (scale < 1) scale = 1;
+    int advance = scale == 1 ? (6 * PAGE_W + TANK_W - 1) / TANK_W : 6 * scale;
+    for (; *s; s++, x += advance) {
         unsigned char ch = (unsigned char)*s;
         if (ch < 32 || ch > 126) ch = '?';
         render_glyph(fb, stride, x, y, scale, rgb, ASCII5X7[ch - 32]);

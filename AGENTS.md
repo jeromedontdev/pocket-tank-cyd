@@ -20,7 +20,15 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.2.4**, refining sand/depth/pebbles, layered distant
+- Source release: **2.2.5**, consistent font coverage at fractional sizes,
+  sharp native 5x7/integer sizes and common punctuation. UI and Wi-Fi share
+  rasterization and metrics; Wi-Fi remains case-sensitive. Jumbo text/Flip
+  digits share coverage; retain distinct clock-face styles, run recording,
+  dirty bounds and row/region clipping. Tests independently integrate 35
+  subcells per output pixel and assert conserved ink area. No new buffers,
+  font downloads, save fields, layout/touch-target or gameplay changes.
+  Optional page-art captures include typography at both resolutions.
+  2.2.4 refines sand/depth/pebbles, layered distant
   scenery, five floating ornaments and all five rare visitors. Food/bubbles
   share bounded procedural materials; wipe/trim marks use existing successful
   active-stroke flags, with old/new damage restoration. Preserve quiet Simple

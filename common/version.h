@@ -5,8 +5,8 @@
 
 #define PT_RELEASE_MAJOR 2
 #define PT_RELEASE_MINOR 2
-#define PT_RELEASE_PATCH 4
-#define PT_RELEASE       "2.2.4"
+#define PT_RELEASE_PATCH 5
+#define PT_RELEASE       "2.2.5"
 #define PT_RELEASE_STAGE "CYD"
 #define PT_RELEASE_NUM   ((PT_RELEASE_MAJOR << 16) | (PT_RELEASE_MINOR << 8) | PT_RELEASE_PATCH)
 

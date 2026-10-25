@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
+#include "../common/update.h"
 #include "../common/render.c"
 
 static uint16_t pixels[448 * 368];
@@ -14,6 +15,100 @@ static uint16_t repeated[320 * 240];
 static uint16_t icon_bank[128 * 1024];
 static size_t icon_bank_bytes;
 static tank_t help_tank;
+
+static void check_font_coverage(void) {
+    static const int sizes[][2] = {{5, 7}, {7, 9}, {8, 10}, {11, 14}, {14, 18}, {23, 31}};
+    render_tile(0, 0); render_region(0, 0);
+    for (unsigned size = 0; size < sizeof sizes / sizeof *sizes; size++) {
+        int w = sizes[size][0], h = sizes[size][1];
+        for (const char *ch = FONT_CHARS; *ch; ch++) {
+            const uint8_t *g = glyph(*ch);
+            memset(full_frame, 0x42, sizeof full_frame);
+            ctx_t c = ctx_full(full_frame, TANK_W, 1);
+            src_t ink = src_color(0xd9eadf, 1);
+            draw_font_glyph(&c, 20, 30, w, h, &ink, g);
+            int total = 0, dots = 0;
+            for (int row = 0; row < 7; row++) for (int bit = 0; bit < 5; bit++)
+                dots += (g[row] >> bit) & 1;
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                int coverage = 0;
+                /* Independent integral reference: 35 equal-area subcells per output pixel. */
+                for (int sy = 0; sy < 7; sy++) for (int sx = 0; sx < 5; sx++)
+                    coverage += (g[(y * 7 + sy) / h] >> (4 - (x * 5 + sx) / w)) & 1;
+                total += coverage;
+                uint16_t expected = 0x4242;
+                if (coverage == 35) expected = ink.v;
+                else if (coverage) blend565(&expected, &ink, (coverage * 255 + 17) / 35);
+                assert(full_frame[(y + 30) * TANK_W + x + 20] == expected);
+            }
+            assert(total == dots * w * h);
+            for (int y = 30; y < 30 + h; y++) {
+                memset(tile_frame, 0x42, sizeof tile_frame);
+                render_tile(y, 1);
+                ctx_t tile = ctx_full(tile_frame + 1, TANK_W, 1);
+                tile_frame[0] = tile_frame[TANK_W + 1] = 0xc59a;
+                draw_font_glyph(&tile, 20, 30, w, h, &ink, g);
+                assert(tile_frame[0] == 0xc59a && tile_frame[TANK_W + 1] == 0xc59a);
+                assert(!memcmp(tile_frame + 1, full_frame + y * TANK_W, TANK_W * 2));
+            }
+            render_tile(0, 0);
+        }
+    }
+    assert(glyph('a') == glyph('A'));
+    assert(!glyph(' ') && !glyph(0));
+    assert(sizeof FONT5X7 / sizeof *FONT5X7 == strlen(FONT_CHARS));
+    assert(render_text_w("MINIMUM", 0) == render_text_w("MINIMUM", 1));
+    assert(update_text_w("MINIMUM", 0) == render_text_w("MINIMUM", 1));
+    for (int scale = 1; scale <= 6; scale++) {
+        const char *text = "MWI 08:34 (100%)";
+        render_tile(0, 0); render_region(0, 0);
+        memset(full_frame, 0x42, sizeof full_frame);
+        render_text(full_frame, TANK_W, 20, 40, scale, 0xffffff, text);
+        for (int row = 0; row < TANK_H; row++) {
+            memset(tile_frame, 0x42, sizeof tile_frame);
+            render_tile(row, 1); render_region(19, 41);
+            render_text(tile_frame + 1, TANK_W, 20, 40, scale, 0xffffff, text);
+            for (int x = 0; x < TANK_W; x++)
+                assert(tile_frame[1 + x] == (x >= 19 && x < 60 ? full_frame[row * TANK_W + x] : 0x4242));
+        }
+        render_tile(0, 0); render_region(0, 0);
+        assert(update_text_w(text, scale) == render_text_w(text, scale));
+        memset(repeated, 0x42, sizeof repeated);
+        update_text(repeated, TANK_W, 20, 40, scale, 0xffffff, text);
+        assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
+        for (const char *ch = FONT_CHARS; *ch; ch++) {
+            char sample[] = {*ch, 0};
+            memset(full_frame, 0x42, sizeof full_frame);
+            memset(repeated, 0x42, sizeof repeated);
+            render_text(full_frame, TANK_W, 20, 40, scale, 0xffffff, sample);
+            update_text(repeated, TANK_W, 20, 40, scale, 0xffffff, sample);
+            assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
+        }
+    }
+    render_tile(0, 0); render_region(0, 0);
+}
+
+static void check_font_clock_cache(void) {
+    tank_t tank = {0};
+    static const int themes[] = {CLOCK_COMPACT, CLOCK_NEON, CLOCK_FLIP};
+    render_work_caches(true);
+    for (unsigned theme = 0; theme < sizeof themes / sizeof *themes; theme++)
+        for (int sample = 0; sample < 25; sample++) {
+            tank.aquariums.clock_theme = (uint8_t)themes[theme];
+            tank.aquariums.clock_layout = clock_layout_set_size(0, CLOCK_JUMBO);
+            int64_t now = sample ? INT64_C(1735689600) + (sample - 1) * 3661 : 0;
+            memset(full_frame, 0, sizeof full_frame);
+            render_clock_overlay(&tank, full_frame, TANK_W, now);
+            /* Normal Jumbo Flip's card borders already exceed this budget;
+             * retain its live fallback, but never introduce new fallbacks. */
+            bool live_flip = TANK_W == 320 && themes[theme] == CLOCK_FLIP;
+            if (g_record_overflow && !live_flip)
+                fprintf(stderr, "Font clock cache overflow: %dx%d theme %d sample %d\n",
+                        TANK_W, TANK_H, themes[theme], sample);
+            assert(!g_record_overflow || live_flip);
+        }
+    render_work_caches(false);
+}
 
 static void check_fish_material(void) {
     const float xs[] = {28, 65, 87, 70, 32, 17};
@@ -51,6 +146,29 @@ static void check_fish_material(void) {
         assert(tile_frame[0] == 0xc59a && tile_frame[TANK_W + 1] == 0xc59a);
         assert(!memcmp(tile_frame + 1, repeated + row * TANK_W, TANK_W * sizeof *repeated));
     }
+}
+
+static void capture_typography(const char *directory) {
+    render_tile(0, 0); render_region(0, 0);
+    ctx_t c = ctx_page(full_frame, TANK_W);
+    rect_fill(&c, 0, 0, PAGE_W, PAGE_H, 0x031015);
+    draw_text(&c, 18, 14, 3, 0xffffff, "POCKET TANK CYD");
+    draw_text(&c, 18, 52, 2, 0x9fd8e2, "NORMAL / ENLARGED");
+    draw_text(&c, 18, 80, 1, 0xffffff, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    draw_text(&c, 18, 102, 2, 0xffffff, "ABCDEFGHIJKLM");
+    draw_text(&c, 18, 126, 2, 0xffffff, "NOPQRSTUVWXYZ");
+    draw_text(&c, 18, 154, 2, 0x9fd8e2, "0123456789 12:34 25C");
+    draw_text(&c, 18, 182, 1, 0xa4c5ce, "SAND DOLLARS: 1234 / DAILY CARE");
+    draw_text(&c, 18, 204, 2, 0xffffff, "WI-FI / SYNC 100%");
+    button(&c, 18, 240, 194, 44, 0x1c2f36, 0x9fd8e2, "SETTINGS", 2);
+    button(&c, 232, 240, 194, 44, 0x1c2f36, 0x9fd8e2, "BACK", 2);
+    draw_text(&c, 18, 304, 3, 0xffffff, "BOLT PIP KELP NORI");
+    char path[1024];
+    int length = snprintf(path, sizeof path, "%s/typography-%d.raw", directory, TANK_W);
+    assert(length > 0 && length < (int)sizeof path);
+    FILE *file = fopen(path, "wb"); assert(file);
+    assert(fwrite(full_frame, sizeof *full_frame, TANK_W * TANK_H, file) == (size_t)TANK_W * TANK_H);
+    assert(!fclose(file));
 }
 
 static void capture_fish_materials(const char *directory) {
@@ -661,11 +779,14 @@ int main(int argc, char **argv) {
     for (int resolution = 0; resolution < 2; resolution++) {
         tank_resolution(resolution != 0);
         check_fish_material();
+        check_font_coverage();
+        check_font_clock_cache();
         check_aquarium_effects();
         check_care_scene_cache();
         if (argc > 2) {
             capture_fish_materials(argv[2]);
             capture_aquarium_details(argv[2]);
+            capture_typography(argv[2]);
         }
         render_life_open();
         for (int category = 0; category < 5; category++) for (int page = 0; page < 2; page++) {
@@ -709,5 +830,6 @@ int main(int argc, char **argv) {
     puts("Tank materials: 25 dimensional ornaments, RGB565 contrast, night dimming, original bounds and arch opening.");
     puts("Fish materials: five RGB565 tones with unchanged polygon coverage and guarded one-row tile equality.");
     puts("Aquarium details: five visitors and food/bubbles stay bounded with guarded row parity; care feedback requires a successful stroke.");
+    puts("Typography: exact coverage/ink conservation for every UI glyph at native and fractional sizes; guarded row/region parity, identical ASCII/UI metrics at scales 1-6, and no new Jumbo clock cache fallbacks.");
     return 0;
 }

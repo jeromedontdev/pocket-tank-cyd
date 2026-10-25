@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.2.4
+# Pocket Tank CYD 2.2.5
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.2.4**; firmware, update
+now versioned independently. This is **release 2.2.5**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,26 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.2.4: quieter scenery and little aquarium details
+## New in 2.2.5: consistent typography in both display scales
+
+- Normal no longer thickens arbitrary font strokes by repeating rows and
+  columns. Fractional sizes use exact pixel coverage; native 5x7 and integer
+  sizes remain sharp. Enlarged keeps its crisp small text.
+- Menus, fish/helper cards, setup, games, story pages, notifications, weather
+  and clock captions share the corrected renderer. Jumbo text/Flip digits
+  use it too; segmented, analog and binary clock designs remain distinct.
+- Case-sensitive Wi-Fi names/passwords use the same sizing and rasterization,
+  including the smallest text size. Common UI punctuation now includes
+  parentheses, brackets, equals, ampersand, hash, dollar, at, underscore,
+  quotation marks and asterisk instead of leaving blank cells.
+- Existing text sizes, spacing, wrapping, panel bounds, touch targets, colors,
+  save format and gameplay stay intact. No font downloads or new buffers.
+
+| Normal typography | Enlarged typography |
+|---|---|
+| ![Shared font samples in Normal at native and fractional sizes](docs/media/cyd-features/typography-normal.png) | ![The same font samples in Enlarged, retaining sharp native-size text](docs/media/cyd-features/typography-enlarged.png) |
+
+## Previously in 2.2.4: quieter scenery and little aquarium details
 
 - Sand has restrained grain, sparse two-tone pebbles and depth shading.
   Low distant ridges and layered kelp, coral, ruins and ice silhouettes keep

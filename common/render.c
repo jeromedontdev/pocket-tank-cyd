@@ -5383,11 +5383,9 @@ bool render_tool_chip_hit(const tank_t *t, float x, float y) {
 }
 
 
-/* ---- a small pixel font (2026-09-11) ----
- * 5x7 glyphs - upper case, digits, a little punctuation - drawn as scale x
- * scale blocks, so one table reads at 2x for a caption and 3x for a
- * button. The renderer's first text (the milestones page can borrow it for
- * labels). Lower case maps to upper; anything else advances a cell. */
+/* Shared 5x7 UI font. Native/integer sizes stay sharp; fractional page
+ * sizes use coverage rather than unevenly repeating source rows/columns.
+ * Lower case maps to upper; Wi-Fi retains its case-sensitive glyphs. */
 static const uint8_t FONT5X7[][7] = {
     { 0x0e, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11 }, /* A */
     { 0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e }, /* B */
@@ -5438,19 +5436,84 @@ static const uint8_t FONT5X7[][7] = {
     { 0x00, 0x00, 0x08, 0x15, 0x02, 0x00, 0x00 }, /* ~ (the battery page's "about") */
     { 0x02, 0x04, 0x08, 0x10, 0x08, 0x04, 0x02 }, /* < */
     { 0x08, 0x04, 0x02, 0x01, 0x02, 0x04, 0x08 }, /* > */
+    { 0x02, 0x04, 0x08, 0x08, 0x08, 0x04, 0x02 }, /* ( */
+    { 0x08, 0x04, 0x02, 0x02, 0x02, 0x04, 0x08 }, /* ) */
+    { 0x00, 0x0c, 0x0c, 0x00, 0x0c, 0x04, 0x08 }, /* ; */
+    { 0x00, 0x00, 0x1f, 0x00, 0x1f, 0x00, 0x00 }, /* = */
+    { 0x0c, 0x12, 0x14, 0x08, 0x15, 0x12, 0x0d }, /* & */
+    { 0x0a, 0x0a, 0x1f, 0x0a, 0x1f, 0x0a, 0x0a }, /* # */
+    { 0x04, 0x0f, 0x14, 0x0e, 0x05, 0x1e, 0x04 }, /* $ */
+    { 0x0e, 0x11, 0x01, 0x0d, 0x15, 0x15, 0x0e }, /* @ */
+    { 0x0e, 0x08, 0x08, 0x08, 0x08, 0x08, 0x0e }, /* [ */
+    { 0x0e, 0x02, 0x02, 0x02, 0x02, 0x02, 0x0e }, /* ] */
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f }, /* _ */
+    { 0x0a, 0x0a, 0x0a, 0x00, 0x00, 0x00, 0x00 }, /* " */
+    { 0x00, 0x04, 0x15, 0x0e, 0x15, 0x04, 0x00 }, /* * */
 };
-static const char FONT_CHARS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789?!.,-:'/+%~<>";
+static const char FONT_CHARS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789?!.,-:'/+%~<>();=&#$@[]_\"*";
 static const uint8_t *glyph(char ch) {
     if (ch >= 'a' && ch <= 'z') ch -= 'a' - 'A';
     const char *p = ch ? strchr(FONT_CHARS, ch) : NULL;
     return p ? FONT5X7[p - FONT_CHARS] : NULL;
 }
 static int text_w(const char *s, int scale) {
+    if (scale < 1) scale = 1;
     int n = (int)strlen(s);
     if (scale == 1) return n ? (n - 1) * ((6 * PAGE_W + TANK_W - 1) / TANK_W) +
         (5 * PAGE_W + TANK_W - 1) / TANK_W : 0;
-    if (scale < 2) scale = 2;
     return n ? n * 6 * scale - scale : 0;
+}
+static void draw_font_glyph(ctx_t *c, int left, int top, int w, int h, const src_t *col, const uint8_t *g) {
+    if (!c->scaled && w % 5 == 0 && h % 7 == 0) {
+        for (int row = 0; row < 7; row++) for (int bit = 0; bit < 5; bit++)
+            if (g[row] & (0x10 >> bit))
+                for (int yy = 0; yy < h / 7; yy++)
+                    span(c, left + bit * w / 5, left + (bit + 1) * w / 5 - 1,
+                         top + row * h / 7 + yy, col, 255);
+        return;
+    }
+    /* Exact box coverage keeps fractional-size stems equally weighted instead
+     * of duplicating arbitrary rows/columns. Native 5x7 remains pixel-exact. */
+    for (int yy = 0, rows = 1; yy < h; yy += rows) {
+        rows = 1;
+        int py = top + yy;
+        if ((unsigned)py >= (unsigned)TANK_H) continue;
+        if (!g_recording && (py < g_tile_y || py >= render_tile_bottom())) continue;
+        int y0 = yy * 7, y1 = y0 + 7;
+        /* Emit equal-coverage rectangles in row order within each run, so
+         * stretched clock glyphs retain the cache's vertical compression. */
+        if (!c->scaled && y0 / h == (y1 - 1) / h) {
+            rows = (y0 / h + 1) * h / 7 - yy;
+            if (rows > TANK_H - py) rows = TANK_H - py;
+            if (!g_recording && rows > render_tile_bottom() - py) rows = render_tile_bottom() - py;
+        }
+        int run_left = left, run_coverage = 0;
+        for (int xx = 0; xx <= w; xx++) {
+            int x = left + xx;
+            int x0 = xx * 5, x1 = x0 + 5, coverage = 0;
+            for (int row = y0 / h; xx < w && row <= (y1 - 1) / h; row++) {
+                int a = row * h > y0 ? row * h : y0;
+                int b = (row + 1) * h < y1 ? (row + 1) * h : y1;
+                for (int bit = x0 / w; bit <= (x1 - 1) / w; bit++) if (g[row] & (0x10 >> bit)) {
+                    int l = bit * w > x0 ? bit * w : x0;
+                    int r = (bit + 1) * w < x1 ? (bit + 1) * w : x1;
+                    coverage += (r - l) * (b - a);
+                }
+            }
+            if (!c->scaled) {
+                if (coverage == run_coverage) continue;
+                if (run_coverage) for (int row = 0; row < rows; row++)
+                    span(c, run_left, x - 1, py + row, col, (run_coverage * 255 + 17) / 35);
+                run_left = x; run_coverage = coverage;
+                continue;
+            }
+            if (!coverage || (unsigned)x >= (unsigned)TANK_W) continue;
+            if (x < render_region_left() || x >= render_region_right() || scene_hidden(x, py)) continue;
+            uint16_t *pixel = &c->fb[(py - g_tile_y) * c->stride + x];
+            if (coverage == 35) *pixel = col->v;
+            else blend565(pixel, col, (coverage * 255 + 17) / 35);
+        }
+    }
 }
 static void draw_page_glyph(ctx_t *c, int x, int y, int scale, const src_t *col, const uint8_t *g) {
     int left = (int)floorf((float)x * TANK_W / PAGE_W), top = (int)floorf((float)y * TANK_H / PAGE_H);
@@ -5458,16 +5521,7 @@ static void draw_page_glyph(ctx_t *c, int x, int y, int scale, const src_t *col,
     int h = (7 * scale * TANK_H + PAGE_H / 2) / PAGE_H;
     if (w < 5) w = 5;
     if (h < 7) h = 7;
-    /* Rasterize in framebuffer pixels: forward-mapping tiny logical spans merges strokes. */
-    for (int yy = 0; yy < h; yy++) {
-        int py = top + yy;
-        if ((unsigned)py >= (unsigned)TANK_H || py < g_tile_y || py >= render_tile_bottom()) continue;
-        for (int xx = 0; xx < w; xx++) {
-            int px = left + xx;
-            if ((unsigned)px < (unsigned)TANK_W && (g[yy * 7 / h] & (0x10 >> (xx * 5 / w))))
-                c->fb[(py - g_tile_y) * c->stride + px] = col->v;
-        }
-    }
+    draw_font_glyph(c, left, top, w, h, col, g);
 }
 static void draw_text(ctx_t *c, int x, int y, int scale, uint32_t rgb, const char *s) {
     if (scale < 1) scale = 1;
@@ -5478,11 +5532,7 @@ static void draw_text(ctx_t *c, int x, int y, int scale, uint32_t rgb, const cha
         const uint8_t *g = glyph(*s);
         if (!g) continue;
         if (c->scaled) { draw_page_glyph(c, x, y, scale, &col, g); continue; }
-        for (int r = 0; r < 7; r++)
-            for (int k = 0; k < 5; k++)
-                if (g[r] & (0x10 >> k))
-                    for (int yy = 0; yy < scale; yy++)
-                        span(c, x + k * scale, x + k * scale + scale - 1, y + r * scale + yy, &col, 255);
+        draw_font_glyph(c, x, y, 5 * scale, 7 * scale, &col, g);
     }
 }
 
@@ -5550,7 +5600,7 @@ void render_button(uint16_t *fb, int stride, int x, int y, int w, int h, uint32_
 }
 void render_glyph(uint16_t *fb, int stride, int x, int y, int scale, uint32_t rgb, const uint8_t *rows) {
     ctx_t c = ctx_page(fb, stride); src_t col = src_color(rgb, 1.0f);
-    draw_page_glyph(&c, x, y, scale < 2 ? 2 : scale, &col, rows);
+    draw_page_glyph(&c, x, y, scale < 1 ? 1 : scale, &col, rows);
 }
 void render_fish_preview(uint16_t *fb, int stride, float x, float y, float size,
                          uint32_t body, uint32_t fin, uint32_t accent, float clock) {
@@ -6795,15 +6845,13 @@ static clock_colors_t clock_colors(const tank_t *t) {
 }
 static void clock_text_stretched(ctx_t *c, int x, int y, int w, int h, uint32_t ink, const char *text) {
     int columns = (int)strlen(text) * 6 - 1;
+    if (columns <= 0 || w <= 0 || h <= 0) return;
+    src_t color = src_color(ink, c->dim);
     for (int digit = 0; text[digit]; digit++) {
         const uint8_t *g = glyph(text[digit]);
-        for (int row = 0; row < 7; row++) for (int col = 0; col < 5; col++)
-            if (g[row] & (1 << (4 - col))) {
-                int left = (digit * 6 + col) * w / columns;
-                int right = (digit * 6 + col + 1) * w / columns;
-                int top = row * h / 7, bottom = (row + 1) * h / 7;
-                rect_fill(c, x + left, y + top, right - left, bottom - top, ink);
-            }
+        if (!g) continue;
+        int left = digit * 6 * w / columns, right = (digit * 6 + 5) * w / columns;
+        draw_font_glyph(c, x + left, y, right - left, h, &color, g);
     }
 }
 static void clock_flip(ctx_t *c, int x, int y, int w, int h, int size, int detail_scale, uint32_t ink, const char *text) {

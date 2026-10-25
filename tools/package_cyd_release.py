@@ -89,7 +89,15 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.2.4: scenery, floating ornaments, visitors and care details
+### New in 2.2.5: consistent typography in both display scales
+
+- Normal's fractional font sizes use exact pixel coverage instead of unevenly repeated rows/columns. Native 5x7 and integer-size text remain pixel-exact, retaining Enlarged's crisp small labels.
+- Shared menus, cards, setup, games, stories, notices, weather and clock captions use the corrected renderer. Jumbo text/Flip digits share it; segmented, analog and binary clock styles remain distinct.
+- Case-sensitive Wi-Fi text uses the same rasterizer and matching smallest-size metrics. Common UI punctuation is rendered instead of disappearing into blank cells.
+- Tests verify exact coverage and conserved ink area for every UI glyph, guarded row/region output, both resolutions, ASCII/UI agreement and retained clocks.
+- No new buffers, font downloads, save fields, gameplay, text-layout or touch-target changes.
+
+### Previously in 2.2.4: scenery, floating ornaments, visitors and care details
 
 - Quieter sand grain, sparse two-tone pebbles, depth shading and low distant ridges. Kelp, coral, ruins and ice silhouettes have restrained layered tones.
 - Lily pad, duck, floating log, tethered buoy and jelly lantern gain material-specific shading, veins, rings and quieter highlights.

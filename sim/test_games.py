@@ -40,7 +40,8 @@ def exercise(lib, backup, output):
         actual = tuple(pixels[(top + row) * width + left + col] == rgb(color)
                        for row in range(h) for col in range(w))
         matches = [n for n, glyph in enumerate(glyphs) if actual == tuple(
-            bool(glyph[row * 7 // h] & (16 >> (col * 5 // w)))
+            all(glyph[(row * 7 + sy) // h] & (16 >> ((col * 5 + sx) // w))
+                for sy in range(7) for sx in range(5))
             for row in range(h) for col in range(w))]
         assert len(matches) == 1, ("Displayed digit must be readable", x, y, matches)
         return matches[0]
