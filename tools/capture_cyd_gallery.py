@@ -140,6 +140,7 @@ def main():
                         ("tank-crafted-ornaments", (9, 10, 18, 20), 0),
                         ("tank-crafted-seabed", (22, 23, 25, 26, 27), 0),
                         ("tank-crafted-reef", (), 63),
+                        ("tank-crafted-floats", (13, 14, 21, 24, 28, 29), 0),
                         ("tank-crafted-plants", (0, 17, 19), 0)):
                     showcase = copy.deepcopy(demo)
                     showcase["tank"].update(n_fish=2, journal_theme=0,
@@ -150,6 +151,10 @@ def main():
                         base, spread = (0.22, 0.018) if name.endswith("plants") else (0.08, 0.008)
                         showcase["tank"][key] = [base + (i * 7 % 11) * spread
                                                  for i in range(len(showcase["tank"][key]))]
+                    if name.endswith("floats"):
+                        showcase["tank"]["ornament_x"][3] = 70
+                        showcase["tank"]["extra_x"][5] = 250
+                        showcase["tank"]["sand_style"] = 1
                     restore(showcase)
                     if fixed:
                         showcase = json.loads(sim.backup(lib))

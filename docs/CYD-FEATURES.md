@@ -2,7 +2,23 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.2.3**
+**An illustrated tour of Pocket Tank CYD 2.2.4**
+
+**2.2.4** refines sand grain, sparse pebbles and low distant ridges, with
+quieter layered kelp, coral, ruins and ice backgrounds. Lily pad, duck, log,
+buoy and jelly lantern gain material details. Rare visitors gain a scuted
+turtle shell, folded manta wings, glassy ghost-fish edges and soft jelly/squid
+shading. Food has a lit face and bubbles have fine translucent rims. A mint
+wipe arc or warm trim glint follows a successful active tool stroke and
+clears when the stroke ends; unsuccessful gestures do not show success cues.
+Simple keeps quiet water and hidden ambient bubbles/helpers, with the same
+sand, food and tool feedback. No helpers, castle, living coral or reef-cluster
+art is changed. No new buffers, save fields, particles, timers, visit rules
+or care/progression changes.
+
+| Floating material details | Rare visitors and care effects, both poses |
+|---|---|
+| ![Refined lily pad, floating log, duck, buoy and jelly lantern](media/cyd-features/tank-crafted-floats.png) | ![Actual visitor, pellet, bubble and tool-feedback renderer](media/cyd-features/aquarium-details.png) |
 
 **2.2.3** extends the material polish to all ten fish varieties and all six
 wearables. Soft back highlights, body midtones and underside shadows give

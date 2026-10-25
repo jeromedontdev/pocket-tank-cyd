@@ -2480,6 +2480,46 @@ static void test_social_and_preview(void) {
     puts("PASS: calm friendships, bounded pair leisure, stable favorite decor, transactional placement/autosaves/cancel/retry/sale and creature shortcuts at both scales");
 }
 
+static void test_care_feedback_damage(void) {
+    for (int compact = 0; compact < 2; compact++) for (int detail = 0; detail < 3; detail++) {
+        tank_resolution(compact != 0);
+        render_device_t device = {0, 1, 1, -1, SCENE_BALANCED};
+        device.scene_detail = (uint8_t)detail;
+        render_set_device(&device);
+        tank_t t; tank_init(&t, 54); t.n_fish = 0;
+        t.companion.display_compact = (uint8_t)compact;
+        size_t bytes = (size_t)TANK_W * TANK_H * sizeof(uint16_t);
+        uint16_t *full = malloc(bytes), *retained = calloc(1, bytes);
+        uint16_t *tile = malloc((size_t)TANK_W * 80 * sizeof(uint16_t));
+        assert(full && retained && tile);
+        render_work_caches(true);
+        for (int clock = 0; clock < 2; clock++) for (int frame = 0; frame < 10; frame++) {
+            t.clock_requested = clock != 0; t.aquariums.clock_theme = clock ? CLOCK_ANALOG : CLOCK_OFF;
+            t.tool = frame < 5 ? TOOL_SPONGE : TOOL_SCISSORS;
+            t.drag_has_prev = frame > 0 && frame < 9; t.drag_dist = 100;
+            t.drag_px = 40 + frame * 10; t.drag_py = 70 + frame * 3;
+            t.wipe_sounded = frame >= 2; t.slash_cut = frame >= 6;
+            t.night = frame >= 7;
+            tank_t before = t;
+            render_tile(0, 0); render_region(0, 0); render_tank(&t, full, TANK_W);
+            render_damage_begin(&t, frame == 0);
+            int cursor = 0, x, y, w, h;
+            while (render_damage_next(&cursor, &x, &y, &w, &h)) {
+                render_tile(y, h); render_region(x, w); render_tank(&t, tile, TANK_W);
+                for (int row = 0; row < h; row++)
+                    memcpy(retained + (y + row) * TANK_W + x, tile + row * TANK_W + x, (size_t)w * 2);
+            }
+            assert(!memcmp(&t, &before, sizeof t));
+            render_tile(0, 0); render_region(0, 0);
+            assert(!memcmp(full, retained, bytes));
+        }
+        render_work_caches(false); free(full); free(retained); free(tile);
+    }
+    render_device_t device = {0, 1, 1, -1, SCENE_BALANCED};
+    render_set_device(&device); tank_resolution(false);
+    puts("PASS: successful care-stroke feedback moves and clears with exact damage replay in all details, both sizes, night and opaque clock; no tank mutation");
+}
+
 static void test_theme_detail_damage(void) {
     for (int compact = 0; compact < 2; compact++) {
         tank_resolution(compact != 0);
@@ -2491,9 +2531,11 @@ static void test_theme_detail_damage(void) {
         assert(full && retained && tile);
         render_work_caches(true);
         const float times[] = {0, .1f, .25f, .75f, 1, 5.75f, 6, 19.75f, 20, 20.25f, 21.75f, 22, 47.75f, 48, 54, 80, 82};
+        for (int species = 0; species < VISITOR_SPECIES; species++)
         for (int clock = 0; clock < 2; clock++) for (int theme = 3; theme <= 7; theme += 4)
             for (int i = 0; i < (int)(sizeof times / sizeof times[0]); i++) {
                 t.journal.theme = (uint8_t)theme; t.clock = times[i];
+                t.visitor_species = (uint8_t)species;
                 t.visitor_left = i > 1 && i < 12 ? 24 - i : 0;
                 t.clock_requested = clock != 0; t.aquariums.clock_theme = clock ? CLOCK_ANALOG : CLOCK_OFF;
                 render_tile(0, 0); render_region(0, 0); render_tank(&t, full, TANK_W);
@@ -2510,7 +2552,7 @@ static void test_theme_detail_damage(void) {
         render_work_caches(false); free(full); free(retained); free(tile);
     }
     tank_resolution(false);
-    puts("PASS: sparse silhouette/star/glint appearance, movement and removal replay pixel-exactly at both scales with and without opaque clock");
+    puts("PASS: all five visitor species and sparse star/glint appearance, movement and removal replay pixel-exactly at both scales with and without opaque clock");
 }
 
 static void test_tank_polish(void) {
@@ -3043,6 +3085,7 @@ int main(int argc, char **argv) {
     test_genetics();
     test_social_and_preview();
     test_theme_detail_damage();
+    test_care_feedback_damage();
     if (argc == 2 && !strcmp(argv[1], "--clock-only")) {
         test_clock();
         { extern void test_clock_weather(void); test_clock_weather(); }

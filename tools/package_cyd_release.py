@@ -89,7 +89,16 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.2.3: dimensional fish and wearable accessories
+### New in 2.2.4: scenery, floating ornaments, visitors and care details
+
+- Quieter sand grain, sparse two-tone pebbles, depth shading and low distant ridges. Kelp, coral, ruins and ice silhouettes have restrained layered tones.
+- Lily pad, duck, floating log, tethered buoy and jelly lantern gain material-specific shading, veins, rings and quieter highlights.
+- All five rare visitors gain dimensional details, including turtle shell scutes, manta wing folds, translucent ghost-fish edges and softly shaded jelly/squid bodies.
+- Lit food pellets, fine translucent bubble rims and small mint wipe/warm trim marks using existing successful active-stroke state. No new particles or timers.
+- Same food/sand/tool feedback in Simple, retaining quiet water and hidden ambient bubbles/helpers. Shared previews, original bounds and full/tile/cache/damage parity are tested at both sizes, day/night and all details.
+- Helpers, castle, living coral and reef cluster are unchanged. No new graphics buffers, save fields, ownership, visit, price, care or progression changes.
+
+### Previously in 2.2.3: dimensional fish and wearable accessories
 
 - All ten fish varieties gain restrained back highlights, body midtones and underside shading. Fins, tails, ray wings and jellyfish bells share the lighting; head-on turns retain rounded volume.
 - All six wearable accessories gain lit faces and shaded folds within their original outlines, retaining both chosen colors and Natural.

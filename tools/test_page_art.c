@@ -84,7 +84,7 @@ static void capture_fish_materials(const char *directory) {
 }
 
 static void check_tank_materials(void) {
-    static const int items[] = {9, 10, 11, 12, 16, 17, 18, 19, 20, 22, 23, 25, 26, 27,
+    static const int items[] = {9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
                                SD_SCENERY_GLASS, SD_SCENERY_BRAIN, SD_SCENERY_TIKI,
                                SD_SCENERY_BOTTLE, SD_SCENERY_ANEMONE, SD_SCENERY_TEAPOT};
     for (unsigned i = 0; i < sizeof items / sizeof *items; i++) {
@@ -116,6 +116,132 @@ static void check_tank_materials(void) {
     assert(!ornament_pixel(20, 29, 35)); /* The stone arch is still a real opening. */
     assert(ornament_pixel(9, 23, 23) != ornament_pixel(9, 21, 23)); /* Recessed latch. */
     assert(ornament_pixel(26, 11, 10) != ornament_pixel(26, 12, 10)); /* Hoop rivet. */
+}
+
+static void draw_test_effect(ctx_t *c, int kind, int pose) {
+    static const int widths[] = {20, 28, 22, 40, 12}, heights[] = {15, 15, 10, 24, 19};
+    if (kind < VISITOR_SPECIES) {
+        theme_detail_t d = {.x = 32, .y = 40, .w = widths[kind], .h = heights[kind],
+                            .kind = 4 + kind, .pose = pose};
+        theme_detail_draw(c, &d);
+    } else if (kind == 5 || kind == 6) {
+        bubble_t b = {.x = 40.3f, .y = 48.7f, .column = kind == 6};
+        draw_water_bubble(c, &b);
+    } else draw_food_pellet(c, 40.3f, 48.7f);
+}
+
+static void check_aquarium_effects(void) {
+    static const int widths[] = {20, 28, 22, 40, 12}, heights[] = {15, 15, 10, 24, 19};
+    for (int kind = 0; kind < 8; kind++) for (int pose = 0; pose < 2; pose++)
+        for (int night = 0; night < 2; night++) {
+            render_tile(0, 0);
+            memset(full_frame, 0x26, sizeof full_frame);
+            ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = night ? .45f : 1};
+            draw_test_effect(&c, kind, pose);
+            int changed = 0;
+            for (int y = 0; y < TANK_H; y++) for (int x = 0; x < TANK_W; x++)
+                if (full_frame[y * TANK_W + x] != 0x2626) {
+                    changed++;
+                    if (kind < VISITOR_SPECIES)
+                        assert(x >= 32 && x < 32 + widths[kind] && y >= 40 && y < 40 + heights[kind]);
+                    else assert(x >= 35 && x <= 45 && y >= 43 && y <= 53);
+                }
+            assert(changed >= 4);
+            for (int row = 0; row < TANK_H; row++) {
+                memset(tile_frame, 0x26, sizeof tile_frame);
+                ctx_t tile = c; tile.fb = tile_frame + 1; tile.oy = row; tile.h = 1;
+                tile_frame[0] = tile_frame[TANK_W + 1] = 0xc59a;
+                draw_test_effect(&tile, kind, pose);
+                assert(tile_frame[0] == 0xc59a && tile_frame[TANK_W + 1] == 0xc59a);
+                assert(!memcmp(tile_frame + 1, full_frame + row * TANK_W, TANK_W * sizeof *full_frame));
+            }
+        }
+    render_tile(0, 0);
+    tank_t t = help_tank;
+    t.tool = TOOL_SPONGE; t.drag_has_prev = true; t.drag_dist = 100;
+    t.drag_px = 40; t.drag_py = 50; t.wipe_sounded = false; t.slash_cut = false;
+    memset(full_frame, 0, sizeof full_frame);
+    draw_care_stroke(&t, full_frame, TANK_W);
+    for (int i = 0; i < TANK_W * TANK_H; i++) assert(!full_frame[i]);
+    t.wipe_sounded = true;
+    assert(care_stroke_visible(&t));
+    tank_t before = t;
+    draw_care_stroke(&t, full_frame, TANK_W);
+    assert(!memcmp(&t, &before, sizeof t));
+    assert(full_frame[47 * TANK_W + 40]);
+    t.drag_has_prev = false; assert(!care_stroke_visible(&t));
+    t.drag_has_prev = true; t.tool = TOOL_SCISSORS;
+    assert(!care_stroke_visible(&t));
+    t.slash_cut = true; assert(care_stroke_visible(&t));
+    t.tool = TOOL_HAND; assert(!care_stroke_visible(&t));
+}
+
+static void capture_aquarium_details(const char *directory) {
+    static const char *const names[] = {"DRIFTER", "SEA TURTLE", "GHOST FISH", "MANTA", "LANTERN SQUID"};
+    static const int widths[] = {20, 28, 22, 40, 12}, heights[] = {15, 15, 10, 24, 19};
+    ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+    for (int i = 0; i < TANK_W * TANK_H; i++) full_frame[i] = rgb565(0x102b34, 1);
+    for (int kind = 0; kind < VISITOR_SPECIES; kind++) {
+        for (int pose = 0; pose < 2; pose++) {
+            theme_detail_t d = {.x = 20 + pose * 66, .y = 6 + kind * 29,
+                .w = widths[kind], .h = heights[kind], .kind = 4 + kind, .pose = pose};
+            theme_detail_draw(&c, &d);
+        }
+        draw_text(&c, 140, 12 + kind * 29, 1, 0xb6d3ce, names[kind]);
+    }
+    draw_food_pellet(&c, 25, 155);
+    bubble_t b = {.x = 45, .y = 155, .column = true};
+    draw_water_bubble(&c, &b);
+    b.x = 60; b.column = false; draw_water_bubble(&c, &b);
+    tank_t t = help_tank;
+    t.drag_has_prev = true; t.drag_dist = 100; t.drag_px = 85; t.drag_py = 155;
+    t.tool = TOOL_SPONGE; t.wipe_sounded = true;
+    draw_care_stroke(&t, full_frame, TANK_W);
+    t.drag_px = 105; t.tool = TOOL_SCISSORS; t.slash_cut = true;
+    draw_care_stroke(&t, full_frame, TANK_W);
+    draw_text(&c, 140, 152, 1, 0xb6d3ce, "CARE DETAILS");
+    char path[1024];
+    int length = snprintf(path, sizeof path, "%s/aquarium-details-%d.raw", directory, TANK_W);
+    assert(length > 0 && length < (int)sizeof path);
+    FILE *file = fopen(path, "wb"); assert(file);
+    assert(fwrite(full_frame, sizeof *full_frame, TANK_W * TANK_H, file) == (size_t)TANK_W * TANK_H);
+    assert(!fclose(file));
+}
+
+static void check_care_scene_cache(void) {
+    size_t bytes = (size_t)TANK_W * TANK_H * sizeof(uint16_t);
+    uint16_t *scene = calloc(1, bytes), *baseline = malloc(bytes);
+    uint32_t *dirty = calloc(RENDER_DIRTY_WORDS, sizeof *dirty);
+    assert(scene && baseline && dirty);
+    for (int night = 0; night < 2; night++) {
+        tank_t t = help_tank;
+        t.night = night != 0; t.n_fish = 0; t.clock_requested = false;
+        t.aquariums.clock_theme = CLOCK_OFF; t.tool = TOOL_SPONGE;
+        t.drag_has_prev = false;
+        render_tile(0, 0); render_region(0, 0);
+        render_set_scene_cache(scene); render_set_dirty_mask(dirty);
+        render_tank(&t, full_frame, TANK_W);
+        memcpy(baseline, full_frame, bytes);
+        for (int frame = 0; frame < 10; frame++) {
+            unsigned epoch; const uint16_t *background = render_scene_buf(&epoch);
+            for (int y = 0; y < TANK_H; y++) for (int x = 0; x < TANK_W; x++)
+                if (dirty[y * DIRTY_WORDS_PER_ROW + (x >> 5)] & (1u << (x & 31)))
+                    full_frame[y * TANK_W + x] = background[y * TANK_W + x];
+            render_fb_primed(full_frame, epoch);
+            t.tool = frame < 5 ? TOOL_SPONGE : TOOL_SCISSORS;
+            t.drag_has_prev = frame > 0 && frame < 9; t.drag_dist = 100;
+            t.drag_px = 40 + frame * 10; t.drag_py = 70 + frame * 3;
+            t.wipe_sounded = frame >= 2; t.slash_cut = frame >= 6;
+            render_tank(&t, full_frame, TANK_W);
+            memcpy(repeated, baseline, bytes);
+            render_set_dirty_mask(NULL);
+            draw_care_stroke(&t, repeated, TANK_W);
+            render_set_dirty_mask(dirty);
+            assert(!memcmp(full_frame, repeated, bytes));
+        }
+    }
+    render_set_scene_cache(NULL); render_set_dirty_mask(NULL);
+    free(scene); free(baseline); free(dirty);
 }
 
 static void check_game_help(void) {
@@ -535,7 +661,12 @@ int main(int argc, char **argv) {
     for (int resolution = 0; resolution < 2; resolution++) {
         tank_resolution(resolution != 0);
         check_fish_material();
-        if (argc > 2) capture_fish_materials(argv[2]);
+        check_aquarium_effects();
+        check_care_scene_cache();
+        if (argc > 2) {
+            capture_fish_materials(argv[2]);
+            capture_aquarium_details(argv[2]);
+        }
         render_life_open();
         for (int category = 0; category < 5; category++) for (int page = 0; page < 2; page++) {
             g_home_category = category; g_home_page = page;
@@ -575,7 +706,8 @@ int main(int argc, char **argv) {
     puts("Wrappers: static, clipped and full/tile equivalent at both resolutions.");
     puts("Help/pause: all games mask gameplay and match tiled output at both resolutions.");
     puts("Polished art: distinct stamps, four-plus tones, clipped bounds and guarded 1/17-row tile parity at both resolutions.");
-    puts("Tank materials: 20 dimensional ornaments, RGB565 contrast, night dimming, original bounds and arch opening.");
+    puts("Tank materials: 25 dimensional ornaments, RGB565 contrast, night dimming, original bounds and arch opening.");
     puts("Fish materials: five RGB565 tones with unchanged polygon coverage and guarded one-row tile equality.");
+    puts("Aquarium details: five visitors and food/bubbles stay bounded with guarded row parity; care feedback requires a successful stroke.");
     return 0;
 }

@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.2.3
+# Pocket Tank CYD 2.2.4
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This is **release 2.2.3**; firmware, update
+now versioned independently. This is **release 2.2.4**; firmware, update
 packages and the browser installer are published through GitHub Releases.
 Originally based on upstream v0.3.8.
 What began as a hardware port has become **a distinct aquarium game**:
@@ -23,7 +23,28 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.2.3: dimensional fish and accessories
+## New in 2.2.4: quieter scenery and little aquarium details
+
+- Sand has restrained grain, sparse two-tone pebbles and depth shading.
+  Low distant ridges and layered kelp, coral, ruins and ice silhouettes keep
+  the scenery behind the residents instead of competing with them.
+- Lily pad, duck, floating log, tethered buoy and jelly lantern gain softer
+  material faces, leaf veins, wood rings and quieter highlights.
+- All five rare visitors gain clearer forms: scuted turtle shell, folded
+  manta wings, glassy ghost-fish edges and softly shaded jelly/squid bodies.
+- Food pellets have a readable lit face; bubbles have fine translucent rims.
+  A small mint wipe arc or warm trim glint follows a successful active tool
+  stroke, then clears on release. No extra particles or timers.
+- Shared tank/preview art stays within existing bounds. Simple retains its
+  quiet water and hidden ambient bubbles/helpers, but receives the same sand,
+  food and tool feedback. Saves, ownership, visits, care and progression stay
+  unchanged. Helpers, castle, living coral and reef cluster are not reworked.
+
+| Floating material details | Rare visitors and care details |
+|---|---|
+| ![Lily pad, log, duck, buoy and jelly lantern in the actual aquarium renderer](docs/media/cyd-features/tank-crafted-floats.png) | ![Five rare visitors in both poses, food, bubbles and successful tool-stroke marks](docs/media/cyd-features/aquarium-details.png) |
+
+## Previously in 2.2.3: dimensional fish and accessories
 
 - All ten fish varieties now have restrained back highlights, body midtones
   and underside shading. Fins, tails, ray wings and jellyfish bells share the

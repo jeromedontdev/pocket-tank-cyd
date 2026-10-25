@@ -20,7 +20,15 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Source release: **2.2.3**, shading all ten fish bodies/fins and six wearables.
+- Source release: **2.2.4**, refining sand/depth/pebbles, layered distant
+  scenery, five floating ornaments and all five rare visitors. Food/bubbles
+  share bounded procedural materials; wipe/trim marks use existing successful
+  active-stroke flags, with old/new damage restoration. Preserve quiet Simple
+  water/hidden ambient creatures, same food/sand/care art, night/tile/cache
+  equality and unchanged helpers/castle/living coral/reef cluster. No new
+  buffers, simulation state, saves, visit rules or progression. The optional
+  page-art gallery also captures visitor/care lineups at both sizes.
+  2.2.3 shades all ten fish bodies/fins and six wearables.
   `fill_fish_material` selects five pre-tinted tones during existing polygon
   scan conversion; preserve exact coverage, markings/traits, color choices,
   poses, attachment and full/tile parity. Head-on shading stays within the

@@ -20,7 +20,7 @@ FEATURE_IMAGES = (
     "home-collections.png", "games-page-three.png",
     "tank-crafted-ornaments.png", "tank-crafted-seabed.png",
     "tank-crafted-reef.png", "tank-crafted-plants.png",
-    "fish-bodies.png", "fish-accessories.png",
+    "fish-bodies.png", "fish-accessories.png", "aquarium-details.png", "tank-crafted-floats.png",
 )
 
 

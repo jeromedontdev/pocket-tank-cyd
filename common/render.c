@@ -3283,10 +3283,13 @@ static uint32_t ornament_pixel(int item, int x, int y) {
         case 24:
             if (y >= 19 && y <= 32 && x >= 2 && x <= 37) {
                 if ((x - 7) * (x - 7) + (y - 25) * (y - 25) < 25)
-                    return abs(x - 7) == 3 || abs(y - 25) == 3 ? 0xe4b57e : 0x69452e;
-                return y % 4 == 0 ? 0x795038 : y < 25 ? 0xc39159 : 0x97633c;
+                    return abs(x - 7) == 3 || abs(y - 25) == 3 ? 0xd5b282 :
+                        (x - 7) * (x - 7) + (y - 25) * (y - 25) < 5 ? 0x68533e : 0xa98056;
+                if (y == 19 || (y == 21 && x > 10 && x < 29)) return 0xd4b88a;
+                if (y >= 30) return 0x6c5843;
+                return (y + x / 9) % 5 == 0 ? 0x795e43 : y < 25 ? 0xb9976b : 0x96764f;
             }
-            if (x >= 23 && x < 29 && y >= 10 && y < 22) return 0x97633c;
+            if (x >= 23 && x < 29 && y >= 10 && y < 22) return x < 25 ? 0xc3a477 : 0x856647;
             return 0;
         case 25: {
             int tube = x / 13, cx = tube * 13 + 6, top = tube == 1 ? 3 : tube == 0 ? 14 : 9;
@@ -3321,18 +3324,26 @@ static uint32_t ornament_pixel(int item, int x, int y) {
             return y < 14 && x < 25 ? 0xe0c78a : x > 28 || y > 29 ? 0x8e794e : x < 18 ? 0xc7b079 : 0xb09a64;
         case 28:
             if (dx * dx * 4 + (y - 29) * (y - 29) * 16 < 1024 &&
-                !(x > 20 && abs(y - 29) <= (x - 20) / 3))
-                return y == 29 || x == 20 ? 0xa0dc83 : x < 20 ? 0x4fba83 : 0x298c6f;
-            if (abs(dx) + abs(y - 17) < 10) return abs(dx) < 2 && abs(y - 17) < 3 ? 0xffdd72 : y < 17 ? 0xffb4de : 0xdb73bd;
+                !(x > 20 && abs(y - 29) <= (x - 20) / 3)) {
+                int edge = dx * dx * 4 + (y - 29) * (y - 29) * 16;
+                if (edge > 800 || y > 32) return 0x3c7162;
+                if (y == 29 || abs(dx) == abs(y - 29) * 3) return 0x9dbb83;
+                return y < 29 ? 0x7fa27a : 0x608c6c;
+            }
+            if (abs(dx) + abs(y - 17) < 10) {
+                if (abs(dx) < 2 && abs(y - 17) < 3) return y < 17 ? 0xf1d48c : 0xbfa163;
+                return dx == 0 || abs(dx) == abs(y - 17) ? 0xf2d7df : y < 17 ? 0xe1b1c5 : 0xb984a7;
+            }
             return 0;
         case 29:
-            if (x >= 29 && x < 39 && y >= 14 && y <= 18) return 0xf79b40;
+            if (x >= 29 && x < 39 && y >= 14 && y <= 18) return y < 16 ? 0xe9b776 : 0xb8854f;
             if ((x - 26) * (x - 26) + (y - 13) * (y - 13) < 64) {
                 if (x == 29 && y == 11) return 0x16272d;
-                return x < 24 ? 0xffed8b : 0xffd052;
+                return y < 10 && x < 28 ? 0xf8e6b0 : x > 30 || y > 17 ? 0xb99b5b : 0xe4c77e;
             }
             if (dx * dx * 4 + (y - 26) * (y - 26) * 9 < 784 || (x < 10 && y > 17 && y < 27))
-                return y < 26 ? 0xffdc62 : 0xdba43b;
+                return y > 30 ? 0xa58a53 : (x - 19) * (x - 19) * 4 + (y - 25) * (y - 25) * 9 < 100 ?
+                    0xd0ad65 : y < 24 ? 0xf2dca0 : 0xddbf7a;
             return 0;
         case 30:
             if (x < 8 || x > 31 || y < 4 || y > 36) return 0;
@@ -3408,10 +3419,11 @@ static uint32_t ornament_pixel(int item, int x, int y) {
     if (item == 21) {
         int dx = x - 18 - g_buoy_sway, dy = y - 16 - g_buoy_bob;
         if (dy <= 3 && dx * dx * 100 + dy * dy * 225 <= 22500)
-            return dy > 0 ? 0xffb5e7 : dx < -3 ? 0xb5e5ff : 0xb984ea;
+            return dy > 0 ? 0xc697b2 : dy < -6 && dx < 2 ? 0xe5ddeb :
+                dx < -3 ? 0xb0cbdc : dx > 9 ? 0x7f729f : 0xae9bc9;
         if (dy >= 4 && dy < 36 && (abs(dx - (dy % 8 < 4 ? 1 : -1)) == 6 || dx == 0))
-            return 0xdb9eea;
-        if (y >= 105 && abs(x - 18) < 6) return 0x7b7d8b;
+            return dx < 0 ? 0xceb2d6 : 0x9c88b1;
+        if (y >= 105 && abs(x - 18) < 6) return y == 105 ? 0xa5acb4 : x < 18 ? 0x7e8792 : 0x5d687a;
         int start = 52 + g_buoy_bob;
         if (y >= start && y < 105 && x == 18 + g_buoy_sway * (105 - y) / (105 - start)) return 0x8d92b1;
         return 0;
@@ -3441,10 +3453,11 @@ static uint32_t ornament_pixel(int item, int x, int y) {
     if (item == 13) {
         int dx = x - 17 - g_buoy_sway, dy = y - 17 - g_buoy_bob;
         if (dx * dx * 100 + dy * dy * 81 <= 8100)
-            return dy < -2 || dy > 3 ? (dx < 0 ? 0xf7a15a : 0xd56c35) : 0xffebc4;
-        if (y >= 98) return abs(x - 17) <= 7 - abs(101 - y) ? 0x70766e : 0;
+            return dy < -2 || dy > 3 ? (dx < -4 ? 0xe5b589 : dx > 5 ? 0xa86f50 : 0xca8f63) :
+                dx < 1 ? 0xf2e3c2 : 0xc4b79b;
+        if (y >= 98) return abs(x - 17) <= 7 - abs(101 - y) ? y < 101 ? 0x96a293 : 0x626f69 : 0;
         int start = 27 + g_buoy_bob;
-        if (y >= start && x == 17 + g_buoy_sway * (98 - y) / (98 - start)) return 0xb7ae87;
+        if (y >= start && x == 17 + g_buoy_sway * (98 - y) / (98 - start)) return y % 5 ? 0xa69f82 : 0xd3c9a2;
         return 0;
     }
     int dx = x - 15, dy = y - 6, ring = dx * dx + dy * dy;
@@ -3678,13 +3691,22 @@ static void pc_draw(ctx_t *c, const tank_t *t, int k, bool final, bool record) {
  * bowl: the same speckle in 2 px grains over a bed that runs ~70 px down to
  * the glass, pebbles scattered through it, darkening with depth. */
 static inline uint32_t floor_rgb(int x, int y) {
-    uint32_t h2 = (uint32_t)((x * 73856093u) ^ (y * 19349663u));
-    uint32_t tone = (h2 >> 4) % 16;
+    uint32_t grain = chash(x, y), pebble = chash(x / 7, y / 4);
+    unsigned tone = (grain >> 4) & 15;
+    bool stone = (pebble & 15) == 0 && x % 7 >= 2 && x % 7 <= 4 && y % 4 >= 1 && y % 4 <= 2;
     if (g_sand_style == SAND_STYLE_RAINBOW) {
         uint32_t color = rainbow_rgb((float)x / (TANK_W - 1));
-        return mix(color, tone < 5 ? 0xffffff : 0x000000, tone < 2 ? 0.25f : tone < 8 ? 0.1f : 0.25f);
+        return mix(color, stone || tone < 2 ? 0xffffff : 0x000000, stone ? 0.2f : tone < 2 ? 0.08f : 0.12f);
     }
-    return SAND_PALETTE[g_sand_style][tone < 2 ? 0 : tone < 5 ? 1 : tone < 8 ? 2 : 3];
+    const uint32_t *pal = SAND_PALETTE[g_sand_style];
+    int depth = y - TANK_SAND_TOP;
+    if (depth < 0) depth = 0;
+    if (depth > 18) depth = 18;
+    uint32_t base = mix(pal[1], pal[2], .25f + depth * (.6f / 18));
+    if (stone) return y % 4 == 1 ? mix(base, pal[0], .55f) : mix(base, pal[3], .55f);
+    if (tone < 2) return mix(base, pal[0], .32f);
+    if (tone < 5) return mix(base, pal[3], .4f);
+    return base;
 }
 static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
     static uint32_t row_water, row_color;
@@ -3699,13 +3721,18 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
     }
     water = row_color;
     int floor = TANK_BOT - 14;
+    int rise = floor - y, cell = x / 56, local = x % 56 - 28;
+    if (rise > 0 && rise < 12 + (cell % 3) * 6 - local * local / 60)
+        water = mix(water, 0x537779, .18f);
+    else if (rise > 0 && rise < 28 + (cell % 4) * 5 - local * local / 38)
+        water = mix(water, 0x537779, .08f);
     if (g_journal_theme == 1) {
         int stem = x % 32, bend = (int)(sinf(y * 0.08f) * 3);
         int height = 75 + (x / 32 % 4) * 21;
         int leaf_x = stem - 15 - bend - (y / 24 % 2 ? 6 : -6), leaf_y = y % 24 - 12;
         if (y > floor - height && (abs(stem - 15 - bend) <= 2 ||
             (leaf_x * leaf_x * 2 + leaf_y * leaf_y < 80)))
-            return mix(water, x / 32 % 2 ? 0x3ebd71 : 0x167c51, 0.8f);
+            return mix(water, x / 32 % 2 ? 0x6aa785 : 0x467b70, x / 32 % 2 ? .6f : .35f);
         if ((x + y / 2) % 51 < 5) return mix(water, 0x9adf83, 0.12f);
     } else if (g_journal_theme == 2) {
         int dx = x % 54 - 27, rise = floor - y, peak = 50 + (x / 54 % 3) * 17;
@@ -3713,7 +3740,7 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
             (rise > 12 && abs(abs(dx) - (rise - 12) / 2) <= 3 && abs(dx) < 25) ||
             (rise > 32 && abs(abs(dx) - (rise - 32) / 2) <= 2 && abs(dx) < 17) ||
             (rise < 12 && dx * dx + rise * rise < 190)))
-            return mix(water, x / 54 % 2 ? 0xef77b8 : 0xff9c74, 0.85f);
+            return mix(water, x / 54 % 2 ? 0xc08da7 : 0xceac96, x / 54 % 2 ? .55f : .35f);
     } else if (g_journal_theme == 3) {
         uint32_t hash = (uint32_t)(x * 73856093u) ^ (uint32_t)(y * 19349663u);
         if (y < floor && hash % 277u < 3) return mix(water, hash & 1 ? 0x6eefff : 0xe18cff, 0.9f);
@@ -3736,7 +3763,7 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
             uint32_t stone = local % 6 < 2 ? 0x5b8686 : 0x91aaa0;
             if (y % 19 < 2 || (local + y / 19 * 7) % 29 == 0) stone = 0x3b6464;
             if (rise < 18 && (x + y * 3) % 11 < 4) stone = 0x39775b;
-            return mix(water, stone, 0.8f);
+            return mix(water, stone, x / 76 % 2 ? .6f : .4f);
         }
         if (rise > 0 && rise < 12 && (x % 37 - 18) * (x % 37 - 18) + rise * rise < 160)
             return mix(water, 0x718d83, 0.75f);
@@ -3758,7 +3785,7 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
         bool crystal = rise > 0 && rise < height && abs(crystal_x) < (height - rise) / 3;
         if (ceiling || crystal) {
             int facet = ceiling ? local : crystal_x;
-            return mix(water, facet < 0 ? 0x75b5ed : 0xd0f6ff, 0.85f);
+            return mix(water, facet < 0 ? 0x75b5ed : 0xd0f6ff, ceiling ? .45f : .65f);
         }
         uint32_t hash = (uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u;
         if (hash % 811 == 0 && y < floor) return 0xb5e9ff;
@@ -3864,7 +3891,8 @@ static void draw_simple_static(ctx_t *c, const tank_t *t) {
     for (int y = c->oy; y < c->oy + c->h; y++) {
         uint16_t color = rgb565(y >= TANK_SAND_TOP ? SAND_PALETTE[g_sand_style][2] : water_rgb(y), c->dim);
         for (int x = c->ox; x < c->ox + c->w; x++)
-            c->fb[(y - c->oy) * c->stride + x - c->ox] = color;
+            c->fb[(y - c->oy) * c->stride + x - c->ox] =
+                y >= TANK_SAND_TOP ? rgb565(floor_rgb(x, y), c->dim) : color;
     }
     draw_floor_scenery(c, t, false);
     g_veg_skip = 0;
@@ -4007,7 +4035,8 @@ static void draw_scene(const tank_t *t, uint16_t *fb, int stride, float dim) {
             continue;
         }
         uint32_t water = water_rgb(y);
-        if (!g_journal_theme) {
+        /* Default water is flat only above the tallest distant ridge. */
+        if (!g_journal_theme && y <= TANK_BOT - 14 - 43) {
             uint16_t color = rgb565(water, dim);
             backdrop_fill(fb + (y - g_tile_y) * stride, c.ox, c.ox + c.w, y, color);
         } else {
@@ -4100,6 +4129,11 @@ static void bake_scene(const tank_t *t, uint16_t *sc, float dim) {
 
 static void draw_text(ctx_t *c, int x, int y, int scale, uint32_t rgb, const char *s);
 static int text_w(const char *s, int scale);
+static bool care_stroke_visible(const tank_t *t) {
+    return tank_stroking(t) &&
+        ((t->tool == TOOL_SPONGE && t->wipe_sounded) ||
+         (t->tool == TOOL_SCISSORS && t->slash_cut));
+}
 static uint16_t g_damage[TANK_MAX_H], g_damage_previous[TANK_MAX_H];
 static uint16_t g_damage_blocks[6];
 static bool g_damage_full_previous = true;
@@ -4152,9 +4186,9 @@ static void theme_detail_draw(ctx_t *c, const theme_detail_t *d) {
             px_blend(c, d->x + 3, d->y + 3 + i, 0xffe8ab, 220);
         }
     } else if (d->kind == 4) {
-        src_t ink = src_color(0x809ba7, c->dim);
         for (int y = 0; y < 8; y++) {
             int inset = y < 3 ? 5 - y : 2;
+            src_t ink = src_color(y < 3 ? 0xb6cece : y < 6 ? 0x849eae : 0x5d768e, c->dim);
             span(c, d->x + inset, d->x + 17 - inset, d->y + y, &ink, 230);
         }
         for (int i = 0; i < 3; i++) for (int y = 8; y < 14; y++)
@@ -4162,13 +4196,19 @@ static void theme_detail_draw(ctx_t *c, const theme_detail_t *d) {
         px_blend(c, d->x + 6, d->y + 4, 0xc4dbd0, 220);
         px_blend(c, d->x + 11, d->y + 4, 0xc4dbd0, 220);
     } else if (d->kind == 5) {                      /* old sea turtle, heading right */
-        src_t shell = src_color(0x5f7a4a, c->dim), skin = src_color(0x9bb37f, c->dim);
+        src_t skin = src_color(0xa9bb8f, c->dim);
         for (int y = 0; y < 9; y++) {
             int inset = y < 4 ? 4 - y : y > 6 ? y - 6 : 0;
+            src_t shell = src_color(y < 3 ? 0xa6b186 : y < 6 ? 0x7d946d : 0x516b57, c->dim);
             span(c, d->x + 3 + inset * 2, d->x + 20 - inset * 2, d->y + 2 + y, &shell, 240);
+            for (int x = 3 + inset * 2; x <= 20 - inset * 2; x++) {
+                int seam = (x + (y / 3 % 2) * 3) % 7;
+                if ((y == 3 || y == 6) || seam == 0)
+                    px_blend(c, d->x + x, d->y + 2 + y, 0x405d50, 120);
+            }
         }
         for (int i = 0; i < 3; i++) for (int j = 0; j < 2; j++)
-            px_blend(c, d->x + 7 + i * 4 + j * 2, d->y + 5 + j * 3, 0x8aa465, 230);
+            px_blend(c, d->x + 7 + i * 4 + j * 2, d->y + 5 + j * 3, 0xc1c698, 170);
         for (int y = 5; y < 9; y++) span(c, d->x + 21, d->x + 25, d->y + y, &skin, 240);
         px_blend(c, d->x + 24, d->y + 6, 0x1f2a1a, 255);
         int f = d->pose ? 1 : -1;
@@ -4181,22 +4221,29 @@ static void theme_detail_draw(ctx_t *c, const theme_detail_t *d) {
         src_t glass = src_color(0xdff6ff, c->dim);
         for (int y = 0; y < 8; y++) {
             int inset = abs(y - 4) + (y < 4);
-            span(c, d->x + 6 + inset, d->x + 20 - inset, d->y + 1 + y, &glass, 70);
+            int left = d->x + 6 + inset, right = d->x + 20 - inset;
+            span(c, left, right, d->y + 1 + y, &glass, y < 3 ? 85 : 42);
+            px_blend(c, left, d->y + 1 + y, 0xb9dce7, 95);
+            px_blend(c, right, d->y + 1 + y, 0xb9dce7, 95);
         }
         for (int y = 0; y < 8; y++) px_blend(c, d->x + 1 + abs(y - 4) / 2 + (d->pose && y > 3), d->y + 1 + y, 0xdff6ff, 60);
         span(c, d->x + 9, d->x + 16, d->y + 5, &glass, 110);   /* the faint spine */
+        for (int i = 0; i < 3; i++)
+            px_blend(c, d->x + 10 + i * 2, d->y + 6 + (i & 1), 0x91bacf, 70);
         px_blend(c, d->x + 17, d->y + 4, 0x23344a, 160);
     } else if (d->kind == 7) {                      /* small manta: wide wings, a slow flap */
-        src_t wing = src_color(0x2c3e57, c->dim), edge = src_color(0x5d7898, c->dim);
+        src_t edge = src_color(0x7c96b0, c->dim);
         /* Swept, pointed wings around a small body, with a long trailing tail. */
         for (int y = 0; y < 24; y++) {
             int distance = y < 12 ? y : 23 - y;
             int left = 12 + distance * 7 / 11, right = 12 + distance * 19 / 11;
             if (d->pose && distance < 7) { left += 2; right += 2; }
+            src_t wing = src_color(distance < 4 ? 0x8396ae : distance < 8 ? 0x566d8c : 0x354c69, c->dim);
             span(c, d->x + left, d->x + right, d->y + y, &wing, 240);
-            px_blend(c, d->x + right, d->y + y, 0x5d7898, 200);
+            px_blend(c, d->x + right, d->y + y, 0xa4b8c7, 170);
         }
         fill_ellipse(c, d->x + 27, d->y + 12, 8, 4, 0x2c3e57, 255);
+        fill_ellipse(c, d->x + 27, d->y + 11, 5, 2, 0x6f859d, 200);
         for (int x = 0; x < 23; x++) px_blend(c, d->x + x, d->y + 12 + (22 - x) / 5, 0x5d7898, 200);
         span(c, d->x + 26, d->x + 33, d->y + 15, &edge, 200);
         px_blend(c, d->x + 32, d->y + 10, 0xd7e6f2, 240);
@@ -4204,10 +4251,11 @@ static void theme_detail_draw(ctx_t *c, const theme_detail_t *d) {
         span(c, d->x + 34, d->x + 37, d->y + 10, &edge, 240);
         span(c, d->x + 34, d->x + 37, d->y + 14, &edge, 240);
     } else if (d->kind == 8) {                      /* lantern squid: a tiny blinking light */
-        src_t body = src_color(0xc77a8a, c->dim);
         for (int y = 0; y < 10; y++) {
             int half = y < 2 ? y + 1 : y < 7 ? 3 : 2;
+            src_t body = src_color(y < 3 ? 0xe8b7b5 : y < 7 ? 0xc794a8 : 0x906c91, c->dim);
             span(c, d->x + 6 - half, d->x + 5 + half, d->y + y, &body, 225);
+            if (y >= 2 && y < 6) px_blend(c, d->x + 4, d->y + y, 0xf5d9c4, 160);
         }
         px_blend(c, d->x + 4, d->y + 7, 0x2a1e28, 230); px_blend(c, d->x + 7, d->y + 7, 0x2a1e28, 230);
         for (int i = 0; i < 4; i++) for (int y = 10; y < 16; y++)
@@ -4290,6 +4338,8 @@ void render_damage_begin(const tank_t *t, bool force_full) {
         damage_rect((int)t->bubble[i].x - 6, (int)t->bubble[i].y - 6, (int)t->bubble[i].x + 6, (int)t->bubble[i].y + 6);
     for (int i = 0; i < MAX_FOOD; i++) if (t->food[i].alive)
         damage_rect((int)t->food[i].x - 5, (int)t->food[i].y - 5, (int)t->food[i].x + 5, (int)t->food[i].y + 5);
+    if (care_stroke_visible(t))
+        damage_rect((int)t->drag_px - 6, (int)t->drag_py - 6, (int)t->drag_px + 6, (int)t->drag_py + 6);
     if (t->sd_unlocks & SD_ITEM_SHRIMP)
         for (int j = 0; j < shrimp_draw_count(t); j++) {
             int i = j * shrimp_step();
@@ -4419,6 +4469,23 @@ bool render_damage_range(int tile_y, int tile_height, int *first, int *height) {
     *first = start; *height = end - start;
     return end > start;
 }
+static void draw_food_pellet(ctx_t *c, float x, float y) {
+    fill_ellipse(c, x, y, 2.6f, 2.6f, 0x9d7548, 255);
+    fill_ellipse(c, x - .3f, y - .5f, 2.0f, 1.7f, 0xe4bd7c, 255);
+    fill_ellipse(c, x - .8f, y - 1, .8f, .7f, 0xf6dfab, 255);
+}
+static void draw_water_bubble(ctx_t *c, const bubble_t *b) {
+    float r = b->column ? 2.6f : 1.8f;
+    fill_ellipse(c, b->x, b->y, r, r, 0x9fc9d2, 22);
+    for (int y = (int)(b->y - r); y <= (int)(b->y + r); y++) {
+        float half = r * ell_half((y - b->y) / r);
+        if (half <= 0) continue;
+        int left = (int)(b->x - half), right = (int)(b->x + half);
+        px_blend(c, left, y, 0xb7d7dd, 85);
+        if (right != left) px_blend(c, right, y, 0x84b8c6, 65);
+    }
+    px_blend(c, (int)(b->x - r * .4f), (int)(b->y - r * .4f), 0xeff5e9, 140);
+}
 static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float dim) {
     ctx_t c = ctx_full(fb, stride, dim);
     int64_t p0 = PROF_MARK();
@@ -4448,7 +4515,7 @@ static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float d
     }
     PROF_ADD(0, p0);
     for (int i = 0; i < MAX_FOOD; i++) if (t->food[i].alive)
-        fill_ellipse(&c, t->food[i].x, t->food[i].y, 2.6f, 2.6f, 0xffbd59, 255);
+        draw_food_pellet(&c, t->food[i].x, t->food[i].y);
     PROF_ADD(3, p0);
     for (int i = 0; i < t->n_fish; i++) draw_fish(&c, t, &t->fish[i]);
     PROF_ADD(4, p0);
@@ -4591,16 +4658,13 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     /* food pellets */
     for (int i = 0; i < MAX_FOOD; i++)
         if (t->food[i].alive) {
-            fill_ellipse(&c, t->food[i].x, t->food[i].y, 2.6f, 2.6f, 0xffbd59, 255);
-            fill_ellipse(&c, t->food[i].x - 0.8f, t->food[i].y - 0.8f, 1.0f, 1.0f, 0xffe9bd, 255);
+            draw_food_pellet(&c, t->food[i].x, t->food[i].y);
             DYN_RECT((int)t->food[i].x - 5, (int)t->food[i].y - 5, (int)t->food[i].x + 5, (int)t->food[i].y + 5);
         }
     /* bubbles */
     for (int i = 0; i < MAX_BUBBLE; i += bubble_step(t)) {
         const bubble_t *b = &t->bubble[i];
-        float r = b->column ? 2.6f : 1.8f;
-        fill_ellipse(&c, b->x, b->y, r, r, 0x9fd8e2, 60);
-        px_blend(&c, (int)(b->x - r * 0.4f), (int)(b->y - r * 0.4f), 0xffffff, 120);
+        draw_water_bubble(&c, b);
         DYN_RECT((int)b->x - 5, (int)b->y - 5, (int)b->x + 5, (int)b->y + 5);
     }
     /* the shrimp school: on the sand and in the grass, under the fish and
@@ -4780,9 +4844,25 @@ static void render_desk_overlay(const tank_t *t, uint16_t *fb, int stride) {
     }
     PROF_ADD(7, p0);
 }
+static void draw_care_stroke(const tank_t *t, uint16_t *fb, int stride) {
+    if (!care_stroke_visible(t)) return;
+    ctx_t c = ctx_full(fb, stride, t->night ? .45f : 1);
+    int x = (int)t->drag_px, y = (int)t->drag_py;
+    uint32_t color = t->tool == TOOL_SPONGE ? 0xc1e2d6 : 0xe8c794;
+    for (int i = -3; i <= 3; i++) {
+        if (t->tool == TOOL_SPONGE) {
+            px_blend(&c, x + i, y - 3 + abs(i) / 2, color, 150);
+            px_blend(&c, x + i, y + 3 - abs(i) / 2, color, 95);
+        } else {
+            px_blend(&c, x + i, y + i, color, 170);
+            px_blend(&c, x + i, y - i, color, 130);
+        }
+    }
+}
 void render_tank(const tank_t *t, uint16_t *fb, int stride) {
     if (!render_clock_active(t) || !t->companion.display_compact || g_scene) {
         render_tank_scene(t, fb, stride);
+        draw_care_stroke(t, fb, stride);
         render_desk_overlay(t, fb, stride);
         return;
     }
@@ -4800,6 +4880,7 @@ void render_tank(const tank_t *t, uint16_t *fb, int stride) {
     g_scene_occluded = true;
     render_tank_scene(t, fb, stride);
     g_scene_occluded = false;
+    draw_care_stroke(t, fb, stride);
     render_desk_overlay(t, fb, stride);
 }
 

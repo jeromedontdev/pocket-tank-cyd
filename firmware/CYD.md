@@ -8,7 +8,18 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Other board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.2.3 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.2.4 is a distinct aquarium game, not just a board port.**
+
+Release 2.2.4 adds restrained sand grain/depth and sparse pebbles, low distant
+ridges and quieter layered background silhouettes. Lily pad, duck, floating
+log, buoy, jelly lantern and all five visitors gain shared procedural material
+details within their existing bounds. Food has a lit face; bubble rims are
+translucent. Small wipe/trim marks use the existing successful active-stroke
+state, with old/new damage restoration and no added timers/particles. Simple
+keeps quiet water/hidden ambient bubbles and receives the same sand/food/care
+feedback. Both sizes, all details, night, clocks and full/tile/damage output
+are tested. No new buffers, PSRAM, save fields, mechanics or progression;
+helpers, castle, living coral and reef-cluster art are unchanged.
 
 Release 2.2.3 shades all ten fish bodies/fins and all six wearable accessories.
 Five pre-tinted material tones are selected by scanline in the existing polygon
