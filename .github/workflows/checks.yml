@@ -37,6 +37,7 @@ jobs:
       - run: python -m unittest discover -s tools -p "test_*.py"
       - run: python tools/test_tank_backup.py --cc gcc
       - run: python tools/test_tank_backup.py --cc gcc --flat-edges
+      - run: python tools/test_setup_placement.py
       - run: python tools/test_rpg.py --cc gcc
       - run: python tools/test_page_art.py --cc gcc
       - run: python tools/test_page_art.py --cc gcc --board elegoo

@@ -856,6 +856,7 @@ typedef struct tank {
     mussel_state_t mussel;
     game_income_state_t game_income;
     double mussel_fraction;
+    float mussel_glint;            /* successful live payout feedback; never saved */
     float care_fraction;
     float visitor_left;
     float companion_fraction;      /* powered-on fractional second; not saved */
@@ -1046,6 +1047,10 @@ int   tank_nearest_food(const tank_t *t, const fish_t *f, float *dist_out);
 int   tank_nearest_friend(const tank_t *t, int fish_idx, float *dist_out);
 int   tank_familiar_friend(const tank_t *t, int fish_idx);
 int   tank_favorite_decor(const tank_t *t, int fish_idx);
+void  tank_mussel_pose(const tank_t *t, float *x, float *y, float *crawl);
+bool  tank_mussel_owned(const tank_t *t);
+bool  tank_interest_spot(const tank_t *t, int fish_idx, float *x, float *y);
+void  tank_rest_spot(const tank_t *t, int fish_idx, float *x, float *y);
 float tank_randf(tank_t *t, float lo, float hi);
 /* roster preset count (6) and a preset's display name, for UI */
 int   tank_roster_count(void);

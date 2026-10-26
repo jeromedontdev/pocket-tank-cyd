@@ -2,7 +2,14 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.8**
+**An illustrated tour of Pocket Tank CYD 2.3.9**
+
+**2.3.9 aquarium polish:** a center grass clearing, exact animation-calculation
+reuse and fewer unused LCD checksums reduce rendering work without lowering
+detail. Placement highlights/cycles overlapping copies, calm fish occasionally
+inspect the mussel or rest near familiar companions, and successful automatic
+payouts produce a brief local gold sparkle. Desktop benchmark results are mixed;
+no new on-device FPS improvement is claimed.
 
 **2.3.8 shop:** decoration copy/storage controls are in the item's normal shop
 entry; the separate Inventory screen is gone. Buy a first copy normally before
@@ -71,6 +78,14 @@ does not sell or refund a piece; moving and placing owned items do not charge
 again. **SELL STORED** requires a second confirmation and only pays the resale
 value of a paid copy, never a free/Creative one.
 
+The 2.3.9 placement preview highlights the selected piece and its starting
+position. Tap an overlap to select another placed decoration or copy, including
+different item types; drag horizontally to reposition only the selected copy.
+Its label identifies original/extra copies and distinguishes placed pieces from
+stored inventory. Switching selection drops unconfirmed edits, and CANCEL
+restores the starting layout. Stored pieces must be placed before they can be
+selected in the tank.
+
 Use **TANKS** after storing to switch aquariums, then place from the same
 inventory. Existing tank layouts remain local. Storage is limited to 64
 pieces, with up to eight additional basic ornaments per tank. Extra ornaments
@@ -95,6 +110,14 @@ saved round, 90 across all 18), with Challenge/Relaxed and all tanks sharing
 each game's allowance. No game XP. Most of the time the
 mussel rests; roughly every six minutes it slowly crawls to a nearby sand
 position over 16 seconds, with a small foot movement and shell bob.
+
+In 2.3.9, successful payouts produce a subtle
+1.6-second gold sparkle above the shell. The effect is live-only and not saved;
+failed writes retain the coins without playing a success effect. Calm curious
+fish occasionally visit the mussel, with staggered visits rather than a crowd.
+Resting fish may settle near an already-resting familiar companion. These are
+target refinements, not new care obligations or notifications; urgent needs
+retain priority.
 
 Version 2.3.0 saves use schema 18 / 6,168 bytes, with the previous 6,032-byte prefix
 unchanged. Back up before upgrading and do not downgrade an upgraded profile

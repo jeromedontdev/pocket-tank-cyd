@@ -37,8 +37,10 @@ static bool s_block_valid[3][40];
 static int s_layout_width, s_layout_height, s_layout_tile;
 static int64_t s_wait_us, s_send_us;
 static unsigned s_blocks_sent, s_blocks_skipped;
+static unsigned crc_calls;
 static int64_t esp_timer_get_time(void) { static int64_t t; return ++t; }
 static uint32_t esp_crc32_le(uint32_t seed, const uint8_t *p, size_t n) {
+    crc_calls++;
     uint32_t crc = ~seed;
     for (size_t i = 0; i < n; i++) {
         crc ^= p[i];
@@ -105,7 +107,9 @@ int main(void) {
             tile_y = pass % 5 * 40; tile_h = TANK_H - tile_y < 40 ? TANK_H - tile_y : 40;
             for (int y = tile_y; y < tile_y + tile_h; y++)
                 for (int x = region_x; x < region_x + region_w; x++) frame[y * TANK_W + x] ^= 0x73ae;
+            unsigned crc_before = crc_calls;
             display_port_flush(frame + tile_y * TANK_W);
+            assert(crc_calls == crc_before);
             verify_frame(frame);
             region_x = region_w = 0;
             check_frame(frame, 80);

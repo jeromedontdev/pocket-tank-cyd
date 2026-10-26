@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.8
+# Pocket Tank CYD 2.3.9
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.8**. Stable firmware,
+now versioned independently. This source targets **2.3.9**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,7 +25,35 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.8: one shop and a passive-income creature
+## New in 2.3.9: aquarium performance and interaction polish
+
+The grass layout leaves a sandy center opening about 12% of the
+screen width (roughly three blade columns). Outer grass beds retain their
+side-glass coverage; the movable sword plant is unchanged. This removes grass
+work rather than hiding rendered blades, so shelter and trimming use the same
+clearing. Existing saved blade heights are retained.
+
+Aquarium rendering also reuses exact fish-motion and jellyfish-strand
+calculations between render tiles, and skips LCD checksums for partial damage
+regions where checksum reuse is deliberately disabled. It does not lower SPI
+speed, animation rate, polygon detail or color depth. Renderer stress tests
+support repeatable `--baseline` / `--out` measurements; desktop timings are not
+a guarantee of device FPS.
+
+Calm fish occasionally inspect the resident mussel instead of their usual
+favorite decoration, and resting fish can settle beside a familiar resting
+companion. Hunger, distress and feeding priorities remain unchanged. A successful
+mussel payout gives a brief, local gold glint; failed payouts, Creative mode and
+loading a save do not announce income. There is no persistent icon or popup.
+
+The placement preview outlines the selected copy and marks its
+starting position. Tap overlapping placed decorations to cycle between them,
+including different types; drag horizontally to move the selected piece.
+Copy labels distinguish original and extra placed copies, and STORE returns
+the selected piece to inventory. Switching selection discards unconfirmed
+preview edits; CANCEL restores the original layout.
+
+## Retained from 2.3.8: one shop and a passive-income creature
 
 Decoration storage is part of each item's shop entry, not a separate inventory
 screen. Buy the first item normally; its entry then manages stored/placed copies,

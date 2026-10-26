@@ -412,9 +412,39 @@ static void draw_wearable(ctx_t *c, const fish_t *f, float yh, float yt, float c
  *   elder -> a longer tail and a dorsal crest. All procedural, zero flash. */
 /* `mark` scales the accent stripes: 1 in the tank (every stage wears the
  * same 2 x 5 px marks), the preview's size so they read on a big fish */
+static const float *jelly_strands(float clock) {
+    static float previous, offsets[30];
+    static bool valid;
+    if (!valid || previous != clock) {
+        for (int strand = 0; strand < 5; strand++)
+            for (int segment = 1; segment <= 6; segment++)
+                offsets[strand * 6 + segment - 1] =
+                    sinf(clock * 3 + segment * 0.65f + strand) * segment * 0.55f;
+        previous = clock; valid = true;
+    }
+    return offsets;
+}
+typedef struct {
+    float clock, speed, heading, wander, tail, cp, sp;
+    bool valid;
+} fish_motion_t;
+static fish_motion_t fish_motion(const fish_t *f, float clock) {
+    static fish_motion_t cache[N_FISH_MAX];
+    fish_motion_t *m = &cache[(unsigned)f->preset % N_FISH_MAX];
+    if (!m->valid || m->clock != clock || m->speed != f->speed ||
+        m->heading != f->heading || m->wander != f->wander) {
+        float pitch = tank_fish_pitch(f);
+        m->tail = sinf(clock * (8 + f->speed * 0.055f) + f->wander) *
+            (0.32f + f->speed * 0.007f);
+        m->cp = cosf(pitch); m->sp = sinf(pitch);
+        m->clock = clock; m->speed = f->speed; m->heading = f->heading; m->wander = f->wander;
+        m->valid = true;
+    }
+    return *m;
+}
 static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, float mark) {
-    float tail = sinf(clock * (8 + f->speed * 0.055f) + f->wander) *
-                 (0.32f + f->speed * 0.007f);
+    fish_motion_t motion = fish_motion(f, clock);
+    float tail = motion.tail;
     float stress = f->stress / 10.0f;
     float pale = f->hunger > 7 ? (f->hunger - 7) / 3.0f * 0.35f : 0;   /* hungry = washed out */
     /* pitch: the heading folded to face right (the climb or dive), then the
@@ -423,8 +453,7 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
      * with its back near level, so the travel angle is eased toward a cap of
      * ~35 deg (~55 at a dash) - never nose-straight-up (Strato 09-29: "too
      * much time in a vertical position") */
-    float p = tank_fish_pitch(f);
-    float cp = cosf(p), sp = sinf(p);
+    float cp = motion.cp, sp = motion.sp;
     float yh = yaw_ease(f->yaw), yt = yaw_ease(f->yaw_tail);
     bool elder = f->stage == STAGE_ELDER, grown = f->stage >= STAGE_ADULT;
     float tail_len = elder ? 1.22f : 1.0f;
@@ -440,11 +469,13 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
 
     if (f->variety == FISH_JELLYFISH) {
         float pulse = sinf(clock * 3 + f->wander), width = 1 + pulse * 0.07f;
+        /* Identical across jellyfish and DMA tiles; retain the exact sinf result. */
+        const float *offsets = jelly_strands(clock);
         for (int strand = 0; strand < 5; strand++) {
             float base = (strand - 2) * 5, last_x = base, last_y = 1;
             for (int segment = 1; segment <= 6; segment++) {
                 float y = segment * (strand % 2 ? 3.0f : 3.6f);
-                float x = base + sinf(clock * 3 + segment * 0.65f + strand) * segment * 0.55f;
+                float x = base + offsets[strand * 6 + segment - 1];
                 float lx[4] = {last_x - 0.6f, last_x + 0.6f, x + 0.6f, x - 0.6f};
                 float ly[4] = {last_y, last_y, y, y}, xs[4], ys[4];
                 for (int i = 0; i < 4; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
@@ -3542,23 +3573,22 @@ static void draw_pearl_mussel(ctx_t *c, float x, float y, float scale, bool read
     fill_ellipse(c, x + 5 * scale, y - 2 * scale, 1.3f * scale, scale, shop_art_color(0xfffaf0, lit, background), 230);
 }
 static void mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
-    static const float anchors[] = {.82f, .68f, .48f, .30f, .46f, .64f};
-    const float interval = 360, travel = 16;
-    const int stops = sizeof anchors / sizeof *anchors;
-    float clock = fmodf(fmaxf(t->clock, 0), interval * stops);
-    int stop = (int)(clock / interval);
-    float phase = clock - stop * interval, progress = fmaxf(phase - (interval - travel), 0) / travel;
-    float ease = progress * progress * (3 - 2 * progress);
-    float from = anchors[stop], to = anchors[(stop + 1) % stops];
-    *x = (from + (to - from) * ease) * TANK_W;
-    *crawl = progress > 0 ? to > from ? 1 : -1 : 0;
-    *y = TANK_BOT - 11 + (*crawl ? sinf(phase * 3) * .6f : 0);
+    tank_mussel_pose(t, x, y, crawl);
 }
 static void draw_tank_mussel(ctx_t *c, const tank_t *t) {
     if (!progression_item_owned(t, SD_SHOP_MUSSEL)) return;
     float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
     if (crawl) fill_ellipse(c, x + crawl * 9, y + 5, 8, 2, 0x769d91, 220);
     draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0, true, 0);
+    if (t->mussel_glint > 0) {
+        float age = 1.6f - t->mussel_glint;
+        int alpha = (int)(fminf(age * 6, 1) * fminf(t->mussel_glint * 3, 1) * 210);
+        for (int i = 0; i < 3; i++) {
+            float sx = x + (i - 1) * 10, sy = y - 18 - age * 9 + (i & 1) * 4;
+            fill_ellipse(c, sx, sy, 2.2f, .7f, 0xe3c781, alpha);
+            fill_ellipse(c, sx, sy, .7f, 2.2f, 0xe3c781, alpha);
+        }
+    }
 }
 static void draw_inventory_extras(ctx_t *c, const tank_t *t, int depth) {
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
@@ -4433,15 +4463,16 @@ void render_damage_begin(const tank_t *t, bool force_full) {
                         (int)copy->x + half, TANK_BOT);
         }
     }
-    static float mussel_x, mussel_y;
+    static float mussel_x, mussel_y, mussel_glint;
     if (owned) {
         float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
-        if (x != mussel_x || y != mussel_y) {
-            damage_rect((int)mussel_x - 21, (int)mussel_y - 16, (int)mussel_x + 21, (int)mussel_y + 10);
-            damage_rect((int)x - 21, (int)y - 16, (int)x + 21, (int)y + 10);
+        if (x != mussel_x || y != mussel_y || t->mussel_glint > 0 || mussel_glint > 0) {
+            damage_rect((int)mussel_x - 21, (int)mussel_y - 36, (int)mussel_x + 21, (int)mussel_y + 10);
+            damage_rect((int)x - 21, (int)y - 36, (int)x + 21, (int)y + 10);
         }
         mussel_x = x; mussel_y = y;
     }
+    mussel_glint = owned ? t->mussel_glint : 0;
     for (int cy = 0; cy < ALGAE_ROWS; cy++) for (int cx = 0; cx < ALGAE_COLS; cx++) {
         int index = cy * ALGAE_COLS + cx;
         if (algae[index] != t->algae[index])
@@ -4877,7 +4908,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     if (progression_item_owned(t, SD_SHOP_MUSSEL)) {
         float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
         draw_tank_mussel(&c, t);
-        DYN_RECT((int)x - 21, (int)y - 16, (int)x + 21, (int)y + 10);
+        DYN_RECT((int)x - 21, (int)y - 36, (int)x + 21, (int)y + 10);
     }
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) if (t->inventory.extra[i].item) {
         const inventory_extra_t *copy = &t->inventory.extra[i];

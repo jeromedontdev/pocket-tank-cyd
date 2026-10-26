@@ -736,6 +736,7 @@ void tank_init(tank_t *t, uint32_t seed) {
     memset(&t->inventory, 0, sizeof t->inventory);
     memset(&t->mussel, 0, sizeof t->mussel);
     t->mussel_fraction = 0;
+    t->mussel_glint = 0;
     memset(&t->game_income, 0, sizeof t->game_income);
     memset(t->ornament_z, DECOR_Z_BACK, sizeof t->ornament_z);
     t->sand_style = t->water_style = 0;
@@ -910,6 +911,15 @@ static void veg_bed_base(const tank_t *t, int b, float *bx0, int *n) {
     int nn = base_n + 6;
     if (nn > VEG_FRONDS_MAX) nn = VEG_FRONDS_MAX;
     *bx0 = clampf(*bx0, TANK_FX0 + 12, TANK_FX1 - 12);
+    /* Keep a three-column sandy opening; reduce grass, not its drawing alone.
+       Bed bounds include the canopy margin used by shelter and trimming. */
+    float middle = TANK_W * 0.5f, gap = TANK_W * 0.06f;
+    if (b == 0) {
+        *bx0 = fminf(*bx0, middle - gap - veg_pitch(b) - 6);
+        while (nn > 1 && *bx0 + nn * veg_pitch(b) + 6 > middle - gap) nn--;
+    } else {
+        *bx0 = fmaxf(*bx0, middle + gap + 6);
+    }
     while (nn > 1 && *bx0 + (nn - 1) * veg_pitch(b) > TANK_FX1 - 12) nn--;
     if (b == 1) *bx0 = TANK_FX1 - 12 - (nn - 1) * veg_pitch(b);
     *n = nn;
@@ -2540,6 +2550,59 @@ int tank_favorite_decor(const tank_t *t, int idx) {
     return item;
 }
 
+void tank_mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
+    static const float anchors[] = {.82f, .68f, .48f, .30f, .46f, .64f};
+    const float interval = 360, travel = 16;
+    const int stops = sizeof anchors / sizeof *anchors;
+    float clock = fmodf(fmaxf(t->clock, 0), interval * stops);
+    int stop = (int)(clock / interval);
+    float phase = clock - stop * interval, progress = fmaxf(phase - (interval - travel), 0) / travel;
+    float ease = progress * progress * (3 - 2 * progress);
+    float from = anchors[stop], to = anchors[(stop + 1) % stops];
+    *x = (from + (to - from) * ease) * TANK_W;
+    *crawl = progress > 0 ? to > from ? 1 : -1 : 0;
+    *y = TANK_BOT - 11 + (*crawl ? sinf(phase * 3) * .6f : 0);
+}
+
+bool tank_mussel_owned(const tank_t *t) {
+    return t && t->aquariums.active < 8 &&
+        (t->mussel.version < 2 ? t->mussel.owned != 0 :
+         (t->mussel.owned & (1u << t->aquariums.active)) != 0);
+}
+bool tank_interest_spot(const tank_t *t, int idx, float *x, float *y) {
+    if (idx < 0 || idx >= t->n_fish) return false;
+    const fish_t *f = &t->fish[idx];
+    float phase = fmodf(fmaxf(t->clock, 0) + idx * 19, 90);
+    if (tank_mussel_owned(t) &&
+        (phase < 8 || (t->mussel_glint > 0 && idx == (int)(t->clock / 90) % t->n_fish)) &&
+        f->hunger < 7 && f->stress < 5) {
+        float crawl;
+        tank_mussel_pose(t, x, y, &crawl);
+        *y -= 36;
+        return true;
+    }
+    int item = tank_favorite_decor(t, idx);
+    if (item < 0) return false;
+    *x = tank_decor_x(t, item); *y = TANK_BOT - 42;
+    return true;
+}
+
+void tank_rest_spot(const tank_t *t, int idx, float *x, float *y) {
+    const fish_t *f = &t->fish[idx];
+    *x = t->reef_x + 13 + f->rest_dx; *y = TANK_BOT - 50 + f->rest_dy;
+    int item = tank_favorite_decor(t, idx);
+    if (item >= 0) *x = tank_decor_x(t, item) + (f->bold - .5f) * 24;
+    int friend = tank_familiar_friend(t, idx);
+    /* Only followers settle beside an earlier fish; mutual resting cannot drift. */
+    if (friend >= 0 && friend < idx && t->fish[friend].goal.id == GOAL_REST &&
+        t->fish[friend].hunger < 7 && t->fish[friend].stress < 5) {
+        *x = t->fish[friend].x + tank_fish_half_width(f) +
+            tank_fish_half_width(&t->fish[friend]) + 10;
+        *y = t->fish[friend].y + (idx & 1 ? -8 : 8);
+    }
+    tank_glass_clamp(x, y, tank_fish_half_width(f) + 4);
+}
+
 /* ---- goal → target point + cruise speed (prototype targetForGoal, x0.55) ---- */
 typedef struct { float x, y, speed; bool valid; } target_t;
 
@@ -2603,10 +2666,7 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
         break;
     }
     case GOAL_REST:
-        tg.x = t->reef_x + 13 + f->rest_dx;
-        tg.y = TANK_BOT - 50 + f->rest_dy;
-        { int item = tank_favorite_decor(t, idx);
-          if (item >= 0) tg.x = tank_decor_x(t, item) + (f->bold - .5f) * 24; }
+        tank_rest_spot(t, idx, &tg.x, &tg.y);
         tg.speed = 6 + f->bold * 4;
         break;
     case GOAL_DART_PLAY:
@@ -2619,8 +2679,7 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
         break;
     case GOAL_INSPECT_REEF: {
         float rx, ry; tank_reef_spot(t, &rx, &ry);   /* the reef cluster, once there is one */
-        int item = tank_favorite_decor(t, idx);
-        if (item >= 0) { rx = tank_decor_x(t, item); ry = TANK_BOT - 42; }
+        tank_interest_spot(t, idx, &rx, &ry);
         tg.x = rx + sinf(tm * 0.65f + f->wander + idx * 1.7f) * (39 + idx * 4);
         tg.y = ry - REEF_ORBIT_UP + cosf(tm * 0.8f + f->wander + idx * 1.1f) * (15 + idx * 4);
         tg.speed = (10 + f->curiosity * 1.2f) * (.65f + f->bold * .35f);

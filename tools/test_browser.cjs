@@ -340,6 +340,7 @@ async function main() {
       assert.equal(afterIncome.mussel.generated, beforeIncome.mussel.generated + 1);
       assert.equal(afterIncome.tank.sd_balance, beforeIncome.tank.sd_balance + 1);
       assert.equal(afterIncome.tank.journal_xp, beforeIncome.tank.journal_xp);
+      await menuImage(`mussel-income-glint-${scale}`);
       await openShopItem(9);
       if (!((await snapshot()).tank.sd_unlocks & (1 << 9))) {
         await menuImage(`chest-first-buy-${scale}`);

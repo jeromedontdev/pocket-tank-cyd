@@ -30,7 +30,10 @@ static fish_t s_custom_draft;
 static bool s_save_error;
 static setup_place_snapshot_t s_place_original;
 static int s_extra = -1;
-static inventory_extra_t s_extra_original;
+static inventory_extra_t s_place_extras_original[DECOR_EXTRA_CAP];
+static float s_place_base_x[SD_ITEM_COUNT];
+static uint8_t s_place_base_z[SD_ITEM_COUNT];
+static float s_selected_original_x;
 const setup_place_snapshot_t *setup_place_original(void) {
     return s_active && s_place && s_extra < 0 ? &s_place_original : NULL;
 }
@@ -58,6 +61,78 @@ static void placed_set(tank_t *t, float x, int z) {
     t->inventory.extra[s_extra].x = fmaxf(lo, fminf(hi, x));
     t->inventory.extra[s_extra].z = z == DECOR_Z_BACK ? DECOR_Z_BACK : DECOR_Z_FRONT;
 }
+typedef struct { int item, copy; } place_copy_t;
+static void place_restore_preview(tank_t *t) {
+    s_extra = -1;
+    for (int item = 0; item < SD_ITEM_COUNT; item++) {
+        if (!tank_decor_placeable(item)) continue;
+        tank_decor_set(t, item, s_place_base_x[item], s_place_base_z[item]);
+        *place_x(t, item) = s_place_base_x[item];
+    }
+    memcpy(t->inventory.extra, s_place_extras_original, sizeof s_place_extras_original);
+    t->coral_rgb = s_place_original.rgb;
+    t->cluster_scheme = s_place_original.scheme;
+    memcpy(t->decor_rank, s_place_original.rank, sizeof t->decor_rank);
+}
+static float place_touch_top(const tank_t *t, int item) {
+    float top = TANK_BOT - 16 - 40;
+    if (item == 0) tank_veg_bed(t, 3, NULL, NULL, &top, NULL);
+    if (item == 2) top = TANK_BOT - 16 - 146;
+    if (item == 3) top = TANK_BOT - 14 + DECOR_SINK - 92;
+    if (item == 4) top = TANK_BOT - 14 + DECOR_SINK - 120;
+    if (item == 8) top = TANK_BOT - 14 + DECOR_SINK - 82;
+    if (item >= 9) top = TANK_BOT - 14 + DECOR_SINK - tank_ornament_h(item);
+    return top - 8;
+}
+static int place_candidates_at(const tank_t *t, float x, float y, place_copy_t *copies) {
+    int count = 0;
+    for (int item = 0; item < SD_ITEM_COUNT; item++) {
+        if (!tank_decor_placeable(item)) continue;
+        float reach = tank_decor_half_w(item) + 10;
+        if (y < place_touch_top(t, item) || y > TANK_BOT - 8) continue;
+        if (progression_item_owned(t, item) && fabsf(tank_decor_x(t, item) - x) <= reach)
+            copies[count++] = (place_copy_t){ item, -1 };
+        for (int copy = 0; copy < DECOR_EXTRA_CAP; copy++)
+            if (t->inventory.extra[copy].item == item + 1 &&
+                fabsf(t->inventory.extra[copy].x - x) <= reach)
+                copies[count++] = (place_copy_t){ item, copy };
+    }
+    return count;
+}
+static int place_copy_count(const tank_t *t) {
+    int count = progression_item_owned(t, s_item) ? 1 : 0;
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++)
+        count += t->inventory.extra[i].item == s_item + 1;
+    return count;
+}
+static int place_copy_number(const tank_t *t) {
+    if (s_extra < 0) return 1;
+    int number = progression_item_owned(t, s_item) ? 1 : 0;
+    for (int i = 0; i < s_extra; i++)
+        number += t->inventory.extra[i].item == s_item + 1;
+    return number + 1;
+}
+static void place_select_copy(tank_t *t, int item, int copy) {
+    s_item = item;
+    s_extra = copy;
+    s_selected_original_x = placed_x(t);
+    if (copy < 0) {
+        s_place_original.item = item;
+        s_place_original.x = s_place_base_x[item];
+        s_place_original.z = s_place_base_z[item];
+    }
+}
+static bool place_cycle_copy_at(tank_t *t, float x, float y) {
+    place_copy_t copies[SD_ITEM_COUNT + DECOR_EXTRA_CAP];
+    int count = place_candidates_at(t, x, y, copies), current = -1;
+    for (int i = 0; i < count; i++)
+        if (copies[i].item == s_item && copies[i].copy == s_extra) { current = i; break; }
+    if (count < 2) return false;
+    place_copy_t next = copies[current < 0 ? 0 : (current + 1) % count];
+    place_restore_preview(t);
+    place_select_copy(t, next.item, next.copy);
+    return true;
+}
 static int  s_fish;            /* birth flow: the newborn's slot */
 static int  s_birth_offered = -1;   /* setup_poll_birth: the arrival already opened for (-1 = none since boot) */
 static int  s_page;
@@ -71,6 +146,7 @@ static float s_ly;             /* last y, for the wheel */
 static float s_acc;            /* vertical travel toward the next step */
 static bool  s_spun;           /* this press has turned the wheel (or moved the column): no tap on release */
 static bool  s_sell_armed;     /* the placement page's SELL tapped once (2026-09-24) */
+static bool  s_place_dragging;
 
 static int page_fish(void) { return s_birth || s_rename ? s_fish : s_place ? 0 : (s_page == SETUP_PG_NAME_A || s_page == SETUP_PG_LOOK_A) ? 0 : 1; }
 static bool page_is_name(void) { return s_page == SETUP_PG_NAME_A || s_page == SETUP_PG_NAME_B || s_page == SETUP_PG_NAME_NEW || s_page == SETUP_PG_RENAME; }
@@ -119,16 +195,25 @@ void setup_begin_place(tank_t *t, int item) {
     s_place_original.z = (uint8_t)tank_decor_z(t, item);
     s_place_original.rgb = t->coral_rgb; s_place_original.scheme = t->cluster_scheme;
     memcpy(s_place_original.rank, t->decor_rank, sizeof t->decor_rank);
+    memcpy(s_place_extras_original, t->inventory.extra, sizeof s_place_extras_original);
+    memset(s_place_base_x, 0, sizeof s_place_base_x);
+    memset(s_place_base_z, 0, sizeof s_place_base_z);
+    for (int i = 0; i < SD_ITEM_COUNT; i++)
+        if (tank_decor_placeable(i)) {
+            s_place_base_x[i] = *place_x(t, i);
+            s_place_base_z[i] = (uint8_t)tank_decor_z(t, i);
+        }
     s_save_error = false;
     s_active = true; s_birth = false; s_place = true; s_rename = false; s_item = item; s_fish = -1; s_page = SETUP_PG_PLACE; s_slot = 0; s_down = false;
     s_sell_armed = false;
+    s_selected_original_x = placed_x(t);
     stage(t);
 }
 void setup_begin_extra_place(tank_t *t, int copy) {
     if (s_active || copy < 0 || copy >= DECOR_EXTRA_CAP || !t->inventory.extra[copy].item) return;
     setup_begin_place(t, t->inventory.extra[copy].item - 1);
     s_extra = copy;
-    s_extra_original = t->inventory.extra[copy];
+    s_selected_original_x = placed_x(t);
 }
 int setup_poll_birth(tank_t *t) {
     int nb = progression_newborn();
@@ -189,13 +274,7 @@ static void stage(tank_t *t) {                          /* who is on stage, and 
 void setup_cancel(tank_t *t) {
     if (s_active && s_rename) { rename_end(t, false); s_renamed = 0; return; }   /* the old name back, no card to return to */
     if (s_active && s_place) {
-        if (s_extra >= 0) t->inventory.extra[s_extra] = s_extra_original;
-        else {
-            tank_decor_set(t, s_item, tank_decor_x(t, s_item), s_place_original.z);
-            *place_x(t, s_item) = s_place_original.x;
-            t->coral_rgb = s_place_original.rgb; t->cluster_scheme = s_place_original.scheme;
-            memcpy(t->decor_rank, s_place_original.rank, sizeof t->decor_rank);
-        }
+        place_restore_preview(t);
     }
     s_active = false; stage(t);
 }
@@ -444,19 +523,22 @@ void setup_touch(tank_t *t, float x, float y, bool down) {
     if (!s_active) { s_down = down; return; }
     if (down && !s_down) {                              /* press */
         s_px = x; s_py = y; s_ly = y; s_acc = 0; s_spun = false;
+        s_place_dragging = false;
         int h = setup_hit(x, y);
         if (page_is_name() && h >= SETUP_HIT_SLOT0 && h < SETUP_HIT_SLOT0 + FISH_NAME_MAX)
             pick_slot(&t->fish[page_fish()], h - SETUP_HIT_SLOT0);   /* picked on touch: the drag turns it */
         if (s_page == SETUP_PG_BUBBLES && !h && render_page_y(y) > SETUP_TOP_BTN_Y + SETUP_BTN_H + 8) {
             tank_set_bubble_x(t, x); s_spun = true;         /* the column comes to the finger */
         }
-        if (s_page == SETUP_PG_PLACE && !h && render_page_y(y) > place_y()) {
-            placed_set(t, x, placed_z(t)); s_spun = true;
+    } else if (down && s_page == SETUP_PG_PLACE && !setup_hit(s_px, s_py) &&
+               render_page_y(s_py) > place_y()) {
+        if (!s_place_dragging && fabsf(x - s_px) >= 5.0f) {
+            s_place_dragging = true;
+            s_spun = true;
         }
+        if (s_place_dragging) placed_set(t, x, placed_z(t));
     } else if (down && s_page == SETUP_PG_BUBBLES && s_spun) {
         tank_set_bubble_x(t, x);                            /* ... and follows it */
-    } else if (down && s_page == SETUP_PG_PLACE && s_spun) {
-        placed_set(t, x, placed_z(t));
     } else if (down && page_is_name()) {                /* the wheel: vertical travel spins the letter */
         int h0 = setup_hit(s_px, s_py);
         if (h0 >= SETUP_HIT_SLOT0 && h0 < SETUP_HIT_SLOT0 + FISH_NAME_MAX) {
@@ -468,7 +550,10 @@ void setup_touch(tank_t *t, float x, float y, bool down) {
     } else if (!down && s_down) {                       /* release: a tap, unless the wheel turned */
         if (!s_spun) {
             int h = setup_hit(s_px, s_py);
-            if (h && h == setup_hit(x, y)) setup_activate(t, h);
+            if (s_page == SETUP_PG_PLACE && !h && !setup_hit(x, y) &&
+                render_page_y(s_py) > place_y())
+                place_cycle_copy_at(t, s_px, s_py);
+            else if (h && h == setup_hit(x, y)) setup_activate(t, h);
         }
     }
     s_down = down;
@@ -823,9 +908,24 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         if (s_item >= 9) top = TANK_BOT - 14 + DECOR_SINK - tank_ornament_h(s_item);
         x0 = render_page_x(x0); x1 = render_page_x(x1); top = render_page_y(top);
         int sy = (int)top - 8; if (sy < place_y()) sy = place_y();
-        render_rect_blend(fb, stride, (int)x0, sy, (int)(x1 - x0), FLOOR - sy + 4, C_EDGE, 46);
+        render_rect_blend(fb, stride, (int)x0, sy, (int)(x1 - x0), FLOOR - sy + 4, C_EDGE, 64);
+        render_rect(fb, stride, (int)x0, sy, 2, FLOOR - sy + 4, C_EDGE);
+        render_rect(fb, stride, (int)x1 - 2, sy, 2, FLOOR - sy + 4, C_EDGE);
+        int original_x = render_page_x(s_selected_original_x);
+        render_rect_blend(fb, stride, original_x - 1, sy, 3, FLOOR - sy + 4, C_TEXT, 180);
+        render_rect(fb, stride, original_x - 6, FLOOR - 17, 12, 2, C_TEXT);
         chevron(fb, stride, (int)((x0 + x1) * 0.5f), FLOOR - 34, true, C_EDGE);
-        text_c(fb, stride, CX, 296, 2, C_CAPT, "DRAG IT LEFT OR RIGHT");
+        int total = place_copy_count(t), number = place_copy_number(t);
+        bool selected_owned = s_extra >= 0 ? t->inventory.extra[s_extra].item == s_item + 1 :
+                              progression_item_owned(t, s_item);
+        char copy_status[64];
+        if (!selected_owned) snprintf(copy_status, sizeof copy_status, "PREVIEW - NOT AN OWNED COPY");
+        else if (s_extra < 0) snprintf(copy_status, sizeof copy_status, "ORIGINAL - PLACED COPY %d OF %d", number, total);
+        else snprintf(copy_status, sizeof copy_status, "EXTRA COPY %d OF %d - PLACED - STORE TO INVENTORY", number, total);
+        place_copy_t overlaps[SD_ITEM_COUNT + DECOR_EXTRA_CAP];
+        bool can_select_overlap = place_candidates_at(t, placed_x(t), FLOOR * TANK_H / PAGE_H, overlaps) > 1;
+        text_c(fb, stride, CX, 281, 1, C_TEXT, copy_status);
+        text_c(fb, stride, CX, 296, 2, C_CAPT, can_select_overlap ? "TAP COPY TO SELECT - DRAG TO MOVE" : "DRAG IT LEFT OR RIGHT");
     } else if (page_is_name()) {
         /* straight on the tank: the fish being named wears a ring in its own
            colour, its name spans the middle in that colour, the active slot

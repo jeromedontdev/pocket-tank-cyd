@@ -8,7 +8,17 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.6 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.9 is a distinct aquarium game, not just a board port.**
+
+Version 2.3.9 adds a sandy center grass clearing, exact fish/jellyfish animation
+reuse between tiles and skips unused partial-region LCD checksums. Visual detail,
+SPI speed, save schema and partitions are unchanged; desktop timings do not
+establish a hardware FPS gain. Placement marks the selected copy and its starting
+position: tap overlaps to cycle placed items/copies, drag horizontally to move,
+DONE to save, or CANCEL to restore. Switching selections discards draft edits.
+Calm fish occasionally investigate the mussel or rest beside familiar companions.
+Successful saved mussel income produces a brief gold glint, never a permanent
+icon; failed payouts, Creative mode and loading a save do not trigger it.
 
 ## Supported board variants
 

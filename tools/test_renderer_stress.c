@@ -66,6 +66,24 @@ static uint64_t hash_frame(const uint16_t *fb) {
     return hash;
 }
 
+#ifndef RENDER_BASELINE
+static void check_motion_cache(void) {
+    fish_t f = {0};
+    for (int i = 0; i < 100; i++) {
+        f.preset = i % 3 ? i : -1;
+        f.heading = (i - 50) * .13f; f.speed = i * 1.1f; f.wander = i * .17f;
+        float clock = i * .31f;
+        fish_motion_t m = fish_motion(&f, clock);
+        float p = tank_fish_pitch(&f);
+        assert(m.cp == cosf(p) && m.sp == sinf(p));
+        assert(m.tail == sinf(clock * (8 + f.speed * .055f) + f.wander) * (.32f + f.speed * .007f));
+        const float *offsets = jelly_strands(clock);
+        for (int s = 0; s < 5; s++) for (int seg = 1; seg <= 6; seg++)
+            assert(offsets[s * 6 + seg - 1] == sinf(clock * 3 + seg * .65f + s) * seg * .55f);
+    }
+}
+#endif
+
 static void fixture(tank_t *t, bool normal, int group) {
     tank_resolution(normal);
     memset(t, 0, sizeof *t);
@@ -125,6 +143,9 @@ static void draw_tiles(const tank_t *t, uint16_t *fb, int height) {
 }
 
 static void benchmark(int frames) {
+#ifndef RENDER_BASELINE
+    check_motion_cache();
+#endif
     for (int normal = 0; normal < 2; normal++)
         for (int detail = 0; detail < SCENE_DETAIL_COUNT; detail++)
             for (int group = 0; group < 2; group++) {
@@ -213,6 +234,7 @@ static void soak(int seconds) {
         }
         t.mussel.owned = 1;
         t.mussel.bank = checks % 2 ? 1 : 0;
+        t.mussel_glint = 1.6f;
 #endif
         int detail = (int)(checks / 4 % SCENE_DETAIL_COUNT);
         render_device_t device = {0, 0, false, -1, (uint8_t)detail};
@@ -232,6 +254,7 @@ static void soak(int seconds) {
             if (step == 3) memset(&t.inventory.extra[0], 0, sizeof t.inventory.extra[0]);
             if (step == 4 && t.inventory.extra[1].item) t.inventory.extra[1].x += 12;
             if (step == 2) t.mussel.bank = 1;
+            t.mussel_glint = step < 4 ? 1.6f - step * .4f : 0;
             if (step == 5) t.mussel.owned = 0;
 #endif
             tank_tick(&t, 0.04f, advisor_rules);

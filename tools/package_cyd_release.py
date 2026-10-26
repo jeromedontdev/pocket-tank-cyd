@@ -174,7 +174,17 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.8: one shop and a passive-income creature
+### New in 2.3.9: aquarium performance and interaction polish
+
+- A sandy center opening removes grass work while preserving outer beds, saved blade heights and matching shelter/trim geometry.
+- Exact fish-motion and jellyfish-strand calculations are reused across tiles; partial-damage LCD regions skip checksums that cannot be reused. No reduction in visual detail, animation rate, SPI speed or color depth.
+- All 36 controlled baseline frame hashes match. Desktop timings are modest/mixed; this release does not claim a measured on-device FPS increase.
+- Placement outlines the selected copy and marks its starting position. Tap overlapping placed decorations to cycle different types/copies; drag horizontally to move only the selection. Clear original/extra and stored/placed feedback, cancellation and failed-save rollback.
+- Calm fish occasionally investigate the resident mussel; resting fish can settle near a familiar resting companion without overriding feeding priorities.
+- Successful automatic mussel payouts produce a subtle 1.6-second local gold sparkle. No permanent icon, popup, collection chore or success effect on failed payout/save load/Creative mode.
+- Save schema, partitions, hardware profiles and calibration remain unchanged. Save/placement, renderer/DMA, browser and menu regressions pass.
+
+### Retained from 2.3.8: one shop and a passive-income creature
 
 - Pearl Mussel is a normal shop creature: 120 sand dollars per aquarium, free in Creative. No separate mussel menu or daily-care unlock.
 - Healthy live aquariums automatically receive one sand dollar per ten minutes, capped at 15/day across the profile. No collection button, offline income or XP; Creative residents generate no income.

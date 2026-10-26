@@ -612,7 +612,7 @@ bool progression_mussel_collect(tank_t *t) {
         s_shop_notice = "WALLET FULL - NOT COLLECTED"; return false;
     }
     t->mussel.bank = 0; t->sd_balance += coins; t->sd_earned += coins;
-    if (progression_save(t)) return true;
+    if (progression_save(t)) { t->mussel_glint = 1.6f; return true; }
     t->mussel.bank = (uint8_t)coins; t->sd_balance -= coins; t->sd_earned -= coins;
     s_shop_notice = "SAVE FAILED - PEARLS KEPT";
     fprintf(stderr, "Mussel income save failed; pearls retained for retry\n");
@@ -784,8 +784,7 @@ static void shop_save_failed(const char *what, const char *name) {
 bool progression_item_owned(const tank_t *t, int item) {
     if (!t || item < 0 || item >= SD_ITEM_COUNT) return false;
     if (item == SD_SHOP_MUSSEL)
-        return t->mussel.version < 2 ? t->mussel.owned != 0 :
-            (t->mussel.owned & (1u << t->aquariums.active)) != 0;
+        return tank_mussel_owned(t);
     if (SD_IS_SCENERY(item)) return (t->polish.scenery_unlocks >> (item - SD_SCENERY_FIRST)) & 1u;
     return item < 32 ? (t->sd_unlocks & SD_ITEMS[item].bit) != 0 :
         (t->aquariums.stat_upgrades & (1u << (item - 32))) != 0;
@@ -1747,7 +1746,7 @@ void progression_stage_arrival(tank_t *t) { (void)t; if (!s_arrival_pending) { s
 
 void progression_fresh(tank_t *t) {
     memset(&t->game_income, 0, sizeof t->game_income); t->game_income.version = 1;
-    memset(&t->mussel, 0, sizeof t->mussel); t->mussel_fraction = 0;
+    memset(&t->mussel, 0, sizeof t->mussel); t->mussel_fraction = 0; t->mussel_glint = 0;
     s_hard_save_failed = s_hard_departed = false;
     if (!t->profile.marker) {
         t->profile.marker = PROFILE_MARKER;
@@ -1971,7 +1970,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     t->games_extra = sv.games_extra;
     t->profile = sv.profile;
     t->inventory = sv.inventory;
-    t->mussel = sv.mussel; t->mussel_fraction = 0;
+    t->mussel = sv.mussel; t->mussel_fraction = 0; t->mussel_glint = 0;
     if (t->mussel.version == 1 && t->mussel.owned) {
         t->mussel.version = 2;
         t->mussel.owned = (uint8_t)(1u << t->aquariums.active);
@@ -2142,6 +2141,7 @@ static void hard_tick(tank_t *t, float dt) {
 }
 void progression_tick(tank_t *t, float dt) {
     if (!s_booted || !isfinite(dt) || dt <= 0) return;
+    t->mussel_glint = fmaxf(0, t->mussel_glint - fminf(dt, 1));
     care_tick(t, dt);
     mussel_tick(t, dt);
     hard_tick(t, dt);

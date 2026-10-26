@@ -237,7 +237,8 @@ void display_port_flush(const uint16_t *fb) {
             }
         }
         int tile_index = tile_start / 80, block = native_y / (CYD_STRIPE_ROWS / 2);
-        uint32_t crc = esp_crc32_le(0, (const uint8_t *)buffer, (size_t)count * region_width * sizeof *buffer);
+        uint32_t crc = canonical ?
+            esp_crc32_le(0, (const uint8_t *)buffer, (size_t)count * region_width * sizeof *buffer) : 0;
         if (canonical && s_block_valid[tile_index][block] && s_block_crc[tile_index][block] == crc) {
             s_blocks_skipped++;
             continue;

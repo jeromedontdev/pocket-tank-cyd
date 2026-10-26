@@ -45,10 +45,13 @@
  * live tank, opened by the platform right after a purchase (and by the
  * shop's MOVE button for a piece already in the tank). A finger on the
  * water drags the piece to that x (tank_decor_set clamps it inside the
- * window); a BACK / MIDDLE / FRONT row under the title picks its depth -
- * the tank redraws live, so the fish and the grass show the choice at
- * once; DONE saves. A translucent stripe marks the piece's footprint, a
- * chevron at its foot. */
+ * window); a tap on overlapping placed decorations cycles through only
+ * owned pieces and copies without moving them. Selecting another piece
+ * drops the current preview back to its starting layout. The selected
+ * footprint is outlined, and a marker stays at its starting position while
+ * it is dragged. The page identifies the placed original or extra copy;
+ * STORE returns an extra to inventory, DONE saves, and CANCEL restores the
+ * original layout. */
 #ifndef POCKET_TANK_SETUP_H
 #define POCKET_TANK_SETUP_H
 #include "tank.h"
@@ -96,7 +99,9 @@ void setup_cancel(tank_t *t);            /* drop the pages; the save still says 
 int  setup_page(void);                   /* SETUP_PG_* while active */
 /* the finger, every frame (or poll): x,y in tank coordinates, down = touching.
  * A press then release on one element taps it; a press on a letter slot and
- * a vertical drag spins that letter (SETUP_SPIN_PX of travel per step). */
+ * a vertical drag spins that letter (SETUP_SPIN_PX of travel per step).
+ * Placement water taps cycle overlapping owned copies; horizontal drags move
+ * only the selected copy. */
 void setup_touch(tank_t *t, float x, float y, bool down);
 /* the pieces, for tests and the touch log: the element under (x,y) on the
  * current page (0 = none) and a tap on it */

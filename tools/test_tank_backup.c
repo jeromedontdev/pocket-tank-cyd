@@ -2108,12 +2108,19 @@ static void test_swim_extent(void) {
             float root; tank_veg_frond(&t, 0, 0, &root);
             assert(root >= 12);
             for (int bed = 0; bed < tank_veg_beds(&t); bed++) {
-                int count; tank_veg_bed(&t, bed, NULL, NULL, NULL, &count);
+                int count; float start, end;
+                tank_veg_bed(&t, bed, &start, &end, NULL, &count);
+                assert(count > 0);
+                if (tank_veg_kind(&t, bed) == VEG_KIND_GRASS)
+                    assert(end <= TANK_W * .44f || start >= TANK_W * .56f);
                 for (int frond = 0; frond < count; frond++) {
                     tank_veg_frond(&t, bed, frond, &root);
                     assert(root >= 12 && root <= TANK_W - 12);
                 }
             }
+            for (int bed = 0; bed < VEG_BEDS; bed++) tank_veg_set(&t, bed, 1);
+            for (int x = (int)ceilf(TANK_W * .44f); x < TANK_W * .56f; x++)
+                assert(!tank_in_grass(&t, x, TANK_BOT - 20));
         }
         t.fish[0].goal.id = GOAL_DART_PLAY; t.fish[0].goal.urgency = 9;
         t.fish[0].speed = 0; t.fish[0].bold = .95f; t.fish[0].dart_timer = 0;
@@ -2124,7 +2131,7 @@ static void test_swim_extent(void) {
         }
     }
     tank_resolution(false);
-    puts("PASS: Enlarged/Normal explorers reach both side-glass bands without clipping, right seagrass fills its last safe slot, and playful dart speed is bounded");
+    puts("PASS: Enlarged/Normal explorers reach both glass bands, grass leaves a real central clearing at every lushness, right grass retains its edge slot, and dart speed is bounded");
 }
 static void test_collision_turns(void) {
     for (int compact = 0; compact < 2; compact++) {
@@ -2449,6 +2456,33 @@ static void test_social_and_preview(void) {
             tank_tick(&t, 1, NULL);
         }
         assert(tank_familiar_friend(&t, 0) == 1 && tank_familiar_friend(&t, 1) == 0);
+        {
+            tank_t social = t;
+            social.fish[0].goal.id = social.fish[1].goal.id = GOAL_REST;
+            social.fish[0].hunger = social.fish[1].hunger = 2;
+            social.fish[0].x = TANK_W * .3f; social.fish[0].y = TANK_H * .6f;
+            float x, y, alone_x, alone_y;
+            tank_rest_spot(&social, 1, &x, &y);
+            assert(x > social.fish[0].x && y == social.fish[0].y - 8);
+            social.fish[0].goal.id = GOAL_SEEK_FOOD;
+            tank_rest_spot(&social, 1, &alone_x, &alone_y);
+            assert(x != alone_x || y != alone_y);
+            social.sd_unlocks = 0; social.clock = 0;
+            social.mussel.version = 2; social.mussel.owned = 1;
+            float mx, my, crawl;
+            tank_mussel_pose(&social, &mx, &my, &crawl);
+            assert(tank_interest_spot(&social, 0, &x, &y) && x == mx && y == my - 36);
+            social.clock = 20;
+            assert(!tank_interest_spot(&social, 0, &x, &y));
+            social.mussel_glint = 1;
+            assert(tank_interest_spot(&social, 0, &x, &y));
+            social.fish[0].hunger = 8;
+            assert(!tank_interest_spot(&social, 0, &x, &y));
+            social.fish[0].hunger = 2; social.aquariums.active = 1;
+            assert(!tank_interest_spot(&social, 0, &x, &y));
+            social.aquariums.active = 255;
+            assert(!tank_mussel_owned(&social));
+        }
         t.fish[0].goal.id = GOAL_FOLLOW_FRIEND; t.fish[0].goal_age = 15;
         t.fish[0].hunger = 2; t.fish[0].energy = 8; t.fish[0].lazy = 0;
         assert(advisor_rules(&t, 0, true).id == GOAL_EXPLORE);
@@ -3468,6 +3502,7 @@ static void test_mussel(void) {
     mussel_run(&t, 1, 0.25f);
     assert(!t.mussel.seconds && t.mussel.bank == 1 && t.mussel.generated == 1);
     assert(t.sd_balance == wallet && t.sd_earned == earned && t.journal.xp == xp);
+    assert(t.mussel_glint == 0);
     mussel_run(&t, 1, 600);
     assert(!t.mussel.seconds); /* Failed settlement blocks new accrual; no income is discarded. */
     int n = t.n_fish; t.n_fish = 0; progression_tick(&t, 1); t.n_fish = n;
@@ -3484,10 +3519,12 @@ static void test_mussel(void) {
     char *stale = progression_backup_json(&t); assert(stale);
     progression_tick(&t, 1);
     assert(!t.mussel.bank);
+    assert(t.mussel_glint == 1.6f);
     assert(t.sd_balance == wallet + 1 && t.sd_earned == earned + 1 && t.journal.xp == xp);
     assert(progression_save(&t));
     assert(progression_restore_json(stale, strlen(stale), true, error, sizeof error)); free(stale);
     inventory_reload(&loaded); t = loaded;
+    assert(t.mussel_glint == 0);
     assert(!t.mussel.bank && t.mussel.generated == 1 && t.mussel.seconds == 1);
     assert(progression_restore_json(preunlock, strlen(preunlock), false, error, sizeof error));
     assert(progression_restore_json(preunlock, strlen(preunlock), true, error, sizeof error)); free(preunlock);
@@ -3500,7 +3537,7 @@ static void test_mussel(void) {
     mussel_run(&t, 1, 1);
     assert(t.mussel.generated == 15 && !t.mussel.bank && !t.mussel.seconds);
     mussel_run(&t, 20, 1);
-    assert(!t.mussel.seconds);
+    assert(!t.mussel.seconds && t.mussel_glint == 0);
     test_unix += 86400; progression_care_refresh(&t);
     assert(!t.mussel.generated && !t.mussel.bank);
     t.mussel.bank = 15; /* Legacy uncollected income settles automatically. */
