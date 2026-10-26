@@ -47,7 +47,7 @@ static int shop_item(const char *name) {
         "wreck", "urn", "crystal", "fan", "ruins", "jelly",
         "pebbles", "pearl", "log", "sponges", "barrel", "helmet", "lilies", "duck", "filter", "garden",
         "current", "shelter", "play", "training",
-        "seaglass", "braincoral", "tiki", "bottle", "anemone", "teapot"
+        "seaglass", "braincoral", "tiki", "bottle", "anemone", "teapot", "mussel"
     };
     for (int i = 0; i < SD_ITEM_COUNT; i++) if (!strcmp(name, keys[i])) return i;
     return -1;
@@ -456,7 +456,7 @@ static void run(tank_t *t, char *line) {
                  (int)t->algae_colonies, t->trim_px / PX_PER_CM);
     } else if (!strcmp(c, "buy") && argc > 1) {      /* buy plant|snail|...|shrimp: the shop's sale, at the price */
         int item = shop_item(argv[1]);
-        if (item < 0) ESP_LOGW(TAG, "buy plant|snail|castle|coral|cluster|shrimp|urchin|seahorse|pumpkin|chest|shell|starfish|anchor|buoy|sand|lights|wreck|urn|crystal|fan|ruins|jelly|pebbles|pearl|log|sponges|barrel|helmet|lilies|duck|filter|garden|current|shelter|play|training");
+        if (item < 0) ESP_LOGW(TAG, "buy plant|snail|castle|coral|cluster|shrimp|urchin|seahorse|pumpkin|chest|shell|starfish|anchor|buoy|sand|lights|wreck|urn|crystal|fan|ruins|jelly|pebbles|pearl|log|sponges|barrel|helmet|lilies|duck|filter|garden|current|shelter|play|training|mussel");
         else if (progression_buy(t, item)) ESP_LOGI(TAG, "%s unlocked, %d sand dollars left%s", SD_ITEMS[item].name, (int)t->sd_balance,
                                                     tank_decor_placeable(item) ? " (`place` opens the placement page)" : "");
         else ESP_LOGW(TAG, "%s refused: already owned, unavailable, insufficient funds or save failed (%d / %d)", SD_ITEMS[item].name, (int)t->sd_balance, SD_ITEMS[item].price);

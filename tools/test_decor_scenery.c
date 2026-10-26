@@ -21,7 +21,7 @@ static int test_decor_scenery_changed(const uint16_t *a, const uint16_t *b) {
 }
 
 static void test_decor_scenery_catalog(void) {
-    assert(SD_ITEM_COUNT == 42 && SD_SCENERY_FIRST == 36 && SD_SCENERY_N == 6 && SD_SCENERY_MASK == 0x3f);
+    assert(SD_ITEM_COUNT == 43 && SD_SHOP_MUSSEL == 42 && SD_SCENERY_FIRST == 36 && SD_SCENERY_N == 6 && SD_SCENERY_MASK == 0x3f);
     assert(DECOR_SLOTS == 16);
     int prices = 0;
     for (int item = SD_SCENERY_FIRST; item < SD_SCENERY_END; item++) {

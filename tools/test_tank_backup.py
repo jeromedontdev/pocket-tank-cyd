@@ -11,6 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="cc", help="C compiler executable (including zig)")
     parser.add_argument("--clock-only", action="store_true", help="Run clock/weather bounds and settings only")
+    parser.add_argument("--inventory-only", action="store_true", help="Run shop inventory and mussel income regressions")
     parser.add_argument("--flat-edges", action="store_true", help="Test the CYD renderer without cosmetic vignette")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
@@ -52,8 +53,11 @@ def main():
         environment = dict(os.environ, POCKET_TANK_FAKE_UPDATE="", POCKET_TANK_TEST_SLOTS=str(temporary),
                            POCKET_TANK_WIFI=str(temporary / "wifi.txt"),
                            POCKET_TANK_WEATHER=str(temporary / "weather.bin"))
-        selected = ["--clock-only"] if args.clock_only else [str(path) for path in fixtures]
+        selected = (["--inventory-only"] if args.inventory_only else
+                    ["--clock-only"] if args.clock_only else [str(path) for path in fixtures])
         subprocess.run([str(executable), *selected], check=True, env=environment)
+        if not args.clock_only and not args.inventory_only:
+            subprocess.run([str(executable), "--inventory-only"], check=True, env=environment)
 
 
 if __name__ == "__main__":

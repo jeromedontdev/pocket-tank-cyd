@@ -20,6 +20,18 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- 2.3.8 integrates decoration copy/storage controls into each normal shop entry,
+  removing separate Inventory/Mussel navigation. Additional-copy purchases require
+  a prior first purchase (including Creative). Pearl Mussel is stable shop ID42,
+  price120 per aquarium/free Creative; no care-task unlock or collection screen.
+  Passive healthy live income auto-credits transactionally, retains legacy pearls
+  on failed saves, and keeps the shared15/day/no XP/no offline rules. Mussel v2
+  uses owned as an eight-tank mask in the same8-byte layout; v1 migrates into
+  the saved active aquarium. Never treat v2 owned as a boolean for drawing.
+  Inventory/mussel native regressions now run in the default backup test runner,
+  not just its previously separate --inventory-only executable selector.
+  User physically confirmed v2.3.7 touch and trophies fixed; ELEGOO dimness was
+  identified as reflective screens/poor viewing angles, not backlight duty.
 - 2.3.7 starts new aquariums with companion trophy decor disabled in all modes.
   Preserve existing saved decor preferences; Life > Rewards can enable trophies.
   ELEGOO fresh affine defaults reverse X/preserve Y; saved calibration is untouched.
@@ -165,8 +177,9 @@ or deployment is published. Update this file when its contracts change.
   Non-fry pending birth welcomes retire on load/poll without changing fish.
   Welcome and birth completion save transactionally; failure keeps UI open
   with a retry banner instead of silently leaving a persistent old flag.
-  Claiming all three tasks unlocks one profile-wide pearl mussel: one coin
-  per 600 healthy live seconds, max 15/day and 15 banked, explicit collection,
+  In 2.3.0-2.3.7, claiming all three tasks unlocked a profile-wide pearl mussel;
+  2.3.8 makes it a shop resident with automatic payout: one coin
+  per 600 healthy live seconds, max 15/day with pending coins retained on failure,
   no offline income or XP. It rests for 344 seconds then crawls for 16,
   with bounded old/new damage; no new art buffer. Shared state follows the
   active tank; backups cannot rewind an already-owned mussel/quota but can

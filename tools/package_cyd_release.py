@@ -174,11 +174,20 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.7: quieter defaults and ELEGOO touch correction
+### New in 2.3.8: one shop and a passive-income creature
+
+- Pearl Mussel is a normal shop creature: 120 sand dollars per aquarium, free in Creative. No separate mussel menu or daily-care unlock.
+- Healthy live aquariums automatically receive one sand dollar per ten minutes, capped at 15/day across the profile. No collection button, offline income or XP; Creative residents generate no income.
+- Decoration storage and additional copies are managed from each item's normal shop entry after its first purchase, instead of a separate Inventory screen.
+- Existing earned mussels and banked pearls migrate without resetting aquariums. Failed purchases and payouts roll back safely.
+- The resident mask requires 2.3.8 or newer after purchasing a mussel; do not downgrade that profile, even though the save size/schema remain unchanged.
+- Verified native save/migration and Creative regressions, 428 menu screens at both scales, actual browser purchase/storage/passive-income flows, and the unified firmware build.
+
+### Retained from 2.3.7: quieter defaults and ELEGOO touch correction
 
 - Trophies are hidden by default in new aquariums, including Creative mode. Enable them in Life > Rewards > Trophies; existing saved preferences are preserved.
 - ELEGOO's fresh affine touch default reverses X and preserves Y, matching the previously working calibration rather than reversing the wrong axis. Raw coordinates and saved calibrations remain unchanged.
-- Touch defaults are regression-tested for both board profiles, unified runtime selection, both UI sizes and rotation. Fresh physical touch still needs confirmation; no existing calibration is erased to simulate a fresh board.
+- Touch defaults are regression-tested for both board profiles, unified runtime selection, both UI sizes and rotation. The user confirmed touch and trophy defaults fixed; existing calibration is preserved.
 - ELEGOO brightness diagnostics already show maximum duty255 with night/room dimming off, using the vendor panel/PWM settings. No brightness increase is claimed in this release.
 
 ### Unified CYD / ELEGOO profiles

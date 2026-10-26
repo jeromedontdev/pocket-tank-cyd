@@ -265,6 +265,7 @@ const char *const *progression_fry_tip(int kind);
 #define SD_TRIM_CM     250
 #define SD_PRICE_PLANT 40
 #define SD_PRICE_SNAIL 80
+#define SD_PRICE_MUSSEL 120
 #define SD_PRICE_CASTLE 150
 #define SD_PRICE_CORAL 100
 #define SD_PRICE_CLUSTER 240

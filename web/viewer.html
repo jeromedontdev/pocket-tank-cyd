@@ -222,7 +222,9 @@ function show(save) {
       save.care ? `${save.care.game_paid}/5 sand dollars; no XP` : "Predates daily bonus limit"],
     ["Shared decoration storage", save.inventory ? `${hex(save.inventory.stored).reduce((sum, n) => sum + n, 0)}/64 pieces` : "Predates inventory"],
     ["Extra ornaments here", save.inventory ? `${hex(save.inventory.extra).filter((n, i) => i % 8 === 0 && n !== 0).length}/8 placed` : "Predates inventory"],
-    ["Pearl mussel", save.mussel ? save.mussel.owned ? `${save.mussel.bank}/15 ready; ${save.mussel.generated}/15 grown today` : "Earned by completing daily care" : "Predates pearl mussel"],
+    ["Pearl mussel", save.mussel ? save.mussel.owned ?
+      `${save.mussel.version >= 2 ? save.mussel.owned.toString(2).replace(/0/g, "").length + " aquarium resident(s); " : "Legacy resident; "}${save.mussel.generated}/15 earned today; ${save.mussel.bank} pending automatic payout` :
+      "Available in the shop" : "Predates pearl mussel"],
     ["Born in this tank", story ? story.births : "-"],
     ["Seasons", !story ? "-" : story.flags & 1 ? "off" : story.flags & 2 ? "southern hemisphere" : "northern hemisphere"],
     ["Founded", pol.founded_unix ? new Date(pol.founded_unix * 1000).toLocaleDateString() : "unknown"],

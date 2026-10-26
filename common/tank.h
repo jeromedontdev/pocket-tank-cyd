@@ -488,7 +488,7 @@ _Static_assert(sizeof(inventory_extra_t) == 8, "inventory copy save layout");
 _Static_assert(sizeof(inventory_state_t) == 100, "inventory append-only save layout");
 typedef struct {
     uint16_t seconds;
-    uint8_t owned, bank, generated, version, reserved[2];
+    uint8_t owned, bank, generated, version, reserved[2]; /* v2 owned: one bit per aquarium */
 } mussel_state_t;
 _Static_assert(sizeof(mussel_state_t) == 8, "mussel save layout");
 #define GAME_INCOME_COUNT 18
@@ -1089,7 +1089,8 @@ void  tank_set_bubble_x(tank_t *t, float x);
 
 /* ---- the shop (2026-09-15): sand dollars buy things for the tank ----
  * IDs 0..31 use tank_t.sd_unlocks; IDs 32..35 use aquariums.stat_upgrades;
- * IDs 36..41 use polish.scenery_unlocks (fixed scenery, below).
+ * IDs 36..41 use polish.scenery_unlocks (fixed scenery, below);
+ * ID 42 uses mussel.owned's aquarium mask.
  * progression_item_owned handles both without overflowing the legacy mask. */
 enum { SD_ITEM_PLANT = 1u << 0, SD_ITEM_SNAIL = 1u << 1, SD_ITEM_CASTLE = 1u << 2, SD_ITEM_CORAL = 1u << 3, SD_ITEM_CLUSTER = 1u << 4, SD_ITEM_SHRIMP = 1u << 5,
        SD_ITEM_URCHIN = 1u << 6, SD_ITEM_SEAHORSE = 1u << 7, SD_ITEM_PUMPKIN = 1u << 8,
@@ -1106,7 +1107,8 @@ enum { SD_ITEM_PLANT = 1u << 0, SD_ITEM_SNAIL = 1u << 1, SD_ITEM_CASTLE = 1u << 
        SD_ITEM_LILIES = 1u << 28, SD_ITEM_DUCK = 1u << 29,
        SD_ITEM_FILTER = 1u << 30 };
 #define SD_ITEM_GARDEN (UINT32_C(1) << 31)
-#define SD_ITEM_COUNT 42
+#define SD_SHOP_MUSSEL 42
+#define SD_ITEM_COUNT 43
 #define SD_ITEM_MASK UINT32_MAX
 /* fixed sand scenery (1.2): IDs 36..41 own one bit each in
  * tank_polish_t.scenery_unlocks. Not placeable, so no decor slot or rank;

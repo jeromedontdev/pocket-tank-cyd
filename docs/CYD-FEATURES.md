@@ -2,7 +2,14 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.7**
+**An illustrated tour of Pocket Tank CYD 2.3.8**
+
+**2.3.8 shop:** decoration copy/storage controls are in the item's normal shop
+entry; the separate Inventory screen is gone. Buy a first copy normally before
+buying additional copies. Pearl Mussel is a normal 120-dollar creature purchase
+per aquarium (free in Creative), not a separate menu or daily-task reward.
+Its income goes straight to the wallet; previously earned mussels and pearls
+are preserved.
 
 **2.3.7 display defaults:** trophies start hidden in new aquariums, including
 Creative mode. Enable them in **Life > Rewards > Trophies**. Existing saved
@@ -57,8 +64,8 @@ Weather and GitHub Pages certificate validation passed on the actual CYD.
 
 ### New in 2.3.0: decoration inventory and pearl-mussel income
 
-Available in 2.3.0 and newer. **Shop > Inventory** opens
-profile-wide decoration storage. Select a type to **BUY COPY**, **PLACE STORED**,
+Available in 2.3.0 and newer; 2.3.8 integrates storage into the shop.
+Select a purchased decoration's shop entry to **BUY COPY**, **PLACE STORED**,
 cycle placed copies with **NEXT**, **MOVE COPY**, or **STORE COPY**. Storing
 does not sell or refund a piece; moving and placing owned items do not charge
 again. **SELL STORED** requires a second confirmation and only pays the resale
@@ -75,14 +82,15 @@ be stored or placed in other aquariums. Helpers, upgrades, themes and fixed
 background scenery retain their existing behavior outside inventory.
 
 Daily care pays **30 + 30 + 65 = 125 sand dollars**; XP remains 50 per day.
-Claiming all three tasks welcomes one free **pearl mussel** for the profile.
+The shop sells a **pearl mussel** for 120 sand dollars per aquarium.
 All fish must have hunger below 8.5 and stress below 7 for its live-time
 progress to advance. Ten healthy running minutes grow one coin, at most 15
-per care day. **Shop > Mussel**, also available from Inventory, shows progress
-and collects the bank. The bank holds 15 and survives midnight; daily
-generation follows the same clock/fallback protections as care. There are no
-offline earnings or XP, no duplicate mussels, and no multiplied income from
-extra tanks. Games now allow **five dollars per game per day** (one per qualifying
+per profile/care day, credited automatically to the wallet without a collection
+screen. Old banked income settles automatically with save-failure rollback;
+daily generation follows the same clock/fallback protections as care. There are no
+offline earnings or XP, at most one resident per aquarium, and no multiplied
+daily allowance from extra tanks. Creative purchases are free but generate no
+income. Games allow **five dollars per game per day** (one per qualifying
 saved round, 90 across all 18), with Challenge/Relaxed and all tanks sharing
 each game's allowance. No game XP. Most of the time the
 mussel rests; roughly every six minutes it slowly crawls to a nearby sand
@@ -91,6 +99,8 @@ position over 16 seconds, with a small foot movement and shell bob.
 Version 2.3.0 saves use schema 18 / 6,168 bytes, with the previous 6,032-byte prefix
 unchanged. Back up before upgrading and do not downgrade an upgraded profile
 to firmware that cannot read inventory or mussel state.
+Once a mussel is purchased in 2.3.8, its per-aquarium ownership mask requires
+2.3.8 or newer even though the save size and schema number remain unchanged.
 
 Obsolete pending “new fry” flags are retired when that fish is no longer a
 fry; fish, names and family history are not reset. Genuine unfinished fry

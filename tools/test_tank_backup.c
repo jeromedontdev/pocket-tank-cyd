@@ -502,7 +502,7 @@ static void test_shop_expansion(void) {
         } else assert(!progression_sell(&t, item));
         total += SD_ITEMS[item].price;
     }
-    assert(total == 2340);
+    assert(total == 2340 + SD_PRICE_MUSSEL);
     tank_init(&loaded, 1); boot_enlarged(&loaded);
     assert(loaded.sd_unlocks == t.sd_unlocks && (loaded.sd_unlocks & SD_ITEM_GARDEN));
     assert(loaded.aquariums.stat_upgrades == STAT_MASK);
@@ -572,7 +572,10 @@ static void test_shop_expansion(void) {
     for (int row = 0; row < progression_shop_count(&shop); row++) {
         int item = progression_shop_item(&shop, row);
         tank_t owned = shop;
-        if (item < 32) owned.sd_unlocks |= SD_ITEMS[item].bit;
+        if (item == SD_SHOP_MUSSEL) {
+            owned.mussel.version = 2;
+            owned.mussel.owned = (uint8_t)(1u << owned.aquariums.active);
+        } else if (item < 32) owned.sd_unlocks |= SD_ITEMS[item].bit;
         else if (SD_IS_SCENERY(item)) owned.polish.scenery_unlocks |= (uint8_t)(1u << (item - SD_SCENERY_FIRST));
         else owned.aquariums.stat_upgrades |= (uint8_t)(1u << (item - 32));
         int display_row = row + progression_fry_for_sale(&shop);
@@ -3150,6 +3153,8 @@ static void test_inventory(void) {
     t.sd_balance = 10000; assert(progression_save(&t));
     int slot = tank_decor_slot(9), earned = t.sd_earned;
     assert(AQUARIUM_SAVE_BYTES == 6168);
+    before = t;
+    assert(!progression_inventory_buy(&t, 9) && !memcmp(&before, &t, sizeof t));
     assert(progression_buy(&t, 9));
     assert(progression_item_price_for(&t, 9) == SD_ITEMS[9].price);
     assert(progression_sell_value_for(&t, 9) == progression_sell_value(9));
@@ -3198,7 +3203,8 @@ static void test_inventory(void) {
     assert(!progression_inventory_buy(&t, 1) && !progression_inventory_duplicate(0));
     for (int item = 0; item <= 8; item++) {
         if (!tank_decor_placeable(item)) continue;
-        assert(progression_inventory_buy(&t, item));
+        assert(progression_buy(&t, item));
+        assert(progression_inventory_store(&t, item, -1));
         assert(progression_inventory_buy(&t, item));
         assert(progression_inventory_place(&t, item));
         assert(!progression_inventory_place(&t, item));
@@ -3302,7 +3308,7 @@ static void test_inventory(void) {
     saved_size = 0; memset(slot_exists, 0, sizeof slot_exists);
     tank_init(&t, 810); boot_enlarged(&t); progression_setup_done(&t);
     t.sd_balance = 10000;
-    assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
+    assert(progression_buy(&t, 9));
     assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
     assert(progression_inventory_store(&t, 9, 0));
     json = progression_backup_json(&t); assert(json);
@@ -3327,7 +3333,9 @@ static void test_inventory(void) {
     assert(progression_item_price_for(&t, 9) == 0);
     progression_setup_done(&t);
     wallet = t.sd_balance; earned = t.sd_earned;
-    assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
+    before = t;
+    assert(!progression_inventory_buy(&t, 9) && !memcmp(&before, &t, sizeof t));
+    assert(progression_buy(&t, 9));
     assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
     assert(!t.inventory.extra[0].paid && !(t.profile.paid_items & (UINT64_C(1) << 9)));
     assert(progression_inventory_store(&t, 9, 0) && progression_inventory_sell(&t, 9));
@@ -3423,8 +3431,19 @@ static void test_mussel(void) {
     assert(!t.mussel.owned);
     reject_write = true; assert(!progression_care_claim(&t, 2)); reject_write = false;
     assert(!t.mussel.owned && t.care.claimed == 3);
-    assert(progression_care_claim(&t, 2) && t.mussel.owned);
+    assert(progression_care_claim(&t, 2) && !t.mussel.owned);
     assert(t.sd_balance == wallet + 125 && t.sd_earned == earned + 125 && t.journal.xp == xp + 50);
+    t.sd_balance = SD_PRICE_MUSSEL - 1;
+    tank_t before = t;
+    assert(!progression_buy(&t, SD_SHOP_MUSSEL) && !memcmp(&before, &t, sizeof t));
+    t.sd_balance = 1000; before = t; reject_write = true;
+    assert(!progression_buy(&t, SD_SHOP_MUSSEL) && !memcmp(&before, &t, sizeof t));
+    reject_write = false;
+    assert(progression_buy(&t, SD_SHOP_MUSSEL));
+    assert(t.sd_balance == 1000 - SD_PRICE_MUSSEL && t.mussel.version == 2);
+    assert(progression_item_owned(&t, SD_SHOP_MUSSEL));
+    before = t;
+    assert(!progression_buy(&t, SD_SHOP_MUSSEL) && !memcmp(&before, &t, sizeof t));
     wallet = t.sd_balance; earned = t.sd_earned; xp = t.journal.xp;
     char *preunlock;
     {
@@ -3445,19 +3464,28 @@ static void test_mussel(void) {
     assert(t.mussel.seconds == 599);
     mussel_run(&t, 3, 0.25f);
     assert(t.mussel.seconds == 599 && t.mussel_fraction == 0.75);
+    reject_write = true;
     mussel_run(&t, 1, 0.25f);
     assert(!t.mussel.seconds && t.mussel.bank == 1 && t.mussel.generated == 1);
     assert(t.sd_balance == wallet && t.sd_earned == earned && t.journal.xp == xp);
     mussel_run(&t, 1, 600);
-    assert(t.mussel.seconds == 1); /* suspended frame gives at most one healthy second */
+    assert(!t.mussel.seconds); /* Failed settlement blocks new accrual; no income is discarded. */
     int n = t.n_fish; t.n_fish = 0; progression_tick(&t, 1); t.n_fish = n;
-    assert(t.mussel.seconds == 1);
-    reject_write = true;
+    assert(!t.mussel.seconds);
     assert(!progression_mussel_collect(&t) && t.mussel.bank == 1 && t.sd_balance == wallet && t.sd_earned == earned);
     assert(progression_shop_notice()); reject_write = false;
+    t.sd_balance = INT_MAX;
+    progression_tick(&t, 1);
+    assert(t.mussel.bank == 1 && t.sd_balance == INT_MAX && t.sd_earned == earned);
+    t.sd_balance = wallet; t.sd_earned = INT_MAX;
+    progression_tick(&t, 1);
+    assert(t.mussel.bank == 1 && t.sd_balance == wallet && t.sd_earned == INT_MAX);
+    t.sd_earned = earned;
     char *stale = progression_backup_json(&t); assert(stale);
-    assert(progression_mussel_collect(&t) && !t.mussel.bank);
+    progression_tick(&t, 1);
+    assert(!t.mussel.bank);
     assert(t.sd_balance == wallet + 1 && t.sd_earned == earned + 1 && t.journal.xp == xp);
+    assert(progression_save(&t));
     assert(progression_restore_json(stale, strlen(stale), true, error, sizeof error)); free(stale);
     inventory_reload(&loaded); t = loaded;
     assert(!t.mussel.bank && t.mussel.generated == 1 && t.mussel.seconds == 1);
@@ -3465,29 +3493,33 @@ static void test_mussel(void) {
     assert(progression_restore_json(preunlock, strlen(preunlock), true, error, sizeof error)); free(preunlock);
     inventory_reload(&t);
     assert(t.mussel.owned && !t.mussel.bank && t.mussel.generated == 1 && t.mussel.seconds == 1);
+    wallet = t.sd_balance;
     mussel_run(&t, 2400, 0.25f);
-    assert(t.mussel.bank == 1 && t.mussel.seconds == 1);
-    t.mussel.generated = 14; t.mussel.bank = 14; t.mussel.seconds = 599;
+    assert(!t.mussel.bank && t.mussel.seconds == 1 && t.sd_balance == wallet + 1);
+    t.mussel.generated = 14; t.mussel.bank = 0; t.mussel.seconds = 599;
     mussel_run(&t, 1, 1);
-    assert(t.mussel.generated == 15 && t.mussel.bank == 15 && !t.mussel.seconds);
+    assert(t.mussel.generated == 15 && !t.mussel.bank && !t.mussel.seconds);
     mussel_run(&t, 20, 1);
     assert(!t.mussel.seconds);
     test_unix += 86400; progression_care_refresh(&t);
-    assert(!t.mussel.generated && t.mussel.bank == 15);
-    mussel_run(&t, 20, 1); assert(!t.mussel.seconds);
-    assert(progression_mussel_collect(&t));
+    assert(!t.mussel.generated && !t.mussel.bank);
+    t.mussel.bank = 15; /* Legacy uncollected income settles automatically. */
+    wallet = t.sd_balance;
+    mussel_run(&t, 20, 1);
+    assert(t.mussel.seconds == 20 && !t.mussel.bank && t.sd_balance == wallet + 15);
+    t.mussel.seconds = 0;
     mussel_run(&t, 600, 1);
-    assert(t.mussel.bank == 1 && t.mussel.generated == 1);
+    assert(!t.mussel.bank && t.mussel.generated == 1);
     test_unix -= 86400; progression_care_refresh(&t); assert(t.mussel.generated == 1);
     test_unix = 0; t.care.elapsed_s = 86399;
-    mussel_run(&t, 1, 1); assert(!t.mussel.generated && t.mussel.bank == 1);
+    mussel_run(&t, 1, 1); assert(!t.mussel.generated && !t.mussel.bank);
     t.mussel.generated = 2;
     test_unix = now + 2 * 86400; progression_care_refresh(&t);
     assert(t.mussel.generated == 2); /* clock sync adopts fallback allowance */
     assert(progression_save(&t)); int seconds = t.mussel.seconds;
     test_unix += 86400;
     inventory_reload(&loaded);
-    assert(loaded.mussel.seconds == seconds && loaded.mussel.bank == 1 && !loaded.mussel.generated);
+    assert(loaded.mussel.seconds == seconds && !loaded.mussel.bank && !loaded.mussel.generated);
     t = loaded; mussel_run(&t, 1, 0.25f);
     /* A backup can recover an earned creature/bank onto a never-unlocked profile. */
     char *recovery = progression_backup_json(&t); assert(recovery);
@@ -3502,9 +3534,16 @@ static void test_mussel(void) {
     double fraction = t.mussel_fraction;
     t.sd_balance = 10000; progression_setup_done(&t);
     assert(!progression_aquarium_move(&t, 1)); progression_setup_done(&t);
-    assert(t.mussel.owned && t.mussel.bank == 1 && t.mussel_fraction == fraction);
-    assert(progression_mussel_collect(&t));
+    assert(t.mussel.owned && !progression_item_owned(&t, SD_SHOP_MUSSEL) &&
+           !t.mussel.bank && t.mussel_fraction == fraction);
+    wallet = t.sd_balance; seconds = t.mussel.seconds;
+    mussel_run(&t, 10, 1);
+    assert(t.mussel.seconds == seconds); /* Only an aquarium with a resident generates income. */
+    assert(progression_item_price_for(&t, SD_SHOP_MUSSEL) == SD_PRICE_MUSSEL);
+    assert(progression_buy(&t, SD_SHOP_MUSSEL) && t.sd_balance == wallet - SD_PRICE_MUSSEL);
+    assert(t.mussel.owned == 3 && progression_item_owned(&t, SD_SHOP_MUSSEL));
     assert(!progression_aquarium_move(&t, 0) && !t.mussel.bank);
+    assert(progression_item_owned(&t, SD_SHOP_MUSSEL));
     char *json = progression_backup_json(&t); assert(json);
     assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
     cJSON *root = cJSON_Parse(json);
@@ -3517,20 +3556,31 @@ static void test_mussel(void) {
     assert(progression_save(&t));
     unsigned char good[AQUARIUM_SAVE_BYTES]; memcpy(good, saved, sizeof good);
     const unsigned offsets[] = {6132, 6134, 6135, 6136, 6137, 6138};
-    const unsigned char corrupt[] = {255, 2, 16, 16, 2, 1};
+    const unsigned char corrupt[] = {255, 0, 16, 16, 3, 1};
     for (unsigned i = 0; i < sizeof offsets / sizeof *offsets; i++) {
         memcpy(saved, good, sizeof good); saved[offsets[i]] = corrupt[i];
         if (offsets[i] == 6132) saved[6133] = 255;
         tank_init(&loaded, 921); progression_boot(&loaded); assert(!progression_storage_ready());
     }
     memcpy(saved, good, sizeof good);
+    /* A v1 earned mussel becomes a resident of the saved active aquarium. */
+    saved[6134] = 1; saved[6137] = 1;
+    inventory_reload(&loaded);
+    assert(loaded.mussel.version == 2 && progression_item_owned(&loaded, SD_SHOP_MUSSEL));
     saved_size = 0; tank_init(&t, 922); progression_boot(&t);
     assert(!progression_mode_select(&t, GAME_MODE_CREATIVE));
     t.care.ready = 7;
     assert(!progression_care_claim(&t, 0) && !t.mussel.owned);
     assert(!progression_mussel_collect(&t));
+    assert(progression_item_price_for(&t, SD_SHOP_MUSSEL) == 0);
+    wallet = t.sd_balance;
+    assert(progression_buy(&t, SD_SHOP_MUSSEL));
+    mussel_run(&t, 600, 1);
+    assert(t.sd_balance == wallet && !t.mussel.bank && !t.mussel.generated);
+    assert(progression_save(&t)); inventory_reload(&loaded);
+    assert(progression_item_owned(&loaded, SD_SHOP_MUSSEL));
     test_unix = now;
-    puts("PASS: pearl mussel care unlock/rollback, healthy fractional live accrual, 599/600 threshold, daily/bank caps, clock rollback/fallback, restore/switch, corrupt binary/JSON and Creative exclusion");
+    puts("PASS: shop-purchased per-aquarium mussels, transactional purchase/passive payout, health/600s/daily limits, legacy pearls/creature migration, restore/switch and Creative free/no-income");
 }
 int main(int argc, char **argv) {
     setbuf(stdout, NULL);

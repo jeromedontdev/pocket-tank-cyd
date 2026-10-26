@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.7
+# Pocket Tank CYD 2.3.8
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.7**. Stable firmware,
+now versioned independently. This source targets **2.3.8**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,7 +25,21 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.7: quieter defaults and ELEGOO touch correction
+## New in 2.3.8: one shop and a passive-income creature
+
+Decoration storage is part of each item's shop entry, not a separate inventory
+screen. Buy the first item normally; its entry then manages stored/placed copies,
+additional purchases, positioning and confirmed sales.
+
+**Pearl Mussel** is a normal shop creature costing **120 sand dollars** per
+aquarium (free in Creative). It appears on the sand like the other residents.
+Every ten healthy running minutes automatically credits one sand dollar, with
+a shared 15/day allowance and no XP or offline income. There is no collection
+screen or daily-task unlock. Previously earned mussels and banked income migrate.
+After buying a mussel in 2.3.8, do not downgrade that profile to older firmware:
+the per-aquarium resident mask requires the new reader.
+
+## 2.3.7: quieter defaults and ELEGOO touch correction
 
 New aquariums start with trophy decorations hidden, including Creative mode.
 Enable them in **Life > Rewards > Trophies**; existing saved choices are preserved.
@@ -135,8 +149,8 @@ releases are trusted downloads, not digitally signed firmware; see the
 Version 2.3.1 adds an explicit **BACK** inside the inventory item panel;
 it returns to the list and cancels sale confirmation without selling or
 moving anything. The panel hides the list footer to avoid duplicate Back
-buttons. The mussel panel explains when coin growth is paused because fish
-need feeding/calming, rather than showing an apparently stalled counter.
+buttons. In 2.3.8, copy controls live in the item's normal shop entry and
+mussel income is automatic, without a separate panel.
 
 A measured CYD build uses size optimization for setup, update UI, companion
 menus, snapshot I/O, device-management and weather code while keeping simulation,
@@ -154,7 +168,7 @@ this is not a claim of an end-to-end Wi-Fi firmware installation.
 
 ## New in 2.3.0: shared decoration inventory and care-first income
 
-The source adds **Shop > Inventory** for physical decorations. Buy additional
+The source provides shared storage within each physical decoration's shop entry. Buy additional
 copies into shared storage, place an owned copy without paying again, move a
 selected placed copy, or store it without selling. To transfer a piece, store
 it, switch aquariums with **TANKS**, then place it from the same shared storage.
@@ -173,12 +187,12 @@ Existing purchases and layouts remain in place. Storage is profile-wide,
 extra placements are local to their aquarium, and saves migrate through an
 append-only inventory tail. These features require 2.3.0 or newer.
 
-Daily care now offers **125 sand dollars** (30 + 30 + 65), with the same
-**50 XP**. Completing and claiming all three daily tasks welcomes a free,
-profile-wide **pearl mussel**. While all resident fish are fed and calm, it
-grows one coin per ten minutes of live simulation, up to 15 per day. Its bank
-holds 15; collect through **Shop > Mussel** or **Inventory > Mussel**.
-Banked coins survive midnight. There is no offline accumulation or extra XP,
+Daily care offers **125 sand dollars** (30 + 30 + 65), with the same
+**50 XP**. The **pearl mussel** is purchased from the shop, independently
+for each aquarium. While all resident fish are fed and calm, it automatically
+credits one coin per ten minutes of live simulation, up to 15 per profile/day.
+Legacy banked coins settle automatically and failed saves retain them for retry.
+There is no offline accumulation or extra XP,
 and extra aquariums do not multiply the allowance. The mussel normally rests,
 then makes a gentle 16-second crawl along the sand about once every six minutes.
 Games now offer **up to five dollars per game per day**: one dollar per

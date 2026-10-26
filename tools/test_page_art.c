@@ -149,19 +149,13 @@ static void check_menu_layout(const char *gallery) {
         snprintf(name, sizeof name, "shop-%d", p); menu_begin(name);
         render_shop(&t, full_frame, TANK_W); menu_end(gallery);
     }
-    g_shp_inventory = true;
-    for (int p = 0; p <= (DECOR_SLOTS - 1) / SHP_PER_PAGE; p++) {
-        g_inventory_page = p;
-        snprintf(name, sizeof name, "inventory-%d", p); menu_begin(name);
-        render_shop(&t, full_frame, TANK_W); menu_end(gallery);
-    }
     for (int slot = 0; slot < DECOR_SLOTS; slot++) {
         g_inventory_item = tank_decor_slot_item(slot);
         snprintf(name, sizeof name, "inventory-item-%d", slot); menu_begin(name);
         render_shop(&t, full_frame, TANK_W); menu_end(gallery);
     }
     render_shop_leave();
-    g_shp_mussel = true; menu_begin("mussel");
+    g_shp_modal = SD_SHOP_MUSSEL; menu_begin("mussel");
     render_shop(&t, full_frame, TANK_W); menu_end(gallery);
     render_shop_leave();
     for (int game = 0; game < 18; game++) {
@@ -332,31 +326,16 @@ static void check_inventory_ui(void) {
     t.clock = 360; mussel_pose(&t, &x, &y, &crawl);
     assert(fabsf(arrival - x) < .01f && crawl == 0);
     t.clock = 0;
-    assert(text_w("NEXT: 599/600 HEALTHY SEC", 1) <= 320);
-    assert(text_w("ONE MUSSEL PER PROFILE", 1) <= 320);
-    assert(text_w("TO WELCOME A FREE MUSSEL.", 1) <= 320);
-    assert(text_w("1 COIN/10 HEALTHY MINUTES", 1) <= 320);
-    assert(text_w("NO CARE REWARDS TO UNLOCK.", 1) <= 320);
-    assert(text_w("DAILY LIMIT - TRY TOMORROW", 1) <= 320);
-    assert(text_w("PAUSED - FEED/CALM FISH", 1) <= 320);
-    assert(text_w("STORE > TANKS > PLACE", 1) <= 400);
     render_shop_leave();
-    assert(inventory_touch(&t, 180, 77) == SHOP_TAP_KEPT && g_shp_inventory);
-    int slot = tank_decor_slot(9);
-    for (int page = 0; page < slot / SHP_PER_PAGE; page++)
-        assert(inventory_touch(&t, SHP_ARROW_X1 + 10, SHP_ARROW_Y + 10) == SHOP_TAP_KEPT);
-    assert(inventory_touch(&t, 120, SHP_ROW_Y0 + slot % SHP_PER_PAGE * SHP_ROW_DY + 10) == SHOP_TAP_KEPT);
-    assert(g_inventory_item == 9 && g_inventory_copy == -2);
+    assert(inventory_touch(&t, 180, 77) == SHOP_TAP_NONE && g_inventory_item == -1);
+    assert(!progression_inventory_buy(&t, 9));
+    assert(progression_buy(&t, 9));
+    int row = 0;
+    while (shp_item(&t, row) != 9) { row++; assert(row < shp_rows(&t)); }
+    g_shp_page = row / SHP_PER_PAGE;
+    assert(inventory_touch(&t, 120, SHP_ROW_Y0 + row % SHP_PER_PAGE * SHP_ROW_DY + 10) == SHOP_TAP_KEPT);
+    assert(g_inventory_item == 9 && g_inventory_copy == -1);
     int action = inventory_touch(&t, 280, 150);
-    assert(action == INV_BUY && render_shop_inventory_action(&t, action));
-    if (progression_inventory_stored(&t, 9) != 1)
-        fprintf(stderr, "Inventory buy failed: %s\n", progression_shop_notice());
-    assert(progression_inventory_stored(&t, 9) == 1);
-    action = inventory_touch(&t, 120, 150);
-    assert(action == INV_PLACE && render_shop_inventory_action(&t, action));
-    assert(setup_is_place() && tank_decor_owned(&t, 9));
-    setup_cancel(&t);
-    action = inventory_touch(&t, 280, 150);
     assert(action == INV_BUY && render_shop_inventory_action(&t, action));
     action = inventory_touch(&t, 120, 150);
     assert(action == INV_PLACE && render_shop_inventory_action(&t, action));
@@ -379,21 +358,26 @@ static void check_inventory_ui(void) {
     assert(inventory_touch(&t, 220, 276) == SHOP_TAP_KEPT && g_shp_sell_armed);
     tank_t before_back = t;
     assert(inventory_touch(&t, 344, 64) == SHOP_TAP_KEPT);
-    assert(g_inventory_item == -1 && !g_shp_sell_armed && g_shp_inventory);
+    assert(g_inventory_item == -1 && !g_shp_sell_armed && g_shp_modal == -1);
     assert(!memcmp(&t, &before_back, sizeof t));
-    assert(inventory_touch(&t, 120, SHP_ROW_Y0 + slot % SHP_PER_PAGE * SHP_ROW_DY + 10) == SHOP_TAP_KEPT);
+    assert(inventory_touch(&t, 120, SHP_ROW_Y0 + row % SHP_PER_PAGE * SHP_ROW_DY + 10) == SHOP_TAP_KEPT);
     assert(g_inventory_item == 9 && !g_shp_sell_armed);
     render_shop_leave();
-    assert(inventory_touch(&t, 350, 77) == SHOP_TAP_KEPT && g_shp_mussel);
-    t.mussel.version = t.mussel.owned = 1;
+    assert(inventory_touch(&t, 350, 77) == SHOP_TAP_KEPT && g_shp_modal == -1);
+    row = 0;
+    while (shp_item(&t, row) != SD_SHOP_MUSSEL) { row++; assert(row < shp_rows(&t)); }
+    g_shp_page = row / SHP_PER_PAGE;
+    assert(inventory_touch(&t, 120, SHP_ROW_Y0 + row % SHP_PER_PAGE * SHP_ROW_DY + 10) == SHOP_TAP_KEPT);
+    assert(g_shp_modal == SD_SHOP_MUSSEL);
+    action = inventory_touch(&t, SHP_MODAL_X + SHP_MODAL_W / 2,
+        SHP_MODAL_Y + SHP_MODAL_H - 12 - MSP_HOW_H + 10);
+    assert(action == SHOP_TAP_BUY + SD_SHOP_MUSSEL);
+    assert(progression_buy(&t, action - SHOP_TAP_BUY));
+    assert(progression_item_owned(&t, SD_SHOP_MUSSEL));
     t.mussel.generated = t.mussel.bank = 3;
     int wallet = t.sd_balance; uint32_t xp = t.journal.xp;
-    action = inventory_touch(&t, 120, 276);
-    assert(action == INV_COLLECT && render_shop_inventory_action(&t, action));
+    progression_tick(&t, 1);
     assert(t.sd_balance == wallet + 3 && t.mussel.bank == 0 && t.journal.xp == xp);
-    assert(inventory_touch(&t, 280, 276) == SHOP_TAP_KEPT && !g_shp_mussel);
-    assert(inventory_touch(&t, 180, 77) == SHOP_TAP_KEPT && g_shp_inventory);
-    assert(inventory_touch(&t, 100, MSP_CLOSE_Y + 10) == SHOP_TAP_KEPT && g_shp_mussel);
     for (int i = 0; i < t.n_fish; i++) { t.fish[i].hunger = 2; t.fish[i].stress = 0; }
     assert(progression_mussel_healthy(&t));
     assert(!progression_mussel_healthy(NULL));
@@ -409,13 +393,8 @@ static void check_inventory_ui(void) {
     assert(!progression_mussel_healthy(&t));
     t.fish[t.n_fish - 1].hunger = 2;
     render_tile(0, 0);
-    render_mussel_panel(&t, full_frame, TANK_W);
-    t.fish[0].hunger = 8.5f;
-    render_mussel_panel(&t, repeated, TANK_W);
-    assert(memcmp(full_frame, repeated, TANK_W * TANK_H * sizeof *full_frame));
-    t.fish[0].hunger = 2;
     for (int state = 0; state < 8; state++) {
-        g_shp_mussel = state >= 2;
+        g_shp_modal = state >= 2 ? SD_SHOP_MUSSEL : -1;
         t.mussel.owned = state != 3;
         t.mussel.generated = state == 4 ? MUSSEL_DAILY_LIMIT : 3;
         t.mussel.bank = state == 5 ? MUSSEL_DAILY_LIMIT : 0;
@@ -433,7 +412,7 @@ static void check_inventory_ui(void) {
         t.n_fish = residents;
     }
     render_shop_leave();
-    puts("Inventory/mussel: duplicate buy/place/store/sale, explicit Back disarms sale without mutation, healthy boundaries/NaNs, paused/limit panels, isolated cancel, both collect routes, no XP, and one-row UI parity.");
+    puts("Shop: first purchase, integrated duplicate buy/place/store/sale, Back disarms sale, normal mussel purchase, automatic payout without XP, healthy boundaries/NaNs, and one-row UI parity.");
 }
 
 static void check_font_coverage(void) {
@@ -1080,8 +1059,12 @@ static void check_wrapper(int x, int y, int kind, int item, bool lit, int size) 
     int right = (x + width - 1) * TANK_W / PAGE_W;
     int bottom = (y + height - 1) * TANK_H / PAGE_H;
     for (int row = 0; row < TANK_H; row++) for (int col = 0; col < TANK_W; col++)
-        if (col < left || col > right || row < top || row > bottom)
+        if (col < left || col > right || row < top || row > bottom) {
+            if (full_frame[row * TANK_W + col] != background)
+                fprintf(stderr, "Thumbnail overflow: kind %d item %d size %d at %d,%d, pixel %d,%d\n",
+                        kind, item, size, x, y, col, row);
             assert(full_frame[row * TANK_W + col] == background);
+        }
     for (int tile_height = 1; tile_height <= 17; tile_height += 16) {
         for (int row = 0; row < TANK_H; row += tile_height) {
             int height_now = TANK_H - row < tile_height ? TANK_H - row : tile_height;

@@ -65,6 +65,24 @@ async function main() {
       const position = await canvasPoint(x / 448, y / 368);
       await page.mouse.click(position.x, position.y);
     }
+    const priceHeader = fs.readFileSync(path.join(__dirname, "..", "common", "progression.h"), "utf8");
+    const prices = new Map([...priceHeader.matchAll(/#define (SD_PRICE_\w+)\s+(\d+)/g)]
+      .map(([, name, price]) => [name, Number(price)]));
+    const catalogSource = fs.readFileSync(path.join(__dirname, "..", "common", "progression.c"), "utf8")
+      .match(/const sd_item_t SD_ITEMS\[[^\]]+\] = \{([\s\S]*?)\n\};/)[1];
+    const catalog = [...catalogSource.matchAll(/\{\s*[^,]+,\s*"[^"]*",\s*"[^"]*",\s*"[^"]*",\s*(\w+)\s*\}/g)]
+      .map(([, price], item) => ({item, price: prices.has(price) ? prices.get(price) : Number(price)}))
+      .sort((a, b) => a.price - b.price);
+    assert.equal(catalog.length, 43);
+    async function openShopItem(item) {
+      await page.locator('[data-action="0"]').click();
+      await page.locator('[data-action="3"]').click();
+      const save = await snapshot();
+      const row = catalog.findIndex(entry => entry.item === item) + ((save.tank.tank_ms_bits & (1 << 14)) ? 1 : 0);
+      assert.ok(row >= 0);
+      for (let p = 0; p < Math.floor(row / 4); p++) await tap(400, 50);
+      await tap(120, 108 + row % 4 * 56);
+    }
     await page.goto(url); await ready();
     assert.equal(await page.title(), "Pocket Tank CYD · Browser simulator");
     assert.equal(await page.locator("h1").textContent(), "Pocket Tank CYD");
@@ -298,30 +316,38 @@ async function main() {
       assert.equal(careSaved.care.game_paid, 5);
       assert.equal(careSaved.tank.sd_balance, balance + remainingReward([30,30,65]));
       assert.equal(careSaved.tank.journal_xp, xp + remainingReward([12,13,25]));
-      assert.equal(careSaved.mussel.owned, 1, "Full daily care welcomes the profile's pearl mussel");
+      assert.equal(careSaved.mussel.owned, beforeCare.mussel.owned, "Daily care does not grant a shop creature");
       await menuImage(`daily-care-saved-${scale}`);
       await page.locator("#save").click(); await page.reload(); await ready();
       assert.equal((await snapshot()).care.claimed, 7, "Daily care allowance survives browser reload");
       assert.equal((await snapshot()).care.game_paid, 5, "Games share a persistent profile allowance");
+      if (!(await snapshot()).mussel.owned) {
+        const beforeBuy = await snapshot();
+        await openShopItem(42);
+        await menuImage(`mussel-shop-buy-${scale}`);
+        await tap(220, 260);
+        assert.equal((await snapshot()).mussel.owned, 1, "Mussel is bought in the ordinary shop");
+        assert.equal((await snapshot()).tank.sd_balance, beforeBuy.tank.sd_balance - 120);
+      }
       const pearlFixture = await snapshot();
       for (const fish of pearlFixture.fish) { fish.hunger = 2; fish.stress = 0; }
       await restoreFixture(pearlFixture);
       await page.locator('[data-action="0"]').click();
+      const beforeIncome = await snapshot();
       await native("for (let i = 0; i < 2404; i++) game._sim_frame(.25)");
-      const beforeCollect = await snapshot();
-      assert.equal(beforeCollect.mussel.bank, 1, "Healthy live simulation grows a real pearl");
-      await page.locator('[data-action="3"]').click(); await tap(350,77);
-      await menuImage(`pearl-mussel-${scale}`);
-      await tap(120,276);
-      assert.equal((await snapshot()).tank.sd_balance, beforeCollect.tank.sd_balance + 1);
-      assert.equal((await snapshot()).tank.journal_xp, beforeCollect.tank.journal_xp);
-      assert.equal((await snapshot()).mussel.bank, 0);
-      await tap(120,276);
-      assert.equal((await snapshot()).tank.sd_balance, beforeCollect.tank.sd_balance + 1, "Empty pearls cannot be collected twice");
-      await tap(280,276); await tap(180,77);
-      await menuImage(`inventory-${scale}`);
-      await tap(400,50); await tap(120,164);
-      await menuImage(`inventory-copy-${scale}`);
+      const afterIncome = await snapshot();
+      assert.equal(afterIncome.mussel.bank, 0, "Healthy live simulation pays automatically without a collection menu");
+      assert.equal(afterIncome.mussel.generated, beforeIncome.mussel.generated + 1);
+      assert.equal(afterIncome.tank.sd_balance, beforeIncome.tank.sd_balance + 1);
+      assert.equal(afterIncome.tank.journal_xp, beforeIncome.tank.journal_xp);
+      await openShopItem(9);
+      if (!((await snapshot()).tank.sd_unlocks & (1 << 9))) {
+        await menuImage(`chest-first-buy-${scale}`);
+        await tap(220, 260);
+        await tap(375, 28);
+        await openShopItem(9);
+      }
+      await menuImage(`shop-copy-${scale}`);
       const inventoryBefore = await snapshot();
       const storedBefore = Buffer.from(inventoryBefore.inventory.stored, "hex")[5];
       const chestCount = save => ((save.tank.sd_unlocks >>> 9) & 1) +
@@ -331,7 +357,7 @@ async function main() {
       const armedSale = await menuImage(`inventory-sale-armed-${scale}`);
       await tap(344,64);
       assert.notEqual(await menuImage(`inventory-back-${scale}`), armedSale, "Explicit Back closes the item panel");
-      await tap(120,164);
+      await openShopItem(9);
       assert.notEqual(await menuImage(`inventory-reopened-${scale}`), armedSale, "Back disarms an unconfirmed sale");
       assert.deepEqual((await snapshot()).inventory, inventoryBefore.inventory, "Back never sells or moves a copy");
       assert.equal((await snapshot()).tank.sd_balance, inventoryBefore.tank.sd_balance);
@@ -343,8 +369,7 @@ async function main() {
         assert.equal(await native("return game._sim_page()"), 0);
         await menuImage(`inventory-place-${scale}-${copy}`);
         await tap(375,28);
-        await page.locator('[data-action="3"]').click();
-        await tap(180,77); await tap(400,50); await tap(120,164);
+        await openShopItem(9);
       }
       assert.equal(chestCount(await snapshot()), placedBefore + 2);
       await tap(280,230);
@@ -365,7 +390,7 @@ async function main() {
       assert.equal(await viewerFact("Extra ornaments here"),
         `${[...Buffer.from(viewerSave.inventory.extra, "hex")].filter((n, i) => i % 8 === 0 && n !== 0).length}/8 placed`);
       assert.equal(await viewerFact("Pearl mussel"),
-        `${viewerSave.mussel.bank}/15 ready; ${viewerSave.mussel.generated}/15 grown today`);
+        `${viewerSave.mussel.owned.toString(2).replace(/0/g, "").length} aquarium resident(s); ${viewerSave.mussel.generated}/15 earned today; ${viewerSave.mussel.bank} pending automatic payout`);
       assert.equal(await viewerFact("Game bonus today"),
         `${viewerSave.care.game_paid}/90 sand dollars; up to 5 per game; no XP`);
       await viewer.close();
@@ -674,7 +699,7 @@ async function main() {
       fs.rmSync(profile, {recursive: true, force: true});
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: duplicate inventory buy/place/store/reload, healthy live-time pearl growth/collection, care125 with unchanged XP and per-game5/day caps, schema18 viewer facts at both scales; Settings/Clock/Weather, fish-card tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
+    console.log("PASS: normal shop mussel/first-decoration purchases, integrated copies/place/store/reload, automatic healthy live income, care125 with unchanged XP and per-game5/day caps, schema18 viewer facts at both scales; Settings/Clock/Weather, fish-card tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
   } finally {
     await browser.close();
   }

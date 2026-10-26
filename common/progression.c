@@ -552,10 +552,10 @@ static bool game_income_valid(game_income_state_t *s, unsigned total) {
     return sum == total && sum <= GAME_DAILY_TOTAL;
 }
 static bool mussel_valid(const mussel_state_t *s) {
-    if (s->version > 1 || s->owned > 1 || s->seconds >= MUSSEL_SECONDS ||
+    if (s->version > 2 || (s->version < 2 && s->owned > 1) || s->seconds >= MUSSEL_SECONDS ||
         s->bank > MUSSEL_DAILY_LIMIT || s->generated > MUSSEL_DAILY_LIMIT ||
         s->reserved[0] || s->reserved[1]) return false;
-    return s->owned ? s->version == 1 : !s->seconds && !s->bank && !s->generated;
+    return s->owned ? s->version >= 1 : !s->seconds && !s->bank && !s->generated;
 }
 void progression_care_refresh(tank_t *t) {
     int64_t now = clock_port_now_unix();
@@ -592,15 +592,12 @@ bool progression_care_claim(tank_t *t, int task) {
         fprintf(stderr, "Daily care reward would overflow wallet\n"); return false;
     }
     uint32_t xp = t->journal.xp;
-    mussel_state_t mussel = t->mussel;
     t->care.claimed |= (uint8_t)(1u << task);
     t->sd_balance += coins; t->sd_earned += coins;
     journal_add_xp(t, CARE_XP[task]);
-    if (t->care.claimed == 7) { t->mussel.owned = 1; t->mussel.version = 1; }
     if (progression_save(t)) return true;
     t->care.claimed &= (uint8_t)~(1u << task);
     t->sd_balance -= coins; t->sd_earned -= coins; t->journal.xp = xp;
-    t->mussel = mussel;
     fprintf(stderr, "Daily care save failed; reward rolled back\n");
     return false;
 }
@@ -611,12 +608,15 @@ bool progression_mussel_collect(tank_t *t) {
     }
     unsigned coins = t->mussel.bank;
     if (t->sd_balance > INT_MAX - (int)coins || t->sd_earned > INT_MAX - (int)coins) {
+        fprintf(stderr, "Mussel income would overflow wallet; pearls retained for retry\n");
         s_shop_notice = "WALLET FULL - NOT COLLECTED"; return false;
     }
     t->mussel.bank = 0; t->sd_balance += coins; t->sd_earned += coins;
     if (progression_save(t)) return true;
     t->mussel.bank = (uint8_t)coins; t->sd_balance -= coins; t->sd_earned -= coins;
-    s_shop_notice = "SAVE FAILED - PEARLS KEPT"; return false;
+    s_shop_notice = "SAVE FAILED - PEARLS KEPT";
+    fprintf(stderr, "Mussel income save failed; pearls retained for retry\n");
+    return false;
 }
 bool progression_mussel_healthy(const tank_t *t) {
     if (!t || !t->n_fish) return false;
@@ -625,17 +625,20 @@ bool progression_mussel_healthy(const tank_t *t) {
     return true;
 }
 static void mussel_tick(tank_t *t, float dt) {
-    if (!isfinite(dt) || dt <= 0 || progression_creative(t) || !t->mussel.owned ||
-        !t->n_fish || t->mussel.generated >= MUSSEL_DAILY_LIMIT || t->mussel.bank >= MUSSEL_DAILY_LIMIT) return;
-    if (!progression_mussel_healthy(t)) return;
+    if (!isfinite(dt) || dt <= 0 || progression_creative(t) || !t->mussel.owned) return;
     double total = t->mussel_fraction + fminf(dt, 1);
     unsigned seconds = (unsigned)total;
     t->mussel_fraction = total - seconds;
     if (!seconds) return;
+    /* Older saves may have uncollected pearls; settle them without a collection menu. */
+    if (t->mussel.bank && !progression_mussel_collect(t)) return;
+    if (!progression_item_owned(t, SD_SHOP_MUSSEL) ||
+        t->mussel.generated >= MUSSEL_DAILY_LIMIT || !progression_mussel_healthy(t)) return;
     t->mussel.seconds += (uint16_t)seconds;
     if (t->mussel.seconds >= MUSSEL_SECONDS) {
         t->mussel.seconds -= MUSSEL_SECONDS;
         t->mussel.bank++; t->mussel.generated++;
+        progression_mussel_collect(t);
     }
     mark_dirty();
 }
@@ -768,8 +771,9 @@ const sd_item_t SD_ITEMS[SD_ITEM_COUNT] = {
     { 0, "BOTTLE NOTE", "A CORKED NOTE FROM AFAR", "FIXED SPOT ON THE SAND", 70 },
     { 0, "ANEMONE", "SOFT PINK TENTACLE BLOOM", "FIXED SPOT ON THE SAND", 90 },
     { 0, "OLD TEAPOT", "A LOST PORCELAIN TEAPOT", "FIXED SPOT ON THE SAND", 80 },
+    { 0, "PEARL MUSSEL", "PASSIVE INCOME: 1 COIN/10M", "HEALTHY LIVE TANK. 15/DAY.", SD_PRICE_MUSSEL },
 };
-_Static_assert(SD_SCENERY_END == SD_ITEM_COUNT, "fixed scenery is the shop's last stable ID range");
+_Static_assert(SD_SCENERY_END == SD_SHOP_MUSSEL, "mussel follows the stable scenery IDs");
 _Static_assert(SD_SCENERY_N <= 8, "fixed scenery fits polish.scenery_unlocks");
 const char *progression_shop_notice(void) { return s_shop_notice; }
 void progression_shop_notice_clear(void) { s_shop_notice = NULL; }
@@ -778,7 +782,10 @@ static void shop_save_failed(const char *what, const char *name) {
     fprintf(stderr, "Shop save failed for %s; %s\n", name, what);
 }
 bool progression_item_owned(const tank_t *t, int item) {
-    if (item < 0 || item >= SD_ITEM_COUNT) return false;
+    if (!t || item < 0 || item >= SD_ITEM_COUNT) return false;
+    if (item == SD_SHOP_MUSSEL)
+        return t->mussel.version < 2 ? t->mussel.owned != 0 :
+            (t->mussel.owned & (1u << t->aquariums.active)) != 0;
     if (SD_IS_SCENERY(item)) return (t->polish.scenery_unlocks >> (item - SD_SCENERY_FIRST)) & 1u;
     return item < 32 ? (t->sd_unlocks & SD_ITEMS[item].bit) != 0 :
         (t->aquariums.stat_upgrades & (1u << (item - 32))) != 0;
@@ -1145,6 +1152,7 @@ bool progression_sell_fish(tank_t *t, int fish) {
 }
 int progression_item_price_for(const tank_t *t, int item) {
     if (!t || item < 0 || item >= SD_ITEM_COUNT) return 0;
+    if (item == SD_SHOP_MUSSEL) return progression_creative(t) ? 0 : SD_PRICE_MUSSEL;
     if (progression_creative(t) || (tank_decor_placeable(item) &&
         progression_inventory_stored(t, item))) return 0;
     if (tank_decor_placeable(item) && (t->profile.owned_items & (UINT64_C(1) << item)))
@@ -1160,6 +1168,14 @@ static bool buy_item(tank_t *t, int item) {
     t->profile.owned_items |= item_bit;
     t->profile.paid_items = (t->profile.paid_items & ~item_bit) | (price ? item_bit : 0);
     s_shop_notice = NULL;
+    if (item == SD_SHOP_MUSSEL) {
+        t->sd_balance -= price;
+        if (t->mussel.version < 2 && t->mussel.owned)
+            t->mussel.owned = (uint8_t)(1u << t->aquariums.active);
+        t->mussel.version = 2;
+        t->mussel.owned |= (uint8_t)(1u << t->aquariums.active);
+        return progression_save(t);
+    }
     if (SD_IS_SCENERY(item)) {
         /* Observing may seed polish/RNG/familiarity; stage on a copy so a failed save changes nothing. */
         tank_t *next = malloc(sizeof *next);
@@ -1317,6 +1333,10 @@ static bool inventory_room(const tank_t *t) {
 bool progression_inventory_buy(tank_t *t, int item) {
     tank_t *next = inventory_begin(t, item);
     if (!next) return false;
+    if (!(t->profile.owned_items & (UINT64_C(1) << item)) &&
+        !progression_inventory_placed(t, item) && !progression_inventory_stored(t, item)) {
+        free(next); return inventory_fail("BUY YOUR FIRST ONE IN THE SHOP");
+    }
     int price = progression_creative(t) ? 0 : SD_ITEMS[item].price;
     if (!inventory_room(t) || t->sd_balance < price || (item == 8 && !progression_pumpkin_offered(t))) {
         free(next);
@@ -1815,7 +1835,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
         (got > offsetof(save_t, inventory) && got != sizeof sv) ||
         sv.magic != SAVE_MAGIC || !migrate_profile(&sv) || !care_valid(&sv.care) ||
         !inventory_valid(&sv.inventory) || sv.n_fish > N_FISH_MAX ||
-        !mussel_valid(&sv.mussel) || (sv.creative.enabled && sv.mussel.owned) ||
+        !mussel_valid(&sv.mussel) ||
         !game_income_valid(&sv.game_income, sv.care.game_paid) ||
         (sv.profile.mode != GAME_MODE_HARD && sv.n_fish < 2 && !sv.companion.away) ||
         sv.n_fish + sv.companion.away > N_FISH_MAX) return false;
@@ -1952,6 +1972,10 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     t->profile = sv.profile;
     t->inventory = sv.inventory;
     t->mussel = sv.mussel; t->mussel_fraction = 0;
+    if (t->mussel.version == 1 && t->mussel.owned) {
+        t->mussel.version = 2;
+        t->mussel.owned = (uint8_t)(1u << t->aquariums.active);
+    }
     t->game_income = sv.game_income;
     t->care = sv.care; t->care_fraction = 0;
     s_hard_save_failed = s_hard_departed = false;
@@ -2578,9 +2602,9 @@ static const json_field_t INVENTORY_FIELDS[] = {
 #undef INV
 #define MUS(f, k, hi) { #f, offsetof(mussel_state_t, f), 1, k, 0, hi }
 static const json_field_t MUSSEL_FIELDS[] = {
-    MUS(seconds, J_U16, MUSSEL_SECONDS - 1), MUS(owned, J_U8, 1),
+    MUS(seconds, J_U16, MUSSEL_SECONDS - 1), MUS(owned, J_U8, 255),
     MUS(bank, J_U8, MUSSEL_DAILY_LIMIT), MUS(generated, J_U8, MUSSEL_DAILY_LIMIT),
-    MUS(version, J_U8, 1)
+    MUS(version, J_U8, 2)
 };
 #undef MUS
 #define GI(f, n, hi) { #f, offsetof(game_income_state_t, f), n, J_U8, 0, hi }
@@ -2952,7 +2976,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     if (schema->valuedouble >= 18 &&
         (!json_read_fields(&sv.mussel, cJSON_GetObjectItemCaseSensitive(root, "mussel"),
                            MUSSEL_FIELDS, FIELD_COUNT(MUSSEL_FIELDS), error, error_size) ||
-         !mussel_valid(&sv.mussel) || (sv.creative.enabled && sv.mussel.owned))) {
+         !mussel_valid(&sv.mussel))) {
         snprintf(error, error_size, "Invalid pearl mussel"); goto done;
     }
     if (schema->valuedouble >= 17 &&
@@ -3382,7 +3406,7 @@ static const char *aquarium_move(tank_t *t, int target) {
             !companion_rpg_valid(&v->rpg, v->polish.next_id) ||
             !companion_games_valid(&v->games) || !extra_games_valid(&v->games_extra) || !creative_valid(&v->creative) ||
             !inventory_valid(&v->inventory) ||
-            !mussel_valid(&v->mussel) || (v->creative.enabled && v->mussel.owned) ||
+            !mussel_valid(&v->mussel) ||
             !game_income_valid(&v->game_income, v->care.game_paid) ||
             (v->creative.enabled && v->n_fish + v->companion.away > CREATIVE_FISH_CAP) ||
             (v->companion.away && !bank_valid(&v->companion.traveler)) ||

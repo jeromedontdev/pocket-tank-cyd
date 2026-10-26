@@ -194,14 +194,21 @@ idf.py -B build_cyd build
 python -m esp_idf_size --archives build_cyd\pocket_tank.map --format csv
 ```
 
-The inventory item panel has one explicit Back and hides inactive list-footer
-controls while open. Back cancels sale confirmation without mutating inventory.
-The mussel panel displays `PAUSED - FEED AND CALM FISH` using the same health
-predicate as income generation (all fish hunger below 8.5 and stress below 7;
-no residents also pauses). Daily/bank-limit messages take precedence.
+The shop's decoration-copy panel has one explicit Back. Back cancels sale
+confirmation without mutating inventory.
+In 2.3.8 the separate inventory/mussel screens are removed. Copy management
+opens from a decoration's normal shop row after the first purchase. The mussel
+is stable shop ID42, costs 120 per aquarium, and credits income automatically
+while all fish have hunger below 8.5 and stress below 7; no fish also pauses income.
+Mussel v2 uses the existing ownership byte as an eight-aquarium resident mask,
+preserving the eight-byte layout. Legacy v1 creatures migrate into the saved
+active aquarium; legacy banked pearls settle automatically with save rollback.
+The 15/day cap remains profile-wide; Creative can buy free residents but earns none.
+After purchasing a mussel in 2.3.8, older firmware cannot read the new resident
+mask; do not downgrade that profile.
 Both scales, threshold/NaN guards, sale cancellation and one-row UI parity
 are covered by page-art tests; browser acceptance covers the actual Back path,
-duplicate storage/placement, collection and reload.
+duplicate storage/placement, passive settlement and reload.
 
 A read-only check of the actual board running published 2.3.0 retained bolt,
 pip, kelp and odie and verified SD backup I/O without changing the tank.

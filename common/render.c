@@ -3525,20 +3525,21 @@ static void draw_ornament(ctx_t *c, int item, int x0, int y0, int scale, bool fi
         }
     }
 }
-static void draw_pearl_mussel(ctx_t *c, float x, float y, float scale, bool ready) {
-    fill_ellipse(c, x, y + 6 * scale, 19 * scale, 3 * scale, 0x081c24, 90);
-    fill_ellipse(c, x, y + 3 * scale, 18 * scale, 6 * scale, 0x26465b, 255);
-    fill_ellipse(c, x, y + scale, 16 * scale, 4 * scale, 0xcdb4bf, 255);
-    fill_ellipse(c, x + scale, y, 13 * scale, 3 * scale, 0xedd2cd, 255);
-    fill_ellipse(c, x - 4 * scale, y - 6 * scale, 15 * scale, 8 * scale, 0x182d45, 255);
-    fill_ellipse(c, x - 5 * scale, y - 7 * scale, 13 * scale, 6 * scale, 0x48627c, 255);
+static void draw_pearl_mussel(ctx_t *c, float x, float y, float scale, bool ready,
+                              bool lit, uint32_t background) {
+    fill_ellipse(c, x, y + 6 * scale, 19 * scale, 3 * scale, shop_art_color(0x081c24, lit, background), 90);
+    fill_ellipse(c, x, y + 3 * scale, 18 * scale, 6 * scale, shop_art_color(0x26465b, lit, background), 255);
+    fill_ellipse(c, x, y + scale, 16 * scale, 4 * scale, shop_art_color(0xcdb4bf, lit, background), 255);
+    fill_ellipse(c, x + scale, y, 13 * scale, 3 * scale, shop_art_color(0xedd2cd, lit, background), 255);
+    fill_ellipse(c, x - 4 * scale, y - 6 * scale, 15 * scale, 8 * scale, shop_art_color(0x182d45, lit, background), 255);
+    fill_ellipse(c, x - 5 * scale, y - 7 * scale, 13 * scale, 6 * scale, shop_art_color(0x48627c, lit, background), 255);
     for (int i = -2; i <= 2; i++)
         fill_ellipse(c, x + (i * 4 - 5) * scale, y - 7 * scale,
-                     .6f * scale, (5 - abs(i)) * scale, 0x80959e, 150);
-    fill_ellipse(c, x - 8 * scale, y - 10 * scale, 7 * scale, scale, 0xa5b9bc, 175);
-    fill_ellipse(c, x + 7 * scale, y, 5 * scale, 5 * scale, ready ? 0xe3ba6c : 0x858c9c, 255);
-    fill_ellipse(c, x + 6 * scale, y - scale, 3.7f * scale, 3.6f * scale, ready ? 0xffe7b0 : 0xcbd0d4, 255);
-    fill_ellipse(c, x + 5 * scale, y - 2 * scale, 1.3f * scale, scale, 0xfffaf0, 230);
+                     .6f * scale, (5 - abs(i)) * scale, shop_art_color(0x80959e, lit, background), 150);
+    fill_ellipse(c, x - 8 * scale, y - 10 * scale, 7 * scale, scale, shop_art_color(0xa5b9bc, lit, background), 175);
+    fill_ellipse(c, x + 7 * scale, y, 5 * scale, 5 * scale, shop_art_color(ready ? 0xe3ba6c : 0x858c9c, lit, background), 255);
+    fill_ellipse(c, x + 6 * scale, y - scale, 3.7f * scale, 3.6f * scale, shop_art_color(ready ? 0xffe7b0 : 0xcbd0d4, lit, background), 255);
+    fill_ellipse(c, x + 5 * scale, y - 2 * scale, 1.3f * scale, scale, shop_art_color(0xfffaf0, lit, background), 230);
 }
 static void mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
     static const float anchors[] = {.82f, .68f, .48f, .30f, .46f, .64f};
@@ -3554,10 +3555,10 @@ static void mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
     *y = TANK_BOT - 11 + (*crawl ? sinf(phase * 3) * .6f : 0);
 }
 static void draw_tank_mussel(ctx_t *c, const tank_t *t) {
-    if (!t->mussel.owned) return;
+    if (!progression_item_owned(t, SD_SHOP_MUSSEL)) return;
     float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
     if (crawl) fill_ellipse(c, x + crawl * 9, y + 5, 8, 2, 0x769d91, 220);
-    draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0);
+    draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0, true, 0);
 }
 static void draw_inventory_extras(ctx_t *c, const tank_t *t, int depth) {
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
@@ -3591,6 +3592,7 @@ static void draw_ornament_icon(ctx_t *c, int item, int x0, int y0, int size, boo
 }
 void render_ornament_preview(uint16_t *fb, int stride, int item, int cx, int bottom) {
     ctx_t c = ctx_page(fb, stride);
+    if (item == SD_SHOP_MUSSEL) { draw_pearl_mussel(&c, cx, bottom - 10, 1, false, true, 0); return; }
     if (item == 13) { draw_buoy_icon(&c, cx - 18, bottom - 39, 1, true, 0); return; }
     if (item >= 16) { draw_ornament_icon(&c, item, cx - 24, bottom - 48, 48, true, 0); return; }
     draw_ornament(&c, item, cx - tank_ornament_w(item) / 2, bottom - tank_ornament_h(item), 1, false, true, 0);
@@ -4411,7 +4413,7 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     if (memcmp(previous_extras, t->inventory.extra, sizeof previous_extras)) full = true;
     memcpy(previous_extras, t->inventory.extra, sizeof previous_extras);
     static bool mussel_owned, mussel_ready;
-    bool owned = t->mussel.owned != 0, ready = t->mussel.bank != 0;
+    bool owned = progression_item_owned(t, SD_SHOP_MUSSEL), ready = t->mussel.bank != 0;
     if (owned != mussel_owned || ready != mussel_ready) full = true;
     mussel_owned = owned; mussel_ready = ready;
     previous.w = TANK_W; previous.h = TANK_H; previous.theme = t->journal.theme;
@@ -4872,7 +4874,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     if ((t->sd_unlocks & SD_ITEM_SEAHORSE) && t->sh_x >= 0 && t->sh_front) draw_seahorse(&c, t);   /* the seahorse's front lane (its rect is marked above) */
     { int kc = pc_index(2); if (kc >= 0 && g_pc[kc].z == DECOR_Z_FRONT) arch_shade(&c, kc, g_pc[kc].cx, t->night, true); }   /* the tunnel through a castle IN FRONT: shaded, whatever passes it */
     draw_inventory_extras(&c, t, DECOR_Z_FRONT);
-    if (t->mussel.owned) {
+    if (progression_item_owned(t, SD_SHOP_MUSSEL)) {
         float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
         draw_tank_mussel(&c, t);
         DYN_RECT((int)x - 21, (int)y - 16, (int)x + 21, (int)y + 10);
@@ -6481,10 +6483,8 @@ void render_notice(const tank_t *t, uint16_t *fb, int stride, int kind, int fish
 static int  g_shp_modal = -1;        /* the item whose modal is up, or -1 */
 static bool g_shp_earn;              /* the HOW TO EARN modal is up */
 static bool g_shp_sell_armed;        /* SELL tapped once: the next tap on it sells */
-static bool g_shp_inventory;
-static bool g_shp_mussel;
-static int g_inventory_page, g_inventory_item = -1, g_inventory_copy = -1;
-enum { INV_PLACE = SHOP_TAP_INVENTORY, INV_BUY, INV_STORE, INV_SELL, INV_MOVE, INV_COLLECT };
+static int g_inventory_item = -1, g_inventory_copy = -1;
+enum { INV_PLACE = SHOP_TAP_INVENTORY, INV_BUY, INV_STORE, INV_SELL, INV_MOVE };
 static int inventory_first_copy(const tank_t *t, int item) {
     if (tank_decor_owned(t, item)) return -1;
     for (int i = 0; i < DECOR_EXTRA_CAP; i++)
@@ -6497,7 +6497,6 @@ static int inventory_next_copy(const tank_t *t, int item, int copy) {
     return inventory_first_copy(t, item);
 }
 bool render_shop_inventory_action(tank_t *t, int action) {
-    if (action == INV_COLLECT) { progression_mussel_collect(t); return true; }
     if (action < INV_PLACE || action > INV_MOVE || !tank_decor_placeable(g_inventory_item)) return false;
     int item = g_inventory_item;
     if (action == INV_BUY) progression_inventory_buy(t, item);
@@ -6516,6 +6515,7 @@ bool render_shop_inventory_action(tank_t *t, int action) {
             if (!primary) setup_begin_place(t, item);
             else for (int i = 0; i < DECOR_EXTRA_CAP; i++)
                 if (!occupied[i] && t->inventory.extra[i].item) { setup_begin_extra_place(t, i); break; }
+            g_inventory_copy = inventory_first_copy(t, item);
         }
     }
     return true;
@@ -6524,6 +6524,14 @@ static const icon_t *shop_icon(int item) { return item == 0 ? &icon_shop_plant :
 void render_decor_thumbnail(uint16_t *fb, int stride, int x, int y, int size, int item, bool lit) {
     if (item < 0 || item >= SD_ITEM_COUNT || size < 1 || size > 64) return;
     ctx_t c = ctx_page(fb, stride);
+    if (item == SD_SHOP_MUSSEL) {
+        c.ox = x < 0 ? 0 : x; c.oy = y < 0 ? 0 : y;
+        c.w = (x + size < PAGE_W ? x + size : PAGE_W) - c.ox;
+        c.h = (y + size < PAGE_H ? y + size : PAGE_H) - c.oy;
+        if (c.w <= 0 || c.h <= 0) return;
+        draw_pearl_mussel(&c, x + size / 2, y + size / 2, size / 48.0f, false, lit, 0x10282e);
+        return;
+    }
     if ((item >= 9 && item <= 13) || item >= 16) {
         draw_ornament_icon(&c, item, x, y, size, lit, 0x10282e);
     } else if (item == 14 || item == 15) {
@@ -6637,75 +6645,10 @@ static void shop_fry_modal(ctx_t *c, const tank_t *t, uint16_t *fb, int stride) 
     if (go) button(c, bx, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_TEAL, "BUY", 2);
     else button(c, bx, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_DIM, "BUY", 2);
 }
-static void render_mussel_panel(const tank_t *t, uint16_t *fb, int stride) {
-    ctx_t c = ctx_page(fb, stride);
-    rect_fill(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, MSP_INK);
-    rect_fill(&c, 48, 48, 352, 260, 0x04141a);
-    rect_edge(&c, 48, 48, 352, 260, MSP_TEAL);
-    draw_text(&c, 64, 64, 3, 0xffffff, "PEARL MUSSEL");
-    draw_pearl_mussel(&c, 224, 122, 2, t->mussel.bank != 0);
-    char line[64];
-    if (t->mussel.owned) {
-        snprintf(line, sizeof line, "READY: %u / %d", t->mussel.bank, MUSSEL_DAILY_LIMIT);
-        draw_text(&c, 64, 154, 2, MSP_TEAL, line);
-        snprintf(line, sizeof line, "GROWN TODAY: %u / %d", t->mussel.generated, MUSSEL_DAILY_LIMIT);
-        draw_text(&c, 64, 180, 1, MSP_TEAL, line);
-        if (t->mussel.generated >= MUSSEL_DAILY_LIMIT)
-            snprintf(line, sizeof line, "DAILY LIMIT - TRY TOMORROW");
-        else if (t->mussel.bank >= MUSSEL_DAILY_LIMIT)
-            snprintf(line, sizeof line, "BANK FULL - COLLECT FIRST");
-        else if (!progression_mussel_healthy(t))
-            snprintf(line, sizeof line, "PAUSED - FEED/CALM FISH");
-        else snprintf(line, sizeof line, "NEXT: %u/%d HEALTHY SEC", t->mussel.seconds, MUSSEL_SECONDS);
-        draw_text(&c, 64, 202, 1, MSP_TEAL, line);
-        draw_text(&c, 64, 224, 1, MSP_DIM, "ONLINE ONLY - NO XP");
-        draw_text(&c, 64, 242, 1, MSP_DIM, "ONE MUSSEL PER PROFILE");
-    } else if (progression_creative(t)) {
-        draw_text(&c, 64, 156, 1, MSP_TEAL, "CREATIVE: NO INCOME");
-        draw_text(&c, 64, 178, 1, MSP_DIM, "NO CARE REWARDS TO UNLOCK.");
-    } else {
-        draw_text(&c, 64, 156, 1, MSP_TEAL, "CLAIM ALL 3 DAILY TASKS");
-        draw_text(&c, 64, 178, 1, MSP_TEAL, "TO WELCOME A FREE MUSSEL.");
-        draw_text(&c, 64, 200, 1, MSP_TEAL, "1 COIN/10 HEALTHY MINUTES");
-        draw_text(&c, 64, 222, 1, MSP_DIM, "15/DAY. BANK HOLDS 15.");
-        draw_text(&c, 64, 242, 1, MSP_DIM, "ONLINE ONLY. NO EXTRA XP.");
-    }
-    button(&c, 64, 260, 154, 34, 0x1c2f36, t->mussel.bank ? MSP_TEAL : MSP_DIM, "COLLECT", 2);
-    button(&c, 230, 260, 154, 34, 0x1c2f36, MSP_TEAL, "BACK", 2);
-    const char *notice = progression_shop_notice();
-    if (notice) draw_text(&c, 24, 314, 1, 0xff8a7a, notice);
-}
 static void render_inventory(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
     rect_fill(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, MSP_INK);
-    if (g_shp_mussel) { render_mussel_panel(t, fb, stride); return; }
-    if (g_inventory_item < 0) {
-        draw_text(&c, 24, 20, 3, 0xffffff, "DECOR INVENTORY");
-        char line[64];
-        int stored = 0;
-        for (int slot = 0; slot < DECOR_SLOTS; slot++)
-            stored += progression_inventory_stored(t, tank_decor_slot_item(slot));
-        snprintf(line, sizeof line, "SHARED STORAGE %d/%d", stored, DECOR_INVENTORY_CAP);
-        draw_text(&c, 24, 56, 2, MSP_TEAL, line);
-        shop_arrow(&c, SHP_ARROW_X0, SHP_ARROW_Y, false, g_inventory_page ? MSP_TEAL : MSP_DIM);
-        shop_arrow(&c, SHP_ARROW_X1, SHP_ARROW_Y, true, g_inventory_page < (DECOR_SLOTS - 1) / SHP_PER_PAGE ? MSP_TEAL : MSP_DIM);
-        for (int r = 0; r < SHP_PER_PAGE; r++) {
-            int slot = g_inventory_page * SHP_PER_PAGE + r;
-            if (slot >= DECOR_SLOTS) break;
-            int item = tank_decor_slot_item(slot), y = SHP_ROW_Y0 + r * SHP_ROW_DY;
-            render_decor_thumbnail(fb, stride, 24, y, 36, item, true);
-            draw_text(&c, 76, y + 2, 2, 0xffffff, SD_ITEMS[item].name);
-            snprintf(line, sizeof line, "STORED %d / HERE %d",
-                     progression_inventory_stored(t, item), progression_inventory_placed(t, item));
-            draw_text(&c, 76, y + 22, 1, MSP_TEAL, line);
-            button(&c, SHP_BTN_X, y, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "MANAGE", 2);
-        }
-        draw_text(&c, 24, 348, 1, MSP_TEAL, "STORE > TANKS > PLACE");
-        button(&c, 24, MSP_CLOSE_Y, 156, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "MUSSEL", 2);
-        button(&c, 194, MSP_CLOSE_Y, 116, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "TANKS", 2);
-        button(&c, SHP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
-    }
-    else {
+    {
         int item = g_inventory_item;
         char line[64];
         rect_fill(&c, 48, 40, 352, 268, 0x04141a);
@@ -6735,7 +6678,7 @@ static void render_inventory(const tank_t *t, uint16_t *fb, int stride) {
 static int inventory_tap(const tank_t *t, float x, float y) {
     if (g_inventory_item >= 0) {
         if (y >= 50 && y < 78 && x >= 304 && x < 384) {
-            g_inventory_item = -1;
+            g_inventory_item = g_shp_modal = -1;
             g_shp_sell_armed = false;
             return SHOP_TAP_KEPT;
         }
@@ -6758,40 +6701,19 @@ static int inventory_tap(const tank_t *t, float x, float y) {
             return INV_SELL;
         }
         g_shp_sell_armed = false;
-        if (x < 48 || x >= 400 || y < 40 || y >= 308) g_inventory_item = -1;
+        if (x < 48 || x >= 400 || y < 40 || y >= 308) g_inventory_item = g_shp_modal = -1;
         return SHOP_TAP_KEPT;
-    }
-    if (y >= MSP_CLOSE_Y - 4) {
-        if (x >= 20 && x < 184) { g_shp_mussel = true; return SHOP_TAP_KEPT; }
-        if (x >= SHP_CLOSE_X - 6) { g_shp_inventory = false; return SHOP_TAP_KEPT; }
-        if (x >= 190 && x < 316) return SHOP_TAP_TANKS;
-    }
-    if (y < SHP_ROW_Y0 - 10 && x >= SHP_ARROW_X0 - 8) {
-        if (x < SHP_ARROW_X1 - 4) { if (g_inventory_page) g_inventory_page--; }
-        else if (g_inventory_page < (DECOR_SLOTS - 1) / SHP_PER_PAGE) g_inventory_page++;
-        return SHOP_TAP_KEPT;
-    }
-    for (int r = 0; r < SHP_PER_PAGE; r++) {
-        int slot = g_inventory_page * SHP_PER_PAGE + r, top = SHP_ROW_Y0 + r * SHP_ROW_DY;
-        if (slot < DECOR_SLOTS && x >= 20 && y >= top - 8 && y < top + SHP_ROW_DY - 8) {
-            g_inventory_item = tank_decor_slot_item(slot);
-            g_inventory_copy = inventory_first_copy(t, g_inventory_item);
-            return SHOP_TAP_KEPT;
-        }
     }
     return SHOP_TAP_KEPT;
 }
 void render_shop(const tank_t *t, uint16_t *fb, int stride) {
-    if (g_shp_mussel) { render_mussel_panel(t, fb, stride); return; }
-    if (g_shp_inventory) { render_inventory(t, fb, stride); return; }
+    if (g_inventory_item >= 0) { render_inventory(t, fb, stride); return; }
     ctx_t c = ctx_page(fb, stride);
     rect_fill(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, MSP_INK);
     blit_icon(&c, SHP_COIN_X, SHP_COIN_Y, &icon_shop_sand_dollar_64, 255);
     draw_text(&c, SHP_HEAD_X, SHP_COIN_Y + 6, 2, MSP_TEAL, "SAND DOLLARS");
     char bal[16]; snprintf(bal, sizeof bal, "%d", (int)t->sd_balance);
     draw_text(&c, SHP_HEAD_X, SHP_COIN_Y + 28, 4, 0xffffff, bal);
-    button(&c, SHP_HEAD_X, 66, 174, 22, 0x1c2f36, MSP_TEAL, "INVENTORY", 2);
-    button(&c, 300, 66, 124, 22, 0x1c2f36, MSP_TEAL, "MUSSEL", 2);
     for (int x = 24; x < PAGE_W - 24; x++) px_blend(&c, x, SHP_ROW_Y0 - 10, MSP_DIM, 200);
     if (shp_pages(t) > 1) {
         shop_arrow(&c, SHP_ARROW_X0, SHP_ARROW_Y, false, g_shp_page > 0 ? MSP_TEAL : MSP_DIM);
@@ -6804,7 +6726,8 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         bool owned = progression_item_owned(t, i);
         int price = progression_item_price_for(t, i);
         bool can = t->sd_balance >= price;
-        if (i >= 9 && i <= 12) draw_ornament(&c, i, 24, top, 1, false, owned, MSP_INK);
+        if (i == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, 43, top + 20, 1, false, owned, MSP_INK);
+        else if (i >= 9 && i <= 12) draw_ornament(&c, i, 24, top, 1, false, owned, MSP_INK);
         else if (i == 13) draw_buoy_icon(&c, 24, top, 1, owned, MSP_INK);
         else if (i >= 16) draw_ornament_icon(&c, i, 24, top, 36, owned, MSP_INK);
         else if (i == 14 || i == 15) {
@@ -6814,12 +6737,19 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         }
         else if (owned) blit_icon(&c, 32, top, shop_icon(i), 255); else blit_icon_locked(&c, 32, top, shop_icon(i));   /* (the rows are where the bowl is wide: their own column) */
         draw_text(&c, 76, top + 2, 2, 0xffffff, it->name);
-        if (owned) draw_text(&c, 76, top + 20, 2, MSP_TEAL, "IN THE TANK");
+        if (tank_decor_placeable(i) && (progression_inventory_placed(t, i) || progression_inventory_stored(t, i))) {
+            char copies[40]; snprintf(copies, sizeof copies, "STORED %d / HERE %d",
+                progression_inventory_stored(t, i), progression_inventory_placed(t, i));
+            draw_text(&c, 76, top + 20, 1, MSP_TEAL, copies);
+        }
+        else if (owned) draw_text(&c, 76, top + 20, 2, MSP_TEAL, "IN THE TANK");
         else if (progression_creative(t)) draw_text(&c, 76, top + 20, 2, MSP_TEAL, "CREATIVE: FREE");
         else if (!price) draw_text(&c, 76, top + 20, 2, MSP_TEAL,
                                   progression_inventory_stored(t, i) ? "STORED: PLACE" : "UNLOCKED: FREE");
         else price_tag(&c, 76, top + 20, price, can ? MSP_TEAL : MSP_DIM);
-        if (owned)     button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, MSP_INK, MSP_DIM, "IN TANK", 2);
+        if (tank_decor_placeable(i) && (progression_inventory_placed(t, i) || progression_inventory_stored(t, i)))
+            button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "MANAGE", 2);
+        else if (owned) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, MSP_INK, MSP_DIM, "IN TANK", 2);
         else if (can) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, !price ? "ADD" : "BUY", 2);
         else           button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_DIM, "UNLOCK", 2);
     }
@@ -6855,7 +6785,8 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
     bool can = t->sd_balance >= price;
     rect_fill(&c, X, Y, W, H, 0x04141a);
     rect_edge(&c, X, Y, W, H, MSP_TEAL); rect_edge(&c, X + 1, Y + 1, W - 2, H - 2, 0x1c2f36);
-    if (g_shp_modal >= 9 && g_shp_modal <= 12) draw_ornament(&c, g_shp_modal, X + (W - tank_ornament_w(g_shp_modal) * 2) / 2, Y + 8, 2, false, owned, 0x04141a);
+    if (g_shp_modal == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, X + W / 2, Y + 44, 2, false, owned, 0x04141a);
+    else if (g_shp_modal >= 9 && g_shp_modal <= 12) draw_ornament(&c, g_shp_modal, X + (W - tank_ornament_w(g_shp_modal) * 2) / 2, Y + 8, 2, false, owned, 0x04141a);
     else if (g_shp_modal == 13) {
         draw_buoy_icon(&c, X + W / 2 - 36, Y + 8, 2, owned, 0x04141a);
     } else if (g_shp_modal >= 16) {
@@ -6900,20 +6831,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
 int render_shop_tap(const tank_t *t, float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
     progression_shop_notice_clear();
-    if (g_shp_mussel) {
-        if (x >= 64 && x < 218 && y >= 260 && y < 294) return INV_COLLECT;
-        if ((x >= 230 && x < 384 && y >= 260 && y < 294) ||
-            x < 48 || x >= 400 || y < 48 || y >= 308) g_shp_mussel = false;
-        return SHOP_TAP_KEPT;
-    }
-    if (g_shp_inventory) return inventory_tap(t, x, y);
-    if (g_shp_modal < 0 && !g_shp_earn && x >= 300 && x < 424 && y >= 66 && y < 88) {
-        g_shp_mussel = true; return SHOP_TAP_KEPT;
-    }
-    if (g_shp_modal < 0 && !g_shp_earn && x >= SHP_HEAD_X && x < SHP_HEAD_X + 174 && y >= 66 && y < 88) {
-        g_shp_inventory = true; g_inventory_item = -1; g_inventory_page = 0;
-        return SHOP_TAP_KEPT;
-    }
+    if (g_inventory_item >= 0) return inventory_tap(t, x, y);
     if (g_shp_earn) { g_shp_earn = false; return SHOP_TAP_KEPT; }
     if (g_shp_modal == SHP_MODAL_FRY) {                       /* the fry: a box picks, BUY buys the pick, elsewhere closes */
         if (y >= SHP_FRY_BOX_Y - 8 && y < SHP_FRY_BOX_Y + SHP_FRY_BOX_H + 6)
@@ -6966,7 +6884,14 @@ int render_shop_tap(const tank_t *t, float x, float y) {
         int top = SHP_ROW_Y0 + (r - g_shp_page * SHP_PER_PAGE) * SHP_ROW_DY, i = shp_item(t, r);
         if (x >= 20 && y >= top - 8 && y < top + SHP_ROW_DY - 8) {
             if (i < 0) { int k = fry_first_left(t); g_shp_fry_pick = k < 0 ? 0 : k; g_shp_modal = SHP_MODAL_FRY; }   /* the fry's modal, the first one left picked */
-            else g_shp_modal = i;
+            else {
+                g_shp_modal = i;
+                if (tank_decor_placeable(i) &&
+                    (progression_inventory_placed(t, i) || progression_inventory_stored(t, i))) {
+                    g_inventory_item = i;
+                    g_inventory_copy = inventory_first_copy(t, i);
+                }
+            }
             return SHOP_TAP_KEPT;
         }
     }
@@ -6974,8 +6899,7 @@ int render_shop_tap(const tank_t *t, float x, float y) {
 }
 void render_shop_leave(void) {
     g_shp_modal = -1; g_shp_earn = false; g_shp_page = 0; g_shp_sell_armed = false;
-    g_shp_inventory = g_shp_mussel = false;
-    g_inventory_item = -1; g_inventory_page = 0; g_inventory_copy = -1;
+    g_inventory_item = -1; g_inventory_copy = -1;
 }
 
 /* the toast: "+N" by a coin, top centre, for TOAST_S on the tank clock */
@@ -8296,10 +8220,9 @@ int render_journal_tap(tank_t *t, float x, float y) {
             if (task < CARE_TASK_COUNT) {
                 if (t->care.claimed & (1u << task)) snprintf(g_journal_message, sizeof g_journal_message, "SAVED - COME BACK ANOTHER DAY");
                 else if (t->care.ready & (1u << task)) {
-                    bool had_mussel = t->mussel.owned != 0;
                     bool saved = progression_care_claim(t, task);
                     snprintf(g_journal_message, sizeof g_journal_message, "%s", !saved ? "SAVE FAILED - RETRY YOUR REWARD" :
-                             !had_mussel && t->mussel.owned ? "CARE SAVED - PEARL MUSSEL JOINED!" : "CARE REWARD SAVED!");
+                             "CARE REWARD SAVED!");
                 }
                 else snprintf(g_journal_message, sizeof g_journal_message, "CARE AT YOUR PACE - NO PURCHASE NEEDED");
             }
