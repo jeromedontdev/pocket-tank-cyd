@@ -46,6 +46,12 @@ async function main() {
         body: 'customElements.define("esp-web-install-button", class extends HTMLElement {});',
       }));
       await page.goto(base + "/flash.html");
+      assert.equal(await page.locator("#board").inputValue(), "");
+      assert.equal(await page.locator("#acknowledge").isDisabled(), true);
+      assert.equal(await page.locator("#update-acknowledge").isDisabled(), true);
+      assert.equal(await page.locator("#safe-update").isDisabled(), true);
+      assert.equal(await page.evaluate(() => window.testPortRequests), 0);
+      await page.locator("#board").selectOption("cyd2432s028");
       await page.waitForFunction(() => document.querySelector("#status").textContent.startsWith("Ready to install"));
       assert.equal(await page.locator("esp-web-install-button").getAttribute("manifest"), "./manifest.json");
       let finishFactoryLoad;

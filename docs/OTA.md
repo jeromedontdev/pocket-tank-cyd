@@ -6,7 +6,11 @@
 
 Since 2.3.6, select the exact **original CYD** or **ELEGOO ESP32-32E 2.8-inch
 ILI9341V** first. Both choices download the same unified application;
-the manifest binds its `cydesp32profiles` family and the explicit hardware
+there is no preselected installer choice and no reliable automatic hardware
+detection on these tested displays. First setup saves the selected profile on
+the board; reboots and subsequent firmware updates retain it. On later visits
+to the web updater, select the matching board to verify that saved profile.
+The manifest binds its `cydesp32profiles` family and the explicit hardware
 profile. Existing legacy firmware must match that hardware's old identity;
 an existing unified image must report the matching saved runtime profile.
 Unknown families and mismatched profiles are refused.

@@ -32,11 +32,17 @@
     The save-preserving updater additionally verifies Pocket Tank CYD's identity and layout.</p>
   <label for="board">Choose your exact display board</label>
   <select id="board">
+    <option value="" selected disabled>Choose once: which CYD do you have?</option>
     <option value="cyd2432s028">CYD</option>
     <option value="elegoo28">ELEGOO CYD</option>
   </select>
   <p>The unified application is the same for both boards; your selection sets the
-    saved hardware profile. The module label alone does not identify the LCD.
+    saved hardware profile. The board remembers it across reboots and updates.
+    These displays do not provide a reliable automatic identity, so new installations
+    need this one-time choice; the installer never guesses a default.
+    When returning to this page for an update, select the matching board so the
+    updater can verify its saved profile; it will not silently replace a different profile.
+    The module label alone does not identify the LCD.
     ELEGOO CYD has no room-light sensor; GPIO34 measures battery voltage instead.</p>
   <p>If an ELEGOO board already has the original CYD firmware and shows white,
     its installed identity is wrong for the selected board. The safe updater will
@@ -144,6 +150,13 @@
     updateAcknowledgement.disabled = true;
     updateAcknowledgement.dispatchEvent(new Event("change"));
     installer.hidden = true;
+    if (!board.value) {
+      status.textContent = "Choose CYD or ELEGOO CYD above before installing. The same firmware runs on both; your board remembers the profile.";
+      document.querySelector("#update-status").textContent = "Choose your board above. No default hardware profile is assumed.";
+      updateAcknowledgement.disabled = true;
+      updateAcknowledgement.dispatchEvent(new Event("change"));
+      return;
+    }
     board.disabled = true;
     try {
     if (!window.isSecureContext || !("serial" in navigator)) {

@@ -38,8 +38,15 @@ Use the built-in calibration tool if your individual panel needs adjustment.
 
 The `unified` image implements saved hardware profiles for these
 two compatible ESP32/4 MiB boards. The same application bytes have been
+provided for both boards, not separate game binaries. The web installer starts
+with no hardware selected and requires an explicit CYD / ELEGOO CYD choice.
+It cannot reliably autodetect these displays. Once set, the profile stays on
+the board across reboots and updates; later web updates verify the user's
+matching selection against the saved profile rather than overwriting it.
+The same application bytes have been
 installed on both local boards and checked by full app readback and reboot,
-with their aquariums preserved. On first boot it waits for `hardware cyd` or
+with their aquariums preserved. When no profile has been provisioned, first
+boot waits for `hardware cyd` or
 `hardware elegoo` over USB serial at 115200 baud, before LCD/peripheral startup.
 The profile is persisted as `pt_hardware` / `profile` in NVS (1 = CYD,
 2 = ELEGOO). It is independent of the application slot and aquarium saves.

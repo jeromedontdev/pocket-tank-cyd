@@ -6,6 +6,10 @@
 
 **2.3.6 board support:** the website installer uses one shared application for
 the original CYD and ELEGOO ESP32-32E 2.8-inch ILI9341V, with saved hardware profiles.
+Both boards are supported, but their displays cannot be reliably autodetected.
+The installer requires an explicit CYD or ELEGOO CYD choice, with no default.
+The board retains that profile across reboots and updates; later web updates
+ask you to select the matching board for verification, not to reconfigure it.
 Existing tanks migrate by app-only USB update; new-board factory images differ
 only in their blank NVS profile. Both run the same aquarium;
 ELEGOO uses different LCD initialization and has no room-light sensor.

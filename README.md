@@ -36,8 +36,13 @@ The ELEGOO UI is upright at normal speed. Its default touch transform is
 corrected without invalidating existing calibration; the user confirmed their
 calibrated touch works. Fresh uncalibrated touch still needs physical testing.
 The installer uses one app for both boards and provisions the explicitly
-selected hardware profile. Existing tanks migrate by save-preserving USB;
-legacy board-specific SD/Wi-Fi packages remain available.
+selected hardware profile. There is no preselected installer profile: new
+installations must choose CYD or ELEGOO CYD explicitly. The board remembers
+that profile across reboots and updates; reliable first-boot autodetection is
+not available on the tested displays. Existing tanks migrate by save-preserving USB;
+on later web-updater visits, select the matching board to verify its saved
+profile, not to reset it.
+Legacy board-specific SD/Wi-Fi packages remain available.
 
 Choose your exact board in the [website installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html).
 The ELEGOO uses the same LCD/touch SPI pins but an **ILI9341V**, not the original

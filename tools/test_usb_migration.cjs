@@ -126,9 +126,9 @@ async function main() {
         }));
         page.on("dialog", dialog => dialog.accept());
         await page.goto(`http://127.0.0.1:${server.address().port}/flash.html`);
-        await page.waitForFunction(() => document.querySelector("#status").textContent.startsWith("Ready"));
         await page.locator("#board").selectOption(hardware);
-        await page.waitForFunction(() => !document.querySelector("#board").disabled);
+        await page.waitForFunction(() => document.querySelector("#status").textContent.startsWith("Ready") &&
+          !document.querySelector("#board").disabled);
         await page.locator("#update-acknowledge").check();
         await page.locator("#safe-update").click();
         await page.waitForFunction(() => !document.querySelector("#board").disabled &&
