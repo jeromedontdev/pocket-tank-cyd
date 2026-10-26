@@ -463,6 +463,7 @@ typedef struct { float x, y, age; bool alive, from_player; float floor_s, nibble
 /* shrimp-seconds of pecking to finish a pellet: a huddle of
                                       * 3-4 takes 2-3 s - long enough to see them swarm it */
 #define SHRIMP_PECK_S       8.0f
+#define SHRIMP_TAP_R        30.0f
 typedef struct {
     float  x, y, vx, vy;             /* centre of the body; px/s */
     float  yaw;                      /* -1..1 as the fish's: the turn foreshortens it */

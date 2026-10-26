@@ -28,5 +28,5 @@ endif()
 set_source_files_properties("${COMMON}/progression.c" "${COMMON}/weather.c" "${COMMON}/companion.c"
     PROPERTIES COMPILE_OPTIONS "-fno-fast-math")
 set_property(SOURCE "${COMMON}/setup.c" "${COMMON}/update.c" "${COMMON}/companion_ui.c"
-    "${COMMON}/aquarium_store.c" "${COMMON}/weather.c"
+    "${COMMON}/aquarium_store.c" "${COMMON}/weather.c" "${COMMON}/games.c"
     APPEND PROPERTY COMPILE_OPTIONS "-Os")

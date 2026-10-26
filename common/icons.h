@@ -12,6 +12,29 @@ typedef struct {
 } icon_t;
 const icon_t *icons_resolve(const icon_t *icon);
 
+/* Indexed RGB stores exact colors, then four 4-bit or two 8-bit indices per word. */
+static inline uint16_t icon_rgb_at(const icon_t *icon, unsigned index) {
+    if (!(icon->offset & UINT32_C(0x40000000))) return icon->rgb[index];
+    unsigned colors = icon->rgb[0];
+    if (colors <= 16) {
+        unsigned packed = icon->rgb[1 + colors + (index >> 2)];
+        return icon->rgb[1 + ((packed >> ((index & 3) * 4)) & 15)];
+    }
+    unsigned packed = icon->rgb[1 + colors + (index >> 1)];
+    return icon->rgb[1 + ((packed >> ((index & 1) * 8)) & 255)];
+}
+
+/* Embedded alpha is lossless RLE when the high offset bit is set.
+ * Bank-backed icons keep their existing raw planes and offsets. */
+typedef struct { const uint8_t *next; unsigned end; uint8_t value; } icon_alpha_t;
+static inline uint8_t icon_alpha_at(const icon_t *icon, icon_alpha_t *cursor, unsigned index) {
+    if (!(icon->offset & UINT32_C(0x80000000))) return icon->a[index];
+    while (cursor->end <= index) {
+        cursor->end += cursor->next[0]; cursor->value = cursor->next[1]; cursor->next += 2;
+    }
+    return cursor->value;
+}
+
 extern const icon_t icon_bold;
 extern const icon_t icon_cautious;
 extern const icon_t icon_curiosity;

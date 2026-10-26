@@ -2,7 +2,46 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.10**
+**An illustrated tour of Pocket Tank CYD 2.3.11**
+
+**2.3.11 creature polish:** when helpers overlap, tapping selects the
+closest eligible creature, with the existing fish-first priority retained.
+Only rendered shrimp are tappable, and their card's shown count follows scene
+detail rather than screen size. The snail now describes its current activity.
+COLORS gestures stay on the card instead of reaching the water behind it;
+slide off to cancel. Visible next arrows and the shared five-creature palette
+editor remain available.
+
+**2.3.11 artwork and LCD updates:** exact-color RGB565 palette indexing compresses
+32 embedded icons without changing a pixel. The local unified app is
+**1,728,176 bytes**, with **237,904 bytes of OTA headroom**. Seven low-color
+icons use 4-bit indices, saving another **2,704 app bytes** over the first
+indexed-art build. The raw SD/browser icon bank
+is unchanged. Partial LCD writes preserve unrelated canonical fingerprints:
+a one-pixel partial-to-canonical test retransmits only one stripe instead of
+40-43 at both scales/orientations. This is not a measured live FPS gain.
+LCD invalidation jumps to the affected stripe range rather than scanning a
+whole band. The latest follow-up was backed up, flashed and fully read back
+on COM4 only. These changes are included in release 2.3.11.
+
+**Also included in 2.3.11:** modal pages and mini-games are size-optimized
+without removing content. That unified app has **215,264 bytes of
+OTA headroom**: lossless embedded alpha compression, shared creature-card
+frames and more menu-only size optimization save another 22,704 bytes over the
+first-stage build last flashed to COM4. Repeated static ornaments share a bounded
+indexed sprite/silhouette; fish reuse exact prepared yaw/colors between tiles.
+Unchanged partial LCD stripes can now be skipped safely across overlapping
+updates, and the decorated/clock diagnostic is seeded with fixed time.
+Three alternating desktop pairs retain all 48 sampled frame hashes and reduce
+decorated-scene CPU rendering time by 5.7-11.3%; this is **not a device FPS claim**.
+That prior pass was flashed and read back on COM4; its appearance was confirmed.
+These measurements describe that earlier optimization stage.
+
+The first-stage exact snail/seahorse geometry reuse and lazy urchin row colors reduce
+repeated rendering work. Both resolutions, all details and full/tile drawing
+retain matching scene hashes. First-stage desktop overall timings were mixed. COM4 fixed
+benchmark scenes improved by roughly 4-5%, and the maximum-ornament scene by
+about 3%; results for a changing live aquarium are not directly comparable.
 
 **2.3.9 aquarium polish:** a center grass clearing, exact animation-calculation
 reuse and fewer unused LCD checksums reduce rendering work without lowering

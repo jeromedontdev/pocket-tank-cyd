@@ -30,6 +30,36 @@ static bool s_block_valid[3][CYD_PANEL_W / (CYD_STRIPE_ROWS / 2)];
 static int s_layout_width, s_layout_height, s_layout_tile;
 static int64_t s_wait_us, s_send_us;
 static unsigned s_blocks_sent, s_blocks_skipped;
+typedef struct {
+    uint32_t crc;
+    uint16_t x0, y0, x1, y1;
+    bool valid;
+} partial_block_t;
+static partial_block_t s_partial[48];
+static unsigned s_partial_next;
+static bool s_layout_inverted;
+static void partial_invalidate(int x0, int y0, int x1, int y1) {
+    for (unsigned i = 0; i < sizeof s_partial / sizeof s_partial[0]; i++) {
+        partial_block_t *p = &s_partial[i];
+        if (p->valid && x0 < p->x1 && x1 > p->x0 && y0 < p->y1 && y1 > p->y0)
+            p->valid = false;
+    }
+}
+static void canonical_invalidate(int x0, int y0, int x1, int y1) {
+    int height = s_layout_tile;
+    bool reverse_y = (CYD_LCD_MIRROR_Y != 0) != s_inverted;
+    for (int top = 0; top < TANK_H; top += height) {
+        int bottom = top + height < TANK_H ? top + height : TANK_H;
+        int start = reverse_y ? TANK_H - bottom : top;
+        int end = reverse_y ? TANK_H - top : bottom;
+        int left = (start * CYD_PANEL_H + TANK_H - 1) / TANK_H;
+        int right = (end * CYD_PANEL_H + TANK_H - 1) / TANK_H;
+        if (x0 >= right || x1 <= left) continue;
+        int rows = CYD_PANEL_H * CYD_STRIPE_ROWS / 2 / (right - left);
+        for (int y = y0 / rows * rows; y < y1; y += rows)
+            s_block_valid[top / 80][y / (CYD_STRIPE_ROWS / 2)] = false;
+    }
+}
 /* Panel-specific power/gamma settings; the original CYD sequence stays unchanged. */
 static const ili9341_lcd_init_cmd_t elegoo_init_commands[] = {
     /* Undo the driver's early sleep-out before programming panel power. */
@@ -171,22 +201,25 @@ bool display_port_init(void) {
 void display_port_flush(const uint16_t *fb) {
     if (!s_panel) return;
     int tile_start = render_tile_top(), tile_end = render_tile_bottom();
-    int tile_layout = tile_end - tile_start == TANK_H ? TANK_H : 80;
-    if (s_layout_width != TANK_W || s_layout_height != TANK_H || s_layout_tile != tile_layout) {
+    int region_left = render_region_left(), region_right = render_region_right();
+    bool canonical = region_left == 0 && region_right == TANK_W &&
+        tile_start % 80 == 0 && (tile_end - tile_start == TANK_H ||
+        tile_end == (tile_start + 80 < TANK_H ? tile_start + 80 : TANK_H));
+    int tile_layout = canonical ? (tile_end - tile_start == TANK_H ? TANK_H : 80) :
+        (s_layout_tile ? s_layout_tile : 80);
+    if (s_layout_width != TANK_W || s_layout_height != TANK_H ||
+        s_layout_tile != tile_layout || s_layout_inverted != s_inverted) {
         memset(s_block_valid, 0, sizeof s_block_valid);
+        memset(s_partial, 0, sizeof s_partial);
         s_layout_width = TANK_W; s_layout_height = TANK_H; s_layout_tile = tile_layout;
+        s_layout_inverted = s_inverted;
     }
     bool reverse_y = (CYD_LCD_MIRROR_Y != 0) != s_inverted;
     int source_start = reverse_y ? TANK_H - tile_end : tile_start;
     int source_end = reverse_y ? TANK_H - tile_start : tile_end;
     int panel_start = (source_start * CYD_PANEL_H + TANK_H - 1) / TANK_H;
     int panel_end = (source_end * CYD_PANEL_H + TANK_H - 1) / TANK_H;
-    /* Arbitrary CPU-damage slices do not share the canonical tile CRC geometry. */
-    int region_left = render_region_left(), region_right = render_region_right();
-    bool canonical = region_left == 0 && region_right == TANK_W &&
-        tile_start % 80 == 0 && (tile_end - tile_start == TANK_H ||
-        tile_end == (tile_start + 80 < TANK_H ? tile_start + 80 : TANK_H));
-    if (!canonical) memset(s_block_valid, 0, sizeof s_block_valid);
+    /* Partial writes invalidate only overlapping entries in the retained canonical layout. */
 #if CYD_DIAGNOSTIC_PATTERN
     (void)fb;
 #else
@@ -237,19 +270,35 @@ void display_port_flush(const uint16_t *fb) {
             }
         }
         int tile_index = tile_start / 80, block = native_y / (CYD_STRIPE_ROWS / 2);
-        uint32_t crc = canonical ?
-            esp_crc32_le(0, (const uint8_t *)buffer, (size_t)count * region_width * sizeof *buffer) : 0;
+        uint32_t crc = esp_crc32_le(0, (const uint8_t *)buffer, (size_t)count * region_width * sizeof *buffer);
         if (canonical && s_block_valid[tile_index][block] && s_block_crc[tile_index][block] == crc) {
             s_blocks_skipped++;
             continue;
         }
+        bool unchanged = false;
+        if (!canonical) for (unsigned i = 0; i < sizeof s_partial / sizeof s_partial[0]; i++) {
+            const partial_block_t *p = &s_partial[i];
+            if (p->valid && p->x0 == panel_start && p->x1 == panel_end &&
+                p->y0 == native_y && p->y1 == native_y + count && p->crc == crc) {
+                unchanged = true; break;
+            }
+        }
+        if (unchanged) { s_blocks_skipped++; continue; }
         int64_t now = esp_timer_get_time();
         if (pending) xSemaphoreTake(s_flush_done, portMAX_DELAY);
         s_wait_us += esp_timer_get_time() - now;
         now = esp_timer_get_time();
         ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(s_panel, panel_start, native_y, panel_end, native_y + count, buffer));
+        partial_invalidate(panel_start, native_y, panel_end, native_y + count);
+        if (!canonical) canonical_invalidate(panel_start, native_y, panel_end, native_y + count);
+        if (!canonical) {
+            partial_block_t *p = &s_partial[s_partial_next++ % (sizeof s_partial / sizeof s_partial[0])];
+            *p = (partial_block_t){crc, panel_start, native_y, panel_end, native_y + count, true};
+        }
         s_send_us += esp_timer_get_time() - now;
-        s_block_crc[tile_index][block] = crc; s_block_valid[tile_index][block] = true;
+        if (canonical) {
+            s_block_crc[tile_index][block] = crc; s_block_valid[tile_index][block] = true;
+        }
         s_blocks_sent++;
         pending = true;
         stripe ^= 1;
@@ -257,7 +306,6 @@ void display_port_flush(const uint16_t *fb) {
     int64_t now = esp_timer_get_time();
     if (pending) xSemaphoreTake(s_flush_done, portMAX_DELAY);
     s_wait_us += esp_timer_get_time() - now;
-    if (!canonical) memset(s_block_valid, 0, sizeof s_block_valid);
 }
 
 void display_port_flush_prof(int64_t *wait_us, int64_t *send_us) {

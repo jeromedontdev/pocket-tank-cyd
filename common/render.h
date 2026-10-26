@@ -63,6 +63,7 @@ void render_clock_layout(const tank_t *t, render_clock_layout_t *layout);
  * Stage 1 is nested inside stage 4; helper counters are snail/urchin/seahorse.
  * Accumulates until the caller zeroes it. NULL = off. */
 extern int64_t (*render_clock_us)(void);
+extern int64_t render_clock_fixed_unix; /* Diagnostic-only; zero uses the device clock. */
 extern int64_t render_prof_us[8];
 extern int64_t render_helper_us[3];
 

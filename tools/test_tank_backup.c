@@ -941,7 +941,48 @@ static void test_clock(void) {
     free(fb); free(old);
     puts("PASS: seven clock themes, 64 primary/secondary combinations, all details/sizes/bounds, 10-pixel Orbit caption clearance, idle delays/OFF/manual, segments, UTC/DST, rollback and binary/JSON/legacy saves");
 }
+static void test_creature_targeting(void) {
+    for (int mode = 0; mode < 2; mode++) {
+        tank_resolution(mode != 0);
+        tank_t t; tank_init(&t, 42);
+        t.mussel.version = 2; t.mussel.owned = 1u << t.aquariums.active;
+        render_device_t device = {.room_pct = -1, .scene_detail = SCENE_BALANCED};
+        render_set_device(&device);
+        float mx, my, crawl; tank_mussel_pose(&t, &mx, &my, &crawl);
+        t.sd_unlocks = SD_ITEM_SNAIL;
+        t.snail_x = mx + 10; t.snail_y = my;
+        assert(render_creature_card_hit(&t, mx, my) == RENDER_CARD_MUSSEL);
+        assert(render_creature_card_hit(&t, t.snail_x, t.snail_y) == RENDER_CARD_SNAIL);
+        t.mussel.owned = 0;
+        t.sd_unlocks |= SD_ITEM_URCHIN;
+        t.snail_x = TANK_W * .4f; t.snail_y = URCHIN_FLOOR_Y;
+        t.urchin_x = t.snail_x + 15;
+        assert(render_creature_card_hit(&t, t.urchin_x, URCHIN_FLOOR_Y) == RENDER_CARD_URCHIN);
+        assert(render_creature_card_hit(&t, t.snail_x, t.snail_y) == RENDER_CARD_SNAIL);
+        t.sd_unlocks = SD_ITEM_SHRIMP; t.shrimp_n = 2;
+        t.shrimp[0].x = 40; t.shrimp[0].y = TANK_H * .6f;
+        t.shrimp[1].x = TANK_W - 40; t.shrimp[1].y = TANK_H * .6f;
+        assert(render_creature_card_hit(&t, t.shrimp[0].x, t.shrimp[0].y) == RENDER_CARD_SHRIMP);
+        assert(render_creature_card_hit(&t, t.shrimp[1].x, t.shrimp[1].y) == -1);
+        device.scene_detail = SCENE_ENHANCED; render_set_device(&device);
+        assert(render_creature_card_hit(&t, t.shrimp[1].x, t.shrimp[1].y) == RENDER_CARD_SHRIMP);
+        t.sd_unlocks = SD_ITEM_SEAHORSE; t.sh_x = TANK_W * .6f; t.sh_y = TANK_H * .5f;
+        t.sh_facing = 1; t.sh_hidden = false;
+        assert(render_creature_card_hit(&t, t.sh_x + 4, t.sh_y - SH_BODY_UP) == RENDER_CARD_SEAHORSE);
+        t.sh_hidden = true;
+        assert(render_creature_card_hit(&t, t.sh_x + 4, t.sh_y - SH_BODY_UP) == -1);
+        device.scene_detail = SCENE_SIMPLE; render_set_device(&device);
+        assert(render_creature_card_hit(&t, t.snail_x, t.snail_y) == -1);
+        t.mussel.owned = 1u << t.aquariums.active;
+        assert(render_creature_card_hit(&t, mx, my) == RENDER_CARD_MUSSEL);
+    }
+    tank_resolution(true);
+    render_device_t device = {.room_pct = -1, .scene_detail = SCENE_BALANCED};
+    render_set_device(&device);
+    puts("PASS: nearest overlapping creature, visible-only shrimp/seahorse hits and Simple mussel at both resolutions");
+}
 static void test_fish_card_next(void) {
+    test_creature_targeting();
     tank_t t; saved_size = 0; tank_init(&t, 42); boot_enlarged(&t); progression_setup_done(&t);
     assert(t.n_fish > 1);
     int x = RENDER_CARD_NEXT_X + RENDER_CARD_NEXT_W / 2, y = RENDER_CARD_NEXT_Y + RENDER_CARD_NEXT_H / 2;
@@ -983,6 +1024,12 @@ static void test_fish_card_next(void) {
     for (int mode = 0; mode < 2; mode++) {
         tank_resolution(mode != 0);
         t.mussel.owned = 1u << t.aquariums.active;
+        t.sd_unlocks |= SD_ITEM_SHRIMP | SD_ITEM_URCHIN | SD_ITEM_SEAHORSE;
+        t.urchin_x = TANK_W * .6f;
+        tank_shrimp_place(&t, SHRIMP_START); tank_seahorse_place(&t);
+        static const int cards[] = {RENDER_CARD_SNAIL, RENDER_CARD_URCHIN,
+            RENDER_CARD_SEAHORSE, RENDER_CARD_SHRIMP, RENDER_CARD_MUSSEL};
+        for (int i = 0; i < 5; i++) assert(render_stats_next(&t, cards[i]) == cards[(i + 1) % 5]);
         const size_t count = (size_t)TANK_W * TANK_H;
         uint16_t *full = calloc(count, sizeof *full), *tiled = calloc(count, sizeof *tiled);
         assert(full && tiled);
@@ -990,14 +1037,19 @@ static void test_fish_card_next(void) {
             t.mussel.bank = state == 1;
             t.mussel.generated = state == 2 ? MUSSEL_DAILY_LIMIT : 0;
             t.fish[0].hunger = state == 3 ? 9 : 2;
-            memset(full, 0, count * sizeof *full); memset(tiled, 0, count * sizeof *tiled);
-            render_tile(0, 0); render_stats_card(&t, RENDER_CARD_MUSSEL, full, TANK_W);
-            for (int row = 0; row < TANK_H; row += 17) {
-                render_tile(row, 17);
-                render_stats_card(&t, RENDER_CARD_MUSSEL, tiled + row * TANK_W, TANK_W);
+            t.snail_cell = state == 1 || state == 2 ? 1 : -1;
+            t.snail_graze = state == 2 ? 1 : 0;
+            t.snail_y = state == 0 ? SNAIL_FLOOR_Y : TANK_H * .5f;
+            for (int i = 0; i < 5; i++) {
+                memset(full, 0, count * sizeof *full); memset(tiled, 0, count * sizeof *tiled);
+                render_tile(0, 0); render_stats_card(&t, cards[i], full, TANK_W);
+                for (int row = 0; row < TANK_H; row += 17) {
+                    render_tile(row, 17);
+                    render_stats_card(&t, cards[i], tiled + row * TANK_W, TANK_W);
+                }
+                render_tile(0, 0);
+                assert(!memcmp(full, tiled, count * sizeof *full));
             }
-            render_tile(0, 0);
-            assert(!memcmp(full, tiled, count * sizeof *full));
         }
         free(full); free(tiled);
     }

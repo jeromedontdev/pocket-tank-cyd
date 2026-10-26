@@ -15,6 +15,13 @@
 #include <time.h>
 #endif
 #include "advisor.h"
+#ifndef RENDER_BASELINE
+static bool fail_render_calloc;
+static void *renderer_calloc(size_t count, size_t bytes) {
+    return fail_render_calloc ? NULL : calloc(count, bytes);
+}
+#define calloc renderer_calloc
+#endif
 /* Freeze wall time across all render paths belonging to the same frame. */
 #define clock_port_now_unix renderer_test_now
 #ifdef RENDER_BASELINE
@@ -23,6 +30,9 @@
 #include "../common/render.c"
 #endif
 #undef clock_port_now_unix
+#ifndef RENDER_BASELINE
+#undef calloc
+#endif
 
 static int64_t frozen_unix = INT64_C(1792803600);
 int64_t renderer_test_now(void) { return frozen_unix; }
@@ -31,16 +41,85 @@ static uint16_t frame[320 * 240], tiled[320 * 240], fish_frame[320 * 240];
 static uint16_t retained[320 * 240];
 static uint8_t icon_bank[128 * 1024];
 static size_t icon_bytes;
+#ifdef RENDER_EMBEDDED_ICONS
+#include "icons-check.h"
+static bool embedded_raw_reference;
+#endif
 
 const icon_t *icons_resolve(const icon_t *icon) {
+#ifdef RENDER_EMBEDDED_ICONS
+    if (!embedded_raw_reference) return icon;
+    size_t offset = icon_bytes;
+    for (unsigned k = 0; k < sizeof embedded_icons / sizeof embedded_icons[0]; k++)
+        if (embedded_icons[k].icon == icon) { offset = embedded_icons[k].offset; break; }
+#else
+    size_t offset = icon->offset;
+#endif
     static icon_t view;
     size_t pixels = (size_t)icon->w * icon->h;
-    assert(icon->offset <= icon_bytes && pixels * 3 <= icon_bytes - icon->offset);
+    assert(offset <= icon_bytes && pixels * 3 <= icon_bytes - offset);
     view = *icon;
-    view.rgb = (const uint16_t *)(icon_bank + icon->offset);
-    view.a = icon_bank + icon->offset + pixels * 2;
+    view.offset = (uint32_t)offset;
+    view.rgb = (const uint16_t *)(icon_bank + offset);
+    view.a = icon_bank + offset + pixels * 2;
     return &view;
 }
+#ifdef RENDER_EMBEDDED_ICONS
+static void check_embedded_icons(void) {
+    const uint16_t odd_rgb[] = {2, 0x1234, 0xabcd, 0x0110};
+    icon_t odd = {3, 1, odd_rgb, NULL, UINT32_C(0x40000000)};
+    assert(icon_rgb_at(&odd, 0) == 0x1234);
+    assert(icon_rgb_at(&odd, 1) == 0xabcd && icon_rgb_at(&odd, 2) == 0xabcd);
+    uint16_t nibble_colors[1 + 16 + 4] = {16};
+    for (int i = 0; i < 16; i++) nibble_colors[i + 1] = (uint16_t)(i * 251u);
+    for (int i = 0; i < 4; i++)
+        nibble_colors[17 + i] = (uint16_t)(i * 4 | (i * 4 + 1) << 4 |
+                                                       (i * 4 + 2) << 8 | (i * 4 + 3) << 12);
+    icon_t nibble_palette = {4, 4, nibble_colors, NULL, UINT32_C(0x40000000)};
+    for (int i = 0; i < 16; i++) assert(icon_rgb_at(&nibble_palette, i) == (uint16_t)(i * 251u));
+    uint16_t all_colors[1 + 256 + 128] = {256};
+    for (int i = 0; i < 256; i++) all_colors[i + 1] = (uint16_t)(i * 251u);
+    for (int i = 0; i < 128; i++) all_colors[257 + i] = (uint16_t)(i * 2 | (i * 2 + 1) << 8);
+    icon_t full_palette = {16, 16, all_colors, NULL, UINT32_C(0x40000000)};
+    for (int i = 0; i < 256; i++) assert(icon_rgb_at(&full_palette, i) == (uint16_t)(i * 251u));
+    for (unsigned k = 0; k < sizeof embedded_icons / sizeof embedded_icons[0]; k++) {
+        const icon_t *ic = embedded_icons[k].icon;
+        unsigned n = ic->w * ic->h, offset = embedded_icons[k].offset;
+        assert(offset + n * 3 <= icon_bytes);
+        icon_alpha_t cursor = {ic->a, 0, 0};
+        for (unsigned i = 0; i < n; i++) {
+            assert(icon_rgb_at(ic, i) == (uint16_t)(icon_bank[offset + i * 2] | icon_bank[offset + i * 2 + 1] << 8));
+            assert(icon_alpha_at(ic, &cursor, i) == icon_bank[offset + n * 2 + i]);
+            assert(icon_alpha_at(ic, &cursor, i) == icon_bank[offset + n * 2 + i]);
+        }
+    }
+    fprintf(stderr, "PASS: all embedded RGB/alpha pixels match the original bank, including repeated samples\n");
+    for (int normal = 0; normal < 2; normal++) {
+        tank_resolution(normal);
+        for (unsigned k = 0; k < sizeof embedded_icons / sizeof embedded_icons[0]; k++)
+            for (int mode = 0; mode < 10; mode++) {
+                if (mode >= 4 && k >= 9) continue;
+                for (int reference = 0; reference < 2; reference++) {
+                    embedded_raw_reference = reference != 0;
+                    uint16_t *pixels = reference ? tiled : frame;
+                    memset(pixels, 0x4d, sizeof frame);
+                    ctx_t c = ctx_full(pixels, TANK_W, .73f);
+                    const icon_t *ic = embedded_icons[k].icon;
+                    if (mode == 0) blit_icon(&c, -3, 6, ic, 173);
+                    else if (mode == 1) blit_icon_locked(&c, 19, 22, ic);
+                    else if (mode < 4) blit_icon_scaled(&c, -3, 6, ic, 2, mode == 2);
+                    else {
+                        static const int sizes[] = {19, 48, 64};
+                        render_decor_thumbnail(pixels, TANK_W, 5, 7, sizes[(mode - 4) / 2], k, mode % 2);
+                    }
+                }
+                assert(!memcmp(frame, tiled, sizeof frame));
+            }
+    }
+    embedded_raw_reference = false;
+    fprintf(stderr, "PASS: compressed/raw icon blits, locked/integer-scale art and resampled thumbnails match at both scales\n");
+}
+#endif
 
 static int64_t micros(void) {
 #ifdef _WIN32
@@ -72,15 +151,112 @@ static void check_motion_cache(void) {
     for (int i = 0; i < 100; i++) {
         f.preset = i % 3 ? i : -1;
         f.heading = (i - 50) * .13f; f.speed = i * 1.1f; f.wander = i * .17f;
+        f.yaw = i * .01f; f.yaw_tail = -.02f * i;
+        f.hunger = i % 11; f.stress = i % 10;
+        f.color = 0x123456u * i; f.accent = 0xff9800; f.fin = 0x456789;
+        f.traits = i % 2 ? TRAIT_PAINTED_FINS : 0;
         float clock = i * .31f;
         fish_motion_t m = fish_motion(&f, clock);
         float p = tank_fish_pitch(&f);
         assert(m.cp == cosf(p) && m.sp == sinf(p));
+        assert(m.yh == yaw_ease(f.yaw) && m.yt == yaw_ease(f.yaw_tail));
+        float pale = f.hunger > 7 ? (f.hunger - 7) / 3.0f * .35f : 0;
+        assert(m.body_rgb == mix(mix(f.color, 0xf25b65, f.stress / 10.0f * .22f), 0x7a8a8e, pale));
+        assert(m.fin_rgb == mix(mix(f.traits & TRAIT_PAINTED_FINS ? f.accent : f.fin,
+                                  0xf25b65, f.stress / 10.0f * .18f), 0x5a6a6e, pale));
         assert(m.tail == sinf(clock * (8 + f.speed * .055f) + f.wander) * (.32f + f.speed * .007f));
         const float *offsets = jelly_strands(clock);
         for (int s = 0; s < 5; s++) for (int seg = 1; seg <= 6; seg++)
             assert(offsets[s * 6 + seg - 1] == sinf(clock * 3 + seg * .65f + s) * seg * .55f);
     }
+    const float *ridge = snail_foot_ridge();
+    for (int x = -16; x <= 20; x++) assert(ridge[x + 16] == snail_foot_top(x));
+    const sh_row_t *rows = sh_body_rows();
+    for (int y = 0; y < SH_H; y++) {
+        sh_row_t expected = {0};
+        expected.body = sh_body(y + .5f, &expected.sx, &expected.w, &expected.tb);
+        assert(rows[y].body == expected.body && rows[y].sx == expected.sx &&
+               rows[y].w == expected.w && rows[y].tb == expected.tb);
+    }
+    for (int y = 14; y < 27; y++) for (int x = 0; x < 11; x++) {
+        float vx = x + .5f - 5.2f, vy = y + .5f - 20.3f;
+        float radius = sqrtf(vx * vx + vy * vy);
+        float angle = atan2f(vy, vx) * (180.0f / 3.14159265f);
+        if (angle < 0) angle += 360;
+        sh_fin_t fin = sh_fin_geometry(x, y);
+        assert(fin.radius == radius && fin.angle == angle);
+    }
+    for (int field = 0; field < 11; field++) {
+        f = (fish_t){.color = 0x123456, .fin = 0xabcdef, .accent = 0x654321,
+                     .hunger = 9, .stress = 1, .yaw = .2f, .yaw_tail = -.5f};
+        if (field == 7) f.traits = TRAIT_PAINTED_FINS;
+        (void)fish_motion(&f, 1);
+        switch (field) {
+        case 0: f.yaw = -.9f; break;
+        case 1: f.yaw_tail = .8f; break;
+        case 2: f.hunger = 10; break;
+        case 3: f.stress = 9; break;
+        case 4: f.color = 0xffffff; break;
+        case 5: f.fin = 0xffffff; break;
+        case 6: f.traits = TRAIT_PAINTED_FINS; break;
+        case 7: f.accent = 0xffffff; break;
+        case 8: f.heading = 1; break;
+        case 9: f.speed = 23; break;
+        default: f.wander = 1; break;
+        }
+        fish_motion_t m = fish_motion(&f, 1);
+        float pale = (f.hunger - 7) / 3.0f * .35f;
+        assert(m.yh == yaw_ease(f.yaw) && m.yt == yaw_ease(f.yaw_tail));
+        assert(m.cp == cosf(tank_fish_pitch(&f)) && m.sp == sinf(tank_fish_pitch(&f)));
+        assert(m.tail == sinf((8 + f.speed * .055f) + f.wander) * (.32f + f.speed * .007f));
+        assert(m.body_rgb == mix(mix(f.color, 0xf25b65, f.stress / 10.0f * .22f), 0x7a8a8e, pale));
+        assert(m.fin_rgb == mix(mix(f.traits & TRAIT_PAINTED_FINS ? f.accent : f.fin,
+                                  0xf25b65, f.stress / 10.0f * .18f), 0x5a6a6e, pale));
+    }
+}
+static void check_ornament_art(void) {
+    static const int items[] = {9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21};
+    for (int pass = 0; pass < 3; pass++) {
+        g_buoy_sway = pass - 1; g_buoy_bob = pass;
+        for (unsigned i = 0; i < sizeof items / sizeof items[0]; i++) {
+            int item = items[i];
+            tank_t t = {0};
+            t.inventory.extra[0].item = t.inventory.extra[1].item = (uint8_t)(item + 1);
+            ornament_select(&t);
+            for (int y = 0; y < tank_ornament_h(item); y++)
+                for (int x = -1; x <= tank_ornament_w(item); x++)
+                    assert(ornament_cached_pixel(item, x, y) == ornament_pixel(item, x, y));
+            if (item != 13 && item != 21) assert(g_ornament_art && !g_ornament_failed);
+            if (g_ornament_art) for (int y = 0; y < tank_ornament_h(item); y++)
+                for (int x = 0; x < tank_ornament_w(item); x++)
+                    assert(((g_ornament_art->mask[y] >> x) & 1) == (ornament_pixel(item, x, y) != 0));
+        }
+    }
+    render_work_caches(false);
+    assert(!g_ornament_art && render_work_cache_bytes() == 0);
+    render_work_caches(true);
+    tank_t sample = {0};
+    sample.inventory.extra[0].item = sample.inventory.extra[1].item = 11;
+    ornament_select(&sample);
+    fail_render_calloc = true;
+    assert(ornament_cached_pixel(10, 12, 8) == ornament_pixel(10, 12, 8));
+    assert(!g_ornament_art && g_ornament_failed);
+    fail_render_calloc = false;
+    render_work_caches(false); render_work_caches(true);
+    ornament_select(&sample);
+    assert(ornament_cached_pixel(10, 12, 8) == ornament_pixel(10, 12, 8));
+    assert(g_ornament_art);
+    fprintf(stderr, "PASS: exact indexed ornament sprites/masks, animated fallback, bounded lifetime and allocation failure\n");
+}
+static void check_damage_merge(void) {
+    tank_resolution(true);
+    memset(g_damage_blocks, 0, sizeof g_damage_blocks);
+    g_damage_blocks[1] = g_damage_blocks[2] = 2;
+    int cursor = 0, x, y, w, h;
+    assert(render_damage_next(&cursor, &x, &y, &w, &h));
+    assert(x == 32 && y == 40 && w == 32 && h == 80);
+    assert(!render_damage_next(&cursor, &x, &y, &w, &h));
+    fprintf(stderr, "PASS: odd-row damage merges without extra pixels or exceeding an 80-row buffer\n");
 }
 #endif
 
@@ -102,6 +278,28 @@ static void fixture(tank_t *t, bool normal, int group) {
     t->light_manual_off = false;
     t->light_auto = false;
     t->night = false;
+    tank_snail_place(t);
+    t->snail_x = TANK_W * .2f;
+    if (group) { t->snail_cell = 1; t->snail_y = TANK_H * .6f; t->snail_heading = .8f; }
+    t->urchin_x = TANK_W * .7f;
+    t->urchin_frond = group ? 0 : -1;
+    t->urchin_chew = group ? 1 : 0;
+    tank_seahorse_place(t);
+    t->sh_x = TANK_W * .8f; t->sh_y = TANK_H * .7f;
+    t->sh_mode = SH_PERCH; t->sh_akind = SH_ANCHOR_SAND; t->sh_land = SH_LAND_S;
+    if (group) { t->sh_mode = SH_DRIFT; t->sh_akind = SH_ANCHOR_NONE; t->sh_vx = 18; t->sh_vy = 4; }
+    tank_shrimp_place(t, SHRIMP_START);
+    for (int i = 0; i < 4; i++) t->companion.creature_colors[i] = (uint8_t)((i + 1) | ((i + 6) << 4));
+    if (group) {
+        static const uint8_t items[] = {9, 10, 11, 12, 17, 17, 20, 21};
+        t->mussel.version = 2; t->mussel.owned = 1;
+        t->aquariums.clock_theme = CLOCK_ANALOG; t->clock_requested = true;
+        for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+            t->inventory.extra[i].item = items[i] + 1;
+            t->inventory.extra[i].x = TANK_W * (i + 1) / (float)(DECOR_EXTRA_CAP + 1);
+            t->inventory.extra[i].z = i % 2 ? DECOR_Z_FRONT : DECOR_Z_BACK;
+        }
+    }
     for (int i = 0; i < 5; i++) {
         fish_t *f = &t->fish[i];
         f->stage = i == 4 ? STAGE_ELDER : STAGE_ADULT;
@@ -145,6 +343,8 @@ static void draw_tiles(const tank_t *t, uint16_t *fb, int height) {
 static void benchmark(int frames) {
 #ifndef RENDER_BASELINE
     check_motion_cache();
+    check_ornament_art();
+    check_damage_merge();
 #endif
     for (int normal = 0; normal < 2; normal++)
         for (int detail = 0; detail < SCENE_DETAIL_COUNT; detail++)
@@ -155,6 +355,7 @@ static void benchmark(int frames) {
                 render_set_device(&device);
                 for (int i = 0; i < 3; i++) draw_tiles(&t, tiled, 80);
                 memset(render_prof_us, 0, sizeof render_prof_us);
+                memset(render_helper_us, 0, sizeof render_helper_us);
                 render_clock_us = micros;
                 int64_t start = micros();
                 for (int i = 0; i < frames; i++) {
@@ -163,10 +364,15 @@ static void benchmark(int frames) {
                 }
                 int64_t elapsed = micros() - start;
                 render_clock_us = NULL;
-                pose(&t, 239);
-                draw_tiles(&t, tiled, 80);
-                render_tank(&t, frame, TANK_W);
-                assert(!memcmp(frame, tiled, (size_t)TANK_W * TANK_H * 2));
+                static const int samples[] = {0, 59, 119, 239};
+                uint64_t hashes[4];
+                for (int sample = 0; sample < 4; sample++) {
+                    pose(&t, samples[sample]);
+                    draw_tiles(&t, tiled, 80);
+                    render_tank(&t, frame, TANK_W);
+                    assert(!memcmp(frame, tiled, (size_t)TANK_W * TANK_H * 2));
+                    hashes[sample] = hash_frame(frame);
+                }
                 tank_t before = t;
                 int64_t fish_start = micros();
                 for (int sample = 0; sample < frames; sample++) {
@@ -181,12 +387,32 @@ static void benchmark(int frames) {
                 }
                 int64_t fish_elapsed = micros() - fish_start;
                 assert(!memcmp(&t, &before, sizeof t));
+                double helpers_isolated[3] = {0};
+                if (detail != SCENE_SIMPLE) {
+                    for (int helper = 0; helper < 3; helper++) {
+                        tank_t sample = t;
+                        int64_t helper_start = micros();
+                        for (int i = 0; i < frames; i++) {
+                            sample.clock = 10 + i * .04f;
+                            ctx_t c = ctx_full(fish_frame, TANK_W, 1);
+                            if (helper == 0) draw_snail(&c, &sample, !group);
+                            else if (helper == 1) draw_urchin(&c, &sample);
+                            else draw_seahorse(&c, &sample);
+                        }
+                        helpers_isolated[helper] = (double)(micros() - helper_start) / frames;
+                    }
+                }
                 printf("{\"width\":%d,\"detail\":%d,\"group\":%d,\"frames\":%d,"
                        "\"render_us\":%.3f,\"fish_us\":%.3f,\"hash\":\"%016" PRIx64 "\",\"stages_us\":[",
                        TANK_W, detail, group, frames, (double)elapsed / frames,
                        (double)fish_elapsed / frames, hash_frame(frame));
                 for (int i = 0; i < 8; i++) printf("%s%.3f", i ? "," : "", (double)render_prof_us[i] / frames);
-                puts("]}");
+                printf("],\"helpers_us\":[%.3f,%.3f,%.3f],\"frame_hashes\":[",
+                       (double)render_helper_us[0] / frames, (double)render_helper_us[1] / frames,
+                       (double)render_helper_us[2] / frames);
+                for (int i = 0; i < 4; i++) printf("%s\"%016" PRIx64 "\"", i ? "," : "", hashes[i]);
+                printf("],\"helpers_isolated_us\":[%.3f,%.3f,%.3f]}\n",
+                       helpers_isolated[0], helpers_isolated[1], helpers_isolated[2]);
                 fflush(stdout);
             }
 }
@@ -331,6 +557,9 @@ int main(int argc, char **argv) {
     FILE *icons = fopen(argv[1], "rb"); assert(icons);
     icon_bytes = fread(icon_bank, 1, sizeof icon_bank, icons);
     assert(!ferror(icons) && feof(icons) && !fclose(icons));
+#ifdef RENDER_EMBEDDED_ICONS
+    check_embedded_icons();
+#endif
     void *decor = calloc(1, render_decor_scratch_size());
     void *mask = calloc(1, render_mask_scratch_size());
     void *backdrop = malloc(12288);

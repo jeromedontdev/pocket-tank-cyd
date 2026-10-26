@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.10
+# Pocket Tank CYD 2.3.11
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.10**. Stable firmware,
+now versioned independently. This source targets **2.3.11**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -24,6 +24,83 @@ covers named tanks, the bank, creature customization, Journal, mini-games,
 decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
+
+## New in 2.3.11: exact-color artwork and selective LCD updates
+
+Menu artwork now uses palette-indexed RGB565 where it is smaller, without
+quantizing colors. Together with the existing alpha compression, this reduces
+the unified application to **1,728,176 bytes**, leaving **237,904 bytes** per OTA
+slot. Seven low-color icons now pack four 4-bit indices per word; the other
+indexed artwork keeps 8-bit indices. This saves another **2,704 app bytes**
+over the 1,730,880-byte first indexed-art build, or 22,640 bytes versus the
+1,750,816-byte prior pass. No artwork,
+features, saves or partitions are removed. The raw SD/browser icon bank is
+unchanged.
+
+Partial LCD writes now invalidate only overlapping canonical fingerprints,
+preserving unaffected stripes even across full-frame/partial transitions.
+In the physical-display harness, returning to canonical drawing after a
+one-pixel partial update sends **1 stripe instead of 40-43** at both scales and
+orientations. This is a controlled transfer-count result, not a live FPS claim.
+Invalidation now jumps directly to the affected stripe range instead of scanning
+every stripe in the intersecting canonical band.
+All 48 sampled scene hashes and compressed/raw artwork comparisons match.
+The optimization preview was backed up, app-only flashed and fully read back on
+**COM4 only**. Release 2.3.11 includes all the following optimization stages.
+One paired hardware run measured 14.12/13.59 FPS in the two lighter scenes,
+11.73 FPS in frozen decor/clock v1 and 11.62 FPS with maximum extra ornaments.
+Differences from the preceding build were only about 0-1.2%; these diagnostic
+results do not establish a sustained live-gameplay gain.
+
+## Included in 2.3.11: rendering traffic and artwork headroom
+
+The next optimization pass caches one palette-indexed sprite and silhouette for
+the most-repeated static extra ornament, prepares fish yaw/palette calculations
+between tiles, and skips unchanged partial LCD stripes using bounded,
+overlap-invalidated fingerprints. Adjacent matching damage rows merge up to
+80 pixels high. Animated ornaments, colors, drawing detail and SPI speed remain
+unchanged. The decorated/clock diagnostic now uses a seeded, fixed-time scene
+instead of copying a changing aquarium.
+
+Lossless embedded alpha compression, shared creature-card frames and additional
+menu-only size optimization reduce the local unified app to **1,750,816 bytes**,
+leaving **215,264 bytes** in either existing OTA slot. This saves another
+**22,704 bytes** versus the first-stage build last flashed to COM4. The raw
+icon bank remains byte-identical; saves and partitions do not change.
+
+Three alternating desktop reference/current pairs showed **5.7-11.3% less
+render time** in decorated/clock scenes, **0.9-3.6% less** in lighter scenes,
+and **10.8-14.7% less** isolated fish-drawing time. All 48 sampled frame hashes
+match. These are desktop CPU measurements, not device FPS or LCD timings.
+This second-stage build was backed up, flashed and read back on **COM4 only**;
+its appearance was confirmed. The hardware
+FPS measurements below still belong to the first stage, not this build.
+
+## Included in 2.3.11: creature targeting and helper rendering
+
+Overlapping helpers now select the closest creature within its tap area, rather
+than whichever type happens to be checked first. Fish retain their existing tap
+priority. Shrimp targeting and the card's shown count follow the actual scene
+detail; hidden shrimp and the diagnostic-hidden seahorse no longer catch taps.
+The snail card describes grazing, seeking algae, exploring sand or returning
+to it. Pressing COLORS does not drag, feed or hitch a creature behind the card;
+sliding off the button cancels opening the editor.
+
+The first-stage unified application was **1,773,520 bytes**, leaving **192,560 bytes**
+in either existing OTA slot. That is 15,856 bytes smaller than the recorded
+local pre-change preview. Modal menu code and mini-games use size optimization;
+aquarium simulation, live rendering, the clock and LCD transfers retain their
+speed-oriented settings. No games, art, certificates or save fields are removed.
+
+Snail foot ridges and fixed seahorse body/fin geometry are calculated once,
+and urchin rows only prepare colors they actually use. These exact caches cost
+about 1.9 KiB of static RAM, not another framebuffer. Controlled renderer tests
+include floor/glass snails, resting/swimming seahorses, chewing/resting urchins,
+custom colors, both resolutions and all detail levels. Their 48 sampled frame
+hashes match the unchanged renderer. Desktop whole-frame timings remain mixed.
+On COM4, the fixed benchmark scenes improved from 13.90/13.46 to 14.53/14.03 FPS;
+the maximum-ornament scene improved from 9.35 to 9.62 FPS. These are controlled
+diagnostic scenes, not a guarantee of the same gain in a live aquarium.
 
 ## New in 2.3.10: mussel creature cards and colors
 

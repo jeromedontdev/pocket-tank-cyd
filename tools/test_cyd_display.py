@@ -102,6 +102,22 @@ int main(void) {
         unsigned sent_before = s_blocks_sent;
         check_frame(frame, 80);
         assert(s_blocks_sent == sent_before);
+        region_x = 32; region_w = 64; tile_y = 40; tile_h = 40;
+        display_port_flush(frame + tile_y * TANK_W);
+        unsigned partial_before = s_blocks_sent;
+        display_port_flush(frame + tile_y * TANK_W);
+        assert(s_blocks_sent == partial_before);
+        region_x = 48; region_w = 32; tile_y = 50; tile_h = 20;
+        for (int y = 50; y < 70; y++) for (int x = 48; x < 80; x++) frame[y * TANK_W + x] ^= 0x7342;
+        display_port_flush(frame + tile_y * TANK_W);
+        verify_frame(frame);
+        for (int y = 50; y < 70; y++) for (int x = 48; x < 80; x++) frame[y * TANK_W + x] ^= 0x7342;
+        region_x = 32; region_w = 64; tile_y = 40; tile_h = 40;
+        partial_before = s_blocks_sent;
+        display_port_flush(frame + tile_y * TANK_W);
+        assert(s_blocks_sent > partial_before); /* Old CRC must not hide the overlapping write. */
+        verify_frame(frame);
+        region_x = region_w = 0;
         for (int pass = 0; pass < 8; pass++) {
             region_x = pass * 29; region_w = TANK_W - region_x < 29 ? TANK_W - region_x : 29;
             tile_y = pass % 5 * 40; tile_h = TANK_H - tile_y < 40 ? TANK_H - tile_y : 40;
@@ -109,7 +125,11 @@ int main(void) {
                 for (int x = region_x; x < region_x + region_w; x++) frame[y * TANK_W + x] ^= 0x73ae;
             unsigned crc_before = crc_calls;
             display_port_flush(frame + tile_y * TANK_W);
-            assert(crc_calls == crc_before);
+            assert(crc_calls > crc_before);
+            verify_frame(frame);
+            unsigned partial_sent = s_blocks_sent;
+            display_port_flush(frame + tile_y * TANK_W);
+            assert(s_blocks_sent == partial_sent);
             verify_frame(frame);
             region_x = region_w = 0;
             check_frame(frame, 80);
@@ -151,6 +171,30 @@ int main(void) {
         for (int x = 0; x < TANK_W; x += 16)
             for (int y = 0; y < TANK_H; y += 7) frame[y * TANK_W + x] ^= 0x1234;
         check_frame(frame, height);
+        /* One partial pixel must invalidate only its physical canonical stripe. */
+        region_x = 52; region_w = 1; tile_y = 73; tile_h = 1;
+        frame[73 * TANK_W + 52] ^= 0x4512;
+        display_port_flush(frame + tile_y * TANK_W);
+        verify_frame(frame);
+        unsigned partial_sent = s_blocks_sent;
+        display_port_flush(frame + tile_y * TANK_W);
+        assert(s_blocks_sent == partial_sent);
+        region_x = region_w = 0;
+        unsigned skipped_before = s_blocks_skipped;
+        check_frame(frame, height);
+        assert(s_blocks_sent == partial_sent + 1);
+        assert(s_blocks_skipped > skipped_before);
+        /* Canonical overlap must also invalidate the old partial fingerprint. */
+        frame[73 * TANK_W + 52] ^= 0x7321;
+        check_frame(frame, height);
+        frame[73 * TANK_W + 52] ^= 0x7321;
+        region_x = 52; region_w = 1; tile_y = 73; tile_h = 1;
+        partial_sent = s_blocks_sent;
+        display_port_flush(frame + tile_y * TANK_W);
+        assert(s_blocks_sent > partial_sent);
+        verify_frame(frame);
+        region_x = region_w = 0;
+        check_frame(frame, height);
         s_inverted = !s_inverted; memset(s_block_valid, 0, sizeof s_block_valid);
         check_frame(frame, height);
         tile_y = 0; tile_h = 0; check_frame(frame, TANK_H);
@@ -172,6 +216,51 @@ int main(void) {
             check_frame(frame, height);
         }
     }
+    for (int mode = 0; mode < 8; mode++) {
+        TANK_W = mode & 1 ? 320 : 240; TANK_H = mode & 1 ? 240 : 180;
+        s_inverted = (mode & 2) != 0;
+        int height = mode & 4 ? TANK_H : 80;
+        region_x = region_w = 0;
+        memset(s_block_valid, 0, sizeof s_block_valid);
+        memset(s_partial, 0, sizeof s_partial);
+        for (int i = 0; i < TANK_W * TANK_H; i++) frame[i] = (uint16_t)(i * 71u);
+        unsigned full_before = s_blocks_sent;
+        check_frame(frame, height);
+        unsigned full_stripes = s_blocks_sent - full_before;
+        frame[73 * TANK_W + 52] ^= 0x4521;
+        region_x = 52; region_w = 1; tile_y = 73; tile_h = 1;
+        display_port_flush(frame + tile_y * TANK_W);
+        verify_frame(frame);
+        unsigned sent_before = s_blocks_sent;
+        region_x = region_w = 0;
+        check_frame(frame, height);
+        assert(s_blocks_sent == sent_before + 1);
+        printf("PASS: %dx%d %s inversion %d: partial-to-canonical resend 1 of %u stripes\n",
+            TANK_W, TANK_H, height == TANK_H ? "full" : "tiled", s_inverted, full_stripes);
+        uint32_t seed = 0x5167;
+        for (int pass = 0; pass < 80; pass++) {
+            seed = seed * 1664525u + 1013904223u;
+            region_x = (seed >> 8) % TANK_W;
+            region_w = 1 + (seed % 64);
+            if (region_x + region_w > TANK_W) region_w = TANK_W - region_x;
+            tile_y = (seed >> 16) % TANK_H;
+            tile_h = 1 + (seed % 80);
+            if (tile_y + tile_h > TANK_H) tile_h = TANK_H - tile_y;
+            for (int y = tile_y; y < tile_y + tile_h; y++)
+                for (int x = region_x; x < region_x + region_w; x++) frame[y * TANK_W + x] ^= (uint16_t)seed;
+            display_port_flush(frame + tile_y * TANK_W);
+            verify_frame(frame);
+            unsigned sent = s_blocks_sent;
+            display_port_flush(frame + tile_y * TANK_W);
+            assert(s_blocks_sent == sent);
+            if (pass % 4 == 0) {
+                region_x = region_w = 0;
+                check_frame(frame, height);
+            }
+        }
+        region_x = region_w = 0;
+        check_frame(frame, height);
+    }
     free(frame);
     puts("PASS: actual CYD flush, delayed DMA buffer ownership, exact rotated/scaled pixels, single-block changes, unchanged skips, inversion and Normal/Compact/full/tiled transitions");
 }
@@ -183,11 +272,12 @@ def main():
     parser.add_argument("--cc", default="cc")
     args = parser.parse_args()
     source = (Path(__file__).resolve().parent.parent / "firmware" / "main" / "display_port_cyd.c").read_text()
+    partial = source[source.index("typedef struct {"):source.index("/* Panel-specific")]
     flush = source[source.index("void display_port_flush("):source.index("void display_port_sleep(")]
     with tempfile.TemporaryDirectory(prefix="cyd-display-test-") as folder:
         folder = Path(folder)
         test = folder / "test.c"
-        test.write_text(HARNESS + flush + TEST)
+        test.write_text(HARNESS + partial + flush + TEST)
         executable = folder / "test.exe"
         command = [args.cc]
         if Path(args.cc).stem.lower() == "zig":

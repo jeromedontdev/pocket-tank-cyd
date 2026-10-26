@@ -8,7 +8,7 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.10 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.11 is a distinct aquarium game, not just a board port.**
 
 Version 2.3.10 treats the mussel as an inspectable, color-customizable creature.
 Tap it for automatic-income progress, daily allowance and earning/paused status.
@@ -30,6 +30,210 @@ DONE to save, or CANCEL to restore. Switching selections discards draft edits.
 Calm fish occasionally investigate the mussel or rest beside familiar companions.
 Successful saved mussel income produces a brief gold glint, never a permanent
 icon; failed payouts, Creative mode and loading a save do not trigger it.
+
+## Release 2.3.11: indexed RGB and selective canonical invalidation
+
+The newest unified app measures **1,728,176 bytes**, leaving **237,904 bytes
+(12.10%) free** in each unchanged OTA slot. It saves another **2,704 bytes**
+over the first indexed-art build (1,730,880 bytes), or **22,640 bytes** versus
+the 1,750,816-byte prior pass. Both indexed-art builds were backed up, app-only
+flashed and completely read back on **COM4 only**. The newest installed SHA256
+is `6894f9e73bab3ff1784481ecc14fe690df698c2be1c1c581ccdbed3dca0ed6c2`.
+This is the validated optimization preview; release 2.3.11 includes these changes.
+
+The generator palette-indexes 32 of the 47 embedded RGB565 planes only when
+the indexed representation is smaller. Each plane stores a 16-bit palette
+count, exact RGB565 entries, then four 4-bit indices per word for palettes of
+up to 16 colors, or two 8-bit indices per word otherwise. Seven icons use the
+4-bit form. The accessor uses shifts/masks without per-pixel division. The second
+high `icon_t.offset` bit selects this representation; the alpha RLE flag remains
+independent. There is no color quantization, new pointer, heap cache or image
+buffer. RGB data shrinks from 80,256 to 56,282 bytes (23,974 gross bytes);
+the app savings above include decoder and LCD-code costs.
+
+All four artwork blit paths use the same RGB accessor. Packing reconstructs
+the original raw bank and rejects invalid counts, lengths and indices.
+The bank remains **120,384 bytes, CRC32 `b3de6773`**, retaining SD/browser
+compatibility. Native tests compare every RGB/alpha pixel, normal/locked/scaled
+blits and thumbnails against raw artwork at both resolutions; decoder edge
+cases include odd pixel counts, the 16/17-color boundary, every 4-bit value
+and all 256 palette indices.
+
+Partial LCD transfers now invalidate only intersecting canonical checksum
+entries, calculated in physical panel coordinates. Partial rectangles no longer
+replace the retained canonical layout, and their CRCs never populate canonical
+entries. Actual canonical writes still invalidate overlapping partial entries.
+Dimension/orientation/canonical-layout changes retain full cache resets.
+The implementation adds no framebuffer or persistent rectangle table.
+Invalidation now computes the first intersecting stripe directly and visits
+only that range, rather than testing every stripe in each intersecting band.
+
+The actual-flush/delayed-DMA harness covers both resolutions, both orientations,
+full/tiled layouts, 640 generated overlapping updates, and stale partial/old-CRC
+restoration cases. In all eight resolution/orientation/layout combinations,
+a one-pixel partial update followed by canonical drawing resends **one of
+40-43 stripes**, rather than invalidating the entire canonical table.
+This is a transfer-count test, **not an on-device FPS result**.
+
+A proposed fish-motion pointer optimization was tested in three alternating
+7,200-frame desktop pairs. Although isolated fish drawing improved, full-scene
+times worsened slightly (0.2-2.9%), so it was rejected. No new fish CPU speedup
+is claimed. Final rendering retains all 48 reference frame hashes, and the
+latest 30-second soak checked 18,781 full/tile/retained frame sets without tank
+mutation. A later horizontal polygon-culling experiment also failed to show
+a reliable overall gain and was removed; polygon rasterization is unchanged.
+
+### COM4 follow-up validation
+
+One paired run compared the 1,730,880-byte first indexed-art build with the
+1,728,176-byte nibble-indexed/range-invalidation build. Both were backed up,
+flashed app-only and fully read back before testing. The same RAM-only seeded
+fixtures ran at Normal/Balanced with the 5 ms service reserve:
+
+| Fixture | Before FPS | Latest FPS | Before render ms | Latest render ms | Latest flush ms |
+|---|---:|---:|---:|---:|---:|
+| Five fish, theme 0 | 13.96 | 14.12 | 26.59 | 25.65 | 32.76 |
+| Five fish, theme 1 | 13.44 | 13.59 | 28.70 | 27.69 | 33.35 |
+| Frozen decor/clock v1 | 11.72 | 11.73 | 44.79 | 44.56 | 27.71 |
+| Maximum extra ornaments | 11.48 | 11.62 | 41.88 | 40.77 | 32.69 |
+
+The roughly 0-1.2% FPS differences are small, single-run observations, not
+evidence of a sustained gameplay improvement. No large rendering speedup is
+claimed for this pass; its confirmed benefits are smaller artwork storage and
+less invalidation bookkeeping with the same transferred image.
+
+The original bolt/pip/kelp/odie roster, wallet, ownership and clock settings
+were retained through the diagnostics, and the final `save` returned `saved`.
+The EMEET camera confirmed a rendering tank during testing, the ordinary clock
+after returning, and a legible shop with its artwork; glare limits precise color
+assessment. The shop was closed afterward without purchases/settings changes.
+Native/embedded pixel tests remain the exact-art validation. Final checks include
+38 Python tests (one skipped), browser acceptance, native simulator smoke,
+save migration tests and LCD overlap/delayed-DMA tests.
+
+## Included in 2.3.11, second stage: rendering and artwork
+
+The local unified application is **1,750,816 bytes**, with **215,264 bytes
+(10.95%) free** in either unchanged `0x1e0000` OTA slot. This is **22,704 bytes
+smaller** than the 1,773,520-byte first-stage app, or
+38,560 bytes smaller than the original local preview. This stage was backed up,
+flashed and fully read back on **COM4 only**, with the saved CYD profile and
+appearance confirmed. The hardware FPS
+results below belong to stage one, not this installation.
+
+Changes preserve artwork, timing policy, saves and partitions:
+
+- Cache a single palette-indexed full sprite and 64-bit row silhouettes for
+  the most-repeated static extra ornament. At most 4,096 indexed pixels,
+  64 palette colors and 110 mask rows are retained (under 5.2 KiB plus allocator
+  overhead); no duplicate means no allocation. Candidate changes and disabling
+  work caches release it. Animated ornaments stay procedural. Allocation/bounds
+  failures log and retain the exact procedural artwork.
+- Reuse eased fish yaw and hunger/stress/body/fin colors between tiles, with
+  explicit input-key invalidation, alongside the existing motion preparation.
+- Retain up to 48 exact physical-rectangle/CRC fingerprints for partial LCD
+  stripes (**768 bytes** of static RAM). Any overlapping write invalidates old
+  partial fingerprints, including canonical writes. Scale, tile-layout and
+  inversion changes reset them; canonical checksums and DMA ownership remain
+  intact. Matching adjacent horizontal damage runs may merge from odd or even
+  40-pixel rows, never beyond the existing 80-row buffer limit.
+- Encode embedded icon alpha as count/value RLE only when smaller, without
+  changing RGB565 colors or `icon_t` size. The 64px coin alpha shrinks from
+  4,096 to 922 bytes. Normal, locked, integer-scaled and resampled blits decode
+  exactly; source-row rewinds use a new cursor. The SD/browser bank stays
+  **120,384 bytes, CRC32 `b3de6773`**, byte-for-byte unchanged.
+- Use a shared creature-card frame and a third bounded ESP32 GCC `-Os` section
+  for fish/helper cards. Existing modal/mini-game size settings remain; live
+  aquarium, clocks, simulation and LCD code keep their speed settings.
+- Replace serial benchmark fixture 2 with **frozen decor/clock v1**: seeded
+  fish, fixed mixed ornament positions including a repeated static pair,
+  a mussel and analog clock at Unix `1792803600` advancing deterministically.
+  It no longer reads the current aquarium or network clock. The render-only
+  clock override resets after each fixture and at diagnostic exit.
+
+Three alternating reference/current desktop pairs used the same Zig `-O2`
+harness, 3,600 moving frames per case, both sizes and all three details. The
+reference renderer is the preserved first-stage source, not the older release.
+All 48 sampled full/tile frame hashes matched in every pair. Median CPU times:
+
+| Workload | Render time reduction |
+|---|---:|
+| Decorated/analog-clock scenes, both sizes and all details | 5.7-11.3% |
+| Lighter five-fish scenes | 0.9-3.6% |
+| Isolated five-fish drawing | 10.8-14.7% |
+
+These are desktop render timings, **not on-device FPS, LCD transfer timings or
+a gameplay minimum**. The rejected per-row ornament cache regressed performance;
+only the measured full-sprite implementation is retained. Use `--baseline-file`
+to compare a preserved local renderer, or `--baseline` for a Git revision, with
+the same current fixture harness and no concurrent CPU-heavy tests.
+
+CI/release stress now use `--embedded-icons`: every RGB/alpha sample and all four
+blit paths are compared against the unchanged raw bank, including clipped art,
+repeated samples and resampled thumbnails at both scales. Tests also cover
+exact ornament pixels/masks, animated fallback, allocation failure, cache
+lifetime, same-frame fish-key changes and odd-row damage merging. The actual
+LCD harness checks that an overlapping write cannot be hidden by an old partial
+CRC when the original region returns to its previous pixels.
+
+## Included in 2.3.11, first stage: creature and helper rendering
+
+Helper-card targeting selects the nearest eligible helper inside its existing
+hit area, while retaining fish-first selection and shrimp triple-tap behavior.
+Only the shrimp actually drawn at the current detail setting receive taps.
+The diagnostic-hidden seahorse is not tappable. COLORS captures its gesture
+before water drag/hold/feed handling; releasing outside the button cancels it.
+The simulator/browser follow the same targeting and release behavior. Snail
+cards show their current grazing, seeking, exploring or return-to-sand activity.
+
+The first-stage unified app measured **1,773,520 bytes**, versus the recorded
+1,789,376-byte pre-change preview: **15,856 bytes saved** and **192,560 bytes
+(9.79%) free** per unchanged `0x1e0000` OTA slot. Isolating just the modal
+renderer compiler change saves 12,896 bytes (1,786,416 to 1,773,520). ESP32 GCC
+uses `-Os` for the milestones/shop and settings/journal/home modal sections,
+and for mini-games. Aquarium drawing, simulation, live clocks, touch and LCD
+transfer code retain their speed settings. Native/Clang builds do not use the
+GCC-only modal pragmas. Save schema, companion version, games, artwork, TLS trust
+and rollback remain intact.
+
+Exact fixed-geometry caches remove repeated snail ridge powers and seahorse
+body-row powers / fin radius-angle calculations. Urchin rows prepare only
+their visible tones. The caches add approximately 1.9 KiB of static RAM and no
+heap allocation. The stress fixtures now actually place their unlocked helpers,
+exercise floor/glass, rest/swim and chew/rest variants with custom colors, and
+report separate helper timings plus four full/tile hashes per case. Use the same
+fixture harness for both sides:
+
+```powershell
+python ..\tools\test_renderer_stress.py --cc PATH_TO_CC --baseline v2.3.10 --frames 7200 --seconds 0 --out before.json
+python ..\tools\test_renderer_stress.py --cc PATH_TO_CC --frames 7200 --seconds 20 --out after.json
+```
+
+All 48 sampled scene hashes matched the reference in three paired desktop runs;
+isolated upright-snail drawing was about 10-15% faster and urchin drawing about
+5-16% faster. Seahorse improvements were small (roughly 1-4%). Glass-snail
+timings did not improve. Whole-frame timings were mixed, so these do not
+establish a hardware FPS gain.
+
+COM4 was subsequently app-only flashed with a fresh full 4 MiB backup and
+complete application readback verification. The same RAM-only benchmark
+(including service reserve and real display transfers) measured:
+
+| Fixed scene | Before FPS | After FPS | Before render ms | After render ms |
+|---|---:|---:|---:|---:|
+| Five fish, theme 0 | 13.90 | 14.53 | 26.36 | 23.90 |
+| Five fish, theme 1 | 13.46 | 14.03 | 28.30 | 25.87 |
+| Maximum extra ornaments | 9.35 | 9.62 | 61.35 | 58.95 |
+
+Snail time fell from about 2.1-2.2 to 1.7 ms and seahorse time from about
+7.2 to 5.6-5.7 ms in these scenes. LCD flush remained around 33 ms. These are
+single before/after hardware runs, not repeated-run statistics.
+The live-copy clock fixture changed from 11.79 to 10.04 FPS, but copies a
+changing aquarium; its fish/front cost rose from 21.80 to 38.33 ms, so it cannot
+establish a cross-build regression or gain. Stage two replaces that fixture
+with frozen decor/clock v1; its results cannot be compared to this live copy.
+Original residents and successful saving
+were verified after the benchmark.
 
 ## Supported board variants
 
@@ -606,19 +810,19 @@ or faster SPI are involved. Profiling now separates fish-only time from the
 larger fish/front-vegetation/helper stage; these nested counters must not be
 summed as independent stages.
 
-The serial `benchmark` command requires Normal scale and no setup panel.
-It temporarily allocates one isolated `tank_t`, pauses real care/input, runs
-two seeded five-adult/elder scenes (all ten varieties across them), then a
-five-resident copy of the current aquarium with its clock requested.
-Only the first two fixtures are reproducible across invocations; the live-copy
-fixture reflects current resident/helper/layout state and is not an exact A/B.
-Each scene warms for ten frames. Fixed scenes measure 240 frames each, and
-the live copy measures 1,200. It ticks only the fixture, uses the real retained
+The current serial `benchmark` command requires Normal scale and no setup panel.
+It temporarily allocates one isolated `tank_t`, pauses real care/input, and runs
+four seeded five-adult/elder scenes: two themes (all ten varieties across them),
+frozen decor/clock v1, and maximum extra ornaments. All four are reproducible;
+the frozen clock scene replaces the original changing live-copy fixture.
+Each scene warms for ten frames. The clock scene measures 1,200 frames and
+the other scenes measure 240 each. It ticks only the fixture, uses the real retained
 damage renderer/LCD, and never runs progression, saves or staging on it.
 The original aquarium returns automatically; diagnostic timing is excluded
 from ordinary FPS and LCD-transfer logs.
 
-Local COM4 results, Normal/Balanced, including an additional 5 ms/frame sleep
+Historical COM4 results from the original live-copy diagnostic, Normal/Balanced,
+including an additional 5 ms/frame sleep
 reserve for ordinary services (plus the normal yield):
 
 | Workload | Average FPS | Lowest 120-frame window |

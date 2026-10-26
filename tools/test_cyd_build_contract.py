@@ -56,9 +56,19 @@ class CydBuildContractTests(unittest.TestCase):
         size_flags = re.search(r"set_property\(SOURCE(.*?)APPEND PROPERTY COMPILE_OPTIONS \"-Os\"\)",
                                core, re.S)
         self.assertIsNotNone(size_flags)
-        for source in ("tank.c", "render.c", "games.c", "progression.c", "companion.c"):
+        for source in ("tank.c", "render.c", "progression.c", "companion.c"):
             self.assertNotIn(f'/{source}"', size_flags[1])
+        self.assertIn('/games.c"', size_flags[1])
         self.assertIn("PRIVATE -O2 -ffast-math", core)
+        renderer = (ROOT / "common" / "render.c").read_text()
+        menus = re.findall(r"#pragma GCC push_options(.*?)#pragma GCC pop_options", renderer, re.S)
+        self.assertEqual(len(menus), 3)
+        for section in menus:
+            self.assertIn('#pragma GCC optimize ("Os")', section)
+            for hot in ("render_tank_scene(", "draw_fish_core(", "clock_overlay_live("):
+                self.assertNotIn(hot, section)
+        for menu in ("render_stats_card(", "render_milestones(", "render_shop(", "render_settings(", "render_life("):
+            self.assertTrue(any(menu in section for section in menus), menu)
         main = (FIRMWARE / "main" / "CMakeLists.txt").read_text()
         size_flags = re.search(r"set_property\(SOURCE(.*?)APPEND PROPERTY COMPILE_OPTIONS \"-Os\"\)",
                                main, re.S)

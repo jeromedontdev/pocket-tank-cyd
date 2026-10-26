@@ -472,24 +472,29 @@ void touch_port_poll(tank_t *t) {
       if (rf >= 0) { s_ms = true; s_set = false; s_shop = false; s_sel = -1; render_milestones_show_fish(t, rf); } }
     bool modal = s_ms || s_set || s_shop || s_cf || su || s_upd;   /* a page or a prompt owns the glass */
     static bool card_next;
-    if (touched && !s_down) card_next = !modal && render_stats_next_hit(t, s_sel, s_px, s_py);
+    static int card_color = -1;
+    if (touched && !s_down) {
+        card_next = !modal && render_stats_next_hit(t, s_sel, s_px, s_py);
+        card_color = modal ? -1 : render_creature_colors_hit(t, s_sel, s_px, s_py);
+    }
+    bool card_control = card_next || card_color >= 0;
     if (touched) {                                           /* stroke = wipe/slash, reaching the glass (stroke_point above) */
         float dx, dy; stroke_point(!s_down, tx, ty, &dx, &dy);
         if (!s_down) { s_dx0 = s_dx1 = dx; s_frames = 0; s_raw_px = x[0]; s_raw_py = y[0]; }
         if (dx < s_dx0) s_dx0 = dx;
         if (dx > s_dx1) s_dx1 = dx;
         s_dlx = dx; s_dly = dy; s_frames++;
-        s_lx = tx; s_ly = ty; if (!modal && !card_next) tank_touch_drag(t, dx, dy);
+        s_lx = tx; s_ly = ty; if (!modal && !card_control) tank_touch_drag(t, dx, dy);
     }
     /* tap-and-hold on a decoration (2026-09-24, Strato: "right now it's like 5
        taps to get back to the edit"): a still finger 700 ms on an owned
        piece opens its placement page (MOVE / DEPTH / SELL) right there */
-    if (touched && !modal && !card_next && !s_held_page && t->tool == TOOL_HAND && now - s_press_us > 700000 && fabsf(tx - s_px) < 24 && fabsf(ty - s_py) < 24) {
+    if (touched && !modal && !card_control && !s_held_page && t->tool == TOOL_HAND && now - s_press_us > 700000 && fabsf(tx - s_px) < 24 && fabsf(ty - s_py) < 24) {
         int it = tank_decor_hit(t, s_px, s_py);
         if (it >= 0) { setup_begin_place(t, it); s_held_page = true; s_sel = -1;
                        ESP_LOGI(TAG, "held on the %s: placement page up", SD_ITEMS[it].name); }
     }
-    if (touched && !modal && !card_next && !s_held_page && now - s_press_us > 300000 && fabsf(ty - s_py) < 30) tank_touch_hold(t, tx, ty);
+    if (touched && !modal && !card_control && !s_held_page && now - s_press_us > 300000 && fabsf(ty - s_py) < 30) tank_touch_hold(t, tx, ty);
     if (!touched && s_down) {
         /* release: classify with the LAST touched position (the old code fell
            back to the PRESS position here, so dx/dy were always 0 - every
@@ -598,10 +603,11 @@ void touch_port_poll(tank_t *t) {
                 }
                 goto released;
             }
-            int creature_color = render_creature_colors_hit(t, s_sel, s_px, s_py);
-            if (creature_color >= 0) {
-                render_life_creature_open(creature_color);
-                s_ms = s_life = true; s_from_home = false; s_sel = -1;
+            if (card_color >= 0) {
+                if (render_creature_colors_hit(t, s_sel, s_lx, s_ly) == card_color) {
+                    render_life_creature_open(card_color);
+                    s_ms = s_life = true; s_from_home = false; s_sel = -1;
+                }
                 goto released;
             }
             if (s_sel >= 0 && s_sel < t->n_fish && render_tools_hit(s_px, s_py) >= 0) {   /* the toolbox under the card (2026-10-01):
@@ -638,25 +644,16 @@ void touch_port_poll(tank_t *t) {
                 float d2 = d2a < d2b ? d2a : d2b;
                 if (d2 < bd) { bd = d2; best = i; }
             }
+            int helper = render_creature_card_hit(t, s_px, s_py);
             if (best >= 0) { s_sel = (best == s_sel) ? -1 : best; s_sel_us = now; }
-            else if (render_creature_card_hit(t, s_px, s_py) == RENDER_CARD_MUSSEL) {
-                s_sel = s_sel == RENDER_CARD_MUSSEL ? -1 : RENDER_CARD_MUSSEL; s_sel_us = now;
-                ESP_LOGI(TAG, "mussel tapped: card %s", s_sel >= 0 ? "up" : "down"); }
-            else if (!render_simple_scene() && tank_snail_hit(t, s_px, s_py)) {   /* the snail: its card (2026-09-16), the fish first */
-                s_sel = s_sel == RENDER_CARD_SNAIL ? -1 : RENDER_CARD_SNAIL; s_sel_us = now;
-                ESP_LOGI(TAG, "snail tapped: card %s (%d spots grazed)", s_sel >= 0 ? "up" : "down", (int)t->snail_grazed); }
-            else if (!render_simple_scene() && tank_urchin_hit(t, s_px, s_py)) {  /* the urchin: its card (2026-10-02) */
-                s_sel = s_sel == RENDER_CARD_URCHIN ? -1 : RENDER_CARD_URCHIN; s_sel_us = now;
-                ESP_LOGI(TAG, "urchin tapped: card %s (%.0f cm of grass grazed)", s_sel >= 0 ? "up" : "down", t->urchin_grazed_px / PX_PER_CM); }
-            else if (!render_simple_scene() && tank_seahorse_hit(t, s_px, s_py)) {  /* the seahorse: its card (0.3.6) */
-                s_sel = s_sel == RENDER_CARD_SEAHORSE ? -1 : RENDER_CARD_SEAHORSE; s_sel_us = now;
-                ESP_LOGI(TAG, "seahorse tapped: card %s (%d hitches, %.1f days)", s_sel >= 0 ? "up" : "down", (int)t->sh_hitches, tank_seahorse_days(t)); }
-            else if (!render_simple_scene() && tank_shrimp_hit(t, s_px, s_py)) {  /* the shrimp school (2026-09-29): a tap its card, the third quick tap scares them */
-                int taps = tank_shrimp_tap(t, s_px, s_py);
-                if (taps == 1) { s_sel = s_sel == RENDER_CARD_SHRIMP ? -1 : RENDER_CARD_SHRIMP; s_sel_us = now; }
-                else if (taps >= 3) s_sel = -1;
-                ESP_LOGI(TAG, "shrimp tapped (%d): card %s | %d shrimp, %d eaten, %d/%d to the next", taps, s_sel == RENDER_CARD_SHRIMP ? "up" : "down",
-                         t->shrimp_n, (int)t->shrimp_eaten, t->shrimp_food, SHRIMP_PER_JOIN); }
+            else if (helper >= 0) {
+                if (helper == RENDER_CARD_SHRIMP) {
+                    int taps = tank_shrimp_tap(t, s_px, s_py);
+                    if (taps == 1) { s_sel = s_sel == helper ? -1 : helper; s_sel_us = now; }
+                    else if (taps >= 3) s_sel = -1;
+                } else { s_sel = s_sel == helper ? -1 : helper; s_sel_us = now; }
+                ESP_LOGI(TAG, "creature %d tapped: card %s", helper, s_sel >= 0 ? "up" : "down");
+            }
             else if (s_sel >= 0) s_sel = -1;   /* card up: a tap on empty glass just
                                                   dismisses it - it is NOT a tank tap
                                                   (no feed, no light-toggle burst) */
@@ -665,7 +662,7 @@ void touch_port_poll(tank_t *t) {
         else if (s_ms && !s_journal && !s_bank && !s_games && !s_life && !s_back && fabsf(dx) >= 40 && fabsf(dx) > 2 * fabsf(dy)) {   /* sideways along the TANK row: its page (2026-09-30) */
             if (render_milestones_swipe(t, s_px, s_py, dx)) ESP_LOGI(TAG, "page swipe %.0f px on the tank row", dx);
         }
-        else if (!card_next && !s_ms && t->tool == TOOL_HAND && s_py - tank_glass_top(s_px) < 60 && dy >= 40) tank_feed(t, s_lx, 3);  /* drag down from the top = feed (not with a tool in hand) */
+        else if (!card_control && !s_ms && t->tool == TOOL_HAND && s_py - tank_glass_top(s_px) < 60 && dy >= 40) tank_feed(t, s_lx, 3);  /* drag down from the top = feed (not with a tool in hand) */
     }
 released:
     if (!touched) s_held_page = false;

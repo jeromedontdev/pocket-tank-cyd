@@ -175,7 +175,19 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.10: mussel creature cards and saved colors
+### New in 2.3.11: creature polish, exact rendering caches and lossless artwork
+
+- Overlapping helpers select the nearest eligible creature, retaining fish-first priority. Only visible shrimp and the visible seahorse receive taps; shrimp card counts follow scene detail.
+- Snail cards describe grazing, seeking algae, exploring sand or returning to sand. COLORS owns its press/drag/release gesture; sliding off cancels instead of feeding or dragging the tank behind it.
+- Exact snail/seahorse geometry, lazy urchin palettes and prepared fish yaw/colors reduce repeated tile work. Repeated static ornaments share one bounded indexed sprite and silhouette; animated artwork remains procedural.
+- Partial LCD fingerprints use exact physical rectangles and overlap invalidation. Unaffected canonical stripes remain valid; adjacent matching damage rows merge within existing 80-row buffers. No faster SPI, reduced detail or new framebuffer.
+- Embedded alpha uses lossless RLE; RGB565 artwork uses exact 4-bit/8-bit palette indices only when smaller. Every source RGB/alpha pixel is preserved, and the SD/browser bank remains 120,384 bytes with CRC32 b3de6773.
+- Menu/card layout sharing and bounded menu/mini-game size optimization retain all games, artwork and TLS trust. The final unified preview was 1,728,176 bytes, leaving 237,904 bytes per OTA slot; packaged asset sizes and SHA-256 are authoritative.
+- Frozen decor/clock v1 replaces the changing live-copy diagnostic. Three paired desktop cache runs retained all 48 sampled hashes; decorated CPU render times fell 5.7-11.3% in that stage. Final COM4 diagnostic scenes measured 14.12/13.59/11.73/11.62 FPS. Small final-pass differences are single-run observations, not a universal gameplay speedup.
+- Verified actual LCD overlap/delayed DMA, every embedded blit path, both scales, all scene details, save migrations, browser acceptance, native simulator and fresh-backup/app-readback COM4 flashing.
+- Save schema, companion version, partitions and calibration are unchanged from 2.3.10. **Back up first; do not downgrade after saving with the version-6 companion format.**
+
+### Retained from 2.3.10: mussel creature cards and saved colors
 
 - Tap the resident mussel for its automatic-income progress, shared daily allowance and current earning, care-pause or save-pending status. No collection action or extra income.
 - Helper cards have visible next arrows to cycle through owned residents, including the mussel. Fish cards use high-contrast graphical chevrons.

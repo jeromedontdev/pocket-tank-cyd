@@ -1855,7 +1855,6 @@ static void seahorse_tick(tank_t *t, float dt) {
 #define SHRIMP_DART      58.0f        /* px/s, the tail-flick escape */
 #define SHRIMP_SEP_X     18.0f        /* personal space, side to side (a body and a bit) ... */
 #define SHRIMP_SEP_Y     11.0f        /* ... and up and down (7 stacked them in towers on the glass) */
-#define SHRIMP_TAP_R     30.0f        /* a fingertip on a shrimp: its card */
 #define SHRIMP_HEAD      7.0f         /* the head's offset from the body's centre, along the facing */
 static float shrimp_hash(int i, int k) {  /* a fixed 0..1 per shrimp: its place in the school (no RNG draw) */
     uint32_t h = (uint32_t)i * 2654435761u ^ (uint32_t)k * 40503u;

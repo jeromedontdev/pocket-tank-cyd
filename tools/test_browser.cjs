@@ -358,6 +358,15 @@ async function main() {
       assert.equal(await native("return game._sim_selected()"), 95, "Tapping the resident mussel opens its information card");
       await menuImage(`mussel-info-${scale}`);
       const beforeColors = await snapshot();
+      const colorEdge = await canvasPoint(127 / 448, 307 / 368);
+      const colorOutside = await canvasPoint(119 / 448, 307 / 368);
+      await page.mouse.move(colorEdge.x, colorEdge.y);
+      await page.mouse.down();
+      await page.mouse.move(colorOutside.x, colorOutside.y);
+      await page.mouse.up();
+      assert.equal(await native("return game._sim_page()"), 0, "Sliding off COLORS cancels instead of opening the editor");
+      assert.equal(await native("return game._sim_selected()"), 95, "A cancelled COLORS press keeps the creature card");
+      assert.equal((await snapshot()).tank.sd_balance, beforeColors.tank.sd_balance);
       await tap(224, 307);
       assert.equal(await native("return game._sim_page()"), 9, "Mussel COLORS opens the shared creature editor");
       const naturalMussel = await menuImage(`mussel-colors-natural-${scale}`);

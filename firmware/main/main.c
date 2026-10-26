@@ -306,18 +306,9 @@ static void render_benchmark(uint16_t *buffer) {
         return;
     }
     ESP_LOGI("benchmark", "BEGIN RAM-only five-fish Normal Balanced; no progression or save writes");
-    ESP_LOGI("benchmark", "Two fixed scenes, live-copy decor/clock, then maximum extra ornaments; includes 5 ms/frame service reserve");
+    ESP_LOGI("benchmark", "Two fixed scenes, frozen decor/clock v1, then maximum extra ornaments; includes 5 ms/frame service reserve");
     for (int fixture = 0; fixture < 4; fixture++) {
-        if (fixture == 2) {
-            *sample = tank;
-            for (int i = sample->n_fish; i < 5; i++) {
-                sample->fish[i] = sample->fish[0];
-                sample->fish[i].x = TANK_W * .8f;
-                sample->fish[i].y = TANK_BOT * .6f;
-            }
-            sample->n_fish = 5;
-            sample->clock_requested = true;
-        } else {
+        {
             memset(sample, 0, sizeof *sample);
             tank_init(sample, 0x5167);
             tank_new_population(sample);
@@ -358,6 +349,19 @@ static void render_benchmark(uint16_t *buffer) {
                     sample->inventory.extra[i].z = i % 2 ? DECOR_Z_FRONT : DECOR_Z_BACK;
                 }
             }
+            if (fixture == 2) {
+                static const uint8_t items[] = {9, 10, 11, 12, 17, 17, 20, 21};
+                sample->mussel.version = 2; sample->mussel.owned = 1;
+                sample->clock_requested = true;
+                sample->aquariums.clock_theme = CLOCK_ANALOG;
+                sample->aquariums.clock_flags = 0;
+                sample->aquariums.clock_layout = 0;
+                for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+                    sample->inventory.extra[i].item = items[i] + 1;
+                    sample->inventory.extra[i].x = TANK_W * (i + 1) / (float)(DECOR_EXTRA_CAP + 1);
+                    sample->inventory.extra[i].z = i % 2 ? DECOR_Z_FRONT : DECOR_Z_BACK;
+                }
+            }
         }
         sample->ui_cover = sample->hold_active = sample->drag_active = false;
         render_device_t device = {0, 0, false, -1, SCENE_BALANCED};
@@ -369,6 +373,7 @@ static void render_benchmark(uint16_t *buffer) {
         int64_t started = 0, window = 0, tick = 0, draw = 0, flush = 0;
         double lowest_fps = 1e9;
         for (int frame = 0; frame < timed_frames + 10; frame++) {
+            render_clock_fixed_unix = fixture == 2 ? INT64_C(1792803600) + frame / 10 : 0;
             if (frame == 10) {
                 started = window = esp_timer_get_time();
                 memset(render_prof_us, 0, sizeof render_prof_us);
@@ -409,8 +414,10 @@ static void render_benchmark(uint16_t *buffer) {
                  render_prof_us[1] / divisor);
         ESP_LOGI("benchmark", "HELPERS snail %.2f urchin %.2f seahorse %.2f ms",
                  render_helper_us[0] / divisor, render_helper_us[1] / divisor, render_helper_us[2] / divisor);
+        render_clock_fixed_unix = 0;
     }
     free(sample);
+    render_clock_fixed_unix = 0;
     int64_t discarded_wait, discarded_send;
     display_port_flush_prof(&discarded_wait, &discarded_send);
     render_damage_begin(&tank, true);
