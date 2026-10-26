@@ -26,19 +26,18 @@
 <main>
   <nav aria-label="Main navigation"><a href="./">Features &amp; home</a> &middot; <a href="./play.html">Play in browser</a> &middot; <a href="./viewer.html">Save viewer</a></nav>
   <header class="brand"><img src="./logo.svg" alt="" width="128" height="96"><h1>Pocket Tank CYD</h1></header>
-  <p>For the original <strong>ESP32-2432S028 CYD</strong> and
-    <strong>ELEGOO ESP32-32E 2.8-inch ILI9341V</strong>
-    (4 MB flash, resistive touch). Not for other ESP32 boards.
+  <p>For <strong>CYD</strong> and <strong>ELEGOO CYD</strong>
+    (2.8-inch resistive touch, 4 MB flash). Other CYD variants are not yet verified.
     The factory installer checks the ESP32 chip family, but cannot identify your display model.
     The save-preserving updater additionally verifies Pocket Tank CYD's identity and layout.</p>
   <label for="board">Choose your exact display board</label>
   <select id="board">
-    <option value="cyd2432s028">ESP32-2432S028 CYD (original supported display revision)</option>
-    <option value="elegoo28">ELEGOO ESP32-32E 2.8-inch ILI9341V</option>
+    <option value="cyd2432s028">CYD</option>
+    <option value="elegoo28">ELEGOO CYD</option>
   </select>
   <p>The unified application is the same for both boards; your selection sets the
-    saved hardware profile. An ESP32-32E module label alone does not identify the LCD.
-    ELEGOO has no room-light sensor; GPIO34 measures battery voltage instead.</p>
+    saved hardware profile. The module label alone does not identify the LCD.
+    ELEGOO CYD has no room-light sensor; GPIO34 measures battery voltage instead.</p>
   <p>If an ELEGOO board already has the original CYD firmware and shows white,
     its installed identity is wrong for the selected board. The safe updater will
     refuse it. Use an expert app-only conversion with a full-flash backup;

@@ -603,8 +603,13 @@ For feature work, update the relevant entries in:
   Chromium suite with Node 22.16.0 before deployment. Reject corrupt native
   archives/preferences before import replaces localStorage; preserve exact
   stored data on failed startup. Never expose credential/update flows in web play.
-  Public Pages must check out latest stable released source, never main; verify
-  its tag/commit and browser version against the staged installer. Display the
+  Public Pages must build game/updater code from latest stable released source,
+  never main. The deployment overlays only current web/index.html,
+  web/flash.html, web/board-profiles.mjs display names and their installer UI test
+  for copy-only fixes. Keep internal hardware keys/paths and update logic
+  compatible with the release; do not use this exception for behavioral changes.
+  Public labels are CYD / ELEGOO CYD, not model numbers. Verify
+  the release tag/commit and browser version against the staged installer. Display the
   tag/commit. Test normal/fullscreen/letterboxed and both resolutions, exact
   pellet columns, mobile touch and ignored margins; preserve the pellet cap.
   Browser feeding is Place food then tap a column; no position-preset buttons.

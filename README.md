@@ -346,8 +346,10 @@ Hardware touchscreen behavior and the save format are unchanged.
   Plain surface taps also feed; the tank's existing pellet limit still applies.
 - Optional **Touch hints** show where taps/drags land. Letterbox margins do
   not activate the tank.
-- The public website/game is built from the latest stable **release tag**, not
-  unreleased main. Its displayed tag/source commit and installer version are
+- The public game and updater are built from the latest stable **release tag**,
+  not unreleased main. The home/flasher HTML and board display names can receive
+  copy-only updates from main without changing released game/update logic or
+  internal hardware identities. Its displayed tag/source commit and installer version are
   checked together before deployment. It compiles shared C code to WebAssembly,
   not the ESP32 binary.
 

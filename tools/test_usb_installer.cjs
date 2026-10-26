@@ -101,7 +101,7 @@ async function main() {
       assert.equal(await page.locator("#board").isDisabled(), false);
       assert.equal(await page.evaluate(() => document.querySelector("#factory-section").inert), false);
       await page.locator("#board").selectOption("cyd2432s028");
-      await page.waitForFunction(() => document.querySelector("#status").textContent.includes("for ESP32-2432S028"));
+      await page.waitForFunction(() => document.querySelector("#status").textContent.endsWith("for CYD."));
       assert.equal(await page.locator("#update-acknowledge").isChecked(), false);
       assert.equal(await page.locator("#acknowledge").isChecked(), false);
       await page.locator("#update-acknowledge").check();

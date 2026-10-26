@@ -21,6 +21,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Preserve current website copy and its UI test
+        run: |
+          mkdir -p "$RUNNER_TEMP/cyd-website-copy"
+          cp web/index.html web/flash.html web/board-profiles.mjs tools/test_usb_installer.cjs "$RUNNER_TEMP/cyd-website-copy/"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -37,6 +41,12 @@ jobs:
         with:
           ref: ${{ steps.release.outputs.tag }}
           fetch-depth: 0
+      - name: Apply current website copy without changing released game or updater code
+        run: |
+          cp "$RUNNER_TEMP/cyd-website-copy/index.html" web/index.html
+          cp "$RUNNER_TEMP/cyd-website-copy/flash.html" web/flash.html
+          cp "$RUNNER_TEMP/cyd-website-copy/board-profiles.mjs" web/board-profiles.mjs
+          cp "$RUNNER_TEMP/cyd-website-copy/test_usb_installer.cjs" tools/test_usb_installer.cjs
       - run: python tools/prepare_web_installer.py
       - uses: mymindstorm/setup-emsdk@v14
         with:

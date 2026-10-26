@@ -1,10 +1,10 @@
 export const BOARDS = Object.freeze({
   cyd2432s028: Object.freeze({
-    name: "ESP32-2432S028 CYD", manifest: "./manifest.json",
+    name: "CYD", manifest: "./manifest.json",
     update: "./update.json", app: "pocket-tank-cyd-app.bin",
   }),
   elegoo28: Object.freeze({
-    name: "ELEGOO ESP32-32E 2.8-inch ILI9341V", manifest: "./elegoo-manifest.json",
+    name: "ELEGOO CYD", manifest: "./elegoo-manifest.json",
     update: "./elegoo-update.json", app: "pocket-tank-elegoo-app.bin",
   }),
   cydesp32profiles: Object.freeze({

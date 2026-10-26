@@ -77,8 +77,8 @@
         <a class="button" href="./play.html">Play in your browser</a>
         <a class="button" href="#features">Explore the features</a>
       </div>
-      <p>Made for <strong>ESP32-2432S028 CYD</strong> and
-        <strong>ELEGOO ESP32-32E 2.8-inch ILI9341V</strong>: resistive touchscreen,
+      <p>Made for <strong>CYD</strong> and
+        <strong>ELEGOO CYD</strong>: 2.8-inch resistive touchscreen,
         4 MB flash, no PSRAM required.</p>
     </div>
     <figure>
@@ -106,14 +106,16 @@
   <section class="card" aria-labelledby="boards-heading">
     <p class="eyebrow">New in 2.3.6</p>
     <h2 id="boards-heading">Two displays, the same little aquarium</h2>
-    <p>The USB installer now offers the original CYD and the ELEGOO
-      ESP32-32E 2.8-inch ILI9341V separately. Each has its own app, factory image,
-      SD update and GitHub Wi-Fi channel; normal updates refuse a different board.</p>
-    <p>The ELEGOO needs different LCD initialization, not different touch pins.
+    <p>CYD and ELEGOO CYD use the same firmware application. Choose your hardware
+      profile in the USB installer; it remembers the correct display setup.
+      Factory images set that profile for new boards. After migration, both use
+      the unified SD update and GitHub Wi-Fi channel; legacy update downloads
+      remain available.</p>
+    <p>ELEGOO CYD needs different LCD initialization, not different touch pins.
       Its GPIO34 senses a battery, so automatic room-light dimming is unavailable;
       manual brightness, touch, games and internal tanks still work.
-      No battery or audio application is included. An ESP32-32E module label
-      alone does not identify other display boards.</p>
+      No battery or audio application is included. CYD is a family of boards,
+      not a guarantee that every display variant is compatible.</p>
     <a href="./flash.html">Choose your exact board in the installer</a>
   </section>
 
@@ -539,8 +541,8 @@
   <section class="card" aria-labelledby="install-heading">
     <h2 id="install-heading">Ready to give your CYD a little world?</h2>
     <ol>
-      <li>Check that your board is the supported <strong>ESP32-2432S028 CYD</strong>
-        or <strong>ELEGOO ESP32-32E 2.8-inch ILI9341V</strong>, then select it in the flasher.</li>
+      <li>Choose the <strong>CYD</strong> or <strong>ELEGOO CYD</strong>
+        hardware profile matching your board in the flasher.</li>
       <li>Use desktop Chrome or Edge and a USB data cable.</li>
       <li>Open the flasher and choose a save-preserving update for an existing tank,
         or a factory installation for a new board.</li>

@@ -98,6 +98,12 @@ class WebInstallerTests(unittest.TestCase):
         for theme in ("Digital", "Analog", "Flip", "Binary", "Orbit"):
             self.assertIn(theme, home)
         self.assertIn("distinct aquarium game", home)
+        for text in (home, flasher):
+            self.assertNotRegex(text, r"ESP32-2432S028|ESP32-32E|ILI9341V")
+        self.assertIn('value="cyd2432s028">CYD</option>', flasher)
+        self.assertIn('value="elegoo28">ELEGOO CYD</option>', flasher)
+        self.assertIn("same firmware application", home)
+        self.assertNotIn("Each has its own app", home)
         self.assertNotIn("usb-update.mjs", home)
         self.assertNotIn("esp-web-install-button", home)
         self.assertIn('src="./usb-update.mjs"', flasher)
