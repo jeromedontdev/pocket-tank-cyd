@@ -174,7 +174,14 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.6: one firmware, explicit CYD / ELEGOO profiles
+### New in 2.3.7: quieter defaults and ELEGOO touch correction
+
+- Trophies are hidden by default in new aquariums, including Creative mode. Enable them in Life > Rewards > Trophies; existing saved preferences are preserved.
+- ELEGOO's fresh affine touch default reverses X and preserves Y, matching the previously working calibration rather than reversing the wrong axis. Raw coordinates and saved calibrations remain unchanged.
+- Touch defaults are regression-tested for both board profiles, unified runtime selection, both UI sizes and rotation. Fresh physical touch still needs confirmation; no existing calibration is erased to simulate a fresh board.
+- ELEGOO brightness diagnostics already show maximum duty255 with night/room dimming off, using the vendor panel/PWM settings. No brightness increase is claimed in this release.
+
+### Unified CYD / ELEGOO profiles
 
 - The unified application is byte-identical on the original CYD and ELEGOO ESP32-32E 2.8-inch ILI9341V. The website selects a saved hardware profile, not a different game binary. New-board factory downloads contain that same app and a board-specific blank NVS profile.
 - Existing tanks migrate through the save-preserving USB updater. Legacy board-specific Wi-Fi/SD assets remain available; once unified, use unified-update.ptu / unified-ota.json. Unrelated family markers, unknown hardware, pending slots and unexpected partitions are still refused.

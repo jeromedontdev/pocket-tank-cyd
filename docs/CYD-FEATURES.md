@@ -2,7 +2,12 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.6**
+**An illustrated tour of Pocket Tank CYD 2.3.7**
+
+**2.3.7 display defaults:** trophies start hidden in new aquariums, including
+Creative mode. Enable them in **Life > Rewards > Trophies**. Existing saved
+preferences are preserved. ELEGOO's fresh touch default now uses the same axis
+directions as the previously working calibration; saved calibrations are unchanged.
 
 **2.3.6 board support:** the website installer uses one shared application for
 the original CYD and ELEGOO ESP32-32E 2.8-inch ILI9341V, with saved hardware profiles.

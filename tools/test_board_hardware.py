@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
     assert(hardware->led_red_pin == (hardware->has_ldr ? 4 : 22));
     assert(hardware->audio_enable_pin == (hardware->has_ldr ? -1 : 4));
     assert(hardware->panel_mirror_columns == !hardware->has_ldr);
-    assert(hardware->default_touch_flip_y == !hardware->has_ldr);
+    assert(hardware->default_touch_flip_x == (hardware->id == BOARD_HARDWARE_ELEGOO));
     int old_writes = writes, old_commits = commits;
     assert(!board_hardware_save(99));
     assert(writes == old_writes && commits == old_commits);

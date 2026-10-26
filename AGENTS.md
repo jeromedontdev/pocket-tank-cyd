@@ -20,6 +20,11 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- 2.3.7 starts new aquariums with companion trophy decor disabled in all modes.
+  Preserve existing saved decor preferences; Life > Rewards can enable trophies.
+  ELEGOO fresh affine defaults reverse X/preserve Y; saved calibration is untouched.
+  Brightness diagnostics on the local ELEGOO already request duty255 without
+  night/room dimming, matching vendor PWM/panel setup; no brightness fix is claimed.
 - 2.3.6 development adds `PT_BOARD_VARIANT=cyd|elegoo|unified`, separate build
   directories and `PT_BOARD_ELEGOO=1` propagated from tankcore to HAL.
   Original CYD `cyd2432s028` keeps its custom LCD sequence; ELEGOO `elegoo28`
@@ -61,7 +66,9 @@ or deployment is published. Update this file when its contracts change.
   upright/readable text on the webcam. Measured 16.5-16.6 fps, 60-61 ms/frame,
   17.5-18.1 ms flush on the full-resolution saved welcome screen.
   User reported backwards touch and then fixed it using the calibration tool.
-  ELEGOO's uncalibrated affine default now flips logical Y: {{1,0,0},{0,-1,179}}.
+  ELEGOO's uncalibrated affine default flips logical X: {{-1,0,239},{0,1,0}},
+  matching the negative-X/positive-Y axes of the previously working calibration.
+  This corrects the earlier Y-only default, which reversed the wrong axis.
   Keep the raw XPT coordinate basis unchanged so existing saved affine_v1
   calibration still overrides defaults without invalidation. A temporary raw
   Y-mirror build was replaced with this compatible fix; COM8's boot confirms

@@ -57,8 +57,8 @@ typedef struct { float x[3], y[3]; } cyd_cal_t;
 static cyd_cal_t s_calibration = {{1, 0, 0}, {0, 1, 0}};
 static void cyd_cal_default(void) {
     /* Preserve the raw coordinate basis used by existing saved calibrations. */
-    s_calibration = board_hardware_current()->default_touch_flip_y ?
-        (cyd_cal_t){{1, 0, 0}, {0, -1, 179}} : (cyd_cal_t){{1, 0, 0}, {0, 1, 0}};
+    s_calibration = board_hardware_current()->default_touch_flip_x ?
+        (cyd_cal_t){{-1, 0, 239}, {0, 1, 0}} : (cyd_cal_t){{1, 0, 0}, {0, 1, 0}};
 }
 static int s_cal_target = -1;
 static float s_cal_x[5], s_cal_y[5], s_cal_sum_x, s_cal_sum_y;

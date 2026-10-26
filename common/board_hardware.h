@@ -16,7 +16,7 @@ typedef struct {
     int led_red_pin;
     int audio_enable_pin;
     bool panel_mirror_columns;
-    bool default_touch_flip_y;
+    bool default_touch_flip_x;
 } board_hardware_t;
 
 static inline const board_hardware_t *board_hardware_lookup(unsigned id) {

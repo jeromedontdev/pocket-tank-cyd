@@ -56,6 +56,7 @@ static void unchanged(const tank_t *a, const tank_t *b) { assert(!memcmp(a, b, s
 int main(void) {
     tank_t t, before;
     memset(&t, 0xa5, sizeof t); tank_init(&t, 12);
+    assert(!t.companion.decor);
     creative_state_t empty = {0};
     assert(!memcmp(&t.creative, &empty, sizeof empty));
     memset(&t.creative, 0xa5, sizeof t.creative); companion_init(&t);
@@ -80,6 +81,13 @@ int main(void) {
     card_ready = true;
     assert(saved_size == AQUARIUM_SAVE_BYTES);
     assert(progression_creative(&t) && t.aquariums.count == 1 && t.aquariums.active == 0);
+    assert(!t.companion.decor);
+    assert(companion_set_decor(&t, true));
+    reload(&t);
+    assert(t.companion.decor);
+    assert(companion_set_decor(&t, false));
+    reload(&t);
+    assert(!t.companion.decor);
     assert(progression_setup_pending());
     progression_setup_done(&t);
     t.sd_balance = 37; t.sd_earned = 59;

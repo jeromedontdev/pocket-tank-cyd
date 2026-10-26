@@ -29,12 +29,23 @@ Normal 40 MHz SPI and automatic chip-select are restored. ELEGOO-specific
 panel mirroring produces upright, readable text on the webcam; the measured
 full-resolution welcome screen runs at 16.5-16.6 fps (60-61 ms/frame).
 The user corrected backwards touch using calibration. ELEGOO's uncalibrated
-default now reverses logical Y to match the upright panel; saved affine
+default reverses logical X and preserves Y, matching the axis directions in
+the previously working five-point calibration. The earlier Y-only default
+reversed the wrong axis; saved affine
 calibration overrides that default using the unchanged raw coordinate basis.
 Existing calibrations are not erased or invalidated. The fresh-board default
 has native coordinate tests; physical touch was confirmed using the user's
 saved calibration, not by erasing it to retest the fresh-board default.
 Use the built-in calibration tool if your individual panel needs adjustment.
+App-only updates preserve saved calibration, so a default correction does not
+replace an existing calibration.
+
+For ELEGOO brightness diagnosis, the reference demo and this firmware both use
+GPIO21 with an 8-bit maximum PWM duty of 255. If diagnostics already report
+`bright 255` with night and room dimming off, increasing the configured
+percentage cannot make the backlight brighter. Compare white menu text as well
+as the aquarium before attributing dim colors to backlight duty; do not change
+panel power or gamma registers without hardware evidence.
 
 The `unified` image implements saved hardware profiles for these
 two compatible ESP32/4 MiB boards. The same application bytes have been

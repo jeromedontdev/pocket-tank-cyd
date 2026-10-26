@@ -367,7 +367,7 @@ void companion_init(tank_t *t) {
     t->companion.cozy = t->companion.captions = 1;
     t->companion.display_compact = TANK_W == TANK_MAX_W;
     t->companion.lively = 0;
-    t->companion.decor = 1;
+    t->companion.decor = 0;
     t->companion_fraction = 0;
 }
 

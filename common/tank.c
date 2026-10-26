@@ -661,7 +661,7 @@ void tank_init(tank_t *t, uint32_t seed) {
     t->companion.version = 2;
     t->companion.cozy = t->companion.captions = 1;
     t->companion.lively = 0;
-    t->companion.decor = 1;
+    t->companion.decor = 0;
     t->companion_fraction = 0;
     memset(&t->journal, 0, sizeof t->journal);
     memset(t->bank, 0, sizeof t->bank); t->bank_count = 0;

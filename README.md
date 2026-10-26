@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.6
+# Pocket Tank CYD 2.3.7
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.6**. Stable firmware,
+now versioned independently. This source targets **2.3.7**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,7 +25,16 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.6: ELEGOO display support
+## New in 2.3.7: quieter defaults and ELEGOO touch correction
+
+New aquariums start with trophy decorations hidden, including Creative mode.
+Enable them in **Life > Rewards > Trophies**; existing saved choices are preserved.
+ELEGOO's fresh touch default now reverses X and preserves Y, matching the
+previously working calibration. App-only updates keep saved calibration intact.
+Brightness investigation found maximum backlight already applied with dimming
+off; this release does not claim an increase in ELEGOO backlight brightness.
+
+## Unified CYD and ELEGOO display support
 
 Runtime hardware profiles now let the same
 `unified` application image run on both tested boards. A saved profile selects
