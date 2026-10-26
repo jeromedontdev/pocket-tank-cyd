@@ -578,7 +578,7 @@ bool companion_valid_mode(const companion_state_t *s, bool creative) {
         (s->version < 4 && (s->portrait_colors || s->creature_colors[0] || s->creature_colors[1] ||
                            s->creature_colors[2] || s->creature_colors[3])) ||
         s->display_compact > 1 || (s->version < 5 && s->display_compact) ||
-        s->color_pad[0] || s->color_pad[1] || s->color_pad[2] ||
+        (s->version < 6 && s->mussel_colors) || s->color_pad[0] || s->color_pad[1] ||
         s->away > 1 || (s->away && (!s->adventure || s->version < 2)) ||
         s->travel_pad[0] || s->travel_pad[1] || s->travel_pad[2] ||
         s->adventure_clock < 0 || s->adventure_clock > 4102444800LL ||
@@ -704,6 +704,9 @@ bool companion_wearable(tank_t *t, int fish, int wearable) {
     t->fish[fish].wearable = (uint8_t)wearable;
     return true;
 }
+uint8_t companion_creature_colors(const companion_state_t *s, int creature) {
+    return creature == CREATURE_MUSSEL ? s->mussel_colors : s->creature_colors[creature];
+}
 bool companion_colors(tank_t *t, bool wearable, int target, uint8_t colors) {
     if (target < 0 || target >= (wearable ? t->n_fish : CREATURE_COUNT) ||
         (t->companion.version < 2 && t->companion.adventure)) {
@@ -712,6 +715,7 @@ bool companion_colors(tank_t *t, bool wearable, int target, uint8_t colors) {
     companion_state_t old = t->companion;
     t->companion.version = COMPANION_VERSION;
     if (wearable) t->companion.active[target].wear_colors = colors;
+    else if (target == CREATURE_MUSSEL) t->companion.mussel_colors = colors;
     else t->companion.creature_colors[target] = colors;
     if (!commit(t, &old)) {
         fprintf(stderr, "Color save failed; changes rolled back\n"); return false;

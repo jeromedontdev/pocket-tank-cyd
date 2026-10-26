@@ -2525,7 +2525,7 @@ static const json_field_t COMPANION_FIELDS[] = {
     C(traveler_bond, J_HEX, sizeof(companion_bond_t), 0, 255),
     C(away, J_U8, 1, 0, 1), C(adventure_clock, J_I64, 1, 0, 4102444800LL),
     C(portrait_wearable, J_U8, 1, 0, WEAR_COUNT - 1),
-    C(portrait_colors, J_U8, 1, 0, 255), C(creature_colors, J_U8, CREATURE_COUNT, 0, 255),
+    C(portrait_colors, J_U8, 1, 0, 255), C(creature_colors, J_U8, 4, 0, 255),
     C(display_compact, J_U8, 1, 0, 1),
 };
 #undef C
@@ -2727,8 +2727,14 @@ char *progression_backup_json(const tank_t *t) {
         cJSON_Delete(tank); goto fail;
     }
     /* Serialize one section at a time so SD backup fits beside weather's Wi-Fi buffers. */
-    if (!json_append_value(&text, &used, tank) || !json_append(&text, &used, ",\"companion\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.companion, COMPANION_FIELDS, FIELD_COUNT(COMPANION_FIELDS))) ||
+    cJSON *companion = json_fields(&sv.companion, COMPANION_FIELDS, FIELD_COUNT(COMPANION_FIELDS));
+    if (!companion || (sv.companion.version >= 6 &&
+        !cJSON_AddNumberToObject(companion, "mussel_colors", sv.companion.mussel_colors))) {
+        cJSON_Delete(companion); cJSON_Delete(tank); goto fail;
+    }
+    if (!json_append_value(&text, &used, tank)) { cJSON_Delete(companion); goto fail; }
+    if (!json_append(&text, &used, ",\"companion\":")) { cJSON_Delete(companion); goto fail; }
+    if (!json_append_value(&text, &used, companion) ||
         !json_append(&text, &used, ",\"polish\":") ||
         !json_append_value(&text, &used, json_fields(&sv.polish, POLISH_FIELDS, FIELD_COUNT(POLISH_FIELDS))) ||
         !json_append(&text, &used, ",\"story\":") ||
@@ -2774,7 +2780,8 @@ static int json_hex_digit(char c) {
     return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
 }
 static bool json_read_fields(void *data, const cJSON *obj, const json_field_t *fields, size_t count, char *error, size_t size) {
-    if (!cJSON_IsObject(obj) || cJSON_GetArraySize(obj) != (int)count + (fields == BANK_FIELDS ? 1 : 0)) {
+    int extra = fields == COMPANION_FIELDS && cJSON_GetObjectItemCaseSensitive(obj, "mussel_colors") ? 1 : 0;
+    if (!cJSON_IsObject(obj) || cJSON_GetArraySize(obj) != (int)count + (fields == BANK_FIELDS ? 1 : 0) + extra) {
         snprintf(error, size, "Missing, extra or duplicate fields"); return false;
     }
     for (size_t k = 0; k < count; k++) {
@@ -3010,6 +3017,14 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     }
     if (schema->valuedouble >= 6) {
         memset(&sv.companion, 0, sizeof sv.companion);
+        const cJSON *colors = cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(root, "companion"), "mussel_colors");
+        if (colors && (!cJSON_IsNumber(colors) || !isfinite(colors->valuedouble) ||
+            colors->valuedouble < 0 || colors->valuedouble > 255 ||
+            floor(colors->valuedouble) != colors->valuedouble)) {
+            snprintf(error, error_size, "Invalid mussel colors"); goto done;
+        }
+        if (colors) sv.companion.mussel_colors = (uint8_t)colors->valuedouble;
         if (!json_read_fields(&sv.companion, cJSON_GetObjectItemCaseSensitive(root, "companion"),
                               COMPANION_FIELDS, FIELD_COUNT(COMPANION_FIELDS) - (schema->valuedouble == 6 ? 8 : schema->valuedouble == 7 ? 4 : schema->valuedouble == 8 ? 3 : schema->valuedouble == 9 ? 1 : 0), error, error_size) ||
             (schema->valuedouble == 6 && sv.companion.version > 1) ||
@@ -3018,6 +3033,9 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
             (schema->valuedouble == 9 && sv.companion.version > 4) ||
             (sv.companion.away && !bank_valid(&sv.companion.traveler))) {
             snprintf(error, error_size, "Invalid companion state"); goto done;
+        }
+        if (sv.companion.version >= 6 && !colors) {
+            snprintf(error, error_size, "Missing mussel colors"); goto done;
         }
     }
     if ((sv.profile.mode != GAME_MODE_HARD && sv.n_fish < 2 && !sv.companion.away) ||

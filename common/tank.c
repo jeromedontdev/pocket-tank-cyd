@@ -284,7 +284,7 @@ const uint32_t FISH_BODY_COLORS[FISH_COLOR_N] = {
     0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
     0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xffffff, 0x263d50
 };
-const char *const CREATURE_NAMES[CREATURE_COUNT] = {"SHRIMP", "SNAIL", "URCHIN", "SEAHORSE"};
+const char *const CREATURE_NAMES[CREATURE_COUNT] = {"SHRIMP", "SNAIL", "URCHIN", "SEAHORSE", "PEARL MUSSEL"};
 const char *const COSMETIC_COLOR_NAMES[COSMETIC_COLOR_COUNT] = {
     "NATURAL", "WHITE", "SLATE", "RED", "ORANGE", "GOLD", "YELLOW", "LIME",
     "GREEN", "MINT", "CYAN", "BLUE", "PURPLE", "PINK", "ROSE", "LAVENDER"

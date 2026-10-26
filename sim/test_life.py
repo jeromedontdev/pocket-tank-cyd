@@ -146,16 +146,17 @@ def exercise(lib, backup):
     before_creatures = json.loads(backup(lib))
     tap(220, 234); tap(365, 100)
     assert json.loads(backup(lib))["companion"] == before_creatures["companion"], "Switching creatures discards an unsaved preview"
-    for _ in range(4):
+    for _ in range(5):
         tap(220, 234); tap(220, 268); tap(100, 309); tap(365, 100)
     creatures = json.loads(backup(lib))
     assert creatures["companion"]["creature_colors"] == [0x11] * 4
+    assert creatures["companion"]["mussel_colors"] == 0x11
     assert creatures["tank"]["sd_balance"] == 955
     tap(330, 309)
     assert json.loads(backup(lib))["companion"] == creatures["companion"], "NATURAL must remain a preview until saved"
     tap(100, 309)
     reset = json.loads(backup(lib))
-    assert reset["companion"]["creature_colors"].count(0) == 1
+    assert (reset["companion"]["creature_colors"] + [reset["companion"]["mussel_colors"]]).count(0) == 1
     assert reset["tank"]["journal_xp"] == wardrobe["tank"]["journal_xp"], "Cosmetics must not grant XP"
     lib.sim_action(2); tap(100, 100)
     os.environ["POCKET_TANK_SAVE"] = str(Path(save_path).parent / "missing-scale" / "save.sav")
@@ -346,4 +347,4 @@ def exercise(lib, backup):
         lib.sim_action(2); tap(100, 100)
     encoded = json.dumps(original).encode()
     assert lib.sim_restore(encoded, len(encoded))
-    print("PASS: LIFE/wardrobe/color-page routing, four creature and accessory primary/detail previews, explicit saves/Natural reset, free colors, purchase/equip/remove, rollback, bonds and real adventures")
+    print("PASS: LIFE/wardrobe/color-page routing, five creature and accessory primary/detail previews, explicit saves/Natural reset, free colors, purchase/equip/remove, rollback, bonds and real adventures")

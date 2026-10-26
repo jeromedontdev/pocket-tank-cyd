@@ -8,7 +8,18 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.9 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.10 is a distinct aquarium game, not just a board port.**
+
+Version 2.3.10 treats the mussel as an inspectable, color-customizable creature.
+Tap it for automatic-income progress, daily allowance and earning/paused status.
+Visible arrows cycle owned helper cards; fish-card arrows use graphical
+chevrons. The mussel's COLORS button and Creature Colors > NEXT TYPE share the
+free PRIMARY shell / DETAIL mantle editor. SAVE COLORS commits a preview;
+NATURAL requires saving too. Tank, card and shop artwork use the saved colors.
+Existing saves migrate to Natural. A reserved byte stores mussel colors in the
+version-6 companion record without shifting fields, changing partitions or
+growing saves. Older firmware cannot read this record: retain a pre-update
+backup and do not downgrade after saving with 2.3.10.
 
 Version 2.3.9 adds a sandy center grass clearing, exact fish/jellyfish animation
 reuse between tiles and skips unused partial-region LCD checksums. Visual detail,

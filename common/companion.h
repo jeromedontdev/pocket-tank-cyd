@@ -6,11 +6,12 @@
 #define COMPANION_DISCOVERY_COUNT 12
 #define COMPANION_COLLECTION_COUNT 3
 #define COMPANION_ADVENTURE_COUNT 3
-#define COMPANION_VERSION 5
+#define COMPANION_VERSION 6
 extern const char *const WEAR_NAMES[WEAR_COUNT];
 extern const uint8_t WEAR_LEVELS[WEAR_COUNT], WEAR_PRICES[WEAR_COUNT];
 bool companion_wearable(tank_t *t, int fish, int wearable);
 bool companion_colors(tank_t *t, bool wearable, int target, uint8_t colors);
+uint8_t companion_creature_colors(const companion_state_t *s, int creature);
 bool companion_compact(tank_t *t, bool compact);
 void companion_open_section(int section);
 void companion_open_creature(int kind);

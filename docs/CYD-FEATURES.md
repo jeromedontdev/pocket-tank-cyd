@@ -2,7 +2,7 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.9**
+**An illustrated tour of Pocket Tank CYD 2.3.10**
 
 **2.3.9 aquarium polish:** a center grass clearing, exact animation-calculation
 reuse and fewer unused LCD checksums reduce rendering work without lowering
@@ -17,6 +17,17 @@ buying additional copies. Pearl Mussel is a normal 120-dollar creature purchase
 per aquarium (free in Creative), not a separate menu or daily-task reward.
 Its income goes straight to the wallet; previously earned mussels and pearls
 are preserved.
+
+**2.3.10 creature cards:** tap the mussel in the tank for its income progress, daily allowance and current
+earning/paused status. A visible arrow on helper information cards cycles
+through owned residents, including the mussel; it does not collect income or
+change settings. Fish information cards have a high-contrast graphical arrow.
+The mussel also has **COLORS**: free primary shell and detail mantle colors,
+with the same preview, **SAVE COLORS** and **NATURAL** behavior as other helpers.
+It is included in **NEXT TYPE** in Creature Colors. Colors survive reload,
+backups and aquarium switches. Existing saves default to Natural; save size and
+field offsets stay unchanged, but the version-6 companion record is not readable
+by older firmware, so do not downgrade after saving with 2.3.10.
 
 **2.3.7 display defaults:** trophies start hidden in new aquariums, including
 Creative mode. Enable them in **Life > Rewards > Trophies**. Existing saved

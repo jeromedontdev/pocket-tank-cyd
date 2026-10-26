@@ -959,8 +959,50 @@ static void test_fish_card_next(void) {
     assert(!render_stats_next_hit(&t, 0, render_frame_x(x), render_frame_y(y)));
     memset(fb, 0, pixels * sizeof *fb); render_stats_card(&t, 0, fb, TANK_W);
     assert(!fb[py * TANK_W + px]);
+    t.mussel.version = 2; t.mussel.owned = 1u << t.aquariums.active;
+    float mx, my, crawl; tank_mussel_pose(&t, &mx, &my, &crawl);
+    assert(render_creature_card_hit(&t, mx, my) == RENDER_CARD_MUSSEL);
+    assert(render_creature_colors_hit(&t, RENDER_CARD_MUSSEL, mx, my) == -1);
+    t.sd_unlocks |= SD_ITEM_SNAIL; t.snail_x = 32; t.snail_y = 150;
+    render_device_t device = {.room_pct = -1, .scene_detail = SCENE_BALANCED};
+    render_set_device(&device);
+    assert(render_stats_next(&t, RENDER_CARD_SNAIL) == RENDER_CARD_MUSSEL);
+    assert(render_stats_next(&t, RENDER_CARD_MUSSEL) == RENDER_CARD_SNAIL);
+    int cx = 362, cy = (PAGE_H - SNAIL_CARD_H) / 2 + 28;
+    assert(render_stats_next_hit(&t, RENDER_CARD_MUSSEL, render_frame_x(cx), render_frame_y(cy)));
+    memset(fb, 0, pixels * sizeof *fb);
+    render_stats_card(&t, RENDER_CARD_MUSSEL, fb, TANK_W);
+    int arrow_ink = 0;
+    for (int yy = cy - 12; yy < cy + 12; yy++) for (int xx = 354; xx < 370; xx++)
+        arrow_ink += fb[(int)render_frame_y(yy) * TANK_W + (int)render_frame_x(xx)] == 0xffff;
+    assert(arrow_ink > 8);
+    t.mussel.owned = 0;
+    assert(render_creature_card_hit(&t, mx, my) != RENDER_CARD_MUSSEL);
+    assert(render_stats_next(&t, RENDER_CARD_SNAIL) == RENDER_CARD_SNAIL);
     free(fb);
-    puts("PASS: fish-card next arrow rendered outside card, shared hit target, no arrow for one fish or special-creature cards");
+    for (int mode = 0; mode < 2; mode++) {
+        tank_resolution(mode != 0);
+        t.mussel.owned = 1u << t.aquariums.active;
+        const size_t count = (size_t)TANK_W * TANK_H;
+        uint16_t *full = calloc(count, sizeof *full), *tiled = calloc(count, sizeof *tiled);
+        assert(full && tiled);
+        for (int state = 0; state < 4; state++) {
+            t.mussel.bank = state == 1;
+            t.mussel.generated = state == 2 ? MUSSEL_DAILY_LIMIT : 0;
+            t.fish[0].hunger = state == 3 ? 9 : 2;
+            memset(full, 0, count * sizeof *full); memset(tiled, 0, count * sizeof *tiled);
+            render_tile(0, 0); render_stats_card(&t, RENDER_CARD_MUSSEL, full, TANK_W);
+            for (int row = 0; row < TANK_H; row += 17) {
+                render_tile(row, 17);
+                render_stats_card(&t, RENDER_CARD_MUSSEL, tiled + row * TANK_W, TANK_W);
+            }
+            render_tile(0, 0);
+            assert(!memcmp(full, tiled, count * sizeof *full));
+        }
+        free(full); free(tiled);
+    }
+    tank_resolution(true);
+    puts("PASS: visible fish/helper arrows, owned-helper cycling, resident mussel hit/card and no unowned or single-helper cycling");
 }
 static void test_readable_text(void) {
     const size_t pixels = (TANK_W + 3) * TANK_H;
@@ -1851,13 +1893,35 @@ static void test_cosmetic_colors(void) {
     assert(!companion_colors(&t, true, 0, 0xff)); reject_write = false;
     assert(t.fish[0].wear_colors == 0x93 && !memcmp(&before, &t.companion, sizeof before));
     for (int i = 0; i < CREATURE_COUNT; i++) assert(companion_colors(&t, false, i, (uint8_t)(0x31 + i)));
+    before = t.companion; reject_write = true;
+    assert(!companion_colors(&t, false, CREATURE_MUSSEL, 0x93)); reject_write = false;
+    assert(!memcmp(&before, &t.companion, sizeof before));
     assert(companion_wearable(&t, 0, WEAR_CROWN));
     assert(progression_save(&t)); tank_init(&loaded, 96); boot_enlarged(&loaded);
     assert(loaded.fish[0].wear_colors == 0x93 && loaded.companion.active[0].wear_colors == 0x93);
-    assert(!memcmp(t.companion.creature_colors, loaded.companion.creature_colors, CREATURE_COUNT));
+    assert(!memcmp(t.companion.creature_colors, loaded.companion.creature_colors, 4));
+    assert(t.companion.mussel_colors == loaded.companion.mussel_colors && loaded.companion.mussel_colors == 0x35);
     char *json = progression_backup_json(&loaded); assert(json);
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);
     tank_init(&t, 97); boot_enlarged(&t);
+    assert(t.companion.mussel_colors == 0x35);
+    char *mussel_json = progression_backup_json(&t); assert(mussel_json);
+    cJSON *bad_mussel = cJSON_Parse(mussel_json); assert(bad_mussel);
+    cJSON *mussel_companion = cJSON_GetObjectItemCaseSensitive(bad_mussel, "companion");
+    cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(mussel_companion, "mussel_colors"), 256);
+    invalid_object(bad_mussel);
+    bad_mussel = cJSON_Parse(mussel_json); free(mussel_json); assert(bad_mussel);
+    cJSON_DeleteItemFromObjectCaseSensitive(cJSON_GetObjectItemCaseSensitive(bad_mussel, "companion"), "mussel_colors");
+    invalid_object(bad_mussel);
+    char *old_json = progression_backup_json(&t);
+    cJSON *old_root = cJSON_Parse(old_json); free(old_json); assert(old_root);
+    cJSON *old_companion = cJSON_GetObjectItemCaseSensitive(old_root, "companion");
+    cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(old_companion, "version"), 5);
+    cJSON_DeleteItemFromObjectCaseSensitive(old_companion, "mussel_colors");
+    old_json = cJSON_PrintUnformatted(old_root); cJSON_Delete(old_root); assert(old_json);
+    assert(progression_restore_json(old_json, strlen(old_json), true, error, sizeof error)); free(old_json);
+    tank_init(&t, 97); boot_enlarged(&t); assert(!t.companion.mussel_colors);
+    assert(companion_colors(&t, false, CREATURE_MUSSEL, 0x35));
     json = progression_backup_json(&t); cJSON *bad = cJSON_Parse(json); free(json); assert(bad);
     cJSON *bad_colors = cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(bad, "companion"), "creature_colors");
     assert(cJSON_ReplaceItemInArray(bad_colors, 0, cJSON_CreateNumber(256))); invalid_object(bad);
@@ -1918,20 +1982,23 @@ static void test_cosmetic_colors(void) {
         tank_init(&t, 103); t.n_fish = 0; t.companion.decor = t.companion.captions = 0;
         t.sd_unlocks = type == CREATURE_SHRIMP ? SD_ITEM_SHRIMP : type == CREATURE_SNAIL ? SD_ITEM_SNAIL :
                        type == CREATURE_URCHIN ? SD_ITEM_URCHIN : SD_ITEM_SEAHORSE;
+        if (type == CREATURE_MUSSEL) { t.mussel.version = 2; t.mussel.owned = 1; t.sd_unlocks = 0; }
         t.shrimp_n = type == CREATURE_SHRIMP ? 1 : 0;
         t.shrimp[0].x = 110; t.shrimp[0].y = 100; t.shrimp[0].yaw = 1;
         t.snail_x = 110; t.snail_y = 80; t.snail_heading = 0;
         t.urchin_x = 110; t.sh_x = 110; t.sh_y = 100; t.sh_mode = SH_DRIFT; t.sh_hidden = false;
         render_tank(&t, frames, TANK_W);
-        t.companion.creature_colors[type] = 0x3b;
+        if (type == CREATURE_MUSSEL) t.companion.mussel_colors = 0x3b;
+        else t.companion.creature_colors[type] = 0x3b;
         render_tank(&t, frames + TANK_W * TANK_H, TANK_W);
         assert(memcmp(frames, frames + TANK_W * TANK_H, bytes));
-        t.companion.creature_colors[type] = 0;
+        if (type == CREATURE_MUSSEL) t.companion.mussel_colors = 0;
+        else t.companion.creature_colors[type] = 0;
         render_tank(&t, frames + 2 * TANK_W * TANK_H, TANK_W);
         assert(!memcmp(frames, frames + 2 * TANK_W * TANK_H, bytes));
     }
     free(frames);
-    puts("PASS: free primary/detail colors on four actual creatures and six accessories; all 15 tints render distinctly, Natural restores exactly, rollback/Bank/adventure/portraits/newborns, 4520-byte/schema-9 and 4512-byte/schema-8 migration");
+    puts("PASS: free primary/detail colors on five actual creatures and six accessories; all 15 tints render distinctly, Natural restores exactly, rollback/Bank/adventure/portraits/newborns, legacy migration");
 }
 static void compact_draw(tank_t *t, uint16_t *fb, int stride, int kind) {
     if (kind == 0) render_tank(t, fb, stride);

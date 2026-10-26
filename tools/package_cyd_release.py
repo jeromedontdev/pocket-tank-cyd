@@ -162,6 +162,7 @@ Only install trusted downloads; these images are not publisher-signed.
         instructions = instructions.replace("--port COM4", "--port YOUR_PORT")
         instructions = instructions.replace("Read INSTALL.txt", "Read elegoo-INSTALL.txt")
         instructions += "\nSelect ELEGOO in the web installer. Do not use the original CYD image.\nReplace YOUR_PORT with the verified ELEGOO port; never guess another aquarium's port.\nIf the board already has the wrong CYD identity/white LCD, use the documented backed-up app-only board conversion, not factory reset.\nGPIO34 is battery sensing, not room light; audio and battery charging are not game features.\n"
+    instructions += "\n2.3.10 SAVE COMPATIBILITY: back up before updating. The version-6 companion\nrecord stores mussel colors in a reserved byte; save size/offsets are unchanged.\nOlder firmware cannot read this record. Do not downgrade after saving with 2.3.10.\n"
     (output / f"{asset_prefix}INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
@@ -174,7 +175,17 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.9: aquarium performance and interaction polish
+### New in 2.3.10: mussel creature cards and saved colors
+
+- Tap the resident mussel for its automatic-income progress, shared daily allowance and current earning, care-pause or save-pending status. No collection action or extra income.
+- Helper cards have visible next arrows to cycle through owned residents, including the mussel. Fish cards use high-contrast graphical chevrons.
+- Mussel COLORS opens the shared free creature editor, also reachable through NEXT TYPE. PRIMARY tints its shell; DETAIL tints the inner mantle. SAVE COLORS commits the draft, and NATURAL remains a preview until saved.
+- Saved colors are reflected in the tank, information card and shop artwork, and survive binary/JSON saves and reloads. Failed saves roll back.
+- Existing saves migrate with Natural colors. Save size, offsets, partitions, hardware profiles and calibration remain unchanged.
+- **Back up before updating; do not downgrade after saving with 2.3.10.** Mussel colors use a reserved byte in the version-6 companion record, which older firmware cannot read.
+- Verified both-size browser tap/color/save/reload flows, five-creature palette coverage, legacy migrations, save-failure rollback, tiled rendering, menus and the unified firmware build.
+
+### Retained from 2.3.9: aquarium performance and interaction polish
 
 - A sandy center opening removes grass work while preserving outer beds, saved blade heights and matching shelter/trim geometry.
 - Exact fish-motion and jellyfish-strand calculations are reused across tiles; partial-damage LCD regions skip checksums that cannot be reused. No reduction in visual detail, animation rate, SPI speed or color depth.

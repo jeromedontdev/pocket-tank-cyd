@@ -269,7 +269,7 @@ float tank_fish_clearance(const fish_t *f);
 float tank_fish_top_clearance(const fish_t *f);
 float tank_fish_half_width(const fish_t *f);
 enum { WEAR_NONE, WEAR_TOP_HAT, WEAR_PARTY_HAT, WEAR_CROWN, WEAR_TIE, WEAR_BOWTIE, WEAR_BANDANA, WEAR_COUNT };
-enum { CREATURE_SHRIMP, CREATURE_SNAIL, CREATURE_URCHIN, CREATURE_SEAHORSE, CREATURE_COUNT };
+enum { CREATURE_SHRIMP, CREATURE_SNAIL, CREATURE_URCHIN, CREATURE_SEAHORSE, CREATURE_MUSSEL, CREATURE_COUNT };
 #define COSMETIC_COLOR_COUNT 16
 extern const char *const COSMETIC_COLOR_NAMES[COSMETIC_COLOR_COUNT];
 extern const char *const CREATURE_NAMES[CREATURE_COUNT];
@@ -316,11 +316,13 @@ typedef struct {
     companion_bond_t traveler_bond;
     uint8_t away, travel_pad[3];
     int64_t adventure_clock;
-    uint8_t creature_colors[CREATURE_COUNT], display_compact, color_pad[3];
+    uint8_t creature_colors[4], display_compact, mussel_colors, color_pad[2];
 } companion_state_t;
 _Static_assert(sizeof(companion_bond_t) == 12, "companion relationship layout");
 _Static_assert(offsetof(companion_state_t, traveler) == 392, "legacy companion prefix");
 _Static_assert(offsetof(companion_state_t, creature_colors) == 512, "legacy wardrobe prefix");
+_Static_assert(offsetof(companion_state_t, display_compact) == 516, "legacy display preference");
+_Static_assert(offsetof(companion_state_t, mussel_colors) == 517, "mussel colors reuse reserved byte");
 _Static_assert(sizeof(companion_state_t) == 520, "companion save layout");
 
 /* Separate append-only save tail: never enlarge the original six game arrays. */

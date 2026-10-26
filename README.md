@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.9
+# Pocket Tank CYD 2.3.10
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.9**. Stable firmware,
+now versioned independently. This source targets **2.3.10**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,7 +25,24 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.9: aquarium performance and interaction polish
+## New in 2.3.10: mussel creature cards and colors
+
+Tap the resident mussel to inspect its automatic-income progress, shared daily
+allowance and any care/save pause. Creature cards show a visible next arrow when
+another owned helper is available; cycling is informational and never collects
+income. Fish cards also use a high-contrast graphical next arrow.
+
+The mussel's COLORS button opens the same free PRIMARY/DETAIL editor as other
+creatures, also available through NEXT TYPE in Creature Colors. PRIMARY tints
+the shell and DETAIL the inner mantle; the pearl and payout sparkle retain
+their meaning. SAVE COLORS commits the draft; NATURAL is a preview until saved.
+Colors persist in binary/JSON saves using a reserved byte, without moving save
+fields. The companion record is version 6; do not downgrade a profile after
+saving with 2.3.10, because older firmware cannot read that record.
+Back up before updating; app-only updates preserve hardware profiles, calibration
+and existing aquariums.
+
+## Retained from 2.3.9: aquarium performance and interaction polish
 
 The grass layout leaves a sandy center opening about 12% of the
 screen width (roughly three blade columns). Outer grass beds retain their

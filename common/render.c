@@ -2558,6 +2558,14 @@ static void draw_urchin(ctx_t *c, const tank_t *t) {
 enum { SH_FREE = 0, SH_ONBLADE = 1, SH_GRIP = 2 };   /* the tail's pose: the open curl, round a blade, the tight grip */
 enum { SHT_0, SHT_1, SHT_2, SHT_3, SHT_4, SHT_5, SHT_EYE, SHT_GLINT, SHT_FINM, SHT_FINR, SHT_N };
 static const uint32_t SH_RGB[SHT_N]   = { 0xfff1b8, 0xfcd055, 0xfa9b19, 0xf3640e, 0xcb2f15, 0x8e1e0b, 0x1b3a63, 0xe4ecff, 0xffd98a, 0xf3640e };
+static uint32_t creature_tint(uint32_t natural, bool detail, bool eye, uint8_t colors) {
+    unsigned color = detail ? colors >> 4 : colors & 15;
+    if (!color || eye) return natural;
+    uint32_t base = tank_cosmetic_color(color, natural);
+    unsigned light = (((natural >> 16) & 255) * 3 + ((natural >> 8) & 255) * 6 + (natural & 255)) / 10;
+    return light < 128 ? mix(0x000000, base, 0.25f + light * (0.75f / 128)) :
+                        mix(base, 0xffffff, (light - 128) * (0.55f / 127));
+}
 static uint32_t creature_tone_rgb(int creature, int tone, uint8_t colors) {
     uint32_t natural; bool detail, eye;
     switch (creature) {
@@ -2566,12 +2574,7 @@ static uint32_t creature_tone_rgb(int creature, int tone, uint8_t colors) {
     case CREATURE_URCHIN: natural = URCHIN_RGB[tone]; detail = tone >= UR_T4; eye = false; break;
     default: natural = SH_RGB[tone]; detail = tone >= SHT_FINM; eye = tone == SHT_EYE || tone == SHT_GLINT; break;
     }
-    unsigned color = detail ? colors >> 4 : colors & 15;
-    if (!color || eye) return natural;
-    uint32_t base = tank_cosmetic_color(color, natural);
-    unsigned light = (((natural >> 16) & 255) * 3 + ((natural >> 8) & 255) * 6 + (natural & 255)) / 10;
-    return light < 128 ? mix(0x000000, base, 0.25f + light * (0.75f / 128)) :
-                        mix(base, 0xffffff, (light - 128) * (0.55f / 127));
+    return creature_tint(natural, detail, eye, colors);
 }
 static const uint8_t  SH_ALPHA[SHT_N] = { 255, 255, 255, 255, 255, 255, 255, 255, 150, 190 };
 #define SH_TINT 0.82f
@@ -3557,17 +3560,20 @@ static void draw_ornament(ctx_t *c, int item, int x0, int y0, int scale, bool fi
     }
 }
 static void draw_pearl_mussel(ctx_t *c, float x, float y, float scale, bool ready,
-                              bool lit, uint32_t background) {
+                              bool lit, uint32_t background, uint8_t colors) {
+    uint32_t shell[] = {0x26465b, 0x182d45, 0x48627c, 0x80959e, 0xa5b9bc};
+    for (unsigned i = 0; i < sizeof shell / sizeof *shell; i++)
+        shell[i] = creature_tint(shell[i], false, false, colors);
     fill_ellipse(c, x, y + 6 * scale, 19 * scale, 3 * scale, shop_art_color(0x081c24, lit, background), 90);
-    fill_ellipse(c, x, y + 3 * scale, 18 * scale, 6 * scale, shop_art_color(0x26465b, lit, background), 255);
-    fill_ellipse(c, x, y + scale, 16 * scale, 4 * scale, shop_art_color(0xcdb4bf, lit, background), 255);
-    fill_ellipse(c, x + scale, y, 13 * scale, 3 * scale, shop_art_color(0xedd2cd, lit, background), 255);
-    fill_ellipse(c, x - 4 * scale, y - 6 * scale, 15 * scale, 8 * scale, shop_art_color(0x182d45, lit, background), 255);
-    fill_ellipse(c, x - 5 * scale, y - 7 * scale, 13 * scale, 6 * scale, shop_art_color(0x48627c, lit, background), 255);
+    fill_ellipse(c, x, y + 3 * scale, 18 * scale, 6 * scale, shop_art_color(shell[0], lit, background), 255);
+    fill_ellipse(c, x, y + scale, 16 * scale, 4 * scale, shop_art_color(creature_tint(0xcdb4bf, true, false, colors), lit, background), 255);
+    fill_ellipse(c, x + scale, y, 13 * scale, 3 * scale, shop_art_color(creature_tint(0xedd2cd, true, false, colors), lit, background), 255);
+    fill_ellipse(c, x - 4 * scale, y - 6 * scale, 15 * scale, 8 * scale, shop_art_color(shell[1], lit, background), 255);
+    fill_ellipse(c, x - 5 * scale, y - 7 * scale, 13 * scale, 6 * scale, shop_art_color(shell[2], lit, background), 255);
     for (int i = -2; i <= 2; i++)
         fill_ellipse(c, x + (i * 4 - 5) * scale, y - 7 * scale,
-                     .6f * scale, (5 - abs(i)) * scale, shop_art_color(0x80959e, lit, background), 150);
-    fill_ellipse(c, x - 8 * scale, y - 10 * scale, 7 * scale, scale, shop_art_color(0xa5b9bc, lit, background), 175);
+                     .6f * scale, (5 - abs(i)) * scale, shop_art_color(shell[3], lit, background), 150);
+    fill_ellipse(c, x - 8 * scale, y - 10 * scale, 7 * scale, scale, shop_art_color(shell[4], lit, background), 175);
     fill_ellipse(c, x + 7 * scale, y, 5 * scale, 5 * scale, shop_art_color(ready ? 0xe3ba6c : 0x858c9c, lit, background), 255);
     fill_ellipse(c, x + 6 * scale, y - scale, 3.7f * scale, 3.6f * scale, shop_art_color(ready ? 0xffe7b0 : 0xcbd0d4, lit, background), 255);
     fill_ellipse(c, x + 5 * scale, y - 2 * scale, 1.3f * scale, scale, shop_art_color(0xfffaf0, lit, background), 230);
@@ -3579,7 +3585,7 @@ static void draw_tank_mussel(ctx_t *c, const tank_t *t) {
     if (!progression_item_owned(t, SD_SHOP_MUSSEL)) return;
     float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
     if (crawl) fill_ellipse(c, x + crawl * 9, y + 5, 8, 2, 0x769d91, 220);
-    draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0, true, 0);
+    draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0, true, 0, t->companion.mussel_colors);
     if (t->mussel_glint > 0) {
         float age = 1.6f - t->mussel_glint;
         int alpha = (int)(fminf(age * 6, 1) * fminf(t->mussel_glint * 3, 1) * 210);
@@ -3622,7 +3628,7 @@ static void draw_ornament_icon(ctx_t *c, int item, int x0, int y0, int size, boo
 }
 void render_ornament_preview(uint16_t *fb, int stride, int item, int cx, int bottom) {
     ctx_t c = ctx_page(fb, stride);
-    if (item == SD_SHOP_MUSSEL) { draw_pearl_mussel(&c, cx, bottom - 10, 1, false, true, 0); return; }
+    if (item == SD_SHOP_MUSSEL) { draw_pearl_mussel(&c, cx, bottom - 10, 1, false, true, 0, 0); return; }
     if (item == 13) { draw_buoy_icon(&c, cx - 18, bottom - 39, 1, true, 0); return; }
     if (item >= 16) { draw_ornament_icon(&c, item, cx - 24, bottom - 48, 48, true, 0); return; }
     draw_ornament(&c, item, cx - tank_ornament_w(item) / 2, bottom - tank_ornament_h(item), 1, false, true, 0);
@@ -4443,8 +4449,10 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     if (memcmp(previous_extras, t->inventory.extra, sizeof previous_extras)) full = true;
     memcpy(previous_extras, t->inventory.extra, sizeof previous_extras);
     static bool mussel_owned, mussel_ready;
+    static uint8_t mussel_colors;
     bool owned = progression_item_owned(t, SD_SHOP_MUSSEL), ready = t->mussel.bank != 0;
-    if (owned != mussel_owned || ready != mussel_ready) full = true;
+    if (owned != mussel_owned || ready != mussel_ready || mussel_colors != t->companion.mussel_colors) full = true;
+    mussel_colors = t->companion.mussel_colors;
     mussel_owned = owned; mussel_ready = ready;
     previous.w = TANK_W; previous.h = TANK_H; previous.theme = t->journal.theme;
     previous.water = t->water_style; previous.sand = t->sand_style;
@@ -5363,13 +5371,73 @@ static void seahorse_card_draw(ctx_t *c, const tank_t *t) {
 }
 
 static void tools_draw(ctx_t *c, const tank_t *t);   /* the toolbox, below */
+static void ms_chevron(ctx_t *c, int tx, int cy, bool left, uint32_t rgb);
+static bool creature_card_owned(const tank_t *t, int card) {
+    if (card == RENDER_CARD_MUSSEL) return tank_mussel_owned(t);
+    if (render_simple_scene()) return false;
+    switch (card) {
+    case RENDER_CARD_SNAIL: return (t->sd_unlocks & SD_ITEM_SNAIL) && t->snail_x >= 0;
+    case RENDER_CARD_URCHIN: return (t->sd_unlocks & SD_ITEM_URCHIN) && t->urchin_x >= 0;
+    case RENDER_CARD_SHRIMP: return (t->sd_unlocks & SD_ITEM_SHRIMP) && t->shrimp_n > 0;
+    case RENDER_CARD_SEAHORSE: return (t->sd_unlocks & SD_ITEM_SEAHORSE) && t->sh_x >= 0;
+    default: return false;
+    }
+}
+int render_stats_next(const tank_t *t, int selected) {
+    if (selected >= 0 && selected < t->n_fish) return (selected + 1) % t->n_fish;
+    static const int cards[] = {RENDER_CARD_SNAIL, RENDER_CARD_URCHIN,
+        RENDER_CARD_SEAHORSE, RENDER_CARD_SHRIMP, RENDER_CARD_MUSSEL};
+    for (int i = 0; i < 5; i++) if (cards[i] == selected) {
+        for (int n = 1; n < 5; n++) {
+            int next = cards[(i + n) % 5];
+            if (creature_card_owned(t, next)) return next;
+        }
+        break;
+    }
+    return selected;
+}
+static void creature_card_next_draw(ctx_t *c, const tank_t *t, int selected) {
+    if (render_stats_next(t, selected) != selected) {
+        button(c, 340, (PAGE_H - SNAIL_CARD_H) / 2 + 8, 44, 40,
+               0x1c2f36, 0x9fd8e2, "", 3);
+        ms_chevron(c, 369, (PAGE_H - SNAIL_CARD_H) / 2 + 28, false, 0xffffff);
+    }
+}
+static void mussel_card_draw(ctx_t *c, const tank_t *t) {
+    float x, y, crawl; tank_mussel_pose(t, &x, &y, &crawl);
+    ring_tank(c, x, y, 22, 0x9fd8e2);
+    const int W = SNAIL_CARD_W, H = SNAIL_CARD_H, X = (PAGE_W - W) / 2, Y = (PAGE_H - H) / 2;
+    src_t bg = src_color(0x04141a, 1.0f);
+    for (int row = Y; row < Y + H; row++) span(c, X, X + W - 1, row, &bg, 235);
+    rect_edge(c, X, Y, W, H, 0x9fd8e2);
+    draw_pearl_mussel(c, PAGE_W / 2, Y + 64, 2, t->mussel.bank != 0, true, 0, t->companion.mussel_colors);
+    draw_text(c, X + (W - text_w("PEARL MUSSEL", 3)) / 2, Y + 88, 3, 0xffffff, "PEARL MUSSEL");
+    const char *status = progression_creative(t) ? "CREATIVE - NO INCOME" :
+        t->mussel.bank ? "SAVE PENDING - WILL RETRY" :
+        t->mussel.generated >= MUSSEL_DAILY_LIMIT ? "DAILY LIMIT REACHED" :
+        !progression_mussel_healthy(t) ? "PAUSED - FISH NEED CARE" : "EARNING AUTOMATICALLY";
+    draw_text(c, (PAGE_W - text_w(status, 2)) / 2, Y + 124, 2, 0x9fd8e2, status);
+    char line[40];
+    snprintf(line, sizeof line, "TODAY: %u / %d COINS", (unsigned)t->mussel.generated, MUSSEL_DAILY_LIMIT);
+    draw_text(c, (PAGE_W - text_w(line, 2)) / 2, Y + 158, 2, 0xffffff, line);
+    snprintf(line, sizeof line, "PROGRESS: %u / %d SEC", (unsigned)t->mussel.seconds, MUSSEL_SECONDS);
+    draw_text(c, (PAGE_W - text_w(line, 2)) / 2, Y + 188, 2, 0x9fd8e2, line);
+    draw_text(c, (PAGE_W - text_w("1 COIN / 10 HEALTHY MIN", 2)) / 2, Y + 216, 2, 0xffffff, "1 COIN / 10 HEALTHY MIN");
+    button(c, 126, Y + H - 34, 196, 26, 0x1c2f36, 0x9fd8e2, "COLORS", 2);
+    creature_card_next_draw(c, t, RENDER_CARD_MUSSEL);
+}
 static int creature_for_card(int selected) {
     return selected == RENDER_CARD_SHRIMP ? CREATURE_SHRIMP :
            selected == RENDER_CARD_SNAIL ? CREATURE_SNAIL :
            selected == RENDER_CARD_URCHIN ? CREATURE_URCHIN :
-           selected == RENDER_CARD_SEAHORSE ? CREATURE_SEAHORSE : -1;
+           selected == RENDER_CARD_SEAHORSE ? CREATURE_SEAHORSE :
+           selected == RENDER_CARD_MUSSEL ? CREATURE_MUSSEL : -1;
 }
 int render_creature_card_hit(const tank_t *t, float x, float y) {
+    if (tank_mussel_owned(t)) {
+        float mx, my, crawl; tank_mussel_pose(t, &mx, &my, &crawl);
+        if (tank_dist(mx, my, x, y) <= 24) return RENDER_CARD_MUSSEL;
+    }
     if (render_simple_scene()) return -1;
     if (tank_snail_hit(t, x, y)) return RENDER_CARD_SNAIL;
     if (tank_urchin_hit(t, x, y)) return RENDER_CARD_URCHIN;
@@ -5380,7 +5448,7 @@ int render_creature_card_hit(const tank_t *t, float x, float y) {
 int render_creature_colors_hit(const tank_t *t, int selected, float x, float y) {
     int kind = creature_for_card(selected);
     static const uint32_t owned[] = {SD_ITEM_SHRIMP, SD_ITEM_SNAIL, SD_ITEM_URCHIN, SD_ITEM_SEAHORSE};
-    if (kind < 0 || !(t->sd_unlocks & owned[kind])) return -1;
+    if (kind < 0 || (kind == CREATURE_MUSSEL ? !tank_mussel_owned(t) : !(t->sd_unlocks & owned[kind]))) return -1;
     x = render_page_x(x); y = render_page_y(y);
     return x >= 126 && x < 322 && y >= (PAGE_H + SNAIL_CARD_H) / 2 - 34 &&
            y < (PAGE_H + SNAIL_CARD_H) / 2 - 8 ? kind : -1;
@@ -5400,14 +5468,24 @@ static void creature_card_details(ctx_t *c, const tank_t *t, int selected) {
     else snprintf(line, sizeof line, "1 SEAHORSE - SHARES TRUST");
     draw_text(c, (c->w - text_w(line, 1)) / 2, y + 24, 1, 0xffffff, line);
     button(c, 126, (c->h + SNAIL_CARD_H) / 2 - 34, 196, 26, 0x1c2f36, 0x9fd8e2, "COLORS", 2);
+    creature_card_next_draw(c, t, selected);
 }
 bool render_stats_next_hit(const tank_t *t, int fish_idx, float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
-    return t->n_fish > 1 && fish_idx >= 0 && fish_idx < t->n_fish &&
+    if (fish_idx >= 0 && fish_idx < t->n_fish) return t->n_fish > 1 &&
            x >= RENDER_CARD_NEXT_X - 2 && x < RENDER_CARD_NEXT_X + RENDER_CARD_NEXT_W + 2 &&
            y >= RENDER_CARD_NEXT_Y - 2 && y < RENDER_CARD_NEXT_Y + RENDER_CARD_NEXT_H + 2;
+    int top = (PAGE_H - SNAIL_CARD_H) / 2 + 8;
+    return creature_card_owned(t, fish_idx) && render_stats_next(t, fish_idx) != fish_idx &&
+        x >= 340 && x < 384 && y >= top && y < top + 40;
 }
 void render_stats_card(const tank_t *t, int fish_idx, uint16_t *fb, int stride) {
+    if (fish_idx == RENDER_CARD_MUSSEL) {
+        if (!tank_mussel_owned(t)) return;
+        ctx_t sc = ctx_overlay(fb, stride);
+        mussel_card_draw(&sc, t);
+        return;
+    }
     if (fish_idx == RENDER_CARD_SHRIMP) {
         if (!(t->sd_unlocks & SD_ITEM_SHRIMP) || t->shrimp_n <= 0) return;
         ctx_t sc = ctx_overlay(fb, stride);
@@ -5456,9 +5534,12 @@ void render_stats_card(const tank_t *t, int fish_idx, uint16_t *fb, int stride) 
             memcpy(fb + (RENDER_CARD_Y + y) * stride + RENDER_CARD_X,
                    g_card + y * RENDER_CARD_W, RENDER_CARD_W * 2);
     } else card_draw(c, t, fish_idx);
-    if (t->n_fish > 1)
+    if (t->n_fish > 1) {
         button(&c, RENDER_CARD_NEXT_X, RENDER_CARD_NEXT_Y, RENDER_CARD_NEXT_W, RENDER_CARD_NEXT_H,
-               0x1c2f36, 0x9fd8e2, ">", 3);
+               0x1c2f36, 0x9fd8e2, "", 3);
+        ms_chevron(&c, RENDER_CARD_NEXT_X + RENDER_CARD_NEXT_W / 2 + 7,
+                    RENDER_CARD_NEXT_Y + RENDER_CARD_NEXT_H / 2, false, 0xffffff);
+    }
     tools_draw(&c, t);
 }
 
@@ -5797,6 +5878,10 @@ void render_fish_preview(uint16_t *fb, int stride, float x, float y, float size,
     draw_fish_core(&c, &f, clock, false, size);
 }
 static void draw_creature_portrait(ctx_t *c, float x, float y, float scale, int creature, uint8_t colors, float clock) {
+    if (creature == CREATURE_MUSSEL) {
+        draw_pearl_mussel(c, x, y + 4 * scale, scale, false, true, 0, colors);
+        return;
+    }
     uint32_t palette[16];
     int tones = creature == CREATURE_SHRIMP ? SHRIMP_TONES : creature == CREATURE_SNAIL ? SN_NONE :
                 creature == CREATURE_URCHIN ? UR_NONE : SHT_N;
@@ -6560,7 +6645,7 @@ void render_decor_thumbnail(uint16_t *fb, int stride, int x, int y, int size, in
         c.w = (x + size < PAGE_W ? x + size : PAGE_W) - c.ox;
         c.h = (y + size < PAGE_H ? y + size : PAGE_H) - c.oy;
         if (c.w <= 0 || c.h <= 0) return;
-        draw_pearl_mussel(&c, x + size / 2, y + size / 2, size / 48.0f, false, lit, 0x10282e);
+        draw_pearl_mussel(&c, x + size / 2, y + size / 2, size / 48.0f, false, lit, 0x10282e, 0);
         return;
     }
     if ((item >= 9 && item <= 13) || item >= 16) {
@@ -6757,7 +6842,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         bool owned = progression_item_owned(t, i);
         int price = progression_item_price_for(t, i);
         bool can = t->sd_balance >= price;
-        if (i == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, 43, top + 20, 1, false, owned, MSP_INK);
+        if (i == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, 43, top + 20, 1, false, owned, MSP_INK, t->companion.mussel_colors);
         else if (i >= 9 && i <= 12) draw_ornament(&c, i, 24, top, 1, false, owned, MSP_INK);
         else if (i == 13) draw_buoy_icon(&c, 24, top, 1, owned, MSP_INK);
         else if (i >= 16) draw_ornament_icon(&c, i, 24, top, 36, owned, MSP_INK);
@@ -6816,7 +6901,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
     bool can = t->sd_balance >= price;
     rect_fill(&c, X, Y, W, H, 0x04141a);
     rect_edge(&c, X, Y, W, H, MSP_TEAL); rect_edge(&c, X + 1, Y + 1, W - 2, H - 2, 0x1c2f36);
-    if (g_shp_modal == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, X + W / 2, Y + 44, 2, false, owned, 0x04141a);
+    if (g_shp_modal == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, X + W / 2, Y + 44, 2, false, owned, 0x04141a, t->companion.mussel_colors);
     else if (g_shp_modal >= 9 && g_shp_modal <= 12) draw_ornament(&c, g_shp_modal, X + (W - tank_ornament_w(g_shp_modal) * 2) / 2, Y + 8, 2, false, owned, 0x04141a);
     else if (g_shp_modal == 13) {
         draw_buoy_icon(&c, X + W / 2 - 36, Y + 8, 2, owned, 0x04141a);

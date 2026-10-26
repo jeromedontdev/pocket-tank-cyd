@@ -594,7 +594,7 @@ void touch_port_poll(tank_t *t) {
             }
             if (card_next) {
                 if (render_stats_next_hit(t, s_sel, s_lx, s_ly)) {
-                    s_sel = (s_sel + 1) % t->n_fish; s_sel_us = now;
+                    s_sel = render_stats_next(t, s_sel); s_sel_us = now;
                 }
                 goto released;
             }
@@ -622,7 +622,7 @@ void touch_port_poll(tank_t *t) {
                 ESP_LOGI(TAG, "tool chip tapped at %.0f,%.0f: back to bare hands", s_px, s_py);
                 goto released;
             }
-            if (s_sel >= 0 && s_sel != RENDER_CARD_SNAIL && s_sel != RENDER_CARD_SHRIMP && s_sel != RENDER_CARD_URCHIN && s_sel != RENDER_CARD_SEAHORSE && RENDER_CARD_HIT(s_px, s_py)) {   /* a tap ON the card (or the slop
+            if (s_sel >= 0 && s_sel < t->n_fish && RENDER_CARD_HIT(s_px, s_py)) {   /* a tap ON the card (or the slop
                 ESP_LOGI(TAG, "card tap at %.0f,%.0f -> milestones", s_px, s_py);         under its MORE button) = milestones page */
                 s_ms = s_life = true; s_from_home = false; render_life_open(); goto released;
             }
@@ -639,6 +639,9 @@ void touch_port_poll(tank_t *t) {
                 if (d2 < bd) { bd = d2; best = i; }
             }
             if (best >= 0) { s_sel = (best == s_sel) ? -1 : best; s_sel_us = now; }
+            else if (render_creature_card_hit(t, s_px, s_py) == RENDER_CARD_MUSSEL) {
+                s_sel = s_sel == RENDER_CARD_MUSSEL ? -1 : RENDER_CARD_MUSSEL; s_sel_us = now;
+                ESP_LOGI(TAG, "mussel tapped: card %s", s_sel >= 0 ? "up" : "down"); }
             else if (!render_simple_scene() && tank_snail_hit(t, s_px, s_py)) {   /* the snail: its card (2026-09-16), the fish first */
                 s_sel = s_sel == RENDER_CARD_SNAIL ? -1 : RENDER_CARD_SNAIL; s_sel_us = now;
                 ESP_LOGI(TAG, "snail tapped: card %s (%d spots grazed)", s_sel >= 0 ? "up" : "down", (int)t->snail_grazed); }
@@ -667,7 +670,7 @@ void touch_port_poll(tank_t *t) {
 released:
     if (!touched) s_held_page = false;
     s_down = touched;
-    if (s_sel >= t->n_fish && s_sel != RENDER_CARD_SNAIL && s_sel != RENDER_CARD_SHRIMP && s_sel != RENDER_CARD_URCHIN && s_sel != RENDER_CARD_SEAHORSE) s_sel = -1;   /* fresh tank / save load */
+    if (s_sel >= t->n_fish && s_sel != RENDER_CARD_SNAIL && s_sel != RENDER_CARD_SHRIMP && s_sel != RENDER_CARD_URCHIN && s_sel != RENDER_CARD_SEAHORSE && s_sel != RENDER_CARD_MUSSEL) s_sel = -1;   /* fresh tank / save load */
     if (s_sel >= 0 && now - s_sel_us > 10 * 1000000) s_sel = -1; /* auto-dismiss */
 }
 

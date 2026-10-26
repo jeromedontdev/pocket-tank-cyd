@@ -344,7 +344,7 @@ API void sim_touch(float x, float y, int down) {
                     selected = -1;
                     if (render_tool_chip_hit(&tank, px, py)) tank_set_tool(&tank, TOOL_HAND);
                 } else if (render_stats_next_hit(&tank, selected, px, py)) {
-                    if (render_stats_next_hit(&tank, selected, x, y)) selected = (selected + 1) % tank.n_fish;
+                    if (render_stats_next_hit(&tank, selected, x, y)) selected = render_stats_next(&tank, selected);
                 } else if (render_creature_colors_hit(&tank, selected, px, py) >= 0) {
                     render_life_creature_open(render_creature_colors_hit(&tank, selected, px, py));
                     from_home = false; page = 9; selected = -1;
@@ -452,9 +452,9 @@ API const uint16_t *sim_frame(float dt) {
     }
     if (pressed) {
         held += dt;
-        bool card_control = selected >= 0 && selected < tank.n_fish &&
-            (render_stats_next_hit(&tank, selected, px, py) ||
-             render_tools_hit(px, py) >= 0 || render_lock_hit(px, py));
+        bool card_control = render_stats_next_hit(&tank, selected, px, py) ||
+            (selected >= 0 && selected < tank.n_fish &&
+             (render_tools_hit(px, py) >= 0 || render_lock_hit(px, py)));
         if (!page && !setup_active() && !card_control && !render_tool_chip_hit(&tank, px, py)) {
             tank_touch_drag(&tank, last_x, last_y);
             if (held > 0.3f) tank_touch_hold(&tank, last_x, last_y);

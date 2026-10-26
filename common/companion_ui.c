@@ -557,11 +557,11 @@ void companion_open_section(int target) {
 }
 void companion_open_creature(int kind) {
     companion_open_section(COMPANION_SECTION_CREATURE_COLORS);
-    if (kind >= 0 && kind < 4) creature = kind;
+    if (kind >= 0 && kind < CREATURE_COUNT) creature = kind;
 }
 static void prepare_draft(const tank_t *t) {
     if (draft_pending) {
-        color_draft = t->companion.creature_colors[creature];
+        color_draft = companion_creature_colors(&t->companion, creature);
         draft_pending = false;
     }
 }
@@ -902,7 +902,7 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
         bool gear = page == COMPANION_SECTION_GEAR_COLORS;
         int i = selected < t->n_fish ? selected : 0;
         if (!gear && y >= 86 && y < 116 && x >= 304 && x < 436) {
-            creature = (creature + 1) % CREATURE_COUNT; color_draft = s->creature_colors[creature];
+            creature = (creature + 1) % CREATURE_COUNT; color_draft = companion_creature_colors(s, creature);
             notice[0] = 0;
         } else if (x >= 12 && x < 436 && y >= 220 && y < 250) {
             color_draft = (uint8_t)((color_draft & 240) | ((color_draft + 1) & 15)); notice[0] = 0;
