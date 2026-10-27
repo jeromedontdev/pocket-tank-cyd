@@ -211,6 +211,7 @@ int main(void) {
     cJSON_DeleteItemFromObjectCaseSensitive(root, "mussel");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "game_income");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "games_extra");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "content");
     cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(root, "schema"), 14);
     json = cJSON_PrintUnformatted(root); cJSON_Delete(root);
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);

@@ -8,7 +8,7 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.12 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.13 is a distinct aquarium game, not just a board port.**
 
 Version 2.3.10 treats the mussel as an inspectable, color-customizable creature.
 Tap it for automatic-income progress, daily allowance and earning/paused status.
@@ -31,7 +31,7 @@ Calm fish occasionally investigate the mussel or rest beside familiar companions
 Successful saved mussel income produces a brief gold glint, never a permanent
 icon; failed payouts, Creative mode and loading a save do not trigger it.
 
-## Release 2.3.12: fish-first rendering pipeline
+## Release 2.3.13: fish-first rendering pipeline
 
 The existing 86,400-byte internal framebuffer is partitioned into two alternating
 40-row working tiles. An LCD worker on core 1 rotates/checksums/transmits the
@@ -88,7 +88,7 @@ FPS gain. Sparse-plan tests also cover stale damage bits when switching from
 320-wide to 240-wide rendering; off-screen old columns must never produce
 negative-width transfer regions.
 
-The local 2.3.12 unified app measures **1,753,680 bytes**, leaving **212,400 bytes**
+The local 2.3.13 unified app measures **1,753,680 bytes**, leaving **212,400 bytes**
 (10.80%) free in each unchanged OTA slot. Release CI rebuilds and publishes the
 verified board-specific and unified packages.
 

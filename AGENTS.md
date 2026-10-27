@@ -20,7 +20,7 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Release 2.3.12 content expansion: exactly six new wearables (IDs7–12) and twenty
+- Release 2.3.13 content expansion: exactly six new wearables (IDs7–12) and twenty
   static placeable ornaments (shop IDs43–62); existing IDs0–42 never move.
   Schema19 / 6336 bytes appends `decor_content_t` at6168, retaining schema18's
   four alignment bytes explicitly. Legacy inventory stays16 slots/100 bytes;
