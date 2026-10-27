@@ -1831,7 +1831,8 @@ static void test_fish_sand_clearance(void) {
         for (int stage = STAGE_FRY; stage <= STAGE_ELDER; stage++)
             for (int pose = 0; pose < 5; pose++)
               for (int wear = WEAR_NONE; wear < WEAR_COUNT; wear++) {
-                tank_t t; tank_init(&t, 42);
+                tank_t t = {0}; tank_init(&t, 42);
+                tank_make_fish(&t, 0, 0, 0.5f, 0.5f, (stage_t)stage);
                 t.n_fish = 1; t.autofeed_off = true;
                 fish_t *f = &t.fish[0];
                 f->variety = (uint8_t)variety;
@@ -1866,7 +1867,9 @@ static void test_fish_sand_clearance(void) {
                 assert(!t.food[0].alive && f->eaten == eaten + 1);
             }
     for (int variety = FISH_SHARK; variety <= FISH_JELLYFISH; variety += FISH_JELLYFISH - FISH_SHARK) {
-        tank_t t; tank_init(&t, 42); t.n_fish = 1;
+        tank_t t = {0}; tank_init(&t, 42);
+        tank_make_fish(&t, 0, 0, 0.5f, 0.5f, STAGE_ADULT);
+        t.n_fish = 1;
         fish_t *f = &t.fish[0];
         f->variety = (uint8_t)variety; f->stage = STAGE_ADULT;
         f->size = 1; f->heading = 0; f->speed = 0; tank_fish_face(f);

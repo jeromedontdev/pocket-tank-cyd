@@ -2995,7 +2995,9 @@ static void update_fish(tank_t *t, int idx, float dt) {
      * agility stays available for urgent goals */
     bool agile = f->goal.id == GOAL_FLEE_SHADOW || f->goal.id == GOAL_DART_PLAY;
     float vertical = agile ? 1.0f : 0.72f;
-    if (f->goal.id == GOAL_SEEK_FOOD && tg.y > f->y) {
+    /* A floor target is clamped to this fish's clearance. Don't promote
+     * sub-pixel rounding at that shared boundary into a close-dive steer. */
+    if (f->goal.id == GOAL_SEEK_FOOD && tg.y - f->y > 0.5f) {
         float approach = clampf(1 - tank_dist(f->x, f->y, tg.x, tg.y) / 80, 0, 1);
         vertical = lerpf(vertical, 1.0f, approach);
     }

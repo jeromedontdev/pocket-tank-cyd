@@ -437,13 +437,20 @@ No new framebuffer, allocation or permanent table is introduced by these paths.
 Existing fish steering now eases rest speed within 36 logical pixels toward
 a hover of `1.2 + 2.4 * bold + 0.5 * (1 - lazy)`. Food pursuit is multiplied by
 `1 - 0.18 * lazy`; downward food steering rises from 0.72 to 1 over the final
-80 pixels. Tap-startle sensitivity is `1.25 - 0.5 * clamp(bold, 0, 1)`, applied
+80 pixels when the clearance-clamped target is more than 0.5 pixels below the
+fish. That subpixel guard avoids a downward-steering discontinuity at the sand
+boundary; fractional-offset tests preserve meaningful above-floor dives.
+Tap-startle sensitivity is `1.25 - 0.5 * clamp(bold, 0, 1)`, applied
 to existing stress/trust changes, including repeated taps. These intentional
 behavior changes reuse existing traits and runtime fields; they do not change
 care cadence, save layout, species artwork, traits themselves or reward rules.
 The focused behavior test covers all ten renderer varieties, both display
 scales, turn/edge continuity, rest transitions at 0.033/0.1-second steps,
 finite nonnegative speeds, food/tap/enrichment responses and renderer purity.
+The existing sand-feeding regression now constructs valid fish with
+`tank_make_fish` before its shape/stage overrides: `tank_init` alone does not
+initialize the fish array. Linux CI exposed indeterminate synthetic traits in
+that fixture. No feeding assertion or case was removed or relaxed.
 
 Fish Interaction's next target uses the actual 10/25/50 bond thresholds and
 ceil-divides the remaining bond by five, alongside the 30-second greeting

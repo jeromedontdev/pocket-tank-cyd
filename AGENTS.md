@@ -506,6 +506,10 @@ or further split modules without a concrete maintenance benefit.
   are required. Never reorder fields or rename NVS namespace `tank`, key `save`.
 - `tank_init` and `companion_init` initialize fields individually: explicitly
   initialize new state in both relevant paths; do not assume a whole-struct clear.
+  Synthetic fish fixtures must call `tank_make_fish` (or populate every required
+  trait/runtime field) before overriding geometry. `tank_init` does not
+  initialize `fish[]`; uninitialized lazy/turn/energy fields made sand-feeding
+  checks platform-dependent when food steering began using laziness.
 - RPG is a 24-byte `tank_rpg_t`; new-game records are a 40-byte `game_records_t`.
   RPG participant is uint32; chapter contributors are uint16 lineage IDs.
   IDs above 65535 must become unknown, never alias an unrelated ancestor.

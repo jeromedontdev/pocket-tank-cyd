@@ -27,6 +27,7 @@ static goal_t hold_goal(const tank_t *t, int idx, bool request) {
 }
 
 static void one_fish(tank_t *t, uint32_t seed, int preset, float bold, float lazy) {
+    memset(t, 0, sizeof *t);
     tank_init(t, seed);
     tank_make_fish(t, 0, preset, 0.5f, bold, STAGE_ADULT);
     t->n_fish = 1;
@@ -149,6 +150,87 @@ static void test_food_dive_and_personality(void) {
     assert(bold.fish[0].target_speed > gentle.fish[0].target_speed + 8);
 }
 
+static void test_sand_target_offsets(void) {
+    const float sizes[] = {0.35f, 0.7f, 1.3f};
+    const float offsets[] = {-0.51f, -0.49f, -0.0001f, 0, 0.0001f, 0.49f, 0.51f};
+    for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++)
+        for (int stage = STAGE_FRY; stage <= STAGE_ELDER; stage++)
+            for (unsigned offset = 0; offset < sizeof offsets / sizeof offsets[0]; offset++) {
+                tank_t t;
+                one_fish(&t, 197, 0, 0.5f, 0.4f);
+                fish_t *f = &t.fish[0];
+                f->variety = (uint8_t)variety;
+                f->stage = (stage_t)stage;
+                f->size = sizes[stage == STAGE_FRY ? 0 : stage == STAGE_JUV ? 1 : 2];
+                f->heading = 0;
+                f->speed = f->target_speed = 0;
+                tank_fish_face(f);
+                f->x = TANK_W * 0.5f;
+                f->y = TANK_SAND_TOP - tank_fish_clearance(f) + offsets[offset];
+                f->hunger = 8;
+                f->goal.id = GOAL_SEEK_FOOD;
+                t.food[0].alive = true;
+                t.food[0].x = f->x;
+                t.food[0].y = FOOD_FLOOR_Y;
+                t.food[0].floor_s = 1;
+                int eaten = f->eaten;
+                tank_tick(&t, 0.01f, NULL);
+                assert(!t.food[0].alive && f->eaten == eaten + 1);
+                assert(t.food[0].y == FOOD_FLOOR_Y);
+                assert(isfinite(f->speed) && f->speed >= 0);
+                assert(f->y + tank_fish_clearance(f) <= TANK_SAND_TOP + 0.001f);
+            }
+}
+
+static void test_close_dive_threshold(void) {
+    const float offsets[] = {-0.51f, -0.49f, -0.0001f, 0, 0.0001f, 0.49f, 0.51f, 20};
+    for (unsigned i = 0; i < sizeof offsets / sizeof offsets[0]; i++) {
+        tank_t t;
+        one_fish(&t, 198, 0, 0.5f, 0.4f);
+        fish_t *f = &t.fish[0];
+        f->heading = 0;
+        f->speed = f->target_speed = 0;
+        tank_fish_face(f);
+        f->x = TANK_W * 0.5f;
+        float target_y = TANK_SAND_TOP - tank_fish_clearance(f);
+        f->y = target_y - offsets[i];
+        f->goal.id = GOAL_SEEK_FOOD;
+        f->turn_rate = 100;
+        t.food[0].alive = true;
+        t.food[0].x = f->x + 20;
+        t.food[0].y = FOOD_FLOOR_Y;
+        t.food[0].floor_s = 1;
+        float dy = target_y - f->y;
+        float vertical = 0.72f;
+        if (dy > 0.5f)
+            vertical += (1 - 0.72f) * (1 - hypotf(20, dy) / 80);
+        float expected = atan2f(dy * vertical, 20);
+        tank_tick(&t, 0.01f, NULL);
+        /* The glass can reflect a small dive after a pose-clearance change. */
+        if (fabsf(fabsf(f->heading) - fabsf(expected)) >= 0.000001f)
+            fprintf(stderr, "close dive %dx%d offset=%g expected=%g actual=%g\n",
+                    TANK_W, TANK_H, offsets[i], expected, f->heading);
+        assert(fabsf(fabsf(f->heading) - fabsf(expected)) < 0.000001f);
+        if (offsets[i] == 20) assert(fabsf(f->heading) > 0.7f);
+    }
+
+    tank_t t;
+    one_fish(&t, 199, 0, 0.5f, 0.4f);
+    fish_t *f = &t.fish[0];
+    f->heading = 0;
+    f->speed = f->target_speed = 0;
+    tank_fish_face(f);
+    f->x = 100;
+    f->y = 70;
+    f->goal.id = GOAL_SEEK_FOOD;
+    f->turn_rate = 100;
+    t.food[0].alive = true;
+    t.food[0].x = f->x + 20;
+    t.food[0].y = f->y + 40;
+    tank_tick(&t, 0.01f, NULL);
+    assert(f->heading > 0.9f && t.food[0].y < TANK_SAND_TOP);
+}
+
 static void test_tap_and_enrichment_reactions(void) {
     tank_t shy, bold, plain, enriched;
     one_fish(&shy, 41, 3, 0.1f, 0.4f);
@@ -211,9 +293,11 @@ int main(int argc, char **argv) {
         test_rest_arrival_and_turn_continuity();
         test_rest_step_sizes();
         test_food_dive_and_personality();
+        test_sand_target_offsets();
+        test_close_dive_threshold();
         test_tap_and_enrichment_reactions();
         test_species_edges_and_render_purity();
     }
-    puts("PASS: normal/enlarged resolutions, rest arrival/step sizes, smooth committed turns, food dives/personality, tap sensitivity, enrichment, ten-variety edges, render purity");
+    puts("PASS: normal/enlarged resolutions, rest arrival/step sizes, smooth committed turns, food dives/personality, sand target offsets/dive threshold, tap sensitivity, enrichment, ten-variety edges, render purity");
     return 0;
 }
