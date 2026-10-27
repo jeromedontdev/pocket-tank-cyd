@@ -633,6 +633,7 @@ def exercise(lib, backup, output):
     legacy.pop("inventory", None)
     legacy.pop("mussel", None)
     legacy.pop("game_income", None)
+    legacy.pop("content", None)
     encoded = json.dumps(legacy).encode()
     if original.get("profile", {}).get("mode", 0) == 2:
         before = snapshot()

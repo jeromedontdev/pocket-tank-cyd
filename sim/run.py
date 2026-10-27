@@ -4,14 +4,12 @@ import ctypes
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-SHOP_PRICES = [40, 80, 150, 100, 240, 180, 120, 220, 75, 120, 60, 60, 80, 80,
-               300, 300, 200, 60, 100, 80, 160, 120, 40, 70, 90, 100, 110, 140,
-               80, 60, 180, 160, 160, 180, 200, 240, 50, 110, 130, 70, 90, 80, 120]
 
 
 def build(compiler, output, *, defines=()):
@@ -440,12 +438,19 @@ def main():
                     shop_demo["polish"]["scenery_unlocks"] = 0
                 data = json.dumps(shop_demo).encode()
                 assert lib.sim_restore(data, len(data))
-                prices = SHOP_PRICES
+                price_defines = dict(re.findall(r"#define (SD_PRICE_\w+)\s+(\d+)",
+                                               (ROOT / "common" / "progression.h").read_text()))
+                catalog = re.search(r"const sd_item_t SD_ITEMS\[[^\]]+\] = \{([\s\S]*?)\n\};",
+                                    (ROOT / "common" / "progression.c").read_text()).group(1)
+                prices = [int(price_defines.get(price, price)) for price in re.findall(
+                    r'\{\s*[^,]+,\s*"[^"]*",\s*"[^"]*",\s*"[^"]*",\s*(\w+)\s*\}', catalog)]
+                assert len(prices) == 63
                 order = sorted(range(len(prices)), key=lambda i: (prices[i], i))
-                for item in range(22, len(prices)):
+                fry_row = int(bool(shop_demo["tank"]["tank_ms_bits"] & (1 << 14)))
+                for item in range(22, 43):
                     lib.sim_action(0)  # Reset shop pagination without altering the save.
                     lib.sim_action(3)
-                    row = order.index(item)
+                    row = order.index(item) + fry_row
                     for _ in range(row // 4):
                         tap(400, 40)
                     tap(150, 98 + (row % 4) * 56 + 16)
@@ -463,8 +468,10 @@ def main():
                 assert current["tank"]["sd_balance"] == 70
                 lib.sim_action(0)
                 lib.sim_action(3)
-                tap(400, 40)
-                tap(150, 98 + (order.index(29) % 4) * 56 + 16)  # Duck Float: a 60-sand-dollar surface ornament.
+                row = order.index(29) + fry_row
+                for _ in range(row // 4):
+                    tap(400, 40)
+                tap(150, 98 + (row % 4) * 56 + 16)  # Duck Float: a 60-sand-dollar surface ornament.
                 tap(224, 260)
                 assert json.loads(backup(lib))["tank"]["sd_balance"] == 70, "First SELL tap only arms"
                 tap(224, 260)

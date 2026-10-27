@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.13
+# Pocket Tank CYD 2.3.14
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.13**. Stable firmware,
+now versioned independently. This source targets **2.3.14**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,7 +25,7 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.13: fish-first rendering and harbor/garden artwork
+## New in 2.3.14: fish-first rendering and harbor/garden artwork
 
 Twenty detailed static decorations join the shop, with six new wearables:
 Sailor Cap, Pirate Hat, Beret, Sun Hat, Viking Helm and Scarf. Accessories use

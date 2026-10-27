@@ -175,7 +175,7 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.13: fish-first rendering and detailed harbor/garden content
+### New in 2.3.14: fish-first rendering and detailed harbor/garden content
 
 - Aquarium fish draw 33% smaller at every life stage, including wearables and selection rings. Saved growth, simulation sizes and tap targets are unchanged; menu portraits remain readable.
 - Twenty detailed static shop decorations and six accessories: Sailor Cap, Pirate Hat, Beret, Sun Hat, Viking Helm and Scarf. Artwork stays procedural and uses bounded indexed caches, without new animation banks.

@@ -2,16 +2,16 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.13**
+**An illustrated tour of Pocket Tank CYD 2.3.14**
 
-**2.3.13 roomier tank:** aquarium fish are 33% smaller in width and height
+**2.3.14 roomier tank:** aquarium fish are 33% smaller in width and height
 at every life stage, including their fins, patterns and wearables. Relative
 growth differences remain visible. Decorations/helpers and readable menu
 portraits stay unchanged, as do saved sizes, growth, swimming and tap targets.
 Rendering-only culling/repaint bounds follow the smaller artwork with padding
 for turns and wearables; dense scenes may still repaint the full frame.
 
-**2.3.13 harbor and garden:** twenty detailed static decorations and six new
+**2.3.14 harbor and garden:** twenty detailed static decorations and six new
 wearables join the normal shop and wardrobe. Species-aware fitting preserves
 proportions through all life stages; only the scarf is unavailable on jellyfish.
 Ties, bowties and bandanas remain available. **BUY** and **PLACE** manage shared
@@ -22,7 +22,7 @@ without selling it.
 
 ![Species-fitted wardrobe and jellyfish scarf restriction](media/cyd-features/jellyfish-wardrobe.png)
 
-**2.3.13 fish-first rendering:** alternating 40-row tiles overlap drawing and LCD
+**2.3.14 fish-first rendering:** alternating 40-row tiles overlap drawing and LCD
 transfer within the existing framebuffer. Cost-based damage plans replace the
 fixed 40% promotion threshold. Scenery animates less frequently while fish
 movement stays full-rate; diagnostics expose pacing percentiles and slow phases.

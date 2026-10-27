@@ -100,6 +100,7 @@ def main():
                         snapshot.pop("inventory", None)
                         snapshot.pop("mussel", None)
                         snapshot.pop("game_income", None)
+                        snapshot.pop("content", None)
                     data = json.dumps(snapshot, separators=(",", ":")).encode()
                     if not lib.sim_restore(data, len(data)):
                         raise RuntimeError(lib.sim_error().decode())
