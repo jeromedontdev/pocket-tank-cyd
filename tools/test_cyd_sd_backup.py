@@ -10,6 +10,9 @@ import uuid
 
 
 HARNESS = r"""
+#ifndef _WIN32
+#define _POSIX_C_SOURCE 200809L
+#endif
 #undef NDEBUG
 #include <assert.h>
 #include <stdbool.h>

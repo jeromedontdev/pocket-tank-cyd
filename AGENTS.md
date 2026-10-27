@@ -20,7 +20,10 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Release 2.3.15 contains the rendering/weather/backup follow-up. Saves remain
+- Release 2.3.16 contains the rendering/weather/backup follow-up. The 2.3.15
+  attempt failed before publication on a strict-C POSIX test declaration;
+  preserve its existing tag and require the Linux native backup harness to pass.
+  Saves remain
   schema19 / 6336 bytes and companion v7. Weather acquisition is boot + hourly,
   including failures, with bounded offline attempts. Do not restore a 15-minute
   poll or keep the radio/caches competing while idle. See the measured

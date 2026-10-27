@@ -175,8 +175,9 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.15: exact rendering caches, hourly weather and background SD backups
+### New in 2.3.16: exact rendering caches, hourly weather and background SD backups
 
+- The 2.3.15 attempt stopped before publication because strict Linux C mode hid a POSIX declaration in the new backup test harness. This release fixes the harness and includes the full optimization follow-up; no 2.3.15 firmware release was published.
 - Weather checks at boot and hourly, including failed attempts. Offline acquisition is bounded; optional rendering caches release RAM for verified HTTPS, then warm again after the radio stops.
 - Tile-band clock command indexing and exact alpha-255 blending avoid repeated work without changing pixels. Static ornament RGB565 palettes, bounded helper/castle/crown/grass caches and compressed backdrop rows retain live-render fallbacks.
 - Simulation reuses exact shrimp/fish calculations without reducing fish update frequency. Diagnostics now separate helper upkeep, social/advisor work and fish steering.
