@@ -56,7 +56,7 @@ bool journal_claim(tank_t *t, int goal);
 const char *progression_bank_move(tank_t *t, int bank, int active);
 #define AQUARIUM_CAP 8
 #define AQUARIUM_PRICE 500
-#define AQUARIUM_SAVE_BYTES (6032 + sizeof(inventory_state_t) + sizeof(mussel_state_t) + sizeof(game_income_state_t) + 4)
+#define AQUARIUM_SAVE_BYTES (6032 + sizeof(inventory_state_t) + sizeof(mussel_state_t) + sizeof(game_income_state_t) + 4 + sizeof(decor_content_t))
 #define MUSSEL_SECONDS 600
 #define MUSSEL_DAILY_LIMIT 15
 bool progression_mussel_collect(tank_t *t);

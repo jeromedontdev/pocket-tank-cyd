@@ -93,6 +93,14 @@
     <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">GitHub release</a>.
     The current release includes all eight internally stored aquariums, shared
     inventory, pearl-mussel income, eighteen games and the audited menus below.
+    <strong>2.3.12</strong> adds twenty detailed static decorations and six
+    wearables, species-aware accessory fitting, and 33% smaller aquarium fish.
+    Jellyfish keep ties, bowties and bandanas; only the wraparound scarf is unavailable.
+    Hold decorations to move them; REMOVE stores them without selling.
+    Alternating LCD tiles overlap drawing/transfer, cost-based damage avoids
+    unnecessary full frames, and slower scenery cadence prioritizes fish motion.
+    Back up first: schema-19 saves migrate older data but cannot be opened by older firmware.
+    Partitions and calibration are unchanged.
     <strong>2.3.11</strong> improves overlapping-creature selection, snail activity
     information and COLORS gestures. Exact helper/fish/decoration caches,
     selective LCD updates and lossless artwork compression preserve visual detail
@@ -115,6 +123,19 @@
     Check the published version above before installing. Older releases remain
     available, but cannot load the expanded current save format.
   </aside>
+
+  <section class="card" aria-labelledby="harbor-heading">
+    <h2 id="harbor-heading">A more detailed little harbor and garden</h2>
+    <p>Twenty static ornaments feature carved masonry, bronze fittings, layered
+      roofs, a twisted bonsai, crystal facets and other individual details.
+      No extra ambient animation competes with your fish.</p>
+    <img class="screen" src="./media/harbor-garden-decorations.png" width="1200" height="576"
+      loading="lazy" alt="All twenty detailed harbor and garden decorations from the actual renderer">
+    <p>The six new wearables scale through every life stage. Accessories use
+      species-aware fitting, with incompatible items clearly unavailable.</p>
+    <img class="screen" src="./media/jellyfish-wardrobe.png" width="1408" height="840"
+      loading="lazy" alt="Jellyfish wearing hats, tie, bowtie and bandana; only scarf unavailable">
+  </section>
 
   <section class="card" aria-labelledby="boards-heading">
     <p class="eyebrow">New in 2.3.6</p>
@@ -226,7 +247,7 @@
       game XP. Established fish no longer reopen obsolete “new fry” welcomes,
       and a failed welcome save stays open for retry.</p>
     <p>Existing layouts and purchases migrate automatically. Back up before
-      upgrading: schema 18 saves cannot be read by older firmware. Use
+      upgrading: schema 19 saves cannot be read by older firmware. Use
       <strong>Update / keep aquarium</strong>, not Factory reset.</p>
   </section>
 

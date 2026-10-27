@@ -215,7 +215,8 @@ static void check_motion_cache(void) {
     }
 }
 static void check_ornament_art(void) {
-    static const int items[] = {9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21};
+    static const int items[] = {9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21,
+        43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62};
     for (int pass = 0; pass < 3; pass++) {
         g_buoy_sway = pass - 1; g_buoy_bob = pass;
         for (unsigned i = 0; i < sizeof items / sizeof items[0]; i++) {
@@ -257,6 +258,145 @@ static void check_damage_merge(void) {
     assert(x == 32 && y == 40 && w == 32 && h == 80);
     assert(!render_damage_next(&cursor, &x, &y, &w, &h));
     fprintf(stderr, "PASS: odd-row damage merges without extra pixels or exceeding an 80-row buffer\n");
+}
+static void check_scenery_cadence(void) {
+    tank_t t = {0};
+    for (int detail = SCENE_BALANCED; detail <= SCENE_ENHANCED; detail++) {
+        if (detail == SCENE_SIMPLE) continue;
+        render_device_t device = {0, 0, false, -1, (uint8_t)detail};
+        render_set_device(&device);
+        float rate = detail == SCENE_ENHANCED ? 10 : 5;
+        t.clock = .01f;
+        float held = secondary_clock(&t);
+        t.clock = .04f;
+        assert(secondary_clock(&t) == held);
+        t.clock = 1 / rate + .01f;
+        assert(secondary_clock(&t) > held);
+        float grass_rate = detail == SCENE_ENHANCED ? 4 : 2;
+        float initial[VEG_BEDS_MAX];
+        for (int b = 0; b < VEG_BEDS_MAX; b++) initial[b] = veg_clock(&t, 0, VEG_SEED[b]);
+        int changed = 0;
+        for (int b = 0; b < VEG_BEDS_MAX; b++)
+            changed += initial[b] != veg_clock(&t, 1 / grass_rate * .4f, VEG_SEED[b]);
+        assert(changed > 0 && changed < VEG_BEDS_MAX);
+        fish_t f = {0}; f.speed = 35; f.yaw = f.yaw_tail = 1;
+        fish_motion_t a = fish_motion(&f, .01f), b = fish_motion(&f, .04f);
+        assert(a.tail != b.tail);
+    }
+    fprintf(stderr, "PASS: background holds at independent cadence, beds stagger updates, fish tails keep full-rate motion\n");
+}
+static void check_damage_cost_plan(void) {
+    int saved_policy = g_damage_policy;
+    tank_resolution(true);
+    render_damage_policy(RENDER_DAMAGE_ADAPTIVE);
+    render_damage_costs(900, 200);
+    for (int i = 0; i < 6; i++) g_damage_blocks[i] = 0x1f;
+    damage_select_plan();
+    for (int i = 0; i < 6; i++) assert(g_damage_blocks[i] == 0x1f);
+    for (int i = 0; i < 6; i++) g_damage_blocks[i] = 0x155;
+    render_damage_costs(900, 100000);
+    damage_select_plan();
+    for (int i = 0; i < 6; i++) assert(g_damage_blocks[i] == 0x3ff);
+    render_damage_policy(RENDER_DAMAGE_PARTIAL);
+    for (int i = 0; i < 6; i++) g_damage_blocks[i] = 0x155;
+    damage_select_plan();
+    for (int i = 0; i < 6; i++) assert(g_damage_blocks[i] == 0x155);
+    render_damage_policy(RENDER_DAMAGE_FULL);
+    damage_select_plan();
+    for (int i = 0; i < 6; i++) assert(g_damage_blocks[i] == 0x3ff);
+    render_damage_costs(900, 200);
+    render_damage_policy(saved_policy);
+    fprintf(stderr, "PASS: 50%% damage stays partial when cheaper, costly fragmentation promotes full, policy overrides preserve plans\n");
+}
+static void check_fish_display_scale(void) {
+    for (int normal = 0; normal < 2; normal++) {
+        tank_resolution(normal);
+        for (int stage = STAGE_FRY; stage <= STAGE_ELDER; stage++)
+            for (int variety = 0; variety < 10; variety++) {
+                tank_t t = {0};
+                t.n_fish = 1; t.clock = 10;
+                fish_t *f = &t.fish[0];
+                f->x = TANK_W / 2; f->y = TANK_H / 2;
+                f->size = .55f + stage * .25f; f->base_size = 1;
+                f->stage = stage; f->variety = variety;
+                f->color = 0xff8040; f->fin = 0x40aaff; f->accent = 0xffffff;
+                f->yaw = f->yaw_tail = .9f;
+                f->wearable = 1 + variety % (WEAR_COUNT - 1);
+                tank_t original = t;
+                memset(frame, 0, sizeof frame); memset(tiled, 0, sizeof tiled);
+                ctx_t actual = ctx_full(frame, TANK_W, 1);
+                ctx_t expected = ctx_full(tiled, TANK_W, 1);
+                draw_fish(&actual, &t, f);
+                fish_t smaller = *f;
+                smaller.size *= .67f;
+                draw_fish_core(&expected, &smaller, t.clock, false, 1);
+                assert(!memcmp(frame, tiled, sizeof frame));
+                assert(!memcmp(&t, &original, sizeof t));
+            }
+    }
+    fprintf(stderr, "PASS: tank fish draw at exactly 67%% scale across all stages/varieties and both sizes without changing saved fish\n");
+}
+static void check_fish_turn_visibility(bool normal) {
+    tank_resolution(normal);
+    for (int stage = STAGE_FRY; stage <= STAGE_ELDER; stage++)
+        for (int variety = 0; variety < 10; variety++)
+            for (int scenario = 0; scenario < 8; scenario++) {
+                fish_t f = {0};
+                f.x = TANK_W / 2 + (scenario % 4) * .25f;
+                f.y = TANK_H / 2 + (scenario % 3) * .33f;
+                static const float stage_sizes[] = {.55f, .78f, 1.04f, 1.23f};
+                f.size = .86f * stage_sizes[stage] * TANK_FISH_DISPLAY_SCALE;
+                f.stage = stage; f.variety = variety;
+                f.color = 0xff8040; f.fin = 0x40aaff; f.accent = 0xffffff;
+                f.heading = scenario * .8f; f.speed = scenario % 2 ? 95 : 5;
+                float direction = scenario % 2 ? -1 : 1;
+                f.yaw_tail = direction;
+                for (int pose = 0; pose <= 100; pose++) {
+                    f.yaw = direction * (1 - pose * .02f);
+                    f.yaw_tail += (f.yaw - f.yaw_tail) * .4f;
+                    memset(frame, 0, sizeof frame);
+                    ctx_t c = ctx_full(frame, TANK_W, 1);
+                    draw_fish_core(&c, &f, 10 + pose * .04f, false, 1);
+                    int body = 0;
+                    for (int y = (int)f.y - 2; y <= (int)f.y + 2; y++)
+                        for (int x = (int)f.x - 3; x <= (int)f.x + 3; x++) {
+                            uint16_t pixel = frame[y * TANK_W + x];
+                            body += pixel && pixel != rgb565(0xffffff, 1) && pixel != rgb565(0x031015, 1);
+                        }
+                    if (!body) fprintf(stderr, "Invisible turn body: stage %d variety %d scenario %d yaw %.2f size %.3f\n",
+                                       stage, variety, scenario, f.yaw, f.size);
+                    assert(body > 0);
+                }
+            }
+    fprintf(stderr, "PASS: colored fish bodies survive both turn directions, tail lag, dives and subpixel positions at every stage/variety\n");
+}
+static void check_scaled_fish_bounds(bool normal) {
+    tank_resolution(normal);
+    for (int stage = STAGE_FRY; stage <= STAGE_ELDER; stage++)
+        for (int variety = 0; variety < 10; variety++)
+            for (int wear = 0; wear < WEAR_COUNT; wear++)
+                for (int pose = 0; pose < 16; pose++) {
+                    tank_t t = {0}; t.n_fish = 1; t.clock = pose * .13f;
+                    fish_t *f = &t.fish[0];
+                    f->x = TANK_W / 2 + .37f; f->y = TANK_H / 2 + .61f;
+                    f->size = .55f + stage * .35f;
+                    f->stage = stage; f->variety = variety; f->wearable = wear;
+                    f->pattern = pose % FISH_PATTERN_COUNT; f->traits = pose;
+                    f->color = 0xff8040; f->fin = 0x40aaff; f->accent = 0xffffff;
+                    f->heading = pose * .4f; f->speed = pose % 2 ? 95 : 5;
+                    f->yaw = -1 + pose * (2.0f / 15); f->yaw_tail = -f->yaw;
+                    fish_bounds_t b = fish_bounds(&t, f);
+                    memset(frame, 0, sizeof frame);
+                    ctx_t c = ctx_full(frame, TANK_W, 1);
+                    fish_t display = *f; display.size *= TANK_FISH_DISPLAY_SCALE;
+                    draw_fish_core(&c, &display, t.clock, false, 1);
+                    for (int y = 0; y < TANK_H; y++)
+                        for (int x = 0; x < TANK_W; x++) if (frame[y * TANK_W + x]) {
+                            assert(x >= floorf(b.left) && x <= ceilf(b.right));
+                            assert(y >= floorf(b.top) && y <= ceilf(b.bottom));
+                        }
+                }
+    fprintf(stderr, "PASS: scaled repaint bounds contain every fish/wearable pixel across stages, varieties and dive/bent-turn poses\n");
 }
 #endif
 
@@ -345,6 +485,13 @@ static void benchmark(int frames) {
     check_motion_cache();
     check_ornament_art();
     check_damage_merge();
+    check_scenery_cadence();
+    check_damage_cost_plan();
+    check_fish_display_scale();
+    for (int normal = 0; normal < 2; normal++) {
+        check_fish_turn_visibility(normal != 0);
+        check_scaled_fish_bounds(normal != 0);
+    }
 #endif
     for (int normal = 0; normal < 2; normal++)
         for (int detail = 0; detail < SCENE_DETAIL_COUNT; detail++)
@@ -402,6 +549,30 @@ static void benchmark(int frames) {
                         helpers_isolated[helper] = (double)(micros() - helper_start) / frames;
                     }
                 }
+                tank_t damage_sample = t;
+                uint64_t damage_pixels = 0;
+                unsigned damage_rectangles = 0;
+                int damage_frames = frames < 240 ? frames : 240;
+                render_damage_begin(&damage_sample, true);
+                int64_t damage_start = micros();
+                for (int i = 0; i < damage_frames; i++) {
+                    pose(&damage_sample, i);
+                    render_damage_begin(&damage_sample, false);
+                    int cursor = 0, x, y, width, height;
+                    while (render_damage_next(&cursor, &x, &y, &width, &height)) {
+                        int bottom = y + height;
+                        for (; y < bottom; y += 40) {
+                        height = bottom - y < 40 ? bottom - y : 40;
+                        damage_rectangles++;
+                        damage_pixels += (uint64_t)width * height;
+                        render_tile(y, height);
+                        render_region(x, width);
+                        render_tank(&damage_sample, fish_frame, TANK_W);
+                        }
+                    }
+                    render_tile(0, 0); render_region(0, 0);
+                }
+                int64_t damage_elapsed = micros() - damage_start;
                 printf("{\"width\":%d,\"detail\":%d,\"group\":%d,\"frames\":%d,"
                        "\"render_us\":%.3f,\"fish_us\":%.3f,\"hash\":\"%016" PRIx64 "\",\"stages_us\":[",
                        TANK_W, detail, group, frames, (double)elapsed / frames,
@@ -411,8 +582,11 @@ static void benchmark(int frames) {
                        (double)render_helper_us[0] / frames, (double)render_helper_us[1] / frames,
                        (double)render_helper_us[2] / frames);
                 for (int i = 0; i < 4; i++) printf("%s\"%016" PRIx64 "\"", i ? "," : "", hashes[i]);
-                printf("],\"helpers_isolated_us\":[%.3f,%.3f,%.3f]}\n",
-                       helpers_isolated[0], helpers_isolated[1], helpers_isolated[2]);
+                printf("],\"helpers_isolated_us\":[%.3f,%.3f,%.3f],"
+                       "\"damage_pixels\":%.3f,\"damage_rectangles\":%.3f,\"damage_us\":%.3f}\n",
+                       helpers_isolated[0], helpers_isolated[1], helpers_isolated[2],
+                       (double)damage_pixels / damage_frames, (double)damage_rectangles / damage_frames,
+                       (double)damage_elapsed / damage_frames);
                 fflush(stdout);
             }
 }
@@ -452,9 +626,18 @@ static void soak(int seconds) {
         tank_t t;
         fixture(&t, checks % 2 != 0, (int)(checks / 2 % 2));
 #ifndef RENDER_BASELINE
+        static const float stage_sizes[] = {.55f, .78f, 1.04f, 1.23f};
+        for (int i = 0; i < t.n_fish; i++) {
+            t.fish[i].stage = (uint8_t)((checks + i) % 4);
+            t.fish[i].size = .86f * stage_sizes[t.fish[i].stage];
+        }
         static const uint8_t duplicates[] = {9, 10, 11, 12, 13, 16, 20, 21};
+        int new_item = SD_DECOR_FIRST + (int)(checks % DECOR_NEW_COUNT);
+        t.content.version = 1;
+        t.content.owned = 1u << (new_item - SD_DECOR_FIRST);
+        tank_decor_set(&t, new_item, TANK_W * .4f, checks % 2 ? DECOR_Z_FRONT : DECOR_Z_BACK);
         if (checks % 3) for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
-            t.inventory.extra[i].item = (uint8_t)(duplicates[i] + 1);
+            t.inventory.extra[i].item = (uint8_t)((i < 2 ? new_item : duplicates[i]) + 1);
             t.inventory.extra[i].x = TANK_W * (i + 1) / (float)(DECOR_EXTRA_CAP + 1);
             t.inventory.extra[i].z = i % 2 ? DECOR_Z_FRONT : DECOR_Z_BACK;
         }
@@ -482,6 +665,7 @@ static void soak(int seconds) {
             if (step == 2) t.mussel.bank = 1;
             t.mussel_glint = step < 4 ? 1.6f - step * .4f : 0;
             if (step == 5) t.mussel.owned = 0;
+            if (step == 5) t.content.owned = 0;
 #endif
             tank_tick(&t, 0.04f, advisor_rules);
             pose(&t, (int)(checks % 1000) + step);
@@ -515,12 +699,18 @@ static void soak(int seconds) {
             render_damage_begin(&t, step == 0);
             int cursor = 0, x, y, width, height;
             while (render_damage_next(&cursor, &x, &y, &width, &height)) {
+                assert(x >= 0 && width > 0 && x + width <= TANK_W);
+                assert(y >= 0 && height > 0 && y + height <= TANK_H);
+                int bottom = y + height;
+                for (; y < bottom; y += 40) {
+                height = bottom - y < 40 ? bottom - y : 40;
                 render_tile(y, height);
                 render_region(x, width);
                 render_tank(&t, fish_frame, TANK_W);
                 for (int row = 0; row < height; row++)
                     memcpy(retained + (y + row) * TANK_W + x,
                            fish_frame + row * TANK_W + x, (size_t)width * 2);
+                }
             }
             render_tile(0, 0);
             render_region(0, 0);
@@ -544,7 +734,7 @@ static void soak(int seconds) {
 }
 
 int main(int argc, char **argv) {
-    assert(argc == 4);
+    assert(argc == 4 || argc == 5);
 #ifndef RENDER_BASELINE
     for (int pass = 0; pass < 3; pass++)
         for (int i = 0; i < 256; i++) {
@@ -569,6 +759,9 @@ int main(int argc, char **argv) {
     render_set_backdrop_cache(backdrop, 12288);
     render_work_caches(true);
     render_clock_synchronized(true);
+#ifndef RENDER_BASELINE
+    render_damage_policy(argc > 4 ? atoi(argv[4]) : RENDER_DAMAGE_ADAPTIVE);
+#endif
     benchmark(atoi(argv[2]));
     soak(atoi(argv[3]));
     render_work_caches(false);

@@ -96,7 +96,7 @@ int main(void) {
     assert(progression_aquarium_summary(&t, 0, &summary) && summary.creative);
     wallet(&t, 37, 59, 0);
     char *creative_json = progression_backup_json(&t); assert(creative_json);
-    assert(strstr(creative_json, "\"schema\":18") && strstr(creative_json, "\"creative\":"));
+    assert(strstr(creative_json, "\"schema\":19") && strstr(creative_json, "\"creative\":"));
     reload(&t); assert(progression_creative(&t)); wallet(&t, 37, 59, 0);
     assert(!t.companion.collections && !t.companion.active[0].bond);
     assert(companion_cosmetic(&t, 3));

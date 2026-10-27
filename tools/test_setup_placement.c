@@ -109,9 +109,80 @@ static void test_all_placeable_cancel_roundtrip(void) {
     tank_resolution(false);
 }
 
+static void test_remove_to_storage(void) {
+    for (int normal = 0; normal < 2; normal++)
+        for (int item = 0; item < SD_ITEM_COUNT; item++) {
+            if (!tank_decor_placeable(item)) continue;
+            tank_t t;
+            saved_size = 0;
+            tank_init(&t, 96);
+            boot_enlarged(&t);
+            tank_resolution(normal != 0);
+            t.companion.display_compact = normal != 0;
+            t.sd_unlocks |= SD_ITEMS[item].bit;
+            if (SD_IS_NEW_DECOR(item)) t.content.owned |= 1u << (item - SD_DECOR_FIRST);
+            t.profile.owned_items |= UINT64_C(1) << item;
+            t.profile.paid_items |= UINT64_C(1) << item;
+            tank_decor_set(&t, item, TANK_W * .5f, DECOR_Z_BACK);
+            int wallet = t.sd_balance;
+            setup_begin_place(&t, item);
+            setup_activate(&t, SETUP_HIT_REMOVE);
+            assert(setup_active() && progression_item_owned(&t, item));
+            setup_activate(&t, SETUP_HIT_BACK);
+            assert(!setup_active() && progression_item_owned(&t, item));
+            setup_begin_place(&t, item);
+            setup_activate(&t, SETUP_HIT_REMOVE);
+            test_decor_scenery_reject_write(true);
+            setup_activate(&t, SETUP_HIT_REMOVE);
+            test_decor_scenery_reject_write(false);
+            assert(setup_is_place() && progression_item_owned(&t, item));
+            assert(!progression_inventory_stored(&t, item) && t.sd_balance == wallet);
+            setup_activate(&t, SETUP_HIT_REMOVE);
+            setup_activate(&t, SETUP_HIT_REMOVE);
+            assert(!setup_active() && !progression_item_owned(&t, item));
+            assert(progression_inventory_stored(&t, item) == 1 && t.sd_balance == wallet);
+            tank_t loaded;
+            tank_init(&loaded, 98);
+            boot_enlarged(&loaded);
+            assert(!progression_item_owned(&loaded, item));
+            assert(progression_inventory_stored(&loaded, item) == 1 && loaded.sd_balance == wallet);
+            assert(progression_inventory_place(&loaded, item));
+            assert(progression_item_owned(&loaded, item) && !progression_inventory_stored(&loaded, item));
+        }
+
+    tank_t t;
+    saved_size = 0;
+    tank_init(&t, 97);
+    boot_enlarged(&t);
+    t.inventory.version = 1;
+    t.inventory.extra[0] = (inventory_extra_t){.item = 11, .paid = 1, .x = 120, .z = DECOR_Z_FRONT};
+    t.profile.owned_items |= UINT64_C(1) << 10;
+    assert(!progression_item_owned(&t, 10));
+    assert(setup_begin_place_at(&t, 120, TANK_BOT - 20));
+    assert(setup_item() == 10);
+    setup_activate(&t, SETUP_HIT_REMOVE);
+    setup_activate(&t, SETUP_HIT_REMOVE);
+    assert(!setup_active() && !t.inventory.extra[0].item);
+    assert(progression_inventory_stored(&t, 10) == 1);
+    assert(progression_inventory_place(&t, 10));
+    assert(progression_item_owned(&t, 10));
+
+    t.inventory.stored[5] = DECOR_INVENTORY_CAP;
+    setup_begin_place(&t, 10);
+    setup_activate(&t, SETUP_HIT_REMOVE);
+    setup_activate(&t, SETUP_HIT_REMOVE);
+    assert(setup_is_place() && progression_item_owned(&t, 10));
+    assert(!strcmp(progression_shop_notice(), "DECORATION STORAGE FULL"));
+    setup_cancel(&t);
+    assert(!setup_begin_place_at(&t, 1, 1));
+    saved_size = 0;
+    puts("PASS: confirmed movement removal stores every decoration without refund; cancel/write failure/full storage preserve ownership; extra-only holding works");
+}
+
 int main(void) {
     test_overlapping_copy_selection_and_rollback();
     test_all_placeable_cancel_roundtrip();
+    test_remove_to_storage();
     puts("PASS: all placeable decor previews and saves roll back to the original layout on cancel");
     return 0;
 }

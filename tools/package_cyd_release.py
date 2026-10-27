@@ -175,7 +175,18 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.11: creature polish, exact rendering caches and lossless artwork
+### New in 2.3.12: fish-first rendering and detailed harbor/garden content
+
+- Aquarium fish draw 33% smaller at every life stage, including wearables and selection rings. Saved growth, simulation sizes and tap targets are unchanged; menu portraits remain readable.
+- Twenty detailed static shop decorations and six accessories: Sailor Cap, Pirate Hat, Beret, Sun Hat, Viking Helm and Scarf. Artwork stays procedural and uses bounded indexed caches, without new animation banks.
+- All twelve accessories use species-aware fitting. Jellyfish support ties, bowties, bandanas and headwear; only the wraparound scarf is unavailable. Existing ownership/colors are preserved.
+- Item panels use BUY, PLACE and SELL STORED. Hold a decoration to move it; confirmed REMOVE returns either an original or extra copy to shared storage without selling/refunding.
+- Two alternating 40-row tiles overlap rendering and LCD transfer inside the existing framebuffer allocation. Explicit buffer ownership and frame drains preserve display correctness.
+- Cost-based partial damage replaces the fixed 40% full-frame threshold. Background effects/grass use slower independent cadences while fish retain full-rate animation.
+- Frame-pacing percentiles, slow-frame counts and phase maxima expose stalls. Diagnostic sync/pipeline and full/partial/adaptive comparisons are available; no universal FPS gain is promised.
+- New saves use schema 19 / 6336 bytes and companion version 7. Schemas 1-18 migrate; back up first and do not downgrade after saving. No partition, calibration or hardware-profile changes.
+
+### Retained from 2.3.11: creature polish, exact rendering caches and lossless artwork
 
 - Overlapping helpers select the nearest eligible creature, retaining fish-first priority. Only visible shrimp and the visible seahorse receive taps; shrimp card counts follow scene detail.
 - Snail cards describe grazing, seeking algae, exploring sand or returning to sand. COLORS owns its press/drag/release gesture; sliding off cancels instead of feeding or dragging the tank behind it.

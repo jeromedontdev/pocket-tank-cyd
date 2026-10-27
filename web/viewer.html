@@ -42,6 +42,7 @@
     <section><h2 id="title">Your tank</h2><div id="overview"></div></section>
     <section><h2>Fish at home</h2><div id="home" class="grid"></div></section>
     <section><h2>Bank and travelers</h2><div id="away" class="grid"></div></section>
+    <section><h2>Harbor &amp; garden decorations</h2><div id="decorations"></div></section>
     <section><h2>Visitor log</h2><div id="visitors"></div></section>
     <section><h2>Recent memories</h2><div id="memories"></div></section>
   </div>
@@ -55,6 +56,11 @@ const VARIETIES = ["CLASSIC", "ANGEL", "GUPPY", "TETRA", "PUFFER", "SHARK", "JEL
 const PATTERNS = ["STRIPES", "SPOTS", "BAND", "PLAIN", "SADDLE", "TIGER", "SPECKLE", "FADE", "MASK"];
 const TRAITS = ["SHIMMER", "PAINTED FINS", "PALE BELLY", "GOLD EYE"];
 const STAGES = ["FRY", "JUVENILE", "ADULT", "ELDER"];
+const WEARABLES = ["NONE", "TOP HAT", "PARTY HAT", "CROWN", "TIE", "BOWTIE", "BANDANA",
+  "SAILOR CAP", "PIRATE HAT", "BERET", "SUN HAT", "VIKING HELM", "SCARF"];
+const DECORATIONS = ["LIGHTHOUSE", "SAILBOAT", "ROPE COIL", "SHIPS WHEEL", "PORT CRATE", "DIVE BELL",
+  "STONE BRIDGE", "PAGODA", "STONE LANTERN", "BONSAI", "TORII GATE", "MOON STONE", "GEODE", "FOSSIL",
+  "MUSHROOMS", "SANDCASTLE", "SEASIDE SIGN", "MESSAGE CHEST", "TREASURE MAP", "SUBMARINE"];
 const VISITORS = [
   ["DRIFTER", "A pale bell that drifts past on its own errand."],
   ["OLD TURTLE", "Slow, scarred and unhurried. It has seen many reefs."],
@@ -76,6 +82,11 @@ const hex = (s) => { const b = new Uint8Array((s || "").length / 2); for (let i 
 const view = (b) => new DataView(b.buffer, b.byteOffset, b.byteLength);
 const cstr = (b, at, n) => { let s = ""; for (let i = 0; i < n && b[at + i]; i++) s += String.fromCharCode(b[at + i]); return s; };
 const rgb = (n) => "#" + (n >>> 0).toString(16).padStart(6, "0").slice(-6);
+function wardrobe(encoded, index) {
+  const b = hex(encoded), at = index * 12;
+  if (b.length < at + 12) return {};
+  return { wearable: b[at + 9], wearables: b[at + 10] | ((b[at + 8] >> 3) << 8), wearColors: b[at + 11] };
+}
 
 function lives(bytes) {
   const out = [], v = view(bytes);
@@ -158,6 +169,11 @@ function card(f, line, life, names, extra) {
   c.append(drawFish(f), el("h3", f.name || "(unnamed)"));
   c.append(el("div", `${STAGES[f.stage] || "?"} ${VARIETIES[f.variety] || "FISH"} / ${PATTERNS[f.pattern] || "?"} markings`));
   const rows = [];
+  if (f.wearable !== undefined) {
+    rows.push(["Wearing", WEARABLES[f.wearable] || "UNKNOWN"],
+      ["Wardrobe", WEARABLES.filter((_, i) => i && f.wearables & (1 << (i - 1))).join(", ") || "No purchases"],
+      ["Wearable colors", `primary ${f.wearColors & 15}, accent ${f.wearColors >> 4}`]);
+  }
   if (line) {
     const who = (id) => names.get(id) || (id ? "a long-ago fish" : null);
     const parents = line.parents.map(who).filter(Boolean);
@@ -195,13 +211,13 @@ function show(save) {
   }
   const home = [];
   for (let i = 0; i < t.n_fish; i++) {
-    home.push({ name: t.names[i], body: t.body[i], accent: t.accent[i], variety: t.fish_variety[i], pattern: t.fish_pattern[i],
+    home.push({ ...wardrobe(comp.active, i), name: t.names[i], body: t.body[i], accent: t.accent[i], variety: t.fish_variety[i], pattern: t.fish_pattern[i],
                 stage: save.fish[i].stage, traits: lin ? lin.active[i].traits & 15 : 0 });
     if (life.active[i]) { names.set(life.active[i].id, t.names[i] || "an unnamed fish"); if (lin) names.lines.set(life.active[i].id, lin.active[i]); }
   }
   const bank = (save.bank || []).map((b, i) => {
     if (life.bank[i]) { names.set(life.bank[i].id, b.name || "an unnamed fish"); if (lin) names.lines.set(life.bank[i].id, lin.bank[i]); }
-    return { name: b.name, body: b.body, accent: b.accent, variety: b.appearance & 255, pattern: b.appearance >> 8,
+    return { ...wardrobe(comp.bank, i), name: b.name, body: b.body, accent: b.accent, variety: b.appearance & 255, pattern: b.appearance >> 8,
              stage: b.fish.stage, traits: lin ? lin.bank[i].traits & 15 : 0 };
   });
   const traveler = comp.away ? bankRecord(hex(comp.traveler)) : null;
@@ -220,7 +236,7 @@ function show(save) {
     ["Daily care rewards", save.care ? `${[0, 1, 2].filter(i => save.care.claimed & (1 << i)).length}/3 saved` : "Predates daily care"],
     ["Game bonus today", save.game_income ? `${save.care.game_paid}/90 sand dollars; up to 5 per game; no XP` :
       save.care ? `${save.care.game_paid}/5 sand dollars; no XP` : "Predates daily bonus limit"],
-    ["Shared decoration storage", save.inventory ? `${hex(save.inventory.stored).reduce((sum, n) => sum + n, 0)}/64 pieces` : "Predates inventory"],
+    ["Shared decoration storage", save.inventory ? `${[...hex(save.inventory.stored), ...hex(save.content && save.content.stored)].reduce((sum, n) => sum + n, 0)}/64 pieces` : "Predates inventory"],
     ["Extra ornaments here", save.inventory ? `${hex(save.inventory.extra).filter((n, i) => i % 8 === 0 && n !== 0).length}/8 placed` : "Predates inventory"],
     ["Pearl mussel", save.mussel ? save.mussel.owned ?
       `${save.mussel.version >= 2 ? save.mussel.owned.toString(2).replace(/0/g, "").length + " aquarium resident(s); " : "Legacy resident; "}${save.mussel.generated}/15 earned today; ${save.mussel.bank} pending automatic payout` :
@@ -234,10 +250,26 @@ function show(save) {
   const table = el("table");
   for (const [k, v] of facts) { const r = el("tr"); r.append(el("th", k), el("td", String(v))); table.append(r); }
   ov.append(table);
+  const decor = $("decorations"); decor.replaceChildren();
+  if (!save.content) decor.append(el("p", "Predates harbor and garden decorations.", "muted"));
+  else {
+    const stored = hex(save.content.stored), depth = hex(save.content.z);
+    const extra = hex(save.inventory && save.inventory.extra);
+    const list = el("table");
+    DECORATIONS.forEach((name, i) => {
+      const placed = !!(save.content.owned & (1 << i));
+      const copies = [...extra].filter((n, k) => k % 8 === 0 && n === 44 + i).length;
+      if (!placed && !stored[i] && !copies) return;
+      const row = el("tr");
+      row.append(el("th", name), el("td", `${placed ? `Placed at x ${Math.round(save.content.x[i]) || "default"}, ${depth[i] === 2 ? "front" : "back"}` : "Not placed"}; ${stored[i] || 0} stored; ${copies} extra placed`));
+      list.append(row);
+    });
+    decor.append(list.childElementCount ? list : el("p", "No harbor or garden decorations purchased.", "muted"));
+  }
 
   $("home").replaceChildren(...home.map((f, i) => card(f, lin && lin.active[i], life.active[i], names)));
   const awayCards = bank.map((f, i) => card(f, lin && lin.bank[i], life.bank[i], names, ["Where", "the Bank"]));
-  if (traveler) awayCards.unshift(card({ ...traveler, variety: traveler.appearance & 255, pattern: traveler.appearance >> 8,
+  if (traveler) awayCards.unshift(card({ ...traveler, ...wardrobe(comp.traveler_bond, 0), variety: traveler.appearance & 255, pattern: traveler.appearance >> 8,
                                          traits: lin ? lin.traveler.traits & 15 : 0 }, lin && lin.traveler, life.traveler, names, ["Where", "on an adventure"]));
   $("away").replaceChildren(...(awayCards.length ? awayCards : [el("p", "Nobody is banked or travelling.", "muted")]));
 

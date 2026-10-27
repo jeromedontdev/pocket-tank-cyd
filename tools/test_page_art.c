@@ -334,7 +334,12 @@ static void check_inventory_ui(void) {
     while (shp_item(&t, row) != 9) { row++; assert(row < shp_rows(&t)); }
     g_shp_page = row / SHP_PER_PAGE;
     assert(inventory_touch(&t, 120, SHP_ROW_Y0 + row % SHP_PER_PAGE * SHP_ROW_DY + 10) == SHOP_TAP_KEPT);
-    assert(g_inventory_item == 9 && g_inventory_copy == -1);
+    assert(g_inventory_item == 9);
+    tank_t before_removed_controls = t;
+    assert(inventory_touch(&t, 344, 194) == SHOP_TAP_KEPT);
+    assert(inventory_touch(&t, 120, 230) == SHOP_TAP_KEPT);
+    assert(inventory_touch(&t, 280, 230) == SHOP_TAP_KEPT);
+    assert(!memcmp(&t, &before_removed_controls, sizeof t));
     int action = inventory_touch(&t, 280, 150);
     assert(action == INV_BUY && render_shop_inventory_action(&t, action));
     action = inventory_touch(&t, 120, 150);
@@ -347,9 +352,11 @@ static void check_inventory_ui(void) {
     t.inventory.extra[copy].x += 8;
     setup_cancel(&t);
     assert(!memcmp(&before, &t.inventory.extra[copy], sizeof before));
-    g_inventory_copy = copy;
-    action = inventory_touch(&t, 280, 230);
-    assert(action == INV_STORE && render_shop_inventory_action(&t, action));
+    setup_begin_extra_place(&t, copy);
+    setup_activate(&t, SETUP_HIT_REMOVE);
+    assert(setup_is_place() && progression_inventory_placed(&t, 9) == 2);
+    setup_activate(&t, SETUP_HIT_REMOVE);
+    assert(!setup_active());
     assert(progression_inventory_stored(&t, 9) == 1 && progression_inventory_placed(&t, 9) == 1);
     assert(inventory_touch(&t, 220, 276) == SHOP_TAP_KEPT);
     action = inventory_touch(&t, 220, 276);
@@ -412,7 +419,7 @@ static void check_inventory_ui(void) {
         t.n_fish = residents;
     }
     render_shop_leave();
-    puts("Shop: first purchase, integrated duplicate buy/place/store/sale, Back disarms sale, normal mussel purchase, automatic payout without XP, healthy boundaries/NaNs, and one-row UI parity.");
+    puts("Shop: first purchase, Buy/Place, removed-control dead zones, movement-screen removal to storage, confirmed sale, Back disarms sale, mussel payout and tiled UI parity.");
 }
 
 static void check_font_coverage(void) {
@@ -536,6 +543,44 @@ static void check_companion_navigation(void) {
     assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
 }
 
+static void check_content_page_tiles(void) {
+    tank_t t; tank_init(&t, 799); tank_new_population(&t);
+    t.sd_balance = 100000; t.journal.xp = 20000;
+    for (int kind = 0; kind < 3; kind++) {
+        int count = kind == 0 ? DECOR_NEW_COUNT : WEAR_COUNT - 1;
+        if (kind) companion_open_section(COMPANION_SECTION_WARDROBE);
+        for (int item = 0; item < count; item++) {
+            if (!kind) {
+                render_shop_leave();
+                g_shp_modal = SD_DECOR_FIRST + item;
+            } else if (kind == 2) {
+                companion_tap(&t, render_frame_x(60), render_frame_y(180));
+            }
+            render_tile(0, 0); render_region(0, 0);
+            memset(full_frame, 0, sizeof full_frame);
+            if (!kind) render_shop(&t, full_frame, TANK_W);
+            else companion_render(&t, full_frame, TANK_W);
+            for (int row = 0; row < TANK_H; row += 40) {
+                int height = TANK_H - row < 40 ? TANK_H - row : 40;
+                int length = TANK_W * height;
+                memset(tile_frame, 0, sizeof tile_frame);
+                tile_frame[0] = tile_frame[length + 1] = 0x96a5;
+                render_tile(row, height);
+                if (!kind) render_shop(&t, tile_frame + 1, TANK_W);
+                else companion_render(&t, tile_frame + 1, TANK_W);
+                assert(tile_frame[0] == 0x96a5 && tile_frame[length + 1] == 0x96a5);
+                assert(!memcmp(tile_frame + 1, full_frame + row * TANK_W,
+                               (size_t)length * sizeof *full_frame));
+            }
+            render_tile(0, 0);
+            if (kind == 2) companion_tap(&t, render_frame_x(390), render_frame_y(23));
+            if (kind) companion_tap(&t, render_frame_x(400), render_frame_y(235));
+        }
+    }
+    render_shop_leave(); render_tile(0, 0); render_region(0, 0);
+    puts("PASS: all twenty new shop modals and twelve wardrobe/color pages match exact guarded 40-row rendering");
+}
+
 static void check_fish_material(void) {
     const float xs[] = {28, 65, 87, 70, 32, 17};
     const float ys[] = {21, 18, 40, 63, 67, 43};
@@ -627,10 +672,105 @@ static void capture_fish_materials(const char *directory) {
     }
 }
 
+static void capture_content_raw(const char *directory, const char *name) {
+    char path[1024];
+    int length = snprintf(path, sizeof path, "%s/%s-%d.raw", directory, name, TANK_W);
+    assert(length > 0 && length < (int)sizeof path);
+    FILE *file = fopen(path, "wb"); assert(file);
+    assert(fwrite(full_frame, sizeof *full_frame, (size_t)TANK_W * TANK_H, file) ==
+           (size_t)TANK_W * TANK_H);
+    assert(!fclose(file));
+}
+
+static void capture_new_content(const char *directory) {
+    static const char *const names[DECOR_NEW_COUNT] = {
+        "LIGHTHOUSE", "SAILBOAT", "ROPE COIL", "WHEEL", "CARGO CRATE",
+        "DIVE BELL", "STONE BRIDGE", "PAGODA", "STONE LANTERN", "BONSAI",
+        "TORII", "CRESCENT", "SPLIT GEODE", "AMMONITE", "CERAMIC MUSHROOMS",
+        "SANDCASTLE", "ARROW SIGN", "SEABED MAILBOX", "PARCHMENT MAP", "SUBMARINE"
+    };
+    const uint16_t background = rgb565(0x102b34, 1);
+    render_tile(0, 0); render_region(0, 0);
+    ctx_t c = {.fb = full_frame, .stride = TANK_W, .dim = 1,
+               .ox = 0, .oy = 0, .w = TANK_W, .h = TANK_H, .scaled = false};
+    for (int item = SD_DECOR_FIRST; item < SD_ITEM_COUNT; item++) {
+        for (int px = 0; px < TANK_W * TANK_H; px++) full_frame[px] = background;
+        draw_ornament(&c, item, (TANK_W - 40) / 2, (TANK_H - 40) / 2, 1, false, true, 0);
+        char title[40];
+        snprintf(title, sizeof title, "%d %s", item, names[item - SD_DECOR_FIRST]);
+        draw_text(&c, 4, 4, 1, 0xf1e8ca, title);
+        char name[32];
+        snprintf(name, sizeof name, "decoration-%02d", item);
+        capture_content_raw(directory, name);
+    }
+    if (TANK_W == 320) {
+        enum { CELL_W = 120, CELL_H = 72, SHEET_W = 5 * CELL_W, SHEET_H = 4 * CELL_H };
+        static uint16_t sheet[SHEET_W * SHEET_H];
+        static const char *const labels[DECOR_NEW_COUNT] = {
+            "LIGHTHOUSE", "SAILBOAT", "ROPE COIL", "WHEEL", "CARGO CRATE",
+            "DIVE BELL", "STONE BRIDGE", "PAGODA", "STONE LANTERN", "BONSAI",
+            "TORII", "CRESCENT", "SPLIT GEODE", "AMMONITE", "MUSHROOMS",
+            "SANDCASTLE", "ARROW SIGN", "MAILBOX", "PARCHMENT MAP", "SUBMARINE"
+        };
+        ctx_t sheet_ctx = {.fb = sheet, .stride = SHEET_W, .dim = 1,
+                           .ox = 0, .oy = 0, .w = SHEET_W, .h = SHEET_H, .scaled = false};
+        for (int px = 0; px < SHEET_W * SHEET_H; px++) sheet[px] = background;
+        for (int i = 0; i < DECOR_NEW_COUNT; i++) {
+            /* Each cell: centered ID, centered full name, then the 40x40 ornament. */
+            int x = (i % 5) * CELL_W, y = (i / 5) * CELL_H;
+            char id[4];
+            snprintf(id, sizeof id, "%d", SD_DECOR_FIRST + i);
+            const char *lines[2] = {id, labels[i]};
+            for (int line = 0; line < 2; line++) {
+                int width = text_w(lines[line], 1);
+                assert(width <= CELL_W - 4);
+                draw_text(&sheet_ctx, x + (CELL_W - width) / 2, y + 2 + line * 10, 1,
+                          line ? 0xf1e8ca : 0xf1d89b, lines[line]);
+            }
+            draw_ornament(&sheet_ctx, SD_DECOR_FIRST + i, x + (CELL_W - 40) / 2, y + 23,
+                          1, false, true, 0);
+        }
+        char path[1024];
+        int length = snprintf(path, sizeof path, "%s/new-decoration-contact-%dx%d.raw",
+                              directory, SHEET_W, SHEET_H);
+        assert(length > 0 && length < (int)sizeof path);
+        FILE *file = fopen(path, "wb"); assert(file);
+        assert(fwrite(sheet, sizeof *sheet, (size_t)SHEET_W * SHEET_H, file) ==
+               (size_t)SHEET_W * SHEET_H);
+        assert(!fclose(file));
+    }
+
+    static const char *const wearable_names[WEAR_COUNT - WEAR_SAILOR] = {
+        "SAILOR", "PIRATE", "BERET", "SUNHAT", "VIKING", "SCARF"
+    };
+    const float tank_scale = (float)TANK_W / 240.0f;
+    for (int readable = 0; readable < 2; readable++) {
+        for (int px = 0; px < TANK_W * TANK_H; px++) full_frame[px] = background;
+        for (int i = 0; i < WEAR_COUNT - WEAR_SAILOR; i++) {
+            int column = i % 3, row = i / 3;
+            fish_t f = help_tank.fish[0];
+            f.x = (column * 2 + 1) * (float)TANK_W / 6;
+            f.y = row ? TANK_H * 0.72f : TANK_H * 0.27f;
+            f.size = tank_scale * (readable ? 1.35f : 1.0f);
+            f.stage = STAGE_ADULT; f.yaw = f.yaw_tail = 1; f.heading = 0;
+            f.color = 0x69b6bf; f.fin = 0xb47faf; f.accent = 0xf0d399;
+            f.hunger = f.stress = f.speed = 0; f.traits = 0; f.pattern = PATTERN_PLAIN;
+            f.variety = FISH_CLASSIC; f.wearable = WEAR_SAILOR + i; f.wear_colors = 0;
+            draw_fish_core(&c, &f, 0, false, f.size);
+            int label_y = (int)(f.y + 16 * f.size + 2);
+            draw_text(&c, (int)f.x - text_w(wearable_names[i], 1) / 2,
+                      label_y, 1, 0xb6d3ce, wearable_names[i]);
+        }
+        capture_content_raw(directory, readable ? "wearables-readable" : "wearables-tank-scale");
+    }
+}
+
 static void check_tank_materials(void) {
     static const int items[] = {9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
                                SD_SCENERY_GLASS, SD_SCENERY_BRAIN, SD_SCENERY_TIKI,
-                               SD_SCENERY_BOTTLE, SD_SCENERY_ANEMONE, SD_SCENERY_TEAPOT};
+                               SD_SCENERY_BOTTLE, SD_SCENERY_ANEMONE, SD_SCENERY_TEAPOT,
+                               43, 44, 45, 46, 47, 48, 49, 50, 51, 52,
+                               53, 54, 55, 56, 57, 58, 59, 60, 61, 62};
     for (unsigned i = 0; i < sizeof items / sizeof *items; i++) {
         int item = items[i], width = tank_ornament_w(item), height = tank_ornament_h(item);
         uint16_t colors[32];
@@ -655,11 +795,59 @@ static void check_tank_materials(void) {
             }
         }
         assert(painted > 40 && transparent > 0);
-        assert(count >= 4); /* Material faces, highlights and recesses survive RGB565. */
+        assert(count >= (SD_IS_NEW_DECOR(item) ? 7 : 4));
     }
     assert(!ornament_pixel(20, 29, 35)); /* The stone arch is still a real opening. */
     assert(ornament_pixel(9, 23, 23) != ornament_pixel(9, 21, 23)); /* Recessed latch. */
     assert(ornament_pixel(26, 11, 10) != ornament_pixel(26, 12, 10)); /* Hoop rivet. */
+    static const struct { int item, x0, y0, x1, y1; } details[] = {
+        {43, 19, 8, 18, 8},   /* Glazed lantern and mullion. */
+        {44, 24, 13, 24, 14}, /* Sewn sail seam. */
+        {45, 20, 17, 20, 18}, /* Braided rope. */
+        {46, 20, 18, 23, 18}, /* Brass wheel hub. */
+        {47, 6, 12, 7, 12},   /* Iron corner rivet. */
+        {48, 20, 18, 20, 21}, /* Porthole reflection. */
+        {49, 20, 10, 20, 11}, /* Parapet cap. */
+        {50, 20, 17, 21, 17}, /* Recessed balcony lattice. */
+        {51, 20, 17, 19, 17}, /* Lantern window frame. */
+        {52, 20, 31, 20, 32}, /* Planter lip and soil. */
+        {53, 20, 10, 20, 11}, /* Torii plaque border. */
+        {54, 6, 18, 9, 18},   /* Crescent bevel. */
+        {55, 20, 21, 20, 16}, /* Geode cavity and facets. */
+        {56, 17, 19, 20, 20}, /* Fossil spiral and chamber. */
+        {57, 17, 9, 20, 9},   /* Glazed mushroom spot. */
+        {58, 20, 19, 21, 19}, /* Castle arrow slit. */
+        {59, 13, 14, 14, 14}, /* Carved fish eye. */
+        {60, 14, 20, 14, 21}, /* Envelope fold. */
+        {61, 29, 17, 28, 17}, /* Map compass rose. */
+        {62, 10, 24, 10, 25}  /* Submarine window reflection. */
+    };
+    int lost_details = 0;
+    for (unsigned i = 0; i < sizeof details / sizeof *details; i++) {
+        uint32_t a = ornament_pixel(details[i].item, details[i].x0, details[i].y0);
+        uint32_t b = ornament_pixel(details[i].item, details[i].x1, details[i].y1);
+        if (!a || !b || rgb565(a, 1) == rgb565(b, 1)) {
+            fprintf(stderr, "Decoration %d lost its defining detail (%06x / %06x)\n", details[i].item, a, b);
+            lost_details++;
+        }
+    }
+    assert(!lost_details);
+    assert(!ornament_pixel(49, 20, 34));
+    assert(!ornament_pixel(53, 20, 26));
+    assert(!ornament_pixel(54, 27, 16));
+    bool work_enabled = g_work_enabled;
+    render_work_caches(true);
+    tank_t t = {0};
+    for (int item = SD_DECOR_FIRST; item < SD_DECOR_FIRST + DECOR_NEW_COUNT; item++) {
+        t.inventory.extra[0].item = t.inventory.extra[1].item = (uint8_t)(item + 1);
+        ornament_select(&t);
+        const ornament_art_t *art = ornament_art(item);
+        assert(art && art->width == 40 && art->height == 40 && !g_ornament_failed);
+        for (int y = -1; y <= 40; y++) for (int x = -1; x <= 40; x++)
+            assert(ornament_cached_pixel(item, x, y) == ornament_pixel(item, x, y));
+    }
+    render_work_caches(false);
+    render_work_caches(work_enabled);
 }
 
 static void draw_test_effect(ctx_t *c, int kind, int pose) {
@@ -1143,7 +1331,9 @@ static void check_page_asset(int kind, int item, int x, int y) {
 }
 
 int main(int argc, char **argv) {
-    assert(argc == 2 || argc == 3);
+    assert(argc >= 2 && argc <= 4);
+    const char *gallery = argc > 2 && strcmp(argv[2], "-") ? argv[2] : NULL;
+    const char *content_gallery = argc > 3 ? argv[3] : NULL;
     FILE *icons = fopen(argv[1], "rb");
     assert(icons);
     icon_bank_bytes = fread(icon_bank, 1, sizeof icon_bank, icons);
@@ -1212,16 +1402,18 @@ int main(int argc, char **argv) {
         check_font_coverage();
         check_font_clock_cache();
         check_companion_navigation();
+        check_content_page_tiles();
         check_inventory_ui();
         assert(TANK_W == (resolution ? 320 : 240));
-        check_menu_layout(argc > 2 ? argv[2] : NULL);
+        check_menu_layout(gallery);
         check_aquarium_effects();
         check_care_scene_cache();
-        if (argc > 2) {
-            capture_fish_materials(argv[2]);
-            capture_aquarium_details(argv[2]);
-            capture_typography(argv[2]);
+        if (gallery) {
+            capture_fish_materials(gallery);
+            capture_aquarium_details(gallery);
+            capture_typography(gallery);
         }
+        if (content_gallery) capture_new_content(content_gallery);
         render_life_open();
         for (int category = 0; category < 5; category++) for (int page = 0; page < 2; page++) {
             g_home_category = category; g_home_page = page;
@@ -1262,7 +1454,7 @@ int main(int argc, char **argv) {
     puts("Wrappers: static, clipped and full/tile equivalent at both resolutions.");
     puts("Help/pause: all games mask gameplay and match tiled output at both resolutions.");
     puts("Polished art: distinct stamps, four-plus tones, clipped bounds and guarded 1/17-row tile parity at both resolutions.");
-    puts("Tank materials: 25 dimensional ornaments, RGB565 contrast, night dimming, original bounds and arch opening.");
+    puts("Tank materials: 45 dimensional ornaments, RGB565 contrast, night dimming, original bounds and arch opening.");
     puts("Fish materials: five RGB565 tones with unchanged polygon coverage and guarded one-row tile equality.");
     puts("Aquarium details: five visitors and food/bubbles stay bounded with guarded row parity; care feedback requires a successful stroke.");
     puts("Typography: exact coverage/ink conservation for every UI glyph at native and fractional sizes; guarded row/region parity, identical ASCII/UI metrics at scales 1-6, and no new Jumbo clock cache fallbacks.");

@@ -20,6 +20,32 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- Release 2.3.12 content expansion: exactly six new wearables (IDs7–12) and twenty
+  static placeable ornaments (shop IDs43–62); existing IDs0–42 never move.
+  Schema19 / 6336 bytes appends `decor_content_t` at6168, retaining schema18's
+  four alignment bytes explicitly. Legacy inventory stays16 slots/100 bytes;
+  live decoration ranks/ordering have36 slots; the new20 stored/paid counts,
+  ownership bits and geometry live in the appended tail. Shared storage still
+  caps at64, extras at8. Profile unlock/refund masks remain uint64 (highest ID62);
+  never shift legacy uint32 ownership by a new item ID. Renderer vegetation
+  piece masks are uint64 for35 pieces. No ambient animation added. Companion
+  v7 keeps the12-byte bond layout: ownership bits0–7 in wearables, bits8–11
+  in tricks bits3–6; learned tricks remain bits0–2. Use companion_wearables,
+  mask trick-presence checks with7, preserve bank/traveler copies and colors.
+  Old schemas1–18 and6168-byte saves migrate with an empty content tail.
+  Actual IDF SPIFFS geometry with6336-byte saves uses86,016/131,072 bytes
+  for eight archives, active redundancy and an in-flight replacement (<75%).
+- Harbor/garden art uses detailed static 40x40 procedural materials: structural
+  shading, distinctive fittings and material-specific details, shared by tank
+  and shop previews. Preserve transparency (especially bridge/gate/moon holes),
+  exact indexed-cache RGB, night dimming and full/tiled equality. The native
+  page-art test checks all20 palettes, defining detail pixels and cache parity;
+  `tools/capture_decoration_art.py` produces individual PNGs and a labeled sheet.
+  Do not add animation, bitmap banks or persistent state for this art.
+- Wardrobe fit is shared by purchase/equip and render/clearance geometry.
+  Jellyfish support ties, bowties and bandanas as front accessories; only the
+  wraparound scarf is unavailable. Preserve legacy ownership/equipment/colors
+  without drawing incompatible gear. Run `tools/test_wardrobe.py --cc gcc`.
 - 2.3.8 integrates decoration copy/storage controls into each normal shop entry,
   removing separate Inventory/Mussel navigation. Additional-copy purchases require
   a prior first purchase (including Creative). Pearl Mussel is stable shop ID42,
@@ -318,6 +344,10 @@ or deployment is published. Update this file when its contracts change.
 - The real device was last tested on **COM4**. Confirm current port/device
   ownership before connecting. Never manipulate a real aquarium just to stage
   screenshots or advance the user's story.
+- User testing workflow: after verified firmware changes, build and flash the
+  original CYD on **COM4** by default, then verify app readback, boot and saves.
+  Preserve a fresh full-device backup and use the app-only unified updater;
+  never touch COM5. Commit/publication remain separate from this authorization.
 - No known unfinished feature is implied by this handoff. New requests and
   current CI/GitHub state determine the next task.
 - Release 2.1 adds Display > SCENE Balanced/Simple/Enhanced, independently of scale.
@@ -376,7 +406,7 @@ or further split modules without a concrete maintenance benefit.
 
 ## Persistence and memory: hard constraints
 
-- Current source binary save **6168 bytes**, JSON **schema 18**; imports schemas 1-17.
+- Current source binary save **6336 bytes**, JSON **schema 19**; imports schemas 1-18.
   The 24-byte `care_state_t` appends at offset 6008; quotas and care progress
   follow shared progression, never stale parked snapshots. Validate JSON and
   binary tails; retain zero-tail migration without changing existing XP.
@@ -449,9 +479,13 @@ or further split modules without a concrete maintenance benefit.
   renderer stage timing and SPI fill/wire/send timing identify the actual cost.
   Compare like-for-like staged scenes; do not change the user's tank to make a
   result look faster. Repeat after adding creatures, decorations or effects.
-- Enlarged uses a **240x180 RGB565 framebuffer = 86,400 bytes**, allocated as
-  internal DMA-capable 8-bit RAM. Normal reuses that allocation as **three
-  320x80 tiles**, not a full 320x240 framebuffer. Do not add a second framebuffer
+- The framebuffer allocation remains **86,400 bytes** of internal DMA-capable
+  8-bit RAM. Live rendering uses two alternating **40-row tiles** in that same
+  allocation at both scales; Normal retains the previous backdrop-cache tail.
+  A core-1 LCD worker owns each submitted source until completion while core 0
+  renders into the other half. Capture viewport bounds at submission; never
+  read renderer globals in the worker. Drain before simulation/resolution,
+  sleep, or synchronous screens. Do not add a second framebuffer
   or a native full-screen allocation (**153,600 bytes**) to simplify drawing.
 - The LCD stripe allocation is also internal DMA RAM. Its size follows
   `320 * CYD_STRIPE_ROWS * 2`; preserve the alternating stripe/pipelining
@@ -462,6 +496,13 @@ or further split modules without a concrete maintenance benefit.
   drawing if unavailable. Some scene/card/dirty caches are deliberately
   disabled on CYD. Never enable them wholesale or assume all caches can
   coexist. Preserve explicit diagnostics and tested fallback correctness.
+- Fish stay full-rate; scenery clocks are independent (Balanced effects5Hz/
+  grass2Hz, Enhanced10Hz/4Hz, staggered grass beds). Damage planning compares
+  merged rectangle costs, not the old fixed40% promotion threshold. Serial
+  `benchmark` compares synchronous/full and pipeline full/partial/adaptive
+  modes with identical40-row tiles. Frame pacing logs include2-ms upper-bound
+  p50/p95/p99, exact maxima, slow counts, and main-stage maxima; worker timings
+  overlap rendering and must not be added again to the main-task frame budget.
 - At boot, `tank task up`, and periodic `TAG`/`display` lines, inspect **free
   internal heap and largest internal block**, cache usage, and rows rendered/
   flushed. A healthy total heap does not prove a contiguous DMA allocation
@@ -554,6 +595,8 @@ git diff --check
   equivalence at both resolutions. Keep it in checks and release workflows.
 - Screenshot command:
   `python tools\capture_cyd_gallery.py --cc gcc --out <separate-output-directory>`.
+  New ornament/wardrobe art review:
+  `python tools\capture_decoration_art.py --cc gcc --out <separate-output-directory>`.
   Never capture against the user's live save. Refresh relevant named images,
   ensure Markdown links resolve, and stage no generated binaries/scratch saves.
 - Web changes: Python staging tests plus desktop/mobile real-browser checks,

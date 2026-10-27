@@ -13,6 +13,7 @@ HARNESS = r"""
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <setjmp.h>
 #define CYD_PANEL_W 320
 #define CYD_PANEL_H 240
 #define CYD_STRIPE_ROWS 16
@@ -29,13 +30,35 @@ static int render_region_left(void) { return region_w ? region_x : 0; }
 static int render_region_right(void) { return region_w ? region_x + region_w : TANK_W; }
 static int render_tile_top(void) { return tile_y; }
 static int render_tile_bottom(void) { return tile_h ? tile_y + tile_h : TANK_H; }
-static int s_panel = 1, s_flush_done;
+static int s_panel = 1, s_flush_done = 1;
+typedef int TaskHandle_t;
+static TaskHandle_t s_worker;
+static int s_job_done = 2, job_available = 1;
+static struct {
+    const uint16_t *pixels;
+    int top, bottom, left, right;
+} s_job;
+static bool job_queued;
+static void display_port_flush(const uint16_t *fb);
+static void flush_region(const uint16_t *fb, int top, int bottom, int left, int right);
+static void display_worker(void *arg);
+static jmp_buf worker_yield;
+static bool worker_step;
+#define pdTRUE 1
+static unsigned ulTaskNotifyTake(int clear, int delay) {
+    (void)clear; (void)delay;
+    if (worker_step) longjmp(worker_yield, 1);
+    worker_step = true;
+    return 1;
+}
+static void xTaskNotifyGive(TaskHandle_t worker) { assert(worker && !job_queued); job_queued = true; }
+static void xSemaphoreGive(int sem) { assert(sem == s_job_done); job_available = 1; }
 static uint16_t stripe_memory[240 * 16], *s_stripe = stripe_memory;
 static bool s_inverted;
-static uint32_t s_block_crc[3][40];
-static bool s_block_valid[3][40];
+static uint32_t s_block_crc[6][40];
+static bool s_block_valid[6][40];
 static int s_layout_width, s_layout_height, s_layout_tile;
-static int64_t s_wait_us, s_send_us;
+static int64_t s_wait_us, s_send_us, s_fill_us;
 static unsigned s_blocks_sent, s_blocks_skipped;
 static unsigned crc_calls;
 static int64_t esp_timer_get_time(void) { static int64_t t; return ++t; }
@@ -63,6 +86,16 @@ static int esp_lcd_panel_draw_bitmap(int panel, int x0, int y0, int x1, int y1, 
 }
 static int xSemaphoreTake(int sem, int delay) {
     (void)sem; (void)delay;
+    if (sem == s_job_done) {
+        if (job_queued) {
+            job_queued = false;
+            worker_step = false;
+            if (!setjmp(worker_yield)) display_worker(NULL);
+        }
+        assert(job_available);
+        job_available = 0;
+        return 1;
+    }
     assert(pending);
     /* DMA retains the pointer: writes before completion corrupt the image. */
     assert(!memcmp(pending_copy, pending, (size_t)(px1 - px0) * (py1 - py0) * 2));
@@ -94,6 +127,7 @@ static void check_frame(uint16_t *frame, int height) {
     verify_frame(frame);
 }
 int main(void) {
+    (void)display_worker;
     uint16_t *frame = malloc(320 * 240 * 2); assert(frame);
     for (int invert = 0; invert < 2; invert++) {
         TANK_W = 240; TANK_H = 180; s_inverted = invert != 0;
@@ -261,6 +295,33 @@ int main(void) {
         region_x = region_w = 0;
         check_frame(frame, height);
     }
+    s_worker = 1;
+    for (int mode = 0; mode < 4; mode++) {
+        TANK_W = mode & 1 ? 320 : 240; TANK_H = mode & 1 ? 240 : 180;
+        s_inverted = (mode & 2) != 0;
+        uint16_t buffers[2][320 * 40];
+        region_x = region_w = 0;
+        memset(s_block_valid, 0, sizeof s_block_valid);
+        memset(s_partial, 0, sizeof s_partial);
+        for (int i = 0; i < TANK_W * TANK_H; i++) frame[i] = (uint16_t)(i * 43u + 17);
+        unsigned slot = 0;
+        for (int top = 0; top < TANK_H; top += 40) {
+            int rows = TANK_H - top < 40 ? TANK_H - top : 40;
+            memcpy(buffers[slot], frame + top * TANK_W, (size_t)rows * TANK_W * 2);
+            tile_y = top; tile_h = rows;
+            display_port_submit(buffers[slot]);
+            assert(job_queued);
+            /* Renderer globals change immediately; the worker must use its snapshot. */
+            tile_y = tile_h = region_x = region_w = 0;
+            slot ^= 1;
+        }
+        display_port_wait();
+        verify_frame(frame);
+        unsigned sent_before = s_blocks_sent;
+        check_frame(frame, 40);
+        assert(s_blocks_sent == sent_before);
+    }
+    puts("PASS: delayed tile worker snapshots, alternating 40-row source ownership, drain and synchronous compatibility");
     free(frame);
     puts("PASS: actual CYD flush, delayed DMA buffer ownership, exact rotated/scaled pixels, single-block changes, unchanged skips, inversion and Normal/Compact/full/tiled transitions");
 }
@@ -273,7 +334,7 @@ def main():
     args = parser.parse_args()
     source = (Path(__file__).resolve().parent.parent / "firmware" / "main" / "display_port_cyd.c").read_text()
     partial = source[source.index("typedef struct {"):source.index("/* Panel-specific")]
-    flush = source[source.index("void display_port_flush("):source.index("void display_port_sleep(")]
+    flush = source[source.index("static void flush_region("):source.index("void display_port_sleep(")]
     with tempfile.TemporaryDirectory(prefix="cyd-display-test-") as folder:
         folder = Path(folder)
         test = folder / "test.c"

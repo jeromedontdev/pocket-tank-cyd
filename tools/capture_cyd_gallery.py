@@ -86,7 +86,7 @@ def main():
 
                 def restore(snapshot, preserve_life=False):
                     snapshot = copy.deepcopy(snapshot)
-                    if snapshot.get("schema") in (11, 12, 13, 14, 15, 16, 17, 18) and not preserve_life:
+                    if snapshot.get("schema") in (11, 12, 13, 14, 15, 16, 17, 18, 19) and not preserve_life:
                         # Staged rosters replace identities; migrate their life records honestly.
                         snapshot["schema"] = 10
                         snapshot.pop("polish")

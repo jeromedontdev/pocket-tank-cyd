@@ -3,8 +3,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 bool display_port_init(void);
+bool display_port_pipeline_init(void);
 void display_port_flush(const uint16_t *fb);
-void display_port_flush_prof(int64_t *wait_us, int64_t *send_us);
+/* The submitted pixels remain owned by the display until wait returns. */
+void display_port_submit(const uint16_t *fb);
+void display_port_wait(void);
+void display_port_flush_prof(int64_t *wait_us, int64_t *send_us, int64_t *fill_us);
 void display_port_sleep(void);
 void display_port_wake(void);
 void display_port_set_inverted(bool inverted);

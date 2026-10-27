@@ -8,7 +8,7 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.11 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.12 is a distinct aquarium game, not just a board port.**
 
 Version 2.3.10 treats the mussel as an inspectable, color-customizable creature.
 Tap it for automatic-income progress, daily allowance and earning/paused status.
@@ -31,15 +31,76 @@ Calm fish occasionally investigate the mussel or rest beside familiar companions
 Successful saved mussel income produces a brief gold glint, never a permanent
 icon; failed payouts, Creative mode and loading a save do not trigger it.
 
+## Release 2.3.12: fish-first rendering pipeline
+
+The existing 86,400-byte internal framebuffer is partitioned into two alternating
+40-row working tiles. An LCD worker on core 1 rotates/checksums/transmits the
+previous tile while the tank task on core 0 renders the next. Submission captures
+the region coordinates; the worker never reads mutable renderer viewport state.
+The next submission waits for the previous source buffer to finish, and every
+frame drains before simulation, resolution changes, sleep, or synchronous update
+screens. The existing DMA stripe ping-pong remains intact. No second framebuffer
+or PSRAM is required; the worker adds a 3,072-byte stack, completion semaphore,
+task metadata, and a larger six-band checksum table. The Normal-scale backdrop
+tail retains its previous capacity. Worker allocation is deferred until the
+tank task starts, leaving provisioning/update-only startup synchronous. A worker
+allocation failure is logged explicitly and retains synchronous tile transfers.
+
+Damage no longer becomes full-screen merely for crossing 40% of the block grid.
+The planner counts actual merged pixels and 40-row transfer rectangles, comparing
+their estimated cost with canonical full-screen tiles. Initial cost estimates
+are 900 ns/pixel and 200 us/rectangle, not a claimed hardware-calibrated optimum;
+the RAM-only diagnostic overrides permit direct partial/full comparisons.
+Simple detail deliberately retains its existing cheap full repaint.
+
+Fish simulation, positions, yaw, and tails remain full-rate. Balanced scenery
+effects run at 5 Hz and grass at 2 Hz; Enhanced effects run at 10 Hz and grass at
+4 Hz. Grass beds have staggered update phases. Crowns, buoy motion, decorative
+bobbing, pumpkin glow, and mussel reward glints do not need fish-rate animation.
+Helpers retain their movement and behavior. No care or save timers are slowed.
+
+Every regular ten-second display log now includes conservative 2-ms histogram
+p50/p95/p99 bounds, exact maximum frame interval, >50/>80/>100-ms counts, and
+maximum polling, simulation, rendering, and display-backpressure times.
+LCD worker fill, wire wait, and send-call timings are separate overlapping
+measurements, not additional terms to add to main-task frame time.
+
+The `benchmark` serial command uses isolated, unsaved fixed-seed aquariums:
+four scenes at 240 measured frames each after ten warmup frames, repeated in
+four modes: synchronous/full, pipeline/full, pipeline/partial, and pipeline/
+cost-based. All use 40-row tiles and the same 5-ms service reserve. It reports
+frame-time percentiles as well as mean FPS, and restores normal adaptive planning
+afterward. The user's aquarium is never modified or saved by these fixtures.
+Compare modes 0/1 to isolate transfer overlap and modes 1/2/3 for damage policy.
+Hardware gains and heap/stack headroom must be measured on the board before
+claiming a smoother or faster release.
+
+Local validation executes the actual LCD worker and flush loop with delayed DMA,
+captured viewports, alternating source ownership, unchanged-block reuse, both
+scales/orientations, and synchronous-screen compatibility. Frame histogram tests
+cover percentile bounds, long stalls, and exact threshold boundaries. The final
+30-second embedded-art soak checked 18,963 full/tiled/retained frame sets.
+All 48 sampled images match across full, partial, and cost-based policies.
+In the sampled scenes, partial plans repaint up to about 15% fewer pixels, but
+desktop CPU rendering is sometimes slower because of extra rectangles. These
+CPU-only results do not include SPI wire time and do not establish a hardware
+FPS gain. Sparse-plan tests also cover stale damage bits when switching from
+320-wide to 240-wide rendering; off-screen old columns must never produce
+negative-width transfer regions.
+
+The local 2.3.12 unified app measures **1,753,680 bytes**, leaving **212,400 bytes**
+(10.80%) free in each unchanged OTA slot. Release CI rebuilds and publishes the
+verified board-specific and unified packages.
+
 ## Release 2.3.11: indexed RGB and selective canonical invalidation
 
-The newest unified app measures **1,728,176 bytes**, leaving **237,904 bytes
+The 2.3.11 unified app measured **1,728,176 bytes**, leaving **237,904 bytes
 (12.10%) free** in each unchanged OTA slot. It saves another **2,704 bytes**
 over the first indexed-art build (1,730,880 bytes), or **22,640 bytes** versus
 the 1,750,816-byte prior pass. Both indexed-art builds were backed up, app-only
-flashed and completely read back on **COM4 only**. The newest installed SHA256
-is `6894f9e73bab3ff1784481ecc14fe690df698c2be1c1c581ccdbed3dca0ed6c2`.
-This is the validated optimization preview; release 2.3.11 includes these changes.
+flashed and completely read back on **COM4 only**. The historical 2.3.11 SHA256
+was `6894f9e73bab3ff1784481ecc14fe690df698c2be1c1c581ccdbed3dca0ed6c2`.
+Release 2.3.11 included these optimization changes.
 
 The generator palette-indexes 32 of the 47 embedded RGB565 planes only when
 the indexed representation is smaller. Each plane stores a 16-bit palette
@@ -685,8 +746,8 @@ Normal (formerly Compact) is the default for fresh installations, active-tank
 resets and newly purchased aquariums. Existing saves preserve their scale.
 **Settings > Display > SCALE** switches to native **320x240 Normal** mode,
 with scene objects and clock graphics about 25% smaller on screen. Both sizes
-draw at most 80 rows at a time in the same allocation, then send matching
-rotated LCD regions. The unused framebuffer tail stores a bounded compressed
+draw alternating 40-row tiles in the same allocation, overlapping the next
+tile's rendering with the previous tile's rotated LCD transfer. The unused framebuffer tail stores a bounded compressed
 backdrop cache; complex rows fall back to live drawing. Nothing is cropped.
 This does not allocate a second framebuffer or take RAM away from weather.
 Scale is saved per aquarium; positions and algae are remapped on a toggle,
@@ -699,8 +760,9 @@ floating/purchased scenery against simplified water/sand. Helpers, bubbles,
 the trophy shelf and ambient sparkles are hidden; fish/food and visible algae
 stay active.
 Balanced uses 2 Hz low-amplitude grass, 5 Hz secondary poses and reduced
-bubble/shrimp density at either size. Enhanced retains smooth curved grass and
-full secondary animation/density. Placement editors show the complete scene.
+bubble/shrimp density at either size. Enhanced retains curved grass at 4 Hz,
+secondary poses at 10 Hz, and full creature density. Fish animation remains
+full-rate in every detail mode. Placement editors show the complete scene.
 The goals are approximately 20/10/5 FPS Simple/Balanced/Enhanced, not caps or
 guaranteed minimums for arbitrary scenes. No simulation,
 ownership, care rules or save schema changes; helpers continue working.
@@ -885,12 +947,13 @@ are not reused until completion. CRC32 fingerprints identify unchanged
 physical LCD blocks; their transfers are skipped. Resolution/tile-layout
 changes, inversion and display wake invalidate those fingerprints.
 Normal CPU damage tracking unions previous/current dynamic rectangles into
-32x40 blocks, merges adjacent blocks within the 80-row buffer limit, and clips
+32x40 blocks, merges adjacent blocks into up-to-80-row regions, splits those into
+40-row pipeline tiles, and clips
 both drawing and rotated LCD transfers horizontally and vertically. Algae
 changes invalidate their own cells. Background changes, covering pages and
-modal overlays force complete repainting. Dense damage (over 40% of blocks)
-uses large canonical tiles instead of many small rectangles, preserving
-changed-block LCD reuse rather than repeatedly invalidating it. Partial rectangles
+modal overlays force complete repainting. The planner compares merged pixel
+and rectangle costs with canonical full-screen tiles instead of the former
+fixed 40% damage threshold. Partial rectangles
 bypass/invalidate canonical LCD fingerprints so different geometries cannot
 alias. The populated Ice Cavern tank can still dirty the entire screen.
 CYD omits the purely cosmetic vignette, including inline edge shading and
@@ -1089,7 +1152,7 @@ fish identities/life records, a bounded recap, tank identity, visitor/backup
 records and six fixed-scenery ownership bits. The 24 KiB NVS partition remains
 unchanged; the practical 5920-byte NVS ceiling budgets three copies and 64
 settings entries within the 630 usable entries, retaining the GC page.
-Current saves are 6168 bytes/schema 18: the existing 128 KiB SPIFFS partition
+Current saves are 6336 bytes/schema 19: the existing 128 KiB SPIFFS partition
 holds alternating CRC/readback-verified active copies and a durable wipe
 marker. NVS is migration input only; never put the expanded blob back there.
 Only a byte-for-byte erased filesystem may be formatted automatically.
@@ -1207,7 +1270,8 @@ Console examples: `buy shell`, `buy starfish`, `buy anchor`, `buy buoy`,
 Open **Settings > SD Backups** and tap **BACKUP TO SD**. Each successful backup creates a
 new file in the card's `pocket-tank` directory: `backup-0001.json`,
 `backup-0002.json`, and so on. Existing backups are not overwritten.
-New exports use JSON schema 18, including shared decoration inventory,
+New exports use JSON schema 19, including twenty static harbor/garden decorations,
+their independent placement/ownership/storage and twelve fish wearables, shared decoration inventory,
 extra placed ornaments, pearl-mussel income and per-game daily allowances,
 shared daily care/bonus limits, fixed mode, starvation/global unlock/
 local refund state, eighteen-game records, Lost Current progress, family

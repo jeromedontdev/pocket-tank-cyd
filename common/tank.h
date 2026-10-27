@@ -268,7 +268,8 @@ float tank_fish_pitch(const fish_t *f);
 float tank_fish_clearance(const fish_t *f);
 float tank_fish_top_clearance(const fish_t *f);
 float tank_fish_half_width(const fish_t *f);
-enum { WEAR_NONE, WEAR_TOP_HAT, WEAR_PARTY_HAT, WEAR_CROWN, WEAR_TIE, WEAR_BOWTIE, WEAR_BANDANA, WEAR_COUNT };
+enum { WEAR_NONE, WEAR_TOP_HAT, WEAR_PARTY_HAT, WEAR_CROWN, WEAR_TIE, WEAR_BOWTIE, WEAR_BANDANA,
+       WEAR_SAILOR, WEAR_PIRATE, WEAR_BERET, WEAR_SUNHAT, WEAR_VIKING, WEAR_SCARF, WEAR_COUNT };
 enum { CREATURE_SHRIMP, CREATURE_SNAIL, CREATURE_URCHIN, CREATURE_SEAHORSE, CREATURE_MUSSEL, CREATURE_COUNT };
 #define COSMETIC_COLOR_COUNT 16
 extern const char *const COSMETIC_COLOR_NAMES[COSMETIC_COLOR_COUNT];
@@ -475,7 +476,9 @@ typedef struct {
 } shrimp_t;
 typedef struct { float x, y, vy, wobble; bool column; } bubble_t;
 
-#define DECOR_SLOTS 16
+#define DECOR_LEGACY_SLOTS 16
+#define DECOR_NEW_COUNT 20
+#define DECOR_SLOTS (DECOR_LEGACY_SLOTS + DECOR_NEW_COUNT)
 #define DECOR_INVENTORY_CAP 64
 #define DECOR_EXTRA_CAP 8
 typedef struct {
@@ -483,12 +486,20 @@ typedef struct {
     float x;
 } inventory_extra_t;
 typedef struct {
-    uint8_t stored[DECOR_SLOTS], paid[DECOR_SLOTS]; /* counts; paid <= stored */
+    uint8_t stored[DECOR_LEGACY_SLOTS], paid[DECOR_LEGACY_SLOTS]; /* frozen schema-18 layout */
     inventory_extra_t extra[DECOR_EXTRA_CAP];     /* aquarium-local copies */
     uint8_t version, reserved[3];
 } inventory_state_t;
 _Static_assert(sizeof(inventory_extra_t) == 8, "inventory copy save layout");
 _Static_assert(sizeof(inventory_state_t) == 100, "inventory append-only save layout");
+typedef struct {
+    uint32_t owned;
+    float x[DECOR_NEW_COUNT];
+    uint8_t z[DECOR_NEW_COUNT], rank[DECOR_NEW_COUNT];
+    uint8_t stored[DECOR_NEW_COUNT], paid[DECOR_NEW_COUNT];
+    uint8_t version, reserved[3];
+} decor_content_t;
+_Static_assert(sizeof(decor_content_t) == 168, "schema-19 decoration tail");
 typedef struct {
     uint16_t seconds;
     uint8_t owned, bank, generated, version, reserved[2]; /* v2 owned: one bit per aquarium */
@@ -856,6 +867,7 @@ typedef struct tank {
     profile_state_t profile;
     care_state_t care;
     inventory_state_t inventory;
+    decor_content_t content;
     mussel_state_t mussel;
     game_income_state_t game_income;
     double mussel_fraction;
@@ -1116,7 +1128,9 @@ enum { SD_ITEM_PLANT = 1u << 0, SD_ITEM_SNAIL = 1u << 1, SD_ITEM_CASTLE = 1u << 
        SD_ITEM_FILTER = 1u << 30 };
 #define SD_ITEM_GARDEN (UINT32_C(1) << 31)
 #define SD_SHOP_MUSSEL 42
-#define SD_ITEM_COUNT 43
+#define SD_DECOR_FIRST 43
+#define SD_ITEM_COUNT (SD_DECOR_FIRST + DECOR_NEW_COUNT)
+#define SD_IS_NEW_DECOR(item) ((item) >= SD_DECOR_FIRST && (item) < SD_ITEM_COUNT)
 #define SD_ITEM_MASK UINT32_MAX
 /* fixed sand scenery (1.2): IDs 36..41 own one bit each in
  * tank_polish_t.scenery_unlocks. Not placeable, so no decor slot or rank;

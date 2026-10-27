@@ -2,7 +2,35 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.11**
+**An illustrated tour of Pocket Tank CYD 2.3.12**
+
+**2.3.12 roomier tank:** aquarium fish are 33% smaller in width and height
+at every life stage, including their fins, patterns and wearables. Relative
+growth differences remain visible. Decorations/helpers and readable menu
+portraits stay unchanged, as do saved sizes, growth, swimming and tap targets.
+Rendering-only culling/repaint bounds follow the smaller artwork with padding
+for turns and wearables; dense scenes may still repaint the full frame.
+
+**2.3.12 harbor and garden:** twenty detailed static decorations and six new
+wearables join the normal shop and wardrobe. Species-aware fitting preserves
+proportions through all life stages; only the scarf is unavailable on jellyfish.
+Ties, bowties and bandanas remain available. **BUY** and **PLACE** manage shared
+storage; hold a placed decoration to move it and confirm **REMOVE** to store it
+without selling it.
+
+![All twenty detailed static decorations](media/cyd-features/harbor-garden-decorations.png)
+
+![Species-fitted wardrobe and jellyfish scarf restriction](media/cyd-features/jellyfish-wardrobe.png)
+
+**2.3.12 fish-first rendering:** alternating 40-row tiles overlap drawing and LCD
+transfer within the existing framebuffer. Cost-based damage plans replace the
+fixed 40% promotion threshold. Scenery animates less frequently while fish
+movement stays full-rate; diagnostics expose pacing percentiles and slow phases.
+Actual speed depends on tank contents and display settings.
+
+Back up first: saves now use schema 19 / 6336 bytes and companion version 7.
+Legacy saves migrate, but older firmware cannot read newly saved data. Hardware
+profiles, partitions and calibration are preserved.
 
 **2.3.11 creature polish:** when helpers overlap, tapping selects the
 closest eligible creature, with the existing fish-first priority retained.
@@ -122,8 +150,11 @@ Weather and GitHub Pages certificate validation passed on the actual CYD.
 ### New in 2.3.0: decoration inventory and pearl-mussel income
 
 Available in 2.3.0 and newer; 2.3.8 integrates storage into the shop.
-Select a purchased decoration's shop entry to **BUY COPY**, **PLACE STORED**,
-cycle placed copies with **NEXT**, **MOVE COPY**, or **STORE COPY**. Storing
+Select a purchased decoration's shop entry to **BUY**, **PLACE**, or
+**SELL STORED**. Hold a decoration in the tank to open its movement screen.
+**REMOVE** there requires a second tap and returns the selected piece to
+storage, whether it is an original or an extra. There are no NEXT, MOVE COPY
+or STORE COPY controls in item management. Removing
 does not sell or refund a piece; moving and placing owned items do not charge
 again. **SELL STORED** requires a second confirmation and only pays the resale
 value of a paid copy, never a free/Creative one.
@@ -131,8 +162,9 @@ value of a paid copy, never a free/Creative one.
 The 2.3.9 placement preview highlights the selected piece and its starting
 position. Tap an overlap to select another placed decoration or copy, including
 different item types; drag horizontally to reposition only the selected copy.
-Its label identifies original/extra copies and distinguishes placed pieces from
-stored inventory. Switching selection drops unconfirmed edits, and CANCEL
+Its label identifies the selected placed piece and explains removal to storage.
+Holding an extra copy also works when its original is no longer in the tank.
+Switching selection drops unconfirmed edits, and CANCEL
 restores the starting layout. Stored pieces must be placed before they can be
 selected in the tank.
 
@@ -871,13 +903,25 @@ and **BUY + EQUIP** to purchase it with sand dollars.
 | Bowtie | 4 | 30 |
 | Tie | 5 | 35 |
 | Crown | 10 | 100 |
+| Sailor Cap | 3 | 40 |
+| Pirate Hat | 6 | 65 |
+| Beret | 2 | 30 |
+| Sun Hat | 4 | 45 |
+| Viking Helm | 8 | 80 |
+| Scarf | 2 | 25 |
 
 Each fish owns its purchases: one accessory equipped at a time, with free
 re-equipping and **REMOVE** (which keeps ownership). Previews are free and
 do not change the tank. Wearables are cosmetic only, with no XP or stat
 bonus, and follow the fish through the Bank, adventures and backups.
 Postcards retain the traveler's departure accessory; newborns start bare.
-All ten fish varieties support all six accessories.
+Headwear follows each variety's forehead; gill accessories follow its body depth.
+The fit scales through fry, juvenile, adult and elder stages. Jellyfish support
+the hats/crowns, tie, bowtie and bandana. Only the wraparound scarf does not fit:
+it shows **UNAVAILABLE**, cannot be bought/equipped, and is omitted from all
+portraits and swimming views even if an older save equipped it. Previously
+owned items and saved colors remain intact; **REMOVE** still works.
+The six added designs are still cosmetic polygon art, not independent animated entities.
 **Wardrobe > COLORS** gives the selected fish independent primary and detail
 colors for its wearables. Each fish keeps one color pair across its wardrobe,
 including Bank transfers and adventures; the postcard preserves departure colors.
@@ -1589,15 +1633,16 @@ palettes, Journal and bank.
 Backups are written and read back for validation. A restore first creates
 a safety snapshot of the current aquarium.
 
-New backups use **schema 18**, including shared decoration inventory,
+New backups use **schema 19**, including twenty additional static decoration
+placements/ownership/storage and twelve fish wearables, shared decoration inventory,
 extra placed ornaments, pearl-mussel income, per-game daily allowances,
 shared daily care/bonus limits, fixed game mode, starvation timers,
 global shop unlocks/local refundable purchases, eighteen-game records,
 Lost Current progress, family lineage, genes, visitor sightings, fish identities/stories, remembered buddies,
 recaps, tank identity, fixed scenery, backup status, display scale, traveling fish, creature colors, per-fish wearables/colors,
 companion progression and the optional `tank.stat_upgrades` field for the four
-fish-care purchases. Schemas 1 through 17 remain importable when valid for the
-chosen mode; firmware older than 2.3.0 cannot restore schema 18 files. Restores must
+fish-care purchases. Schemas 1 through 18 remain importable when valid for the
+chosen mode; earlier firmware cannot restore schema 19 files. Restores must
 match the chosen Normal/Creative/Hard mode; changing it requires a full wipe.
 Keep a matching backup
 when deliberately downgrading.

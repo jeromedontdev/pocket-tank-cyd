@@ -76,6 +76,10 @@ void render_set_scene_cache(uint16_t *buf);
 void render_set_backdrop_cache(void *buf, size_t bytes);
 /* Begin once after simulation; ranges include old bounds and require retained LCD contents. */
 void render_damage_begin(const tank_t *t, bool force_full);
+enum { RENDER_DAMAGE_ADAPTIVE, RENDER_DAMAGE_PARTIAL, RENDER_DAMAGE_FULL };
+/* Diagnostic overrides are RAM-only. Costs describe a pixel and rectangle setup. */
+void render_damage_policy(int policy);
+void render_damage_costs(uint32_t pixel_ns, uint32_t rectangle_us);
 bool render_damage_range(int tile_y, int tile_height, int *first, int *height);
 /* Consumes merged 32x40 block rectangles, at most 80 rows high. */
 bool render_damage_next(int *cursor, int *x, int *y, int *width, int *height);
@@ -291,7 +295,7 @@ void render_milestones_leave(void);
  * to the milestones page, 2026-09-16),
  * SHOP_TAP_KEPT when a modal opened or closed. Page state is render-local;
  * render_shop_leave clears it when the page closes. */
-enum { SHOP_TAP_NONE = 0, SHOP_TAP_KEPT = 1, SHOP_TAP_CLOSE = 2, SHOP_TAP_TANKS = 3, SHOP_TAP_BUY = 16, SHOP_TAP_MOVE = 64, SHOP_TAP_SELL = 128,
+enum { SHOP_TAP_NONE = 0, SHOP_TAP_KEPT = 1, SHOP_TAP_CLOSE = 2, SHOP_TAP_TANKS = 3, SHOP_TAP_BUY = 16, SHOP_TAP_MOVE = 80, SHOP_TAP_SELL = 144,
        SHOP_TAP_FRY = 256, SHOP_TAP_INVENTORY = 512 };
 /* Inventory actions execute transactionally; placement opens setup on success. */
 bool render_shop_inventory_action(tank_t *t, int action);

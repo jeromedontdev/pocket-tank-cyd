@@ -211,3 +211,11 @@ SD update label and release tag agree. SD package labels are
 informational, not signed version claims. Do not overwrite old tags or assets.
 See [the hardware guide](../firmware/CYD.md#downloadable-releases) for local
 packaging instructions and the factory-image warning.
+
+## Save compatibility for 2.3.12
+
+Back up before installing 2.3.12. Its twenty added decorations and expanded
+wardrobe use schema-19 JSON / 6336-byte binary saves and companion version 7.
+Earlier saves migrate forward; older firmware cannot read newly saved data.
+Do not downgrade an upgraded aquarium. Update packages keep the existing
+partitions, saved hardware profile, calibration and internal aquarium storage.

@@ -73,7 +73,7 @@ async function main() {
     const catalog = [...catalogSource.matchAll(/\{\s*[^,]+,\s*"[^"]*",\s*"[^"]*",\s*"[^"]*",\s*(\w+)\s*\}/g)]
       .map(([, price], item) => ({item, price: prices.has(price) ? prices.get(price) : Number(price)}))
       .sort((a, b) => a.price - b.price);
-    assert.equal(catalog.length, 43);
+    assert.equal(catalog.length, 63);
     async function openShopItem(item) {
       await page.locator('[data-action="0"]').click();
       await page.locator('[data-action="3"]').click();
@@ -394,7 +394,7 @@ async function main() {
       if (!((await snapshot()).tank.sd_unlocks & (1 << 9))) {
         await menuImage(`chest-first-buy-${scale}`);
         await tap(220, 260);
-        await tap(375, 28);
+        await tap(375, 60);
         await openShopItem(9);
       }
       await menuImage(`shop-copy-${scale}`);
@@ -418,16 +418,67 @@ async function main() {
         await tap(120,150);
         assert.equal(await native("return game._sim_page()"), 0);
         await menuImage(`inventory-place-${scale}-${copy}`);
-        await tap(375,28);
+        await tap(375,60);
         await openShopItem(9);
       }
       assert.equal(chestCount(await snapshot()), placedBefore + 2);
-      await tap(280,230);
+      const beforeDeadControls = await snapshot();
+      await tap(344,194); await tap(120,230); await tap(280,230);
+      assert.deepEqual((await snapshot()).inventory, beforeDeadControls.inventory, "Removed NEXT/MOVE COPY/STORE COPY targets do nothing");
+      await page.locator('[data-action="0"]').click();
+      const removalFixture = await snapshot();
+      removalFixture.tank.chest_x = frameHeight === 240 ? 160 : 120;
+      removalFixture.tank.chest_rank = 255;
+      await restoreFixture(removalFixture);
+      await native(`const x = game._sim_width() / 2, y = game._sim_height() - 24;
+        game._sim_touch(x, y, 1);
+        for (let i = 0; i < 9; i++) game._sim_frame(.1);
+        game._sim_touch(x, y, 0);`);
+      assert.ok(await native("return game._sim_setup_page() >= 0"), "Holding a placed decoration opens movement");
+      const walletBeforeRemove = (await snapshot()).tank.sd_balance;
+      await menuImage(`movement-remove-${scale}`);
+      await tap(60,60);
+      assert.equal(chestCount(await snapshot()), placedBefore + 2, "Remove requires confirmation");
+      await tap(60,60);
       assert.equal(chestCount(await snapshot()), placedBefore + 1);
+      assert.equal((await snapshot()).tank.sd_balance, walletBeforeRemove, "Removing stores the primary without a refund");
+      assert.equal(Buffer.from((await snapshot()).inventory.stored, "hex")[5], storedBefore + 1);
       const inventorySaved = (await snapshot()).inventory;
       await page.locator("#save").click(); await page.reload(); await ready();
       assert.deepEqual((await snapshot()).inventory, inventorySaved, "Duplicate placements and shared storage survive reload");
+      const contentFixture = await snapshot();
+      contentFixture.tank.sd_balance = Math.max(contentFixture.tank.sd_balance, 1000);
+      await restoreFixture(contentFixture);
+      await openShopItem(62);
+      if (contentFixture.content.owned & (1 << 19)) {
+        await tap(280, 150);
+        await tap(120, 150);
+      } else await tap(220, 260);
+      assert.equal(await native("return game._sim_page()"), 0, "Highest shop ID buys and opens placement, not an overlapping MOVE action");
+      await tap(375, 60);
+      assert.ok((await snapshot()).content.owned & (1 << 19), "Submarine has independent appended ownership");
+      await openShopItem(62);
+      const submarineStored = Buffer.from((await snapshot()).content.stored, "hex")[19];
+      await tap(280, 150);
+      assert.equal(Buffer.from((await snapshot()).content.stored, "hex")[19], submarineStored + 1, "New decoration copies use extended shared storage");
+      await page.locator("#save").click(); await page.reload(); await ready();
+      assert.equal(Buffer.from((await snapshot()).content.stored, "hex")[19], submarineStored + 1, "Extended ownership and storage survive browser reload");
+      const gearFixture = await snapshot();
+      const gear = Buffer.from(gearFixture.companion.active, "hex");
+      gear[8] |= 0x40; // Scarf ownership uses frozen bond trick bit6, not a truncated byte shift.
+      gear[9] = 12; gear[11] = 0xab;
+      gearFixture.companion.active = gear.toString("hex");
+      await restoreFixture(gearFixture);
+      await page.locator("#save").click(); await page.reload(); await ready();
       const viewerSave = await snapshot();
+      assert.equal(viewerSave.content.x.length, 20);
+      for (const field of ["z", "rank", "stored", "paid"])
+        assert.equal(Buffer.from(viewerSave.content[field], "hex").length, 20, `Schema19 content.${field} retains twenty entries`);
+      assert.equal(Buffer.from(viewerSave.inventory.stored, "hex").length, 16, "Legacy inventory wire layout remains frozen");
+      assert.equal(Buffer.from(viewerSave.companion.active, "hex").length, 6 * 12, "Packed wardrobe preserves twelve-byte bond records");
+      const savedGear = Buffer.from(viewerSave.companion.active, "hex");
+      assert.equal(savedGear[9], 12); assert.equal(savedGear[11], 0xab);
+      assert.ok(savedGear[8] & 0x40, "Packed high wearable ownership survives WASM restore/reload");
       const viewer = await context.newPage();
       await viewer.setContent(fs.readFileSync(path.join(__dirname, "..", "web", "viewer.html"), "utf8"));
       await viewer.locator("#file").setInputFiles({name: "synthetic-inventory.json", mimeType: "application/json",
@@ -436,13 +487,17 @@ async function main() {
       assert.equal(await viewer.locator("#error").textContent(), "");
       const viewerFact = name => viewer.locator("#overview tr").filter({hasText: name}).locator("td").textContent();
       assert.equal(await viewerFact("Shared decoration storage"),
-        `${[...Buffer.from(viewerSave.inventory.stored, "hex")].reduce((sum, n) => sum + n, 0)}/64 pieces`);
+        `${[...Buffer.from(viewerSave.inventory.stored, "hex"), ...Buffer.from(viewerSave.content?.stored || "", "hex")].reduce((sum, n) => sum + n, 0)}/64 pieces`);
       assert.equal(await viewerFact("Extra ornaments here"),
         `${[...Buffer.from(viewerSave.inventory.extra, "hex")].filter((n, i) => i % 8 === 0 && n !== 0).length}/8 placed`);
       assert.equal(await viewerFact("Pearl mussel"),
         `${viewerSave.mussel.owned.toString(2).replace(/0/g, "").length} aquarium resident(s); ${viewerSave.mussel.generated}/15 earned today; ${viewerSave.mussel.bank} pending automatic payout`);
       assert.equal(await viewerFact("Game bonus today"),
         `${viewerSave.care.game_paid}/90 sand dollars; up to 5 per game; no XP`);
+      assert.match(await viewer.locator("#decorations").textContent(), new RegExp(`SUBMARINE.*${submarineStored + 1} stored`));
+      assert.match(await viewer.locator("#home .card").first().textContent(), /Wearing: SCARF/);
+      assert.match(await viewer.locator("#home .card").first().textContent(), /Wardrobe:.*SCARF/);
+      assert.equal(viewerSave.schema, 19);
       await viewer.close();
       await page.locator('[data-action="2"]').click();
       await menuImage(`settings-${scale}`);
@@ -749,7 +804,7 @@ async function main() {
       fs.rmSync(profile, {recursive: true, force: true});
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: normal shop mussel/first-decoration purchases, integrated copies/place/store/reload, automatic healthy live income, care125 with unchanged XP and per-game5/day caps, schema18 viewer facts at both scales; Settings/Clock/Weather, fish-card tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
+    console.log("PASS: 63-item shop including highest ID62 purchases, extended copies/place/store/reload and schema19 viewer facts at both scales; normal mussel/first-decoration purchases, automatic healthy income, care125 with unchanged XP, per-game5/day caps, Settings/Clock/Weather, fish tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
   } finally {
     await browser.close();
   }

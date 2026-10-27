@@ -402,7 +402,7 @@ static float yaw_at(float yh, float yt, float lx) {
 }
 static void draw_wearable(ctx_t *c, const fish_t *f, float yh, float yt, float cp, float sp) {
     if (!f->wearable) return;
-    for (int part = 0; part < 2; part++) {
+    for (int part = 0; part < 4; part++) {
         float lx[8], ly[8], xs[8], ys[8]; uint32_t rgb;
         int n = tank_wearable_polygon(f, part, lx, ly, &rgb);
         if (!n) continue;
@@ -690,6 +690,7 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
 #undef TY
 }
 /* the tank's fish (the previews below draw a fish of their own) */
+#define TANK_FISH_DISPLAY_SCALE 0.67f
 typedef struct { float left, top, right, bottom; } fish_bounds_t;
 static fish_bounds_t fish_bounds(const tank_t *t, const fish_t *f) {
     static struct {
@@ -703,8 +704,11 @@ static fish_bounds_t fish_bounds(const tank_t *t, const fish_t *f) {
         cache[index].variety != f->variety || cache[index].wearable != f->wearable) {
         cache[index].heading = f->heading; cache[index].speed = f->speed; cache[index].size = f->size;
         cache[index].stage = f->stage; cache[index].variety = f->variety; cache[index].wearable = f->wearable;
-        cache[index].width = tank_fish_half_width(f);
-        cache[index].top = tank_fish_top_clearance(f); cache[index].bottom = tank_fish_clearance(f);
+        fish_t display = *f;
+        display.size *= TANK_FISH_DISPLAY_SCALE;
+        cache[index].width = tank_fish_half_width(&display);
+        cache[index].top = tank_fish_top_clearance(&display);
+        cache[index].bottom = tank_fish_clearance(&display);
         cache[index].valid = true;
     }
     fish_bounds_t bounds = { f->x - cache[index].width - 4, f->y - cache[index].top - 4,
@@ -715,7 +719,9 @@ static void draw_fish(ctx_t *c, const tank_t *t, const fish_t *f) {
     fish_bounds_t b = fish_bounds(t, f);
     if (b.bottom < c->oy || b.top >= c->oy + c->h || b.right < c->ox || b.left >= c->ox + c->w) return;
     if (scene_box_hidden((int)floorf(b.left), (int)floorf(b.top), (int)ceilf(b.right), (int)ceilf(b.bottom))) return;
-    draw_fish_core(c, f, t->clock, t->night && f->goal.id == GOAL_REST, 1.0f);
+    fish_t display = *f;
+    display.size *= TANK_FISH_DISPLAY_SCALE;
+    draw_fish_core(c, &display, t->clock, t->night && f->goal.id == GOAL_REST, 1.0f);
 }
 
 /* ---- the shrimp (2026-09-29): cherry shrimp from 18 x 8 pixel grids,
@@ -1114,13 +1120,13 @@ static bool     castle_arch(int x, int y);
  * list - every piece IN FRONT of the plant layer for a grass bed, and for
  * the sword plant also the pieces at its own depth ranked above it
  * (render_tank sets it per bed: veg_skip_for) */
-static uint32_t g_veg_skip;
+static uint64_t g_veg_skip;
 static bool pc_covers(int k, int x, int y);
 static bool pc_in_box(int k, int x0, int x1, int y);
 static uint32_t pc_row_bits(int k, int x0, int n, int y);   /* piece k's mask over n (<= 32) pixels from x0 on row y */
 static inline void veg_span(ctx_t *c, int x0, int x1, int y, const src_t *s, bool final) {
-    uint32_t near = 0;
-    for (int k = 0; k < g_npc; k++) if (((g_veg_skip >> k) & 1) && pc_in_box(k, x0, x1, y)) near |= 1u << k;
+    uint64_t near = 0;
+    for (int k = 0; k < g_npc; k++) if (((g_veg_skip >> k) & 1) && pc_in_box(k, x0, x1, y)) near |= UINT64_C(1) << k;
     bool arch_box = g_veg_mask_cx >= 0 && y <= CASTLE_FY && y >= CASTLE_FY - CASTLE_ARCH_S - CASTLE_ARCH_R
                     && x1 >= g_veg_mask_cx - CASTLE_ARCH_R && x0 <= g_veg_mask_cx + CASTLE_ARCH_R;
     if (g_veg_arch_pass < 0 && !arch_box) return;      /* the early arch pass: nothing outside the arch */
@@ -1160,19 +1166,22 @@ static inline void veg_span(ctx_t *c, int x0, int x1, int y, const src_t *s, boo
 /* layer: 0 = the even fronds, 1 = the odd ones, -1 = every frond */
 static const int VEG_SEED[VEG_BEDS_MAX] = { 0, 7, 3, 5 };   /* each bed's sway phase (the seahorse's blade reads it too) */
 static float secondary_clock(const tank_t *t) {
-    return render_simple_scene() ? 0 : render_scene_detail() == SCENE_ENHANCED ? t->clock : floorf(t->clock * 5) * 0.2f;
+    float rate = render_scene_detail() == SCENE_ENHANCED ? 10 : 5;
+    return render_simple_scene() ? 0 : floorf(t->clock * rate) / rate;
 }
-static float veg_clock(const tank_t *t, float clock) {
+static float veg_clock(const tank_t *t, float clock, int seed) {
     (void)t;
-    return render_simple_scene() ? 0 : render_scene_detail() == SCENE_ENHANCED ? clock : floorf(clock * 2) * 0.5f;
+    float rate = render_scene_detail() == SCENE_ENHANCED ? 4 : 2;
+    float phase = (seed % 8) / (8 * rate);
+    return render_simple_scene() ? 0 : floorf((clock + phase) * rate) / rate - phase;
 }
 static float veg_sway(const tank_t *t, bool sword, int i, int seed, float clock) {
     float amp = render_simple_scene() ? 0 : render_scene_detail() == SCENE_ENHANCED ? (sword ? 2.5f : 4.0f) : (sword ? 0.75f : 1.2f);
-    return fast_sin(veg_clock(t, clock) * (sword ? 0.6f : 0.9f) + (i + seed) * 1.7f) * amp;
+    return fast_sin(veg_clock(t, clock, seed) * (sword ? 0.6f : 0.9f) + (i + seed) * 1.7f) * amp;
 }
 static float veg_spine(const tank_t *t, float bx, float sway, int seg, int segs, int i, int seed, float clock) {
     (void)t;
-    float curve = render_scene_detail() == SCENE_ENHANCED ? fast_sin(seg * 0.4f + clock * 0.6f + i + seed) : 1;
+    float curve = render_scene_detail() == SCENE_ENHANCED ? fast_sin(seg * 0.4f + veg_clock(t, clock, seed) * 0.6f + i + seed) : 1;
     return bx + sway * seg / (float)segs * curve;
 }
 static int bubble_step(const tank_t *t) { (void)t; return render_scene_detail() == SCENE_ENHANCED ? 1 : 2; }
@@ -3371,8 +3380,392 @@ static uint32_t scenery_pixel(int item, int x, int y) {
     default: return 0;
     }
 }
+static uint32_t harbor_garden_pixel(int item, int x, int y) {
+    int dx = x - 20;
+    int grain = (x * 17 + y * 29 + x * y * 3) & 31;
+    uint32_t stone = grain == 0 ? 0xb7c9b3 : grain == 1 ? 0x536d6b :
+                     x + y / 2 < 30 ? 0x92aaa0 : 0x6a8580;
+    uint32_t wood = (x + y / 8) % 7 == 0 ? 0x76513a :
+                    grain < 3 ? 0xc59b63 : 0xa57a4c;
+    switch (item - SD_DECOR_FIRST) {
+    case 0: { /* tapered masonry, glazed lantern and railed gallery */
+        if (y >= 34 && y <= 38 && abs(dx) <= 15 - (38 - y) / 2)
+            return y == 34 ? 0xb6b8a0 : y > 36 ? 0x536b6a : stone;
+        if (y >= 13 && y < 35 && abs(dx) <= 5 + (y - 13) / 7) {
+            int half = 5 + (y - 13) / 7;
+            if (y >= 28 && abs(dx) <= 2)
+                return y == 28 || x == 22 ? 0x354750 : x == 19 ? 0x9b7751 : 0x263e48;
+            if ((y == 18 || y == 25) && abs(dx) <= 1) return 0x294654;
+            if (abs(dx) == half) return dx < 0 ? 0xc2b89e : 0x694e4d;
+            bool red = (y >= 21 && y <= 25) || y >= 31;
+            return red ? dx < -1 ? 0xe28673 : dx > 2 ? 0x9d4549 : 0xc65d55 :
+                         dx < -1 ? 0xffedc4 : dx > 2 ? 0xb4b3a0 : 0xe1d7b6;
+        }
+        if (y >= 5 && y <= 12 && abs(dx) <= 6) {
+            if (y == 5 || y == 12) return 0x324855;
+            if (abs(dx) == 6 || x == 18 || x == 22) return 0x536978;
+            return x < 19 ? 0xfff0bb : x > 22 ? 0xd7a45b : 0xffd77e;
+        }
+        if ((y == 13 && abs(dx) <= 9) ||
+            (y >= 10 && y < 13 && abs(dx) <= 9 && x % 3 == 2)) return 0x415b65;
+        if (y >= 2 && y < 5 && abs(dx) <= 2 + y * 2)
+            return y == 4 ? 0x243b4b : dx < 0 ? 0x617c89 : 0x3e596b;
+        return x == 20 && y == 1 ? 0xd4b47d : 0;
+    }
+    case 1: { /* clinker hull, sewn sails and rigging */
+        if (y >= 29 && y <= 36 && abs(dx) <= 18 - (y - 29) * 2) {
+            if (y == 29) return 0xe4c28a;
+            if (y == 30 || y == 35) return 0x543d32;
+            if (x == 10 && y == 32) return 0xd4b36e;
+            return y < 33 ? wood : 0x76513e;
+        }
+        if (x >= 19 && x <= 20 && y >= 3 && y < 29)
+            return x == 19 ? 0xd0a76a : 0x654b39;
+        if (y >= 4 && y < 26 && x >= 22 && x <= 22 + (y - 4) * 3 / 5) {
+            if (x == 22 || y == 25) return 0xb4a581;
+            if (y == 13 || y == 20) return 0xd5c8a4;
+            return x < 25 ? 0xfff1cc : 0xe6d7b3;
+        }
+        if (y >= 11 && y <= 26 && x <= 17 && x >= 17 - (y - 10) * 4 / 5)
+            return y == 26 || x == 17 ? 0x9e5752 : y == 19 ? 0xf0b18a : 0xd9816e;
+        if (y >= 5 && y <= 28 && (x == 19 - (y - 5) * 3 / 4 ||
+                                  x == 21 + (y - 5) * 2 / 3)) return 0x9b9b84;
+        if (y >= 3 && y <= 6 && x >= 21 && x <= 26 - (y - 3)) return 0xb95553;
+        return y == 28 && x >= 7 && x <= 34 ? 0x775940 : 0;
+    }
+    case 2: { /* rope coil */
+        int dy = y - 25, r = dx * dx * 2 + dy * dy * 5;
+        if (x >= 24 && x <= 37 && y >= 30 && y <= 33)
+            return y == 33 ? 0x715238 : (x + y) % 3 == 0 ? 0xf0d6a0 : 0xbb965f;
+        if (r > 650 || r < 35) return 0;
+        int ring = (r + 3 * dx) / 65 % 3;
+        if (r > 590 || ring == 0) return 0x795b3e;
+        if ((x + y * 2) % 5 == 0) return 0xa58352;
+        return ring == 1 ? 0xe9ce95 : y > 27 ? 0xb38b55 : 0xcaaa70;
+    }
+    case 3: { /* wheel */
+        int dy = y - 18, r = dx * dx + dy * dy;
+        if (r < 20) return r < 5 ? 0x5d4939 : dx + dy < 0 ? 0xf0ce80 : 0xb48848;
+        bool spoke = abs(dx) <= 1 || abs(dy) <= 1 || abs(abs(dx) - abs(dy)) <= 1;
+        if ((r >= 200 && r <= 275) || (r < 345 && spoke))
+            return r > 250 ? 0x624b3a : (x + y) % 7 == 0 ? 0xe5bd7f :
+                   dx + dy < 0 ? 0xc99c62 : 0x97683f;
+        if (y >= 33 && y <= 37 && abs(dx) <= 12) return y == 33 ? 0xb1b29a : stone;
+        if (y > 22 && y < 34 && abs(dx) <= 3) return x == 18 ? 0xb4996d : 0x6f5842;
+        return 0;
+    }
+    case 4: { /* raised lid, recessed boards, iron corners and shipping stamp */
+        if (x < 4 || x > 36 || y < 7 || y > 37) return 0;
+        if (y < 11) {
+            if (x < 9 - (y - 7) || x > 31 + (y - 7)) return 0;
+            return (x + y) % 7 == 0 ? 0x9c774e : 0xd7b47c;
+        }
+        if (x >= 31) return x == 31 || y == 35 ? 0x564738 : x % 3 == 0 ? 0x987044 : 0x775337;
+        if ((x <= 8 || x >= 27) && (y <= 14 || y >= 33))
+            return (x == 6 || x == 29) && (y == 12 || y == 35) ? 0xc3b89a : 0x546363;
+        if (x <= 7 || x >= 28 || y == 11 || y >= 35) return 0xc59e69;
+        if (abs((x - 8) - (y - 13)) <= 1 || abs((28 - x) - (y - 13)) <= 1)
+            return x + y < 35 ? 0xe3bd81 : 0xc79a61;
+        if (x >= 14 && x <= 22 && y >= 18 && y <= 26) {
+            if (y == 26 || y == 18 || (x == 18 && y > 19) ||
+                (y == 21 && abs(x - 18) == 1)) return 0x624b3c;
+            return 0xd3b781;
+        }
+        return wood;
+    }
+    case 5: { /* lifting eye, riveted bronze skirt and glazed port */
+        int ey = y - 4, ring = dx * dx + ey * ey;
+        if (y <= 7 && ring >= 4 && ring <= 12) return dx < 0 ? 0xf0cf85 : 0x997044;
+        if (y >= 34 && y <= 37 && abs(dx) <= 16)
+            return y == 34 ? 0xe0b66e : y == 37 ? 0x4c6061 : 0x8c704c;
+        if (y < 8 || y >= 34 || abs(dx) > 7 + (y - 8) / 4) return 0;
+        int r = dx * dx + (y - 21) * (y - 21);
+        if (r <= 64) {
+            if (r >= 42) return (abs(dx) == 7 || abs(y - 21) == 7) ? 0x765439 :
+                               dx + y - 21 < 0 ? 0xf4d99b : 0xb28b52;
+            if (y == 18 && x >= 17 && x <= 21) return 0xb3ded5;
+            return x + y < 40 ? 0x5a919d : 0x294b60;
+        }
+        if ((y == 12 || y == 31) && x % 4 == 0) return 0xf3cf88;
+        if (y == 13 || y == 32) return 0x825c3b;
+        if (x > 27 && y > 25 && grain < 10) return 0x597c70;
+        return dx < -3 ? 0xdfb472 : dx > 4 ? 0x8b603e : 0xb98a50;
+    }
+    case 6: { /* curved parapet, arch voussoirs and mossy piers */
+        int arch = dx * dx + (y - 35) * (y - 35);
+        int top = 10 + dx * dx / 65;
+        if (y < top || y > 37 || abs(dx) > 18) return 0;
+        if (y > 23 && arch < 121) return 0;
+        if (y <= top + 2) return y == top ? 0xd1d3b3 : 0x809790;
+        if (y > 19 && arch < 210) {
+            if (arch < 145) return 0x465f60;
+            if (dx == 0 || abs(dx) == abs(y - 35) ||
+                abs(dx) == 2 * abs(y - 35)) return 0x566d69;
+            return dx < 0 ? 0xc2c4a4 : 0x9eac93;
+        }
+        if (y % 6 == 1 || (x + y / 6 * 5) % 10 == 0) return 0x536c69;
+        if (y > 31 && grain < 8) return 0x658362;
+        return stone;
+    }
+    case 7: { /* upturned layered eaves, ridge finial and open balconies */
+        if (y >= 2 && y <= 7 && abs(dx) <= (y == 2 ? 1 : 2)) return 0xc6af7c;
+        for (int level = 0; level < 2; level++) {
+            int roof = 7 + level * 13, ry = y - roof;
+            if (ry >= 0 && ry <= 6 && abs(dx) <= 5 + ry * 2 + (ry == 5 ? 3 : 0)) {
+                if (ry == 6) return 0x354f54;
+                if (ry == 5 || (x + ry) % 6 == 0) return 0x91aaa0;
+                return dx < 0 ? 0x638d87 : 0x50736f;
+            }
+            if (ry > 6 && ry < 13 && abs(dx) <= 10) {
+                if (abs(dx) >= 8) return dx < 0 ? 0xe0ba80 : 0xa27751;
+                if (ry == 11 || (ry == 12 && x % 3 == 0)) return 0xb48e60;
+                return x % 4 == 0 ? 0x6d6c57 : 0x2a464c;
+            }
+        }
+        if (y >= 33 && y <= 37 && abs(dx) <= 11 + (y - 33))
+            return y == 33 || y == 36 ? 0xc0c1a6 : stone;
+        return 0;
+    }
+    case 8: { /* finial, hip roof, lattice windows and stepped pedestal */
+        if (y >= 2 && y <= 5 && dx * dx + (y - 4) * (y - 4) < 6) return 0xbcc9aa;
+        if (y >= 6 && y <= 13 && abs(dx) <= 3 + (y - 6) * 2) {
+            if (y == 13) return 0x4a6564;
+            if (y == 12 || abs(dx) == 3 + (y - 6) * 2) return 0xc2c9ac;
+            return x < 20 ? stone : 0x738b7e;
+        }
+        if (y >= 14 && y <= 23 && abs(dx) <= 8) {
+            if (abs(dx) >= 6 || y == 14 || y >= 22) return stone;
+            if (x == 20 || y == 18) return 0x687d6b;
+            return x < 20 ? 0xf6d994 : 0xc8b77c;
+        }
+        if (y >= 24 && y <= 31 && abs(dx) <= 3) return x < 20 ? 0xb6c1a2 : 0x617d73;
+        if (y >= 32 && y <= 37 && abs(dx) <= 8 + (y - 32))
+            return y == 32 || y == 35 ? 0xb3bfa1 : stone;
+        return 0;
+    }
+    case 9: { /* asymmetric foliage pads, twisted trunk and glazed planter */
+        if (y >= 31 && y <= 37 && abs(dx) <= 14 - (y - 31) / 2) {
+            if (y == 31) return 0xe3ae88;
+            if (y == 32) return abs(dx) < 10 ? 0x4a5240 : 0xb57c65;
+            if (y == 37 && abs(dx) < 7) return 0;
+            return x < 13 ? 0xce9475 : x > 27 ? 0x774e48 : 0xa66c57;
+        }
+        int trunk = 18 + (31 - y) / 5 - (y < 20 ? (20 - y) / 3 : 0);
+        if ((y >= 13 && y <= 31 && abs(x - trunk) <= 2) ||
+            (y >= 14 && y <= 23 && abs(x - (34 - y)) <= 1) ||
+            (y >= 17 && y <= 24 && abs(x - (y + 3)) <= 1))
+            return x <= trunk ? 0xc09968 : 0x70543c;
+        static const int cx[4] = {11, 24, 29, 9}, cy[4] = {16, 8, 21, 24};
+        for (int i = 0; i < 4; i++) {
+            int ex = x - cx[i], ey = y - cy[i], r = ex * ex * 2 + ey * ey * 5;
+            if (r < 110 + (i == 1 ? 25 : 0)) {
+                if (ey > 2) return 0x345f50;
+                if ((x + y * 3) % 7 < 2) return ey < 0 ? 0xb0cc87 : 0x6f9e6d;
+                return ey < -1 ? 0x81ad74 : 0x4e805e;
+            }
+        }
+        return 0;
+    }
+    case 10: { /* swept lintel, paired beams, plaque and stone shoes */
+        int top = 4 - (abs(dx) > 13 ? 1 : 0);
+        if (y >= top && y <= top + 2 && abs(dx) <= 18)
+            return y == top ? 0x73837b : 0x354f52;
+        if ((y >= 7 && y <= 9 && abs(dx) <= 16) ||
+            (y >= 15 && y <= 17 && abs(dx) <= 15))
+            return y == 7 || y == 15 ? 0xea9a79 : y == 17 ? 0x883e3c : 0xc45e50;
+        if (y >= 10 && y <= 15 && abs(dx) <= 2)
+            return abs(dx) == 2 || y == 10 || y == 15 ? 0xc6a06a : 0x354c4d;
+        int post = 10 + (y - 10) / 14;
+        if (y >= 10 && y < 35 && abs(abs(dx) - post) <= 2)
+            return abs(dx) == post + 2 ? 0x833e3a : abs(dx) == post - 2 ? 0xe99472 : 0xc65e50;
+        if (y >= 34 && y <= 38 && abs(abs(dx) - 11) <= 5)
+            return y == 34 ? 0xb3bb9d : stone;
+        return 0;
+    }
+    case 11: { /* bevelled brass moon on a carved plinth */
+        int dy = y - 18, r = dx * dx + dy * dy;
+        int cut = (x - 26) * (x - 26) + (y - 12) * (y - 12);
+        if (r < 210 && cut > 165) {
+            if (r > 173) return x + y < 34 ? 0xfff1b3 : 0xa88b51;
+            if (cut < 194) return 0xe0bb73;
+            if (grain == 0 && x < 18) return 0xfff0bc;
+            return x < 16 ? 0xf5df9c : 0xc9ac65;
+        }
+        if (y >= 32 && y <= 38 && abs(dx) <= (y < 34 ? 8 : 14)) {
+            if (y == 32 || y == 35) return 0xc2c2a2;
+            if (y == 37 && abs(dx) <= 8 && x % 4 == 0) return 0x405e60;
+            return stone;
+        }
+        return 0;
+    }
+    case 12: { /* split geode */
+        int dy = y - 21, r = dx * dx + dy * dy;
+        if (r > 280 + (x / 4 % 3 - 1) * 14 || y < 5) return 0;
+        if (r > 205) return x + y < 36 ? stone : 0x536a6c;
+        if (r > 151) return r > 176 ? 0xd2d8be : 0x889da7;
+        if (r < 22) return 0x273953;
+        int facet = (x / 4 + y / 5) % 4;
+        if ((x + y * 2) % 9 == 0) return 0xc6e8ed;
+        if (x % 4 == 0 || y % 5 == 0) return 0x426b91;
+        return facet == 0 ? 0xa5d7e1 : facet == 1 ? 0x78a8d1 :
+               facet == 2 ? 0x777eb7 : 0x4e82b3;
+    }
+    case 13: { /* ammonite fossil */
+        int dy = y - 21, r = dx * dx + dy * dy;
+        if (r > 280 + (y / 4 % 3) * 9 || y < 5) return 0;
+        if (r > 215) return grain < 4 ? 0x837760 : x + y < 40 ? 0xc8bea1 : 0x948b74;
+        static const int8_t whorl[][2] = {
+            {34,25}, {31,30}, {25,34}, {18,34}, {12,30}, {8,24}, {8,17},
+            {12,11}, {18,8}, {25,9}, {30,14}, {31,20}, {28,26}, {23,29},
+            {17,28}, {13,24}, {13,18}, {17,14}, {22,14}, {26,18}, {25,23},
+            {21,25}, {17,23}, {17,19}, {20,17}, {23,19}, {22,22}, {20,22}
+        };
+        for (unsigned i = 1; i < sizeof whorl / sizeof *whorl; i++) {
+            int ax = whorl[i - 1][0], ay = whorl[i - 1][1];
+            int bx = whorl[i][0], by = whorl[i][1];
+            if (x < (ax < bx ? ax : bx) - 1 || x > (ax > bx ? ax : bx) + 1 ||
+                y < (ay < by ? ay : by) - 1 || y > (ay > by ? ay : by) + 1) continue;
+            int vx = bx - ax, vy = by - ay, px = x - ax, py = y - ay;
+            int cross = px * vy - py * vx, along = px * vx + py * vy;
+            int length2 = vx * vx + vy * vy;
+            if (along >= 0 && along <= length2 && cross * cross <= length2)
+                return dx + dy < 0 ? 0x95764e : 0x705a42;
+        }
+        if ((abs(dx * 2 - dy) % 9 == 0 || abs(dy * 2 + dx) % 11 == 0) && r > 55)
+            return 0xac9469;
+        return dx + dy < 0 ? 0xf1dfae : 0xd3bd8e;
+    }
+    case 14: { /* spotted glazed domes, gills and fluted ivory stems */
+        for (int i = 0; i < 3; i++) {
+            int cx = 8 + i * 12, cy = i == 1 ? 13 : 24;
+            int xx = x - cx, yy = y - cy;
+            if (yy <= 1 && yy >= -8 && xx * xx + yy * yy * 2 < 90) {
+                if (yy == 1) return i == 1 ? 0x854953 : 0x9d6d49;
+                if ((abs(xx + 3) <= 1 && abs(yy + 4) <= 1) ||
+                    (abs(xx - 3) <= 1 && abs(yy + 2) <= 1)) return 0xffe6be;
+                if (yy < -5 && xx < 1) return i == 1 ? 0xf3a59b : 0xf4cb92;
+                return i == 1 ? xx > 3 ? 0xa34f61 : 0xcd7180 :
+                               xx > 3 ? 0xb47c50 : 0xdba26b;
+            }
+            if (yy > 1 && yy < 4 && abs(xx) < 6)
+                return x % 2 == 0 ? 0xbaa17d : 0xf1dcb3;
+            if (y > cy && y < 37 && abs(xx) <= 2)
+                return xx == -2 ? 0xffebc3 : xx == 2 ? 0xa69878 : 0xd8c9a4;
+        }
+        if (y >= 36 && y <= 38 && abs(dx) <= 17) return grain < 10 ? 0x8caa76 : 0x54765d;
+        return 0;
+    }
+    case 15: { /* conical keep, crenellated towers, arrow slits and gateway */
+        if (y >= 35 && y <= 38 && abs(dx) <= 18)
+            return y == 35 ? 0xe7ce92 : grain < 3 ? 0xb39c68 : 0xcdb37b;
+        if (y >= 4 && y <= 13 && abs(dx) <= (y - 3) / 2) {
+            if (y == 13) return 0x987f57;
+            return dx < 0 ? 0xeac88b : 0xbc985f;
+        }
+        bool tower = (x >= 4 && x <= 12) || (x >= 28 && x <= 36);
+        bool keep = abs(dx) <= 5 && y >= 14;
+        bool wall = y >= 24 && abs(dx) <= 14;
+        if (!(tower && y >= 14) && !keep && !wall) return 0;
+        if (tower && y < 18 && (x == 7 || x == 8 || x == 31 || x == 32)) return 0;
+        if (abs(dx) <= 3 && y >= 28 + (3 - abs(dx)) / 2)
+            return x == 17 ? 0xa68c5c : 0x66573e;
+        if ((y >= 20 && y <= 22 && (x == 8 || x == 32)) ||
+            (y >= 17 && y <= 20 && x == 20)) return 0x877449;
+        if (y % 6 == 0 || (x + y / 6 * 3) % 9 == 0) return 0xba9d66;
+        return tower && (x == 12 || x == 36) ? 0xa98b58 :
+               x < 20 ? 0xf0d59a : 0xd6b87b;
+    }
+    case 16: { /* carved fish emblem, weathered paint and nail heads */
+        if (y >= 16 && y <= 37 && abs(dx) <= 2)
+            return x == 18 ? 0xc6a06b : wood;
+        if (y >= 8 && y <= 22 && x >= 3 && x <= 37 - abs(y - 15)) {
+            if (y == 8 || x == 3) return 0xb3d4b8;
+            if (y == 22 || x == 37 - abs(y - 15)) return 0x446d70;
+            if ((x == 6 || x == 25) && (y == 11 || y == 19)) return 0xd8c891;
+            if ((x >= 10 && x <= 20 && abs(y - 15) <= (x < 14 ? x - 10 : (22 - x) / 2)) ||
+                (x >= 21 && x <= 24 && abs(y - 15) <= x - 21))
+                return x == 13 && y == 14 ? 0xdde5b7 : 0x3c6565;
+            if (y == 12 && x >= 16 && x < 22) return 0xaed0b1;
+            return (x + y / 5) % 8 == 0 ? 0x609386 : y > 17 ? 0x71a190 : 0x8db7a1;
+        }
+        if (y >= 36 && y <= 38 && abs(dx) <= 6) return stone;
+        return 0;
+    }
+    case 17: { /* arched enamel door, stamped letter, flag and iron bracket */
+        if (y >= 25 && y <= 37 && abs(dx) <= 2) return x == 18 ? 0xc39c66 : wood;
+        if (y == 29 && x >= 19 && x <= 29) return 0x56615b;
+        if (x == 29 && y >= 25 && y <= 29) return 0x56615b;
+        if (x >= 29 && x <= 30 && y >= 4 && y <= 19) return 0x765340;
+        if (x >= 30 && x <= 36 && y >= 4 && y <= 8)
+            return y == 4 ? 0xf0b48d : 0xca6e5f;
+        int ex = x - 14;
+        bool door = x >= 6 && x <= 22 && y >= 9 && y <= 26 &&
+                    (y >= 16 || ex * ex + (y - 16) * (y - 16) <= 64);
+        bool body = x >= 15 && x <= 32 && y >= 9 && y <= 26;
+        if (!door && !body) return 0;
+        if (door) {
+            if (y == 26 || x == 6 || x == 22 || (y < 16 && ex * ex + (y - 16) * (y - 16) >= 46))
+                return x < 14 ? 0xa6c9bf : 0x426877;
+            if (y == 17 && x >= 10 && x <= 18) return 0x294b5e;
+            if (x >= 10 && x <= 18 && y >= 20 && y <= 24)
+                return y == 20 || abs(x - 14) == y - 20 ? 0xa59472 : 0xe8dbb4;
+            return x < 12 ? 0x8ebbb7 : 0x679da4;
+        }
+        if (y == 9) return 0xb3d3c2;
+        return y > 23 ? 0x3f6573 : x == 31 ? 0x507885 : 0x70a7ac;
+    }
+    case 18: { /* curled parchment, coastline, compass rose, dotted route and X */
+        if (y < 10 || y > 35 || x < 2 || x > 37) return 0;
+        if (x <= 5 || x >= 34) {
+            if ((y < 13 || y > 33) && (x == 2 || x == 37)) return 0;
+            return x == 2 || x == 34 ? 0xf6e4b7 : x == 5 || x == 37 ? 0x9a784e : 0xd3b079;
+        }
+        if (y == 11 || y == 34) return 0xac8d5c;
+        if (y == 10) return 0xf8e8bd;
+        int cx = x - 29, cy = y - 17;
+        if (abs(cx) + abs(cy) <= 3 && (cx == 0 || cy == 0))
+            return cx + cy < 0 ? 0x536e69 : 0xa48a58;
+        if (abs(x - 25) == abs(y - 28) && abs(x - 25) <= 2) return 0xb45c51;
+        if (x >= 9 && x <= 21 && y == 25 + (x / 4 % 2) * 2 && x % 3 != 0)
+            return 0xb57555;
+        if ((x >= 8 && x <= 16 && y == 17 + x / 4 % 3) ||
+            (x == 9 && y >= 18 && y <= 22) || (x == 16 && y >= 18 && y <= 20))
+            return 0x7d9a83;
+        if (x == 20 || y == 23) return 0xd7c394;
+        return grain == 0 ? 0xe1c999 : 0xf0dfb2;
+    }
+    default: { /* parked submarine */
+        if (x >= 19 && x <= 21 && y >= 5 && y <= 15)
+            return x == 19 ? 0xf3d57f : 0xb38a43;
+        if (x >= 21 && x <= 28 && y >= 4 && y <= 7)
+            return x == 28 ? 0x344c56 : y == 4 ? 0xffe09a : 0xc59c4c;
+        if (x >= 15 && x <= 26 && y >= 13 && y <= 18)
+            return y == 13 ? 0xf5d58b : x == 26 ? 0x9d793e : 0xd6ae59;
+        if (x >= 34 && x <= 38 && y >= 20 && y <= 33) {
+            if (x == 38 && y % 3 == 0) return 0xc4b988;
+            return y < 25 ? 0xa58a4d : 0x716342;
+        }
+        int rbody = dx * dx * 2 + (y - 26) * (y - 26) * 7;
+        if (rbody < 650) {
+            for (int cx = 10; cx <= 28; cx += 9) {
+                int ex = x - cx, ey = y - 25, r = ex * ex + ey * ey;
+                if (r < 10) return ey == -1 && ex <= 0 ? 0xc4e4dd : ex + ey < 0 ? 0x74a9b5 : 0x365a75;
+                if (r < 22) return r > 16 ? 0xa07d42 : ex + ey < 0 ? 0xffe8a7 : 0xe0bc6e;
+            }
+            if (rbody > 565) return y < 25 ? 0xeacb7e : 0x8a6d38;
+            if (y == 19 && x >= 15 && x <= 27) return 0xffe6a1;
+            if (y == 31 && x % 4 == 0) return 0xf1d38b;
+            return y < 24 ? 0xe9bf61 : y < 29 ? 0xcf9e44 : 0xa57e3c;
+        }
+        if (y == 37 && x >= 9 && x <= 31) return 0x5d6e65;
+        if (y >= 34 && y < 37 && (x == 12 || x == 28)) return 0x8d815d;
+        return 0;
+    }
+    }
+}
 static uint32_t ornament_pixel(int item, int x, int y) {
     if (x < 0 || y < 0 || x >= tank_ornament_w(item) || y >= tank_ornament_h(item)) return 0;
+    if (SD_IS_NEW_DECOR(item)) return harbor_garden_pixel(item, x, y);
     if (SD_IS_SCENERY(item)) return scenery_pixel(item, x, y);
     if (item >= 32 && item < SD_SCENERY_FIRST) {
         int dx = x - 20, dy = y - 20;
@@ -3706,8 +4099,8 @@ static void draw_tank_mussel(ctx_t *c, const tank_t *t) {
     if (crawl) fill_ellipse(c, x + crawl * 9, y + 5, 8, 2, 0x769d91, 220);
     draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0, true, 0, t->companion.mussel_colors);
     if (t->mussel_glint > 0) {
-        float age = 1.6f - t->mussel_glint;
-        int alpha = (int)(fminf(age * 6, 1) * fminf(t->mussel_glint * 3, 1) * 210);
+        float age = floorf((1.6f - t->mussel_glint) * 5) * .2f;
+        int alpha = (int)(fminf(age * 6, 1) * fminf((1.6f - age) * 3, 1) * 210);
         for (int i = 0; i < 3; i++) {
             float sx = x + (i - 1) * 10, sy = y - 18 - age * 9 + (i & 1) * 4;
             fill_ellipse(c, sx, sy, 2.2f, .7f, 0xe3c781, alpha);
@@ -3753,6 +4146,7 @@ void render_ornament_preview(uint16_t *fb, int stride, int item, int cx, int bot
     draw_ornament(&c, item, cx - tank_ornament_w(item) / 2, bottom - tank_ornament_h(item), 1, false, true, 0);
 }
 #define PIECES_MAX (DECOR_SLOTS - 1)
+_Static_assert(PIECES_MAX <= 64, "vegetation piece-index masks use uint64_t");
 typedef struct {
     int  item;                            /* castle, coral, cluster, pumpkin, or chest */
     int  cx, z;                           /* its centre on the floor, its depth */
@@ -3800,7 +4194,12 @@ static void pieces_build(const tank_t *t, bool cached, bool front) {
             case 9: case 10: case 11: case 12: case 13: case 16: case 17: case 18: case 19: case 20: case 21:
                 p->w = tank_ornament_w(item); p->rows = tank_ornament_h(item);
                 p->x0 = p->cx - p->w / 2; p->y0 = TANK_BOT - 14 + DECOR_SINK - p->rows; break;
-            default: p->x0 = p->cx - PK_W / 2; p->y0 = PK_FY - PK_H; p->w = PK_W; p->rows = PK_H + 4; break;
+            default:
+                if (SD_IS_NEW_DECOR(item)) {
+                    p->w = tank_ornament_w(item); p->rows = tank_ornament_h(item);
+                    p->x0 = p->cx - p->w / 2; p->y0 = TANK_BOT - 14 + DECOR_SINK - p->rows;
+                } else { p->x0 = p->cx - PK_W / 2; p->y0 = PK_FY - PK_H; p->w = PK_W; p->rows = PK_H + 4; }
+                break;
         }
         g_npc++;
     }
@@ -3868,12 +4267,12 @@ static bool pc_covered_above(int k, int x, int y) {
     return false;
 }
 /* the pieces a bed's spans leave alone (veg_span) */
-static uint32_t veg_skip_for(const tank_t *t, int b) {
-    int bz = bed_z(t, b); uint32_t m = 0;
+static uint64_t veg_skip_for(const tank_t *t, int b) {
+    int bz = bed_z(t, b); uint64_t m = 0;
     for (int k = 0; k < g_npc; k++) {
         if (!g_pc[k].baked && g_pc[k].item != 2) continue;              /* drawn live this frame: over the grass anyway, or dragged */
-        if (g_pc[k].z == DECOR_Z_FRONT && bz != DECOR_Z_FRONT) m |= 1u << k;             /* in front of the plant layer */
-        else if (b == 3 && bz != DECOR_Z_MIDDLE && g_pc[k].z == bz && tank_decor_above(t, g_pc[k].item, 0)) m |= 1u << k;   /* at the plant's depth, ranked above it */
+        if (g_pc[k].z == DECOR_Z_FRONT && bz != DECOR_Z_FRONT) m |= UINT64_C(1) << k;
+        else if (b == 3 && bz != DECOR_Z_MIDDLE && g_pc[k].z == bz && tank_decor_above(t, g_pc[k].item, 0)) m |= UINT64_C(1) << k;
     }
     return m;
 }
@@ -3910,7 +4309,10 @@ static void pc_draw(ctx_t *c, const tank_t *t, int k, bool final, bool record) {
         case 3:  draw_coral(c, p->cx, tank_coral_rgb(t), tank_coral_growth(t), final); break;
         case 4:  draw_cluster(c, p->cx, tank_cluster_scheme(t), tank_cluster_growth(t), final); break;
         case 9: case 10: case 11: case 12: case 13: case 16: case 17: case 18: case 19: case 20: case 21: draw_ornament(c, p->item, p->x0, p->y0, 1, final, true, 0); break;
-        default: draw_pumpkin(c, p->cx, t->night, secondary_clock(t), final, true, final); break;
+        default:
+            if (SD_IS_NEW_DECOR(p->item)) draw_ornament(c, p->item, p->x0, p->y0, 1, final, true, 0);
+            else draw_pumpkin(c, p->cx, t->night, secondary_clock(t), final, true, final);
+            break;
     }
     g_pk_shade_all = false;
     g_rec = NULL;
@@ -3919,8 +4321,8 @@ static void pc_draw(ctx_t *c, const tank_t *t, int k, bool final, bool record) {
  * tentacles - clipped by the pieces above it (g_clip_k); its rect joins the
  * vignette sweep */
 #define PC_CROWN(k) do { int qx0 = 0, qy0 = 0, qx1 = -1, qy1 = 0; \
-        if (g_pc[k].item == 3) draw_coral_crown(&c, g_pc[k].cx, tank_coral_rgb(t), tank_coral_growth(t), t->clock, &qx0, &qy0, &qx1, &qy1); \
-        else if (g_pc[k].item == 4) draw_cluster_crown(&c, g_pc[k].cx, tank_cluster_scheme(t), tank_cluster_growth(t), t->clock, &qx0, &qy0, &qx1, &qy1); \
+        if (g_pc[k].item == 3) draw_coral_crown(&c, g_pc[k].cx, tank_coral_rgb(t), tank_coral_growth(t), secondary_clock(t), &qx0, &qy0, &qx1, &qy1); \
+        else if (g_pc[k].item == 4) draw_cluster_crown(&c, g_pc[k].cx, tank_cluster_scheme(t), tank_cluster_growth(t), secondary_clock(t), &qx0, &qy0, &qx1, &qy1); \
         if (qx1 >= qx0) DYN_RECT(qx0, qy0, qx1, qy1); } while (0)
 #define PK_LIGHT_Y (PK_FY - (int)(8.0f * PK_S * PK_CELL))   /* the face's middle: where the light leaves */
 
@@ -4544,6 +4946,36 @@ static void clock_sparkle_position(const tank_t *t, const render_clock_layout_t 
 static bool clock_solid(const tank_t *t) {
     return render_clock_active(t) && !(t->aquariums.clock_flags & CLOCK_HIDE_PANEL);
 }
+static int g_damage_policy;
+static uint32_t g_damage_pixel_ns = 900, g_damage_rectangle_us = 200;
+void render_damage_policy(int policy) {
+    g_damage_policy = policy;
+}
+void render_damage_costs(uint32_t pixel_ns, uint32_t rectangle_us) {
+    g_damage_pixel_ns = pixel_ns;
+    g_damage_rectangle_us = rectangle_us;
+}
+static void damage_select_plan(void) {
+    int rows = (TANK_H + 39) / 40;
+    uint64_t pixels = 0;
+    unsigned rectangles = 0;
+    uint16_t planned_blocks[sizeof g_damage_blocks / sizeof g_damage_blocks[0]];
+    memcpy(planned_blocks, g_damage_blocks, sizeof planned_blocks);
+    int cursor = 0, x, y, width, height;
+    while (render_damage_next(&cursor, &x, &y, &width, &height)) {
+        pixels += (unsigned)width * height;
+        rectangles += (unsigned)(height + 39) / 40;
+    }
+    memcpy(g_damage_blocks, planned_blocks, sizeof planned_blocks);
+    /* Compare the actual merged plan with canonical tiles, rather than promote
+       every scene above an arbitrary damage percentage to a full repaint. */
+    uint64_t partial_cost = pixels * g_damage_pixel_ns + (uint64_t)rectangles * g_damage_rectangle_us * 1000;
+    uint64_t full_cost = (uint64_t)TANK_W * TANK_H * g_damage_pixel_ns +
+        (uint64_t)rows * g_damage_rectangle_us * 1000;
+    if (g_damage_policy == RENDER_DAMAGE_FULL ||
+        (g_damage_policy == RENDER_DAMAGE_ADAPTIVE && partial_cost >= full_cost))
+        for (int row = 0; row < rows; row++) g_damage_blocks[row] = (uint16_t)((1u << ((TANK_W + 31) / 32)) - 1);
+}
 void render_damage_begin(const tank_t *t, bool force_full) {
     static bool was_simple;
     static int previous_detail = -1;
@@ -4585,26 +5017,33 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     previous.shelf = t->companion.decor; previous.collections = t->companion.collections;
     previous.challenges = t->companion.game_challenges;
     previous.chapters = t->rpg.chapter;
+    static float previous_secondary = -1;
+    float secondary = secondary_clock(t);
+    bool scenery_changed = secondary != previous_secondary;
+    previous_secondary = secondary;
     memset(g_damage, 0, sizeof g_damage);
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
         const inventory_extra_t *copy = &t->inventory.extra[i];
         int item = copy->item - 1;
-        if (item == 13 || item == 21) {
+        if (scenery_changed && (item == 13 || item == 21)) {
             int half = tank_ornament_w(item) / 2 + 20;
             damage_rect((int)copy->x - half, TANK_BOT - 34 + DECOR_SINK - tank_ornament_h(item),
                         (int)copy->x + half, TANK_BOT);
         }
     }
-    static float mussel_x, mussel_y, mussel_glint;
+    static float mussel_x, mussel_y;
+    static int mussel_glint = -1;
+    int glint_pose = owned && t->mussel_glint > 0 ?
+        (int)floorf((1.6f - t->mussel_glint) * 5) : -1;
     if (owned) {
         float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
-        if (x != mussel_x || y != mussel_y || t->mussel_glint > 0 || mussel_glint > 0) {
+        if (x != mussel_x || y != mussel_y || glint_pose != mussel_glint) {
             damage_rect((int)mussel_x - 21, (int)mussel_y - 36, (int)mussel_x + 21, (int)mussel_y + 10);
             damage_rect((int)x - 21, (int)y - 36, (int)x + 21, (int)y + 10);
         }
         mussel_x = x; mussel_y = y;
     }
-    mussel_glint = owned ? t->mussel_glint : 0;
+    mussel_glint = glint_pose;
     for (int cy = 0; cy < ALGAE_ROWS; cy++) for (int cx = 0; cx < ALGAE_COLS; cx++) {
         int index = cy * ALGAE_COLS + cx;
         if (algae[index] != t->algae[index])
@@ -4650,7 +5089,7 @@ void render_damage_begin(const tank_t *t, bool force_full) {
             pieces.q[k] = (int)(tank_cluster_growth(t) * CL_Q);
             pieces.col[k] = (uint32_t)tank_cluster_scheme(t);
         }
-        if (g_pc[k].item == 3 || g_pc[k].item == 4 || g_pc[k].item == 8 || g_pc[k].item == 13 || g_pc[k].item == 21)
+        if (scenery_changed && (g_pc[k].item == 3 || g_pc[k].item == 4 || g_pc[k].item == 8 || g_pc[k].item == 13 || g_pc[k].item == 21))
             damage_rect(g_pc[k].x0 - 20, g_pc[k].y0 - 20, g_pc[k].x0 + g_pc[k].w + 20, g_pc[k].y0 + g_pc[k].rows + 20);
     }
     if (memcmp(&pieces, &previous_pieces, sizeof pieces)) full = true;
@@ -4670,8 +5109,10 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     if (t->night && (t->sd_unlocks & SD_ITEM_PUMPKIN)) full = true;
     uint16_t current[TANK_MAX_H]; memcpy(current, g_damage, sizeof current);
     bool repaint_all = full || g_damage_full_previous;
+    uint16_t visible_columns = (uint16_t)((1u << ((TANK_W + 31) / 32)) - 1);
     for (int y = 0; y < TANK_H; y++)
-        g_damage[y] |= g_damage_previous[y] | ((full || g_damage_full_previous) ? (1u << ((TANK_W + 31) / 32)) - 1 : 0);
+        g_damage[y] = (g_damage[y] | g_damage_previous[y] |
+                       ((full || g_damage_full_previous) ? visible_columns : 0)) & visible_columns;
     memcpy(g_damage_previous, current, sizeof current);
     static theme_detail_t old_details[4];
     theme_detail_t details[4]; theme_details(t, details);
@@ -4687,24 +5128,24 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     /* Grass retains its pixels between pose ticks. Invalidate its old and new
        silhouettes only once, including trims and moved/removed sword plants. */
     static struct { int x, top; bool active; } fronds[VEG_BEDS_MAX][VEG_FRONDS_MAX];
-    static float previous_veg_clock = -1;
-    float grass_clock = veg_clock(t, t->clock);
+    static float previous_veg_clock[VEG_BEDS_MAX];
     for (int b = 0; b < VEG_BEDS_MAX; b++) {
+        float grass_clock = veg_clock(t, t->clock, VEG_SEED[b]);
         int n = 0;
         if (b < tank_veg_beds(t)) tank_veg_bed(t, b, NULL, NULL, NULL, &n);
         for (int i = 0; i < VEG_FRONDS_MAX; i++) {
             float x = 0; int segs = i < n ? tank_veg_frond(t, b, i, &x) : 0;
             int top = (int)(TANK_BOT - 16 - (segs - 1) * VEG_SEG_DY - VEG_SEG_RY) - 4;
             bool active = i < n;
-            if (previous_veg_clock != grass_clock || active != fronds[b][i].active ||
+            if (previous_veg_clock[b] != grass_clock || active != fronds[b][i].active ||
                 (int)x != fronds[b][i].x || top != fronds[b][i].top) {
                 if (fronds[b][i].active) damage_rect(fronds[b][i].x - 12, fronds[b][i].top, fronds[b][i].x + 12, TANK_BOT - 8);
                 if (active) damage_rect((int)x - 12, top, (int)x + 12, TANK_BOT - 8);
             }
             fronds[b][i].x = (int)x; fronds[b][i].top = top; fronds[b][i].active = active;
         }
+        previous_veg_clock[b] = grass_clock;
     }
-    previous_veg_clock = grass_clock;
     g_damage_full_previous = full;
     memset(g_damage_blocks, 0, sizeof g_damage_blocks);
     for (int y = 0; y < TANK_H; y++) g_damage_blocks[y / 40] |= g_damage[y];
@@ -4718,13 +5159,7 @@ void render_damage_begin(const tank_t *t, bool force_full) {
             if (face || caption) g_damage_blocks[y / 40] &= (uint16_t)~(1u << (x / 32));
         }
     }
-    unsigned blocks = 0;
-    int rows = (TANK_H + 39) / 40;
-    for (int row = 0; row < rows; row++) blocks += (unsigned)__builtin_popcount(g_damage_blocks[row]);
-    /* Dense regions use canonical tiles so LCD fingerprints remain reusable;
-       scene occlusion still omits the pixels behind opaque panels. */
-    if (blocks * 5 > (unsigned)(rows * ((TANK_W + 31) / 32) * 2))
-        for (int row = 0; row < rows; row++) g_damage_blocks[row] = (uint16_t)((1u << ((TANK_W + 31) / 32)) - 1);
+    damage_select_plan();
 }
 bool render_damage_next(int *cursor, int *x, int *y, int *width, int *height) {
     int rows = (TANK_H + 39) / 40, cols = (TANK_W + 31) / 32;
@@ -4893,7 +5328,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
         static const int items[] = {28, 24, 29};
         for (int i = 0; i < 3; i++) if (t->sd_unlocks & (UINT32_C(1) << items[i])) {
             int x = (i + 1) * TANK_W / 4 - 20;
-            int y = 2 + (int)(sinf(t->clock * 0.9f + i * 2) * 2);
+            int y = 2 + (int)(sinf(secondary_clock(t) * 0.9f + i * 2) * 2);
             draw_ornament(&c, items[i], x, y, 1, false, true, 0);
             DYN_RECT(x, y, x + 39, y + 39);
         }
@@ -4904,7 +5339,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
         if (g_pc[k].z != DECOR_Z_BACK) continue;
         g_clip_k = k;
         if (g_pc[k].item == 3 || g_pc[k].item == 4) PC_CROWN(k);
-        else if (g_pc[k].item == 8 && g_pc[k].baked) draw_pumpkin_glow(&c, g_pc[k].cx, t->clock, t->night, false, true);
+        else if (g_pc[k].item == 8 && g_pc[k].baked) draw_pumpkin_glow(&c, g_pc[k].cx, secondary_clock(t), t->night, false, true);
         g_clip_k = -1;
     }
     PROF_ADD(0, p0);
@@ -5031,7 +5466,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
         if (g_pc[k].z != DECOR_Z_FRONT) continue;
         g_clip_k = k;
         if (g_pc[k].item == 3 || g_pc[k].item == 4) PC_CROWN(k);
-        else if (g_pc[k].item == 8 && g_pc[k].baked) draw_pumpkin_glow(&c, g_pc[k].cx, t->clock, t->night, false, true);
+        else if (g_pc[k].item == 8 && g_pc[k].baked) draw_pumpkin_glow(&c, g_pc[k].cx, secondary_clock(t), t->night, false, true);
         g_clip_k = -1;
     }
     if (tank_snail_upright(t) && t->snail_front) draw_snail(&c, t, true);   /* its front lane: over them (its rect is marked above) */
@@ -5661,7 +6096,7 @@ void render_stats_card(const tank_t *t, int fish_idx, uint16_t *fb, int stride) 
     if (fish_idx < 0 || fish_idx >= t->n_fish) return;
     ctx_t c = ctx_full(fb, stride, 1.0f);            /* card ignores night dimming */
     const fish_t *f = &t->fish[fish_idx];
-    ring(&c, f->x, f->y, 17 * f->size, f->color);
+    ring(&c, f->x, f->y, 17 * f->size * TANK_FISH_DISPLAY_SCALE, f->color);
     c = ctx_page(fb, stride);
     unsigned ep; const uint16_t *scene = render_scene_buf(&ep);
     if (!g_tile_h && g_card && scene) {
@@ -6753,31 +7188,14 @@ void render_notice(const tank_t *t, uint16_t *fb, int stride, int kind, int fish
 static int  g_shp_modal = -1;        /* the item whose modal is up, or -1 */
 static bool g_shp_earn;              /* the HOW TO EARN modal is up */
 static bool g_shp_sell_armed;        /* SELL tapped once: the next tap on it sells */
-static int g_inventory_item = -1, g_inventory_copy = -1;
-enum { INV_PLACE = SHOP_TAP_INVENTORY, INV_BUY, INV_STORE, INV_SELL, INV_MOVE };
-static int inventory_first_copy(const tank_t *t, int item) {
-    if (tank_decor_owned(t, item)) return -1;
-    for (int i = 0; i < DECOR_EXTRA_CAP; i++)
-        if (t->inventory.extra[i].item == item + 1) return i;
-    return -2;
-}
-static int inventory_next_copy(const tank_t *t, int item, int copy) {
-    for (int i = copy < 0 ? 0 : copy + 1; i < DECOR_EXTRA_CAP; i++)
-        if (t->inventory.extra[i].item == item + 1) return i;
-    return inventory_first_copy(t, item);
-}
+static int g_inventory_item = -1;
+enum { INV_PLACE = SHOP_TAP_INVENTORY, INV_BUY, INV_SELL };
 bool render_shop_inventory_action(tank_t *t, int action) {
-    if (action < INV_PLACE || action > INV_MOVE || !tank_decor_placeable(g_inventory_item)) return false;
+    if (action < INV_PLACE || action > INV_SELL || !tank_decor_placeable(g_inventory_item)) return false;
     int item = g_inventory_item;
     if (action == INV_BUY) progression_inventory_buy(t, item);
     else if (action == INV_SELL) progression_inventory_sell(t, item);
-    else if (action == INV_STORE) {
-        if (g_inventory_copy != -2 && progression_inventory_store(t, item, g_inventory_copy))
-            g_inventory_copy = inventory_first_copy(t, item);
-    } else if (action == INV_MOVE) {
-        if (g_inventory_copy == -1 && tank_decor_owned(t, item)) setup_begin_place(t, item);
-        else if (g_inventory_copy >= 0) setup_begin_extra_place(t, g_inventory_copy);
-    } else {
+    else {
         bool primary = tank_decor_owned(t, item);
         uint8_t occupied[DECOR_EXTRA_CAP];
         for (int i = 0; i < DECOR_EXTRA_CAP; i++) occupied[i] = t->inventory.extra[i].item;
@@ -6785,7 +7203,6 @@ bool render_shop_inventory_action(tank_t *t, int action) {
             if (!primary) setup_begin_place(t, item);
             else for (int i = 0; i < DECOR_EXTRA_CAP; i++)
                 if (!occupied[i] && t->inventory.extra[i].item) { setup_begin_extra_place(t, i); break; }
-            g_inventory_copy = inventory_first_copy(t, item);
         }
     }
     return true;
@@ -6931,24 +7348,20 @@ static void render_inventory(const tank_t *t, uint16_t *fb, int stride) {
         snprintf(line, sizeof line, "STORED %d / HERE %d", progression_inventory_stored(t, item),
                  progression_inventory_placed(t, item));
         draw_text(&c, 64, 84, 2, MSP_TEAL, line);
-        snprintf(line, sizeof line, "NEW COPY: %d", progression_creative(t) ? 0 : SD_ITEMS[item].price);
+        snprintf(line, sizeof line, "PRICE: %d", progression_creative(t) ? 0 : SD_ITEMS[item].price);
         draw_text(&c, 64, 110, 2, MSP_DIM, line);
-        button(&c, 64, 138, 154, 34, 0x1c2f36, MSP_TEAL, "PLACE STORED", 2);
-        button(&c, 230, 138, 154, 34, 0x1c2f36, MSP_TEAL, "BUY COPY", 2);
-        if (g_inventory_copy == -2) snprintf(line, sizeof line, "NONE PLACED");
-        else if (g_inventory_copy == -1) snprintf(line, sizeof line, "PRIMARY COPY");
-        else snprintf(line, sizeof line, "EXTRA COPY %d", g_inventory_copy + 1);
-        draw_text(&c, 64, 188, 2, MSP_TEAL, line);
-        button(&c, 304, 180, 80, 28, 0x1c2f36, MSP_TEAL, "NEXT", 2);
-        button(&c, 64, 216, 154, 34, 0x1c2f36, g_inventory_copy != -2 ? MSP_TEAL : MSP_DIM, "MOVE COPY", 2);
-        button(&c, 230, 216, 154, 34, 0x1c2f36, g_inventory_copy != -2 ? MSP_TEAL : MSP_DIM, "STORE COPY", 2);
+        button(&c, 64, 138, 154, 34, 0x1c2f36, progression_inventory_stored(t, item) ? MSP_TEAL : MSP_DIM, "PLACE", 2);
+        button(&c, 230, 138, 154, 34, 0x1c2f36, MSP_TEAL, "BUY", 2);
+        render_decor_thumbnail(fb, stride, 80, 184, 64, item, true);
+        draw_text(&c, 160, 192, 1, MSP_TEAL, "HOLD IN TANK");
+        draw_text(&c, 160, 218, 1, MSP_TEAL, "TO MOVE / REMOVE");
         button(&c, 126, 264, 196, 30, 0x1c2f36, MSP_TEAL,
                g_shp_sell_armed ? "CONFIRM SALE" : "SELL STORED", 2);
     }
     const char *notice = progression_shop_notice();
     if (notice) draw_text(&c, 24, 314, 1, 0xff8a7a, notice);
 }
-static int inventory_tap(const tank_t *t, float x, float y) {
+static int inventory_tap(float x, float y) {
     if (g_inventory_item >= 0) {
         if (y >= 50 && y < 78 && x >= 304 && x < 384) {
             g_inventory_item = g_shp_modal = -1;
@@ -6958,15 +7371,6 @@ static int inventory_tap(const tank_t *t, float x, float y) {
         if (y >= 138 && y < 172 && x >= 64 && x < 384) {
             g_shp_sell_armed = false;
             return x < 224 ? INV_PLACE : INV_BUY;
-        }
-        if (y >= 180 && y < 208 && x >= 304 && x < 384) {
-            g_inventory_copy = inventory_next_copy(t, g_inventory_item, g_inventory_copy);
-            g_shp_sell_armed = false;
-            return SHOP_TAP_KEPT;
-        }
-        if (y >= 216 && y < 250 && x >= 64 && x < 384 && g_inventory_copy != -2) {
-            g_shp_sell_armed = false;
-            return x < 224 ? INV_MOVE : INV_STORE;
         }
         if (y >= 264 && y < 294 && x >= 126 && x < 322) {
             if (!g_shp_sell_armed) { g_shp_sell_armed = true; return SHOP_TAP_KEPT; }
@@ -7104,7 +7508,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
 int render_shop_tap(const tank_t *t, float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
     progression_shop_notice_clear();
-    if (g_inventory_item >= 0) return inventory_tap(t, x, y);
+    if (g_inventory_item >= 0) return inventory_tap(x, y);
     if (g_shp_earn) { g_shp_earn = false; return SHOP_TAP_KEPT; }
     if (g_shp_modal == SHP_MODAL_FRY) {                       /* the fry: a box picks, BUY buys the pick, elsewhere closes */
         if (y >= SHP_FRY_BOX_Y - 8 && y < SHP_FRY_BOX_Y + SHP_FRY_BOX_H + 6)
@@ -7162,7 +7566,6 @@ int render_shop_tap(const tank_t *t, float x, float y) {
                 if (tank_decor_placeable(i) &&
                     (progression_inventory_placed(t, i) || progression_inventory_stored(t, i))) {
                     g_inventory_item = i;
-                    g_inventory_copy = inventory_first_copy(t, i);
                 }
             }
             return SHOP_TAP_KEPT;
@@ -7172,7 +7575,7 @@ int render_shop_tap(const tank_t *t, float x, float y) {
 }
 void render_shop_leave(void) {
     g_shp_modal = -1; g_shp_earn = false; g_shp_page = 0; g_shp_sell_armed = false;
-    g_inventory_item = -1; g_inventory_copy = -1;
+    g_inventory_item = -1;
 }
 #if defined(ESP_PLATFORM) && defined(__GNUC__) && !defined(__clang__)
 #pragma GCC pop_options

@@ -11,6 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="cc")
     parser.add_argument("--all", action="store_true", help="Run the complete backup regression harness")
+    parser.add_argument("--content-only", action="store_true", help="Run static decoration and wardrobe content integration")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     build = root / ".inventory-test-build"
@@ -41,7 +42,7 @@ def main():
         environment = dict(os.environ, POCKET_TANK_FAKE_UPDATE="", POCKET_TANK_TEST_SLOTS=str(build),
                            POCKET_TANK_WIFI=str(build / "wifi.txt"),
                            POCKET_TANK_WEATHER=str(build / "weather.bin"))
-        subprocess.run([str(executable), *([] if args.all else ["--inventory-only"]),
+        subprocess.run([str(executable), *(["--content-only"] if args.content_only else [] if args.all else ["--inventory-only"]),
                         *(str(p) for p in fixtures)], check=True, env=environment)
     finally:
         shutil.rmtree(build)

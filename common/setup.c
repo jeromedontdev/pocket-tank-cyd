@@ -28,6 +28,7 @@ static uint32_t s_old_body, s_old_fin, s_old_accent;
 static uint8_t s_old_variety, s_old_pattern;
 static fish_t s_custom_draft;
 static bool s_save_error;
+static const char *s_place_error;
 static setup_place_snapshot_t s_place_original;
 static int s_extra = -1;
 static inventory_extra_t s_place_extras_original[DECOR_EXTRA_CAP];
@@ -39,6 +40,7 @@ const setup_place_snapshot_t *setup_place_original(void) {
 }
 static float *place_x(tank_t *t, int item) {
     if (s_extra >= 0) return &t->inventory.extra[s_extra].x;
+    if (SD_IS_NEW_DECOR(item)) return &t->content.x[item - SD_DECOR_FIRST];
     switch (item) {
     case 0: return &t->plant_x; case 2: return &t->castle_x;
     case 3: return &t->coral_x; case 4: return &t->cluster_x;
@@ -145,7 +147,7 @@ static float s_px, s_py;       /* press point */
 static float s_ly;             /* last y, for the wheel */
 static float s_acc;            /* vertical travel toward the next step */
 static bool  s_spun;           /* this press has turned the wheel (or moved the column): no tap on release */
-static bool  s_sell_armed;     /* the placement page's SELL tapped once (2026-09-24) */
+static bool  s_remove_armed;
 static bool  s_place_dragging;
 
 static int page_fish(void) { return s_birth || s_rename ? s_fish : s_place ? 0 : (s_page == SETUP_PG_NAME_A || s_page == SETUP_PG_LOOK_A) ? 0 : 1; }
@@ -203,9 +205,9 @@ void setup_begin_place(tank_t *t, int item) {
             s_place_base_x[i] = *place_x(t, i);
             s_place_base_z[i] = (uint8_t)tank_decor_z(t, i);
         }
-    s_save_error = false;
+    s_save_error = false; s_place_error = NULL;
     s_active = true; s_birth = false; s_place = true; s_rename = false; s_item = item; s_fish = -1; s_page = SETUP_PG_PLACE; s_slot = 0; s_down = false;
-    s_sell_armed = false;
+    s_remove_armed = false;
     s_selected_original_x = placed_x(t);
     stage(t);
 }
@@ -214,6 +216,19 @@ void setup_begin_extra_place(tank_t *t, int copy) {
     setup_begin_place(t, t->inventory.extra[copy].item - 1);
     s_extra = copy;
     s_selected_original_x = placed_x(t);
+}
+bool setup_begin_place_at(tank_t *t, float x, float y) {
+    if (s_active) return false;
+    int item = tank_decor_hit(t, x, y);
+    if (item >= 0) {
+        setup_begin_place(t, item);
+        return true;
+    }
+    place_copy_t copies[SD_ITEM_COUNT + DECOR_EXTRA_CAP];
+    int count = place_candidates_at(t, x, y, copies);
+    if (!count) return false;
+    setup_begin_extra_place(t, copies[count - 1].copy);
+    return setup_is_place();
 }
 int setup_poll_birth(tank_t *t) {
     int nb = progression_newborn();
@@ -285,7 +300,7 @@ const char *setup_hit_name(int id) {
     static char buf[12];
     if (id == SETUP_HIT_NEXT) return "NEXT";
     if (id == SETUP_HIT_BACK) return "BACK";
-    if (id == SETUP_HIT_SELL) return "SELL";
+    if (id == SETUP_HIT_REMOVE) return "REMOVE";
     if (id == SETUP_HIT_BCK) return "SEND BACK";
     if (id == SETUP_HIT_FWD) return "BRING FORWARD";
     if (id == SETUP_HIT_UP)   return "up";
@@ -368,7 +383,7 @@ int setup_hit(float x, float y) {
     if (nav_on_top()) {
         if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, 0)) return SETUP_HIT_BACK;
         if (in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_NEXT;
-        if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_SELL;
+        if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_REMOVE;
         if (s_place && in_box(x, y, SETUP_ORD_X0, SETUP_TOP_BTN_Y, SETUP_ORD_W, SETUP_BTN_H, 6)) return SETUP_HIT_BCK;
         if (s_place && in_box(x, y, SETUP_ORD_X1, SETUP_TOP_BTN_Y, SETUP_ORD_W, SETUP_BTN_H, 6)) return SETUP_HIT_FWD;
         if (!s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_BACK;
@@ -460,19 +475,20 @@ void setup_activate(tank_t *t, int id) {
         }
         return;
     }
-    if (s_place) {                                      /* DONE saves the spot; a layer button sets the depth; SELL twice sells */
+    if (s_place) {
         if (id == SETUP_HIT_BACK) { setup_cancel(t); return; }
-        if (id == SETUP_HIT_SELL) {
-            if (!s_sell_armed) { s_sell_armed = true; return; }
-            s_sell_armed = false;
+        if (id == SETUP_HIT_REMOVE) {
+            if (!s_remove_armed) { s_remove_armed = true; return; }
+            s_remove_armed = false;
             s_place = false;
-            bool ok = s_extra >= 0 ? progression_inventory_store(t, s_item, s_extra) : progression_sell(t, s_item);
+            bool ok = progression_inventory_store(t, s_item, s_extra);
             if (ok) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
-            else { s_place = true; s_save_error = true; }
+            else { s_place = true; s_save_error = true; s_place_error = progression_shop_notice(); }
             return;
         }
-        s_sell_armed = false;                           /* any other tap stands SELL down */
+        s_remove_armed = false;
         if (id == SETUP_HIT_NEXT) {
+            s_place_error = NULL;
             s_place = false;
             if (progression_save(t)) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
             else { s_place = true; s_save_error = true; }
@@ -811,18 +827,12 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
            anywhere on the water; the layer row picks its depth (the tank
            under the page redraws with it, so the fish and grass show the choice) */
         char title[40];
-        if (s_save_error) snprintf(title, sizeof title, "SAVE FAILED - RETRY");
+        if (s_save_error) snprintf(title, sizeof title, "%s", s_place_error ? s_place_error : "SAVE FAILED - RETRY");
         else snprintf(title, sizeof title, "PREVIEW: %s", SD_ITEMS[s_item].name);
-        text_c(fb, stride, CX, SETUP_Y + 7, 2, C_CAPT, title);
+        text_c(fb, stride, CX, SETUP_Y + 7, render_text_w(title, 2) <= SETUP_W ? 2 : 1, C_CAPT, title);
         render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, "DONE", 2);
-        /* SELL, top left (2026-09-24): a tap arms it and names the refund, a
-           second tap sells the piece back to the shop and closes the page */
-        if (s_sell_armed) { char ok[16];
-                            if (s_extra >= 0) snprintf(ok, sizeof ok, "STORE OK?");
-                            else snprintf(ok, sizeof ok, "+%d OK?", progression_sell_value_for(t, s_item));
-                            render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, ok, 2); }
-        else render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_INNER, C_DIM,
-                           s_extra >= 0 ? "STORE" : progression_sell_value_for(t, s_item) ? "SELL" : "REMOVE", 2);
+        render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H,
+                      C_INNER, s_remove_armed ? C_GO_E : C_DIM, s_remove_armed ? "REMOVE?" : "REMOVE", 2);
         render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, C_INNER, C_DIM, "CANCEL", 1);
         /* the ORDER arrows (2026-10-17): a step back / forward in the stack of
            pieces at this depth, lit when there is a piece to pass; the relation
@@ -920,8 +930,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                               progression_item_owned(t, s_item);
         char copy_status[64];
         if (!selected_owned) snprintf(copy_status, sizeof copy_status, "PREVIEW - NOT AN OWNED COPY");
-        else if (s_extra < 0) snprintf(copy_status, sizeof copy_status, "ORIGINAL - PLACED COPY %d OF %d", number, total);
-        else snprintf(copy_status, sizeof copy_status, "EXTRA COPY %d OF %d - PLACED - STORE TO INVENTORY", number, total);
+        else snprintf(copy_status, sizeof copy_status, "PLACED %d OF %d - REMOVE KEEPS IT IN STORAGE", number, total);
         place_copy_t overlaps[SD_ITEM_COUNT + DECOR_EXTRA_CAP];
         bool can_select_overlap = place_candidates_at(t, placed_x(t), FLOOR * TANK_H / PAGE_H, overlaps) > 1;
         text_c(fb, stride, CX, 281, 1, C_TEXT, copy_status);

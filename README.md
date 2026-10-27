@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.11
+# Pocket Tank CYD 2.3.12
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.11**. Stable firmware,
+now versioned independently. This source targets **2.3.12**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -24,6 +24,43 @@ covers named tanks, the bank, creature customization, Journal, mini-games,
 decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
+
+## New in 2.3.12: fish-first rendering and harbor/garden artwork
+
+Twenty detailed static decorations join the shop, with six new wearables:
+Sailor Cap, Pirate Hat, Beret, Sun Hat, Viking Helm and Scarf. Accessories use
+species-specific fitting through every life stage. Jellyfish support all but
+the wraparound scarf; ties, bowties and bandanas remain available.
+
+Item management uses **BUY**, **PLACE** and **SELL STORED**. Hold a decoration
+in the aquarium to move it; confirm **REMOVE** to return it to shared storage
+without a refund. Removed NEXT/MOVE COPY/STORE COPY controls no longer clutter
+the shop.
+
+The renderer overlaps 40-row tile drawing with LCD transfer using the existing
+framebuffer allocation. Cost-based partial damage replaces the fixed 40% rule;
+scenery updates at an independent slower cadence while fish retain full-rate
+movement. Frame-pacing diagnostics report percentiles and stalls. These are
+rendering changes, not a promise of universal FPS gains.
+
+![Twenty detailed harbor and garden decorations](docs/media/cyd-features/harbor-garden-decorations.png)
+
+**Back up before updating.** New saves use schema 19 / 6336 bytes and companion
+version 7. Earlier saves migrate; older firmware cannot read newly saved data.
+Partitions, hardware profiles and touch calibration are unchanged.
+
+### Roomier aquarium fish scale
+
+Fish in the aquarium draw at 67% of their previous width and height (33%
+smaller), consistently from fry through elder. Bodies, fins, patterns and
+wearables scale together; the selection ring follows the smaller fish.
+Decorations and helpers are unchanged. Saved sizes, growth and meal bonuses,
+swimming/care behavior and generous tap targets remain unchanged. Rendering-only
+culling and repaint bounds follow the smaller artwork, retaining padding for
+turns and wearables. Menu portraits retain their readable preview sizes.
+Dense scenes can still require full-frame repainting; this is not a guaranteed
+overall FPS increase.
+This visual-only change needs no save migration and does not compound on reload.
 
 ## New in 2.3.11: exact-color artwork and selective LCD updates
 
@@ -143,15 +180,19 @@ loading a save do not announce income. There is no persistent icon or popup.
 The placement preview outlines the selected copy and marks its
 starting position. Tap overlapping placed decorations to cycle between them,
 including different types; drag horizontally to move the selected piece.
-Copy labels distinguish original and extra placed copies, and STORE returns
-the selected piece to inventory. Switching selection discards unconfirmed
+The placement label identifies the selected piece. **REMOVE** (confirmed by a
+second tap) returns it to storage without selling or refunding it. Hold a
+decoration in the tank to open this screen, including extra copies.
+Switching selection discards unconfirmed
 preview edits; CANCEL restores the original layout.
 
 ## Retained from 2.3.8: one shop and a passive-income creature
 
 Decoration storage is part of each item's shop entry, not a separate inventory
 screen. Buy the first item normally; its entry then manages stored/placed copies,
-additional purchases, positioning and confirmed sales.
+additional purchases and confirmed sales using **BUY**, **PLACE** and
+**SELL STORED**. Move or remove decorations directly from the tank; there is
+no copy-cycling or move/store control in the item panel.
 
 **Pearl Mussel** is a normal shop creature costing **120 sand dollars** per
 aquarium (free in Creative). It appears on the sand like the other residents.
@@ -291,8 +332,9 @@ this is not a claim of an end-to-end Wi-Fi firmware installation.
 ## New in 2.3.0: shared decoration inventory and care-first income
 
 The source provides shared storage within each physical decoration's shop entry. Buy additional
-copies into shared storage, place an owned copy without paying again, move a
-selected placed copy, or store it without selling. To transfer a piece, store
+copies into shared storage with **BUY**, or **PLACE** an owned copy without
+paying again. Hold a decoration in the tank to move it; **REMOVE** on the
+movement screen stores the selected piece without selling it. To transfer a piece, store
 it, switch aquariums with **TANKS**, then place it from the same shared storage.
 Selling a stored copy is a separate, two-tap action; free/Creative copies
 do not generate resale money.
@@ -965,12 +1007,12 @@ rewards are not removed. The three postcard adventures still add 180 XP total.
 
 **Pacing budget, not a promise of individual playtime:** completing daily care
 needs around 5-10 minutes including navigation. With milestone rewards, the
-5,265-dollar shop takes at most 43 fully completed daily check-ins at the new
+6,770-dollar shop takes at most 55 fully completed daily check-ins at the new
 125-dollar allowance before any milestone, adventure or mussel income.
 Seven 500-dollar aquarium expansions add another 28 such check-ins; duplicate
 decorations are optional extra spending, not part of that single-copy budget.
 XP pacing is unchanged: daily care alone reaches level 15 in 84 visits; milestones and
-adventures shorten that. Wearables cost another 250 dollars per fully equipped
+adventures shorten that. Wearables cost another 535 dollars per fully equipped
 fish and new fry cost 200 each, so optional collection spending extends the
 budget. Games are not required for these targets. No currency or existing
 progress was reset for this rebalance.
@@ -1365,16 +1407,49 @@ restore: copying SD files alone cannot recreate ownership after erasing NVS.
 Do not downgrade firmware
 after buying aquariums: older builds do not preserve collection metadata.
 
+## Harbor and garden additions
+
+The normal price-sorted shop now includes **20 additional static, movable
+decorations**: Lighthouse, Sailboat, Rope Coil, Ships Wheel, Port Crate, Dive
+Bell, Stone Bridge, Pagoda, Stone Lantern, Bonsai, Torii Gate, Moon Stone,
+Geode, Fossil, Mushrooms, Sandcastle, Seaside Sign, Message Chest, Treasure
+Map and Submarine. These are models/ornaments, not new creatures: no growth,
+bobbing, flashing, motors or ambient animation. Move them, choose front/back
+depth, reorder, sell, or use the existing shared storage and extra-copy controls.
+Their detailed static artwork includes tapered lighthouse masonry and lantern
+railings, stitched sails and rigging, braided rope, iron-bound crates, riveted
+bronze and reflected portholes. Garden pieces have carved arch stones, layered
+pagoda eaves, lattice lanterns, twisted bonsai branches and glazed planters.
+Bevelled moon metal, geode facets, fossil chambers, spotted mushroom caps,
+castle battlements, a carved sign, an envelope panel and a compass-marked map
+give the smaller objects individual details.
+
+All twenty retain their existing 40-by-40 artwork bounds and use the same
+procedural RGB565 rendering and bounded static caches as the other ornaments.
+There are no new bitmap banks, animation frames, allocations or save fields.
+
+**Life > Wardrobe** also offers six new proportional accessories: Sailor Cap,
+Pirate Hat, Beret, Sun Hat, Viking Helm and Scarf. All twelve accessories use
+the fish's pose and scale, including fry; their two colors use Wardrobe Colors.
+Normal/Hard purchases retain their listed level/coin requirements; Creative
+uses the same designs free. Ownership and colors follow each fish through
+Bank swaps and adventures.
+
+New exports use **schema 19**; older schemas 1–18 and binary saves remain
+importable. The offline viewer displays the new placed/stored decorations and
+per-fish wardrobe. Older firmware cannot read schema-19 exports or the expanded
+binary save; retain an older matching backup before deliberate downgrades.
+
 ## Fork maintenance
 
 This is intentionally no longer a multi-board tree. Upstream gameplay changes
 can still be ported manually, but merges and release compatibility are not
 automatic. Preserve existing binary offsets and append new fields; the save
-is now 6168 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
+is now 6336 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
 progress, an 8-byte compatibility Creative marker, 40 more game-record bytes
 and 48 bytes of mode/starvation/unlock/refund state, plus 24 bytes of shared daily care,
 100 bytes of inventory, eight bytes of mussel state, 24 bytes of per-game income
-and four alignment bytes), with the previous 4520-byte layout and the
+and four alignment bytes, then a 168-byte static-decoration tail), with the previous 6168-byte prefix, 4520-byte layout and the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
 aquarium metadata identifies the purchased collection, active slot, its name and
@@ -1425,13 +1500,13 @@ instead use the existing 128 KiB SPIFFS partition, with alternating CRC-checked,
 readback-verified copies and a durable wipe marker. Legacy NVS is migration
 input only; corrupt storage never silently falls back to stale NVS or formats
 nonblank data. No partition-table change or SD card is needed for the active save.
-The 2.3.0 binary save is 6,168 bytes: the previous 6,032-byte prefix
-is unchanged, with bounded inventory, pearl-mussel state and per-game quotas appended.
-JSON exports use schema 18 for an individual aquarium, including shared inventory,
+The current binary save is 6,336 bytes: the previous 6,168-byte prefix
+is unchanged, with a 168-byte static-decoration tail appended.
+JSON exports use schema 19 for an individual aquarium, including shared inventory,
 pearl-mussel income, daily care, its fixed mode, individual game-income allowances,
 Lost Current progress and eighteen-game records,
 the polish and story tails and saved Enlarged/Normal scale; schema
-1 through 17 backups remain importable when valid for the selected mode.
+1 through 18 backups remain importable when valid for the selected mode.
 Cross-mode restores cannot bypass a
 chosen game mode: changing modes requires a confirmed full wipe.
 Older firmware cannot restore newer-schema backups; keep a matching

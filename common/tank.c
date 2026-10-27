@@ -2,6 +2,7 @@
  * updateFish/targetForGoal/wall handling, with prototype px values scaled by
  * ~0.55 for the 448-wide tank. */
 #include "tank.h"
+#include "companion.h"
 #include <stdio.h>
 #include "tank_events.h"
 #include <math.h>
@@ -107,15 +108,79 @@ float tank_fish_pitch(const fish_t *f) {
     heading = f->heading; speed = f->speed; valid = true;
     return pitch;
 }
-int tank_wearable_polygon(const fish_t *f, int part, float x[8], float y[8], uint32_t *color) {
-    if (!f->wearable || f->wearable >= WEAR_COUNT || part > 1) return 0;
-    float head = f->variety == FISH_JELLYFISH ? -17 : f->variety == FISH_ANGEL ? -16 :
-                 f->variety == FISH_PUFFER ? -14 : f->variety == FISH_TETRA ? -7 :
-                 f->variety == FISH_SHARK ? -8 : -11;
-    float neck = f->variety == FISH_JELLYFISH ? 3 : f->variety == FISH_ANGEL ? 14 :
-                 f->variety == FISH_PUFFER ? 13 : f->variety == FISH_TETRA ? 6 :
-                 f->variety == FISH_SHARK ? 7 : 10;
+static int wearable_shape(const fish_t *f, int part, float x[8], float y[8],
+                          uint32_t *color, float head, float neck) {
     int n = 4;
+    if (f->wearable >= WEAR_SAILOR) {
+        if (f->wearable != WEAR_VIKING && f->wearable != WEAR_SCARF && part > 1) return 0;
+        float xx[8], yy[8];
+        switch (f->wearable) {
+        case WEAR_SAILOR:
+            if (!part) {
+                float a[6] = {-9, -7, -5, 7, 9, 11}, b[6] = {head-2, head-7, head-9, head-9, head-7, head-2};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); n=6; *color=0xf2eee0;
+            } else {
+                float a[4]={-9,11,11,-9}, b[4]={head-3,head-3,head,head};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0x385caa;
+            } break;
+        case WEAR_PIRATE:
+            if (!part) {
+                float a[7]={-12,-7,-4,2,8,11,14}, b[7]={head,head-5,head-11,head-13,head-10,head-5,head};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); n=7; *color=0x313647;
+            } else {
+                float a[4]={0,4,4,0}, b[4]={head-8,head-8,head-4,head-4};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0xf3e6ba;
+            } break;
+        case WEAR_BERET:
+            if (!part) {
+                float a[7]={-10,-9,-3,7,12,9,-6}, b[7]={head-2,head-6,head-9,head-10,head-6,head-2,head};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); n=7; *color=0xbe526b;
+            } else {
+                float a[4]={3,5,5,3}, b[4]={head-13,head-13,head-9,head-9};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0x693e5b;
+            } break;
+        case WEAR_SUNHAT:
+            if (!part) {
+                float a[8]={-14,-6,-5,7,9,16,14,-12}, b[8]={head-1,head-4,head-10,head-10,head-4,head-1,head+1,head+1};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); n=8; *color=0xecc977;
+            } else {
+                float a[4]={-6,9,10,-7}, b[4]={head-5,head-5,head-3,head-3};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0xe68c7f;
+            } break;
+        case WEAR_VIKING:
+            if (!part) {
+                float a[7]={-11,-10,-6,6,11,12,11};
+                float b[7]={head+1,head-4,head-10,head-11,head-7,head-3,head+1};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); n=7; *color=0x91a9b5;
+            } else if (part == 1) {
+                float a[4]={-10,-16,-14,-6}, b[4]={head-4,head-8,head-17,head-10};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0xf2dfac;
+            } else if (part == 2) {
+                float a[4]={6,14,16,10}, b[4]={head-10,head-17,head-8,head-4};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0xf2dfac;
+            } else {
+                float a[4]={-11,11,10,-10}, b[4]={head-2,head-2,head+1,head+1};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0xf2dfac;
+            } break;
+        default: /* a solid band around the gills, a front knot, and two hanging tails */
+            if (!part) {
+                float a[4]={-3,3,5,-1}, b[4]={head+1,head+1,neck,neck};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0xd2463a;
+            } else if (part == 1) {
+                float a[4]={1,2,-9,-10}, b[4]={neck-2,neck+2,neck+5,neck+1};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0xf0715a;
+            } else if (part == 2) {
+                float a[4]={3,5,-3,-5}, b[4]={neck-1,neck+2,neck+6,neck+3};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0xf0715a;
+            } else {
+                float a[4]={-1,5,6,0}, b[4]={neck-3,neck-3,neck+1,neck+1};
+                memcpy(xx,a,sizeof a); memcpy(yy,b,sizeof b); *color=0xf0715a;
+            } break;
+        }
+        memcpy(x,xx,(size_t)n*sizeof *x); memcpy(y,yy,(size_t)n*sizeof *y);
+        return n;
+    }
+    if (part > 1) return 0;
     if (part && f->wearable != WEAR_TOP_HAT && f->wearable != WEAR_BOWTIE) {
         if (f->wearable == WEAR_PARTY_HAT || f->wearable == WEAR_CROWN) {
             float cx = f->wearable == WEAR_CROWN ? 1 : 2, width = f->wearable == WEAR_CROWN ? 2 : 4;
@@ -158,6 +223,34 @@ int tank_wearable_polygon(const fish_t *f, int part, float x[8], float y[8], uin
         x[0] = -2; x[1] = 12; x[2] = 5;
         y[0] = y[1] = neck - 2; y[2] = neck + 8;
         n = 3; *color = 0x7cdd76;
+    }
+    return n;
+}
+int tank_wearable_polygon(const fish_t *f, int part, float x[8], float y[8], uint32_t *color) {
+    if (!f->wearable || !companion_wearable_fits(f->variety, f->wearable) ||
+        part < 0 || part > 3) return 0;
+    /* Body-space anchors follow the forehead/gill outline, not the dorsal fin.
+     * The renderer and clearance queries consume these same fitted polygons.
+     * Stage size, yaw and pitch are applied once by their existing callers. */
+    static const struct { float x, top, bottom, width; } fit[FISH_VARIETY_COUNT] = {
+        {5, -8.7f, 8, .75f}, {5, -13.5f, 12, .8f},
+        {5, -8.7f, 8, .75f}, {5, -7, 5, .8f},
+        {3, -12, 11, .75f}, {6, -7.5f, 6, .7f},
+        {0, -15.5f, 0, .75f}, {6, -7, 7, .65f},
+        {4, -10.2f, 9, .7f}, {5, -8.7f, 8, .75f}
+    };
+    bool collar = f->wearable == WEAR_TIE || f->wearable == WEAR_BOWTIE ||
+                  f->wearable == WEAR_BANDANA || f->wearable == WEAR_SCARF;
+    int n = wearable_shape(f, part, x, y, color, fit[f->variety].top, fit[f->variety].bottom);
+    for (int i = 0; i < n; i++) {
+        if (collar) {
+            x[i] = (x[i] - 3) * .75f;
+            if (f->wearable != WEAR_SCARF)
+                y[i] = fit[f->variety].bottom + (y[i] - fit[f->variety].bottom) * .75f;
+        } else {
+            x[i] = fit[f->variety].x + (x[i] - 1) * fit[f->variety].width;
+            y[i] = fit[f->variety].top + (y[i] - fit[f->variety].top) * .8f;
+        }
     }
     return n;
 }
@@ -214,7 +307,7 @@ static float fish_projected_extent(const fish_t *f, float direction, bool horizo
             }
         }
     }
-    for (int part = 0; part < 2; part++) {
+    for (int part = 0; part < 4; part++) {
         float x[8], y[8]; uint32_t color;
         int n = tank_wearable_polygon(f, part, x, y, &color);
         for (int i = 0; i < n; i++) { EXTENT(x[i], y[i]); }
@@ -741,6 +834,7 @@ void tank_init(tank_t *t, uint32_t seed) {
     memset(t->ornament_z, DECOR_Z_BACK, sizeof t->ornament_z);
     t->sand_style = t->water_style = 0;
     memset(t->decor_rank, 0, sizeof t->decor_rank);
+    memset(&t->content, 0, sizeof t->content); t->content.version = 1;
     t->tank_ms_bits = 0; t->tank_ms_seen = 0; t->ask_rr = 0; t->advisor_asks = 0;
     tank_scatter_food(t, 2);
 }
@@ -2084,7 +2178,7 @@ int tank_ornament_h(int item) {
     static const int heights[6] = {52, 40, 46, 68, 64, 110};
     return item >= 22 && item < SD_ITEM_COUNT ? 40 : item >= 16 && item < 22 ? heights[item - 16] : item == 9 ? CHEST_H : item == 10 ? 24 : item == 11 ? 32 : item == 12 ? 40 : item == 13 ? 104 : 0;
 }
-bool  tank_decor_placeable(int item) { return item == 0 || item == 2 || item == 3 || item == 4 || item == 8 || item == 9 || tank_ornament_index(item) >= 0; }
+bool  tank_decor_placeable(int item) { return SD_IS_NEW_DECOR(item) || item == 0 || item == 2 || item == 3 || item == 4 || item == 8 || item == 9 || tank_ornament_index(item) >= 0; }
 float tank_decor_half_w(int item) { return item == 0 ? PLANT_HALF_W : item == 2 ? CASTLE_HALF_W : item == 3 ? CORAL_HALF_W : item == 4 ? CLUSTER_HALF_W : item == 8 ? PUMPKIN_HALF_W : tank_ornament_w(item) / 2; }
 /* only the plant weaves AMONG the fish; the castle and both corals are
  * BEHIND or IN FRONT (Strato, 2026-09-24: "remove the among option for
@@ -2096,6 +2190,10 @@ int   tank_decor_z_at(int item, int i) {
 }
 int   tank_decor_z_index(int item, int z) { return item != 0 ? (z == DECOR_Z_BACK ? 0 : 1) : z; }
 float tank_decor_x(const tank_t *t, int item) {
+    if (SD_IS_NEW_DECOR(item)) {
+        float x = t->content.x[item - SD_DECOR_FIRST];
+        return x > 0 ? x : TANK_FLOOR_X(80 + ((item - SD_DECOR_FIRST) % 4) * 85);
+    }
     if (item == 2) return t->castle_x > 0 ? t->castle_x : CASTLE_X_DEFAULT;
     if (item == 3) return t->coral_x > 0 ? t->coral_x : CORAL_X_DEFAULT;
     if (item == 4) return t->cluster_x > 0 ? t->cluster_x : CLUSTER_X_DEFAULT;
@@ -2106,7 +2204,7 @@ float tank_decor_x(const tank_t *t, int item) {
     if (item != 0) return 0;
     return t->plant_x > 0 ? t->plant_x : PLANT_X_DEFAULT;
 }
-int tank_decor_z(const tank_t *t, int item) { int oi = tank_ornament_index(item); return item == 0 ? t->plant_z : item == 2 ? t->castle_z : item == 3 ? t->coral_z : item == 4 ? t->cluster_z : item == 8 ? t->pumpkin_z : item == 9 ? t->chest_z : oi >= 0 ? t->ornament_z[oi] : DECOR_Z_MIDDLE; }
+int tank_decor_z(const tank_t *t, int item) { int oi = tank_ornament_index(item); return SD_IS_NEW_DECOR(item) ? t->content.z[item - SD_DECOR_FIRST] : item == 0 ? t->plant_z : item == 2 ? t->castle_z : item == 3 ? t->coral_z : item == 4 ? t->cluster_z : item == 8 ? t->pumpkin_z : item == 9 ? t->chest_z : oi >= 0 ? t->ornament_z[oi] : DECOR_Z_MIDDLE; }
 static float decor_top(const tank_t *t, int item) {         /* the piece's highest pixel */
     if (item == 0) { float top; tank_veg_bed(t, 3, NULL, NULL, &top, NULL); return top; }
     if (item == 2) return TANK_BOT - 16 - 146;
@@ -2116,8 +2214,8 @@ static float decor_top(const tank_t *t, int item) {         /* the piece's highe
     return TANK_BOT - 14 + DECOR_SINK - 120;
 }
 int tank_decor_hit(const tank_t *t, float x, float y) {
-    static const int order[DECOR_SLOTS] = { 21, 20, 19, 18, 17, 16, 13, 12, 11, 10, 9, 3, 0, 8, 2, 4 };
-    for (int k = 0; k < DECOR_SLOTS; k++) {
+    int order[DECOR_SLOTS], n = tank_decor_order(t, order);
+    for (int k = n - 1; k >= 0; k--) {
         int item = order[k];
         if (!tank_decor_owned(t, item)) continue;
         float cx = tank_decor_x(t, item), half = tank_decor_half_w(item) + 8;
@@ -2126,10 +2224,14 @@ int tank_decor_hit(const tank_t *t, float x, float y) {
     return -1;
 }
 /* ---- the order of the pieces (2026-10-17; tank.h) ---- */
-static const int DECOR_SLOT_ITEM[DECOR_SLOTS] = { 2, 3, 4, 8, 0, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21 };
+static const int DECOR_SLOT_ITEM[DECOR_SLOTS] = { 2, 3, 4, 8, 0, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21,
+    43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62 };
 int  tank_decor_slot(int item) { for (int s = 0; s < DECOR_SLOTS; s++) if (DECOR_SLOT_ITEM[s] == item) return s; return -1; }
 int  tank_decor_slot_item(int slot) { return slot >= 0 && slot < DECOR_SLOTS ? DECOR_SLOT_ITEM[slot] : -1; }
-bool tank_decor_owned(const tank_t *t, int item) { return tank_decor_slot(item) >= 0 && (t->sd_unlocks & (1u << item)); }
+bool tank_decor_owned(const tank_t *t, int item) {
+    return SD_IS_NEW_DECOR(item) ? (t->content.owned & (1u << (item - SD_DECOR_FIRST))) != 0 :
+        tank_decor_slot(item) >= 0 && (t->sd_unlocks & (1u << item));
+}
 static bool decor_before(const tank_t *t, int ia, int ib) {       /* a is painted before (under) b at one depth */
     int sa = tank_decor_slot(ia), sb = tank_decor_slot(ib);
     return t->decor_rank[sa] != t->decor_rank[sb] ? t->decor_rank[sa] < t->decor_rank[sb] : sa < sb;
@@ -2175,6 +2277,7 @@ bool tank_decor_shift(tank_t *t, int item, int dir) {
 }
 void tank_decor_reset(tank_t *t, int item) {
     { int s = tank_decor_slot(item); if (s >= 0) t->decor_rank[s] = 0; }
+    if (SD_IS_NEW_DECOR(item)) { t->content.x[item - SD_DECOR_FIRST] = 0; t->content.z[item - SD_DECOR_FIRST] = DECOR_Z_BACK; return; }
     if (item == 0) { t->plant_x = 0; t->plant_z = DECOR_Z_MIDDLE; tank_veg_set(t, 3, VEG_START); }
     if (item == 2) { t->castle_x = 0; t->castle_z = DECOR_Z_FRONT; }
     if (item == 3) { t->coral_x = 0; t->coral_z = DECOR_Z_FRONT; t->coral_rgb = 0; t->coral_growth = 0; t->coral_acc = 0; }
@@ -2192,6 +2295,7 @@ void tank_decor_set(tank_t *t, int item, float x, int z) {
     if (z < 0) z = 0;
     if (z >= DECOR_Z_N) z = DECOR_Z_N - 1;
     uint8_t z2 = (uint8_t)(z == DECOR_Z_BACK ? DECOR_Z_BACK : DECOR_Z_FRONT);   /* no AMONG for these */
+    if (SD_IS_NEW_DECOR(item)) { t->content.x[item - SD_DECOR_FIRST] = x; t->content.z[item - SD_DECOR_FIRST] = z2; return; }
     if (item == 2) { t->castle_x = x; t->castle_z = z2; return; }
     if (item == 3) { t->coral_x = x; t->coral_z = z2; return; }
     if (item == 4) { t->cluster_x = x; t->cluster_z = z2; return; }

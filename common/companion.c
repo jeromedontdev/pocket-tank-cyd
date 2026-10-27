@@ -21,9 +21,10 @@ unsigned companion_adventure_total(const companion_state_t *s, int adventure) {
 }
 static const uint32_t collection_masks[] = {0x3fu, 0xc0u, 0x700u};
 static const uint16_t trick_bonds[] = {10, 25, 50};
-const char *const WEAR_NAMES[WEAR_COUNT] = {"NONE", "TOP HAT", "PARTY HAT", "CROWN", "TIE", "BOWTIE", "BANDANA"};
-const uint8_t WEAR_LEVELS[WEAR_COUNT] = {0, 3, 2, 10, 5, 4, 2};
-const uint8_t WEAR_PRICES[WEAR_COUNT] = {0, 45, 20, 100, 35, 30, 20};
+const char *const WEAR_NAMES[WEAR_COUNT] = {"NONE", "TOP HAT", "PARTY HAT", "CROWN", "TIE", "BOWTIE", "BANDANA",
+    "SAILOR CAP", "PIRATE HAT", "BERET", "SUN HAT", "VIKING HELM", "SCARF"};
+const uint8_t WEAR_LEVELS[WEAR_COUNT] = {0, 3, 2, 10, 5, 4, 2, 3, 6, 2, 4, 8, 2};
+const uint8_t WEAR_PRICES[WEAR_COUNT] = {0, 45, 20, 100, 35, 30, 20, 40, 65, 30, 45, 80, 25};
 
 const companion_visitor_t COMPANION_VISITORS[VISITOR_SPECIES] = {
     {"DRIFTER", "An unknown drifter", "A pale bell that drifts past on its own errand.", 40},
@@ -505,11 +506,11 @@ void companion_rpg_context(const tank_t *t, int fish, char *text, size_t size) {
         const fish_lineage_t *line = &t->story.active[fish];
         if (companion_rpg_legacy(t, fish))
             context = "Family legacy helps your guide.";
-        else if (bond->bond >= 25 && bond->tricks)
+        else if (bond->bond >= 25 && (bond->tricks & 7))
             context = "Bonds and tricks help your guide.";
         else if (bond->bond >= 25)
             context = "Your bond helps your guide.";
-        else if (bond->tricks)
+        else if (bond->tricks & 7)
             context = "Learned tricks help your guide.";
         else if (line->traits || line->mutation)
             context = "Your fish's genes offer courage.";
@@ -603,9 +604,10 @@ bool companion_valid_mode(const companion_state_t *s, bool creative) {
     for (int i = 0; i < N_FISH_MAX + FISH_BANK_CAP + 1; i++) {
         const companion_bond_t *b = i < N_FISH_MAX ? &s->active[i] :
             i < N_FISH_MAX + FISH_BANK_CAP ? &s->bank[i - N_FISH_MAX] : &s->traveler_bond;
-        if (b->bond > 100 || (b->tricks & ~7u) ||
-            b->wearable >= WEAR_COUNT || (b->wearables & ~63u) || (s->version < 4 && b->wear_colors) ||
-            (b->wearable && !(b->wearables & (1u << (b->wearable - 1)))) ||
+        if (b->bond > 100 || (b->tricks & 128u) ||
+            (s->version < 7 && ((b->tricks & ~7u) || (b->wearables & ~63u))) ||
+            b->wearable >= WEAR_COUNT || (s->version < 4 && b->wear_colors) ||
+            (b->wearable && !(companion_wearables(b) & (1u << (b->wearable - 1)))) ||
             (s->version < 3 && (b->wearable || b->wearables)) ||
             (b->next_greet_s > s->powered_s && b->next_greet_s - s->powered_s > 30)) return false;
         for (int j = 0; j < 3; j++) if (!creative && (b->tricks & (1u << j)) && b->bond < trick_bonds[j]) return false;
@@ -679,16 +681,25 @@ static bool commit(tank_t *t, const companion_state_t *old) {
     t->companion = *old;
     return false;
 }
+bool companion_wearable_fits(int variety, int wearable) {
+    if (variety < 0 || variety >= FISH_VARIETY_COUNT ||
+        wearable < WEAR_NONE || wearable >= WEAR_COUNT) return false;
+    /* Flat front accessories fit the bell; the wraparound scarf does not. */
+    return variety != FISH_JELLYFISH || wearable != WEAR_SCARF;
+}
 bool companion_wearable(tank_t *t, int fish, int wearable) {
     if (fish < 0 || fish >= t->n_fish || wearable < WEAR_NONE || wearable >= WEAR_COUNT) {
         fprintf(stderr, "Invalid wearable selection\n"); return false;
+    }
+    if (!companion_wearable_fits(t->fish[fish].variety, wearable)) {
+        fprintf(stderr, "Wearable does not fit this fish type\n"); return false;
     }
     companion_bond_t *b = &t->companion.active[fish];
     if (t->companion.version < 2 && t->companion.adventure) {
         fprintf(stderr, "Claim legacy postcard before changing wearables\n"); return false;
     }
     unsigned bit = wearable ? 1u << (wearable - 1) : 0;
-    bool buy = wearable && !(b->wearables & bit);
+    bool buy = wearable && !(companion_wearables(b) & bit);
     int price = buy && !progression_creative(t) ? WEAR_PRICES[wearable] : 0;
     if (buy && !progression_creative(t) && (journal_level(t) < WEAR_LEVELS[wearable] || t->sd_balance < price)) {
         fprintf(stderr, "Wearable locked or insufficient sand dollars\n"); return false;
@@ -696,6 +707,7 @@ bool companion_wearable(tank_t *t, int fish, int wearable) {
     companion_state_t old = t->companion;
     t->companion.version = COMPANION_VERSION;
     b->wearable = (uint8_t)wearable; b->wearables |= (uint8_t)bit;
+    b->tricks |= (uint8_t)((bit >> 8) << 3);
     t->sd_balance -= price;
     if (!commit(t, &old)) {
         t->sd_balance += price;

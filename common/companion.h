@@ -6,9 +6,16 @@
 #define COMPANION_DISCOVERY_COUNT 12
 #define COMPANION_COLLECTION_COUNT 3
 #define COMPANION_ADVENTURE_COUNT 3
-#define COMPANION_VERSION 6
+#define COMPANION_VERSION 7
+/* Keep the frozen 12-byte bond: reserved trick bits 3..6 store wearable
+ * ownership bits 8..11; the three learned tricks remain in bits 0..2. */
+static inline unsigned companion_wearables(const companion_bond_t *b) {
+    return b->wearables | ((unsigned)(b->tricks >> 3) << 8);
+}
 extern const char *const WEAR_NAMES[WEAR_COUNT];
 extern const uint8_t WEAR_LEVELS[WEAR_COUNT], WEAR_PRICES[WEAR_COUNT];
+/* Compatibility is anatomical, not an ownership/save validity constraint. */
+bool companion_wearable_fits(int variety, int wearable);
 bool companion_wearable(tank_t *t, int fish, int wearable);
 bool companion_colors(tank_t *t, bool wearable, int target, uint8_t colors);
 uint8_t companion_creature_colors(const companion_state_t *s, int creature);

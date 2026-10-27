@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--rounded-edges", action="store_true", help="Also exercise the non-CYD vignette paths")
     parser.add_argument("--out", type=Path, help="Write JSON benchmark records")
     parser.add_argument("--embedded-icons", action="store_true", help="Verify compressed embedded icons against the raw bank")
+    parser.add_argument("--damage-policy", choices=("adaptive", "partial", "full"), default="adaptive")
     args = parser.parse_args()
     if args.frames < 1 or args.seconds < 0:
         parser.error("frames must be positive and seconds nonnegative")
@@ -66,7 +67,7 @@ def main():
                            POCKET_TANK_WIFI=str(build / "wifi.txt"),
                            POCKET_TANK_WEATHER=str(build / "weather.bin"))
         result = subprocess.run([str(executable), str(build / "icons.bin"), str(args.frames),
-                                 str(args.seconds)], env=environment,
+                                 str(args.seconds), str(("adaptive", "partial", "full").index(args.damage_policy))], env=environment,
                                 stdout=subprocess.PIPE, text=True)
         records = [json.loads(line) for line in result.stdout.splitlines()]
         if args.out:

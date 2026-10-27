@@ -444,9 +444,7 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
         paragraph(fb, stride, 306, 0xa7c4ba, "Badge + subtitle: aquarium list and summaries.");
     } else if (page == COMPANION_SECTION_OBJECTS) {
         int item = leaf % SD_ITEM_COUNT;
-        bool owned = item < 32 ? !!(t->sd_unlocks & (1u << item)) :
-            item < 36 ? !!(t->aquariums.stat_upgrades & (1u << (item - 32))) :
-            !!(p->scenery_unlocks & (1u << (item - 36)));
+        bool owned = progression_item_owned(t, item);
         render_decor_thumbnail(fb, stride, 14, 82, 32, item, owned);
         text(fb, stride, 58, 90, 0xe7f4dc, SD_ITEMS[item].name);
         render_text(fb, stride, 14, 124, 1, 0xa7c4ba, SD_ITEMS[item].words);
@@ -740,13 +738,15 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
         button(fb, stride, 12, 220, 66, "<");
         text(fb, stride, 108, 228, 0xffd998, WEAR_NAMES[wardrobe]);
         button(fb, stride, 370, 220, 66, ">");
-        bool owned = progression_creative(t) || (b->wearables & (1u << (wardrobe - 1))) != 0;
-        if (owned) snprintf(line, sizeof line, "%s / YOU: %ld SD",
+        bool owned = progression_creative(t) || (companion_wearables(b) & (1u << (wardrobe - 1))) != 0;
+        bool fits = companion_wearable_fits(preview.variety, wardrobe);
+        if (!fits) snprintf(line, sizeof line, "NO FIT FOR THIS TYPE%s", owned ? " / OWNED" : "");
+        else if (owned) snprintf(line, sizeof line, "%s / YOU: %ld SD",
                             b->wearable == wardrobe ? "EQUIPPED" : "OWNED", (long)t->sd_balance);
         else snprintf(line, sizeof line, "LV %u / %u SD / YOU: %ld",
                       WEAR_LEVELS[wardrobe], WEAR_PRICES[wardrobe], (long)t->sd_balance);
         text(fb, stride, 14, 260, 0xa7c4ba, line);
-        button(fb, stride, 12, 286, 205, b->wearable == wardrobe ? "EQUIPPED" :
+        button(fb, stride, 12, 286, 205, !fits ? "UNAVAILABLE" : b->wearable == wardrobe ? "EQUIPPED" :
                owned ? "EQUIP FREE" : journal_level(t) < WEAR_LEVELS[wardrobe] ? "LEVEL LOCKED" : "BUY + EQUIP");
         button(fb, stride, 231, 286, 205, "REMOVE");
         text(fb, stride, 14, 322, 0xa7c4ba, "Cosmetic. Owned by this fish.");
@@ -759,6 +759,8 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
         if (gear) {
             fish_t preview = t->fish[i]; preview.wearable = (uint8_t)wardrobe; preview.wear_colors = color_draft;
             render_fish_portrait(fb, stride, 224, 165, 1.5f, &preview, t->clock);
+            if (!companion_wearable_fits(preview.variety, wardrobe))
+                text(fb, stride, 14, 202, 0xffd998, "Accessory does not fit this type.");
         } else render_creature_portrait(fb, stride, 224, 165, creature, color_draft, t->clock);
         snprintf(line, sizeof line, "PRIMARY: %s >", COSMETIC_COLOR_NAMES[color_draft & 15]);
         button(fb, stride, 12, 220, 424, line);
@@ -926,8 +928,10 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
         } else if (y >= 286 && y < 316 && x >= 12 && x < 436) {
             int choice = x < 217 ? wardrobe : x >= 231 ? WEAR_NONE : -1;
             if (choice < 0) return false;
-            bool buy = !progression_creative(t) && choice && !(t->companion.active[i].wearables & (1u << (choice - 1)));
-            if (s->version < 2 && s->adventure) snprintf(notice, sizeof notice, "Claim your old postcard first.");
+            bool buy = !progression_creative(t) && choice && !(companion_wearables(&t->companion.active[i]) & (1u << (choice - 1)));
+            if (!companion_wearable_fits(t->fish[i].variety, choice))
+                snprintf(notice, sizeof notice, "Accessory does not fit this type.");
+            else if (s->version < 2 && s->adventure) snprintf(notice, sizeof notice, "Claim your old postcard first.");
             else if (buy && journal_level(t) < WEAR_LEVELS[choice])
                 snprintf(notice, sizeof notice, "Unlocks at level %u.", WEAR_LEVELS[choice]);
             else if (buy && t->sd_balance < WEAR_PRICES[choice])

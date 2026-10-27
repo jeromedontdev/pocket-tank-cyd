@@ -115,9 +115,18 @@ async function main() {
       await page.waitForFunction(() => window.testPortOpens === 2 && !document.querySelector("#board").disabled);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.deepEqual(errors, []);
+      await page.goto(base + "/index.html");
+      for (const name of ["harbor-garden-decorations.png", "jellyfish-wardrobe.png"]) {
+        const image = page.locator(`img[src="./media/${name}"]`);
+        await image.scrollIntoViewIfNeeded();
+        await image.evaluate(img => img.decode());
+        assert.equal(await image.evaluate(img => img.naturalWidth > 0 && img.clientWidth <= innerWidth), true);
+      }
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.deepEqual(errors, []);
       await context.close();
     }
-    console.log("PASS: desktop/mobile board selection, separate factory manifests, no update during board loading, cross-board refusal before opening serial, verified real apps, busy selection lock and acknowledgement reset");
+    console.log("PASS: desktop/mobile board selection, separate factory manifests, no update during board loading, cross-board refusal before opening serial, verified real apps, busy selection lock, acknowledgement reset and responsive release artwork");
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

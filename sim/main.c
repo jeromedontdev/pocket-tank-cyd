@@ -461,7 +461,10 @@ API const uint16_t *sim_frame(float dt) {
              (render_tools_hit(px, py) >= 0 || render_lock_hit(px, py)));
         if (!page && !setup_active() && !card_control && !render_tool_chip_hit(&tank, px, py)) {
             tank_touch_drag(&tank, last_x, last_y);
-            if (held > 0.3f) tank_touch_hold(&tank, last_x, last_y);
+            if (tank.tool == TOOL_HAND && held > .7f && fabsf(last_x - px) < 24 &&
+                fabsf(last_y - py) < 24 && setup_begin_place_at(&tank, px, py))
+                selected = -1;
+            else if (held > 0.3f) tank_touch_hold(&tank, last_x, last_y);
         }
     }
     tank.hold_light = setup_active() || page == 8;

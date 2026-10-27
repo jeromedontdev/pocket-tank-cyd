@@ -220,6 +220,8 @@ typedef struct {
     inventory_state_t inventory;
     mussel_state_t mussel;
     game_income_state_t game_income;
+    uint32_t pad_content; /* the schema-18 struct's frozen final alignment */
+    decor_content_t content;
 } save_t;
 /* the smallest PTK2 save (pre-upkeep, 2026-08-30): anything shorter is not
  * ours. Every later build wrote sizeof(save_t) of its day - 448, 1112, 1304,
@@ -341,7 +343,8 @@ _Static_assert(offsetof(inventory_state_t, stored) == 0 &&
                offsetof(inventory_extra_t, x) == 4, "inventory wire offsets");
 SAVE_AT(mussel, 6132);
 SAVE_AT(game_income, 6140);
-_Static_assert(sizeof(save_t) == 6168, "inventory mussel and game income tail");
+SAVE_AT(content, 6168);
+_Static_assert(sizeof(save_t) == 6336, "schema-19 static decoration tail");
 _Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: companion tail");
 /* Historical NVS budget: older saves were one blob in nvs (0x9000, 0x6000 =
  * 6 pages of 4096 B; tools/make_installer.py pins the row). A page is 126
@@ -772,7 +775,28 @@ const sd_item_t SD_ITEMS[SD_ITEM_COUNT] = {
     { 0, "ANEMONE", "SOFT PINK TENTACLE BLOOM", "FIXED SPOT ON THE SAND", 90 },
     { 0, "OLD TEAPOT", "A LOST PORCELAIN TEAPOT", "FIXED SPOT ON THE SAND", 80 },
     { 0, "PEARL MUSSEL", "PASSIVE INCOME: 1 COIN/10M", "HEALTHY LIVE TANK. 15/DAY.", SD_PRICE_MUSSEL },
+    { 0, "LIGHTHOUSE", "A STRIPED HARBOR BEACON", "STATIC MODEL, PLACE ANYWHERE", 95 },
+    { 0, "SAILBOAT", "A TINY BOAT ON A SAND SEA", "NO BOBBING OR EXTRA CARE", 65 },
+    { 0, "ROPE COIL", "A DOCKSIDE COIL OF ROPE", "A QUIET NAUTICAL ACCENT", 30 },
+    { 0, "SHIPS WHEEL", "A WEATHERED HELM ON A BASE", "STEER YOUR SUNKEN HARBOR", 70 },
+    { 0, "PORT CRATE", "A BRACED WOODEN CARGO BOX", "STACK YOUR HARBOR STORY", 35 },
+    { 0, "DIVE BELL", "AN OLD COPPER DIVING BELL", "A STILL DEEP SEA RELIC", 100 },
+    { 0, "STONE BRIDGE", "A MOSSY ARCH OVER THE SAND", "FISH PASS BEHIND THE ARCH", 110 },
+    { 0, "PAGODA", "A LITTLE TWO ROOF SHRINE", "A QUIET UNDERWATER GARDEN", 120 },
+    { 0, "STONE LANTERN", "A JAPANESE GARDEN LANTERN", "CARVED STONE, NO FLICKER", 85 },
+    { 0, "BONSAI", "A SCULPTED MINIATURE TREE", "CERAMIC LEAVES NEVER GROW", 105 },
+    { 0, "TORII GATE", "A RED GATE ON STONE FEET", "FRAME YOUR FAVORITE FISH", 95 },
+    { 0, "MOON STONE", "A CRESCENT ON A PEBBLE BASE", "A LITTLE LUNAR LANDMARK", 60 },
+    { 0, "GEODE", "A SPLIT ROCK OF BLUE GEMS", "A STATIC CRYSTAL CAVITY", 80 },
+    { 0, "FOSSIL", "AN AMMONITE IN PALE STONE", "A SPIRAL FROM AN OLDER SEA", 55 },
+    { 0, "MUSHROOMS", "THREE CERAMIC TOADSTOOLS", "A TINY STILL FAIRY GARDEN", 65 },
+    { 0, "SANDCASTLE", "TOWERS WITH A SHELL DOOR", "A BEACH MEMORY THAT STAYS", 90 },
+    { 0, "SEASIDE SIGN", "A LITTLE BEACH ARROW SIGN", "POINT TOWARD YOUR HARBOR", 35 },
+    { 0, "MESSAGE CHEST", "A MAILBOX FOR SEA POSTCARDS", "DECORATIVE, NO COLLECTION", 50 },
+    { 0, "TREASURE MAP", "A ROLLED MAP ON THE SAND", "MARK A SECRET REEF SPOT", 45 },
+    { 0, "SUBMARINE", "A YELLOW EXPLORER MODEL", "PARKED, NO MOTOR OR BUBBLES", 115 },
 };
+_Static_assert(SD_ITEM_COUNT < 64, "profile validator reserves the top uint64_t ownership bit");
 _Static_assert(SD_SCENERY_END == SD_SHOP_MUSSEL, "mussel follows the stable scenery IDs");
 _Static_assert(SD_SCENERY_N <= 8, "fixed scenery fits polish.scenery_unlocks");
 const char *progression_shop_notice(void) { return s_shop_notice; }
@@ -785,6 +809,7 @@ bool progression_item_owned(const tank_t *t, int item) {
     if (!t || item < 0 || item >= SD_ITEM_COUNT) return false;
     if (item == SD_SHOP_MUSSEL)
         return tank_mussel_owned(t);
+    if (SD_IS_NEW_DECOR(item)) return tank_decor_owned(t, item);
     if (SD_IS_SCENERY(item)) return (t->polish.scenery_unlocks >> (item - SD_SCENERY_FIRST)) & 1u;
     return item < 32 ? (t->sd_unlocks & SD_ITEMS[item].bit) != 0 :
         (t->aquariums.stat_upgrades & (1u << (item - 32))) != 0;
@@ -883,6 +908,16 @@ bool progression_sell(tank_t *t, int item) {
     int back = progression_sell_value_for(t, item);
     s_shop_notice = NULL;
     if (t->sd_balance > INT_MAX - back) { s_shop_notice = "WALLET FULL - NOT SOLD"; return false; }
+    if (SD_IS_NEW_DECOR(item)) {
+        decor_content_t old = t->content;
+        uint64_t paid = t->profile.paid_items;
+        t->content.owned &= ~(1u << (item - SD_DECOR_FIRST));
+        t->profile.paid_items &= ~(UINT64_C(1) << item);
+        t->sd_balance += back;
+        if (progression_save(t)) return true;
+        t->content = old; t->profile.paid_items = paid; t->sd_balance -= back;
+        shop_save_failed("SAVE FAILED - NOT SOLD", it->name); return false;
+    }
     if (SD_IS_SCENERY(item)) {
         uint8_t flag = (uint8_t)(1u << (item - SD_SCENERY_FIRST)), old = t->polish.scenery_unlocks;
         uint64_t paid = t->profile.paid_items, item_bit = UINT64_C(1) << item;
@@ -1167,6 +1202,13 @@ static bool buy_item(tank_t *t, int item) {
     t->profile.owned_items |= item_bit;
     t->profile.paid_items = (t->profile.paid_items & ~item_bit) | (price ? item_bit : 0);
     s_shop_notice = NULL;
+    if (SD_IS_NEW_DECOR(item)) {
+        t->sd_balance -= price;
+        t->content.version = 1;
+        t->content.owned |= 1u << (item - SD_DECOR_FIRST);
+        tank_decor_reset(t, item); tank_decor_raise(t, item);
+        return progression_save(t);
+    }
     if (item == SD_SHOP_MUSSEL) {
         t->sd_balance -= price;
         if (t->mussel.version < 2 && t->mussel.owned)
@@ -1246,14 +1288,21 @@ bool progression_buy(tank_t *t, int item) {
     return ok;
 }
 bool progression_inventory_duplicate(int item) {
-    return item == 9 || tank_ornament_index(item) >= 0;
+    return SD_IS_NEW_DECOR(item) || item == 9 || tank_ornament_index(item) >= 0;
 }
 static int inventory_slot(int item) {
     return tank_decor_placeable(item) ? tank_decor_slot(item) : -1;
 }
+static uint8_t *inventory_stored(tank_t *t, int slot) {
+    return slot < DECOR_LEGACY_SLOTS ? &t->inventory.stored[slot] : &t->content.stored[slot - DECOR_LEGACY_SLOTS];
+}
+static uint8_t *inventory_paid(tank_t *t, int slot) {
+    return slot < DECOR_LEGACY_SLOTS ? &t->inventory.paid[slot] : &t->content.paid[slot - DECOR_LEGACY_SLOTS];
+}
 int progression_inventory_stored(const tank_t *t, int item) {
     int slot = inventory_slot(item);
-    return t && slot >= 0 ? t->inventory.stored[slot] : 0;
+    return t && slot >= 0 ? (slot < DECOR_LEGACY_SLOTS ? t->inventory.stored[slot] :
+                            t->content.stored[slot - DECOR_LEGACY_SLOTS]) : 0;
 }
 int progression_inventory_placed(const tank_t *t, int item) {
     if (!t || inventory_slot(item) < 0) return 0;
@@ -1264,7 +1313,7 @@ int progression_inventory_placed(const tank_t *t, int item) {
 static bool inventory_valid(const inventory_state_t *v) {
     if (v->version > 1 || v->reserved[0] || v->reserved[1] || v->reserved[2]) return false;
     unsigned total = 0;
-    for (int s = 0; s < DECOR_SLOTS; s++) {
+    for (int s = 0; s < DECOR_LEGACY_SLOTS; s++) {
         if (v->paid[s] > v->stored[s]) return false;
         total += v->stored[s];
     }
@@ -1280,20 +1329,40 @@ static bool inventory_valid(const inventory_state_t *v) {
     }
     return v->version || !total;
 }
+static bool content_valid(const decor_content_t *c, const inventory_state_t *v) {
+    if (c->version > 1 || c->reserved[0] || c->reserved[1] || c->reserved[2] ||
+        (c->owned >> DECOR_NEW_COUNT)) return false;
+    unsigned total = 0;
+    for (int i = 0; i < DECOR_LEGACY_SLOTS; i++) total += v->stored[i];
+    for (int i = 0; i < DECOR_NEW_COUNT; i++) {
+        if (!isfinite(c->x[i]) || c->x[i] < 0 || c->x[i] > TANK_MAX_W ||
+            (c->z[i] != DECOR_Z_BACK && c->z[i] != DECOR_Z_FRONT) ||
+            c->paid[i] > c->stored[i]) return false;
+        total += c->stored[i];
+    }
+    if (!c->version) {
+        decor_content_t zero = {0};
+        if (memcmp(c, &zero, sizeof zero)) return false;
+    }
+    return total <= DECOR_INVENTORY_CAP;
+}
 static bool inventory_restore_safe(const save_t *to, const save_t *current) {
     if (to->creative.enabled && current->creative.enabled &&
         to->profile.mode == GAME_MODE_CREATIVE && current->profile.mode == GAME_MODE_CREATIVE) return true;
     if (current->aquariums.count < 2) return true;
     /* Portable snapshots have no per-copy identity. An old snapshot must not
      * reclaim an ornament that has since been transferred to another tank. */
-    if (memcmp(to->inventory.stored, current->inventory.stored, DECOR_SLOTS) ||
-        memcmp(to->inventory.paid, current->inventory.paid, DECOR_SLOTS)) return false;
+    if (memcmp(to->inventory.stored, current->inventory.stored, DECOR_LEGACY_SLOTS) ||
+        memcmp(to->inventory.paid, current->inventory.paid, DECOR_LEGACY_SLOTS) ||
+        memcmp(to->content.stored, current->content.stored, DECOR_NEW_COUNT) ||
+        memcmp(to->content.paid, current->content.paid, DECOR_NEW_COUNT)) return false;
     for (int s = 0; s < DECOR_SLOTS; s++) {
         int item = tank_decor_slot_item(s), count[2] = {0}, paid[2] = {0};
         const save_t *v[2] = {to, current};
         for (int j = 0; j < 2; j++) {
             uint64_t bit = UINT64_C(1) << item;
-            count[j] = !!(v[j]->sd_unlocks & SD_ITEMS[item].bit);
+            count[j] = SD_IS_NEW_DECOR(item) ? !!(v[j]->content.owned & (1u << (item - SD_DECOR_FIRST))) :
+                       !!(v[j]->sd_unlocks & SD_ITEMS[item].bit);
             paid[j] = count[j] && (v[j]->profile.paid_items & bit);
             for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
                 const inventory_extra_t *e = &v[j]->inventory.extra[i];
@@ -1310,12 +1379,12 @@ static tank_t *inventory_begin(tank_t *t, int item) {
     if (!t || inventory_slot(item) < 0) {
         inventory_fail("THIS ITEM CANNOT BE STORED"); return NULL;
     }
-    if (!inventory_valid(&t->inventory)) {
+    if (!inventory_valid(&t->inventory) || !content_valid(&t->content, &t->inventory)) {
         inventory_fail("INVALID DECORATION INVENTORY"); return NULL;
     }
     tank_t *next = malloc(sizeof *next);
     if (!next) { inventory_fail("NOT ENOUGH MEMORY - NO CHANGE"); return NULL; }
-    *next = *t; next->inventory.version = 1;
+    *next = *t; next->inventory.version = 1; next->content.version = 1;
     return next;
 }
 static bool inventory_commit(tank_t *t, tank_t *next) {
@@ -1326,7 +1395,7 @@ static bool inventory_commit(tank_t *t, tank_t *next) {
 }
 static bool inventory_room(const tank_t *t) {
     unsigned n = 0;
-    for (int s = 0; s < DECOR_SLOTS; s++) n += t->inventory.stored[s];
+    for (int s = 0; s < DECOR_SLOTS; s++) n += progression_inventory_stored(t, tank_decor_slot_item(s));
     return n < DECOR_INVENTORY_CAP;
 }
 bool progression_inventory_buy(tank_t *t, int item) {
@@ -1343,8 +1412,8 @@ bool progression_inventory_buy(tank_t *t, int item) {
                               t->sd_balance < price ? "NOT ENOUGH SAND DOLLARS" : "ITEM NOT AVAILABLE");
     }
     int slot = inventory_slot(item);
-    next->inventory.stored[slot]++;
-    next->inventory.paid[slot] += price != 0;
+    (*inventory_stored(next, slot))++;
+    *inventory_paid(next, slot) += price != 0;
     next->sd_balance -= price;
     next->profile.owned_items |= UINT64_C(1) << item;
     return inventory_commit(t, next);
@@ -1358,6 +1427,7 @@ bool progression_inventory_store(tank_t *t, int item, int copy) {
     if (copy == -1 && progression_item_owned(t, item)) {
         paid = (t->profile.paid_items & bit) != 0;
         next->sd_unlocks &= ~SD_ITEMS[item].bit;
+        if (SD_IS_NEW_DECOR(item)) next->content.owned &= ~(1u << (item - SD_DECOR_FIRST));
         next->profile.paid_items &= ~bit;
         /* Keep the primary geometry, colours and growth for a later placement. */
     } else if (copy >= 0 && copy < DECOR_EXTRA_CAP && next->inventory.extra[copy].item == item + 1) {
@@ -1365,18 +1435,19 @@ bool progression_inventory_store(tank_t *t, int item, int copy) {
         memset(&next->inventory.extra[copy], 0, sizeof next->inventory.extra[copy]);
     } else { free(next); return inventory_fail("PLACED COPY NOT FOUND"); }
     int slot = inventory_slot(item);
-    next->inventory.stored[slot]++;
-    next->inventory.paid[slot] += paid;
+    (*inventory_stored(next, slot))++;
+    *inventory_paid(next, slot) += paid;
     return inventory_commit(t, next);
 }
 bool progression_inventory_place(tank_t *t, int item) {
     tank_t *next = inventory_begin(t, item);
     if (!next) return false;
     int slot = inventory_slot(item);
-    if (!next->inventory.stored[slot]) { free(next); return inventory_fail("NO STORED COPY"); }
-    bool paid = next->inventory.paid[slot] == next->inventory.stored[slot];
+    if (!*inventory_stored(next, slot)) { free(next); return inventory_fail("NO STORED COPY"); }
+    bool paid = *inventory_paid(next, slot) == *inventory_stored(next, slot);
     if (!progression_item_owned(t, item)) {
         next->sd_unlocks |= SD_ITEMS[item].bit;
+        if (SD_IS_NEW_DECOR(item)) next->content.owned |= 1u << (item - SD_DECOR_FIRST);
         uint64_t bit = UINT64_C(1) << item;
         next->profile.owned_items |= bit;
         next->profile.paid_items = (next->profile.paid_items & ~bit) | (paid ? bit : 0);
@@ -1394,19 +1465,19 @@ bool progression_inventory_place(tank_t *t, int item) {
             .rank = (uint8_t)(DECOR_SLOTS + i), .x = TANK_W * 0.5f
         };
     }
-    next->inventory.stored[slot]--;
-    next->inventory.paid[slot] -= paid;
+    (*inventory_stored(next, slot))--;
+    *inventory_paid(next, slot) -= paid;
     return inventory_commit(t, next);
 }
 bool progression_inventory_sell(tank_t *t, int item) {
     tank_t *next = inventory_begin(t, item);
     if (!next) return false;
     int slot = inventory_slot(item);
-    if (!next->inventory.stored[slot]) { free(next); return inventory_fail("NO STORED COPY"); }
-    bool paid = next->inventory.paid[slot] == next->inventory.stored[slot];
+    if (!*inventory_stored(next, slot)) { free(next); return inventory_fail("NO STORED COPY"); }
+    bool paid = *inventory_paid(next, slot) == *inventory_stored(next, slot);
     int value = paid && !progression_creative(t) ? progression_sell_value(item) : 0;
     if (t->sd_balance > INT_MAX - value) { free(next); return inventory_fail("WALLET FULL - NOT SOLD"); }
-    next->inventory.stored[slot]--; next->inventory.paid[slot] -= paid;
+    (*inventory_stored(next, slot))--; *inventory_paid(next, slot) -= paid;
     next->sd_balance += value;
     /* Resale is not an earned reward and cannot create milestone dollars. */
     return inventory_commit(t, next);
@@ -1831,9 +1902,9 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     if (record) { sv = *record; got = sizeof sv; loaded = true; }
     else loaded = persist_port_load(&sv, sizeof sv, &got) && got >= SAVE_CORE_SIZE && got <= sizeof sv;
     if (!loaded || (got > offsetof(save_t, care) && got < offsetof(save_t, inventory)) ||
-        (got > offsetof(save_t, inventory) && got != sizeof sv) ||
+        (got > offsetof(save_t, inventory) && got != offsetof(save_t, content) && got != sizeof sv) ||
         sv.magic != SAVE_MAGIC || !migrate_profile(&sv) || !care_valid(&sv.care) ||
-        !inventory_valid(&sv.inventory) || sv.n_fish > N_FISH_MAX ||
+        !inventory_valid(&sv.inventory) || !content_valid(&sv.content, &sv.inventory) || sv.n_fish > N_FISH_MAX ||
         !mussel_valid(&sv.mussel) ||
         !game_income_valid(&sv.game_income, sv.care.game_paid) ||
         (sv.profile.mode != GAME_MODE_HARD && sv.n_fish < 2 && !sv.companion.away) ||
@@ -1970,6 +2041,10 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     t->games_extra = sv.games_extra;
     t->profile = sv.profile;
     t->inventory = sv.inventory;
+    t->content = sv.content; t->content.version = 1;
+    memcpy(t->decor_rank + DECOR_LEGACY_SLOTS, sv.content.rank, DECOR_NEW_COUNT);
+    for (int i = 0; i < DECOR_NEW_COUNT; i++)
+        if (sv.content.x[i] > 0) tank_decor_set(t, SD_DECOR_FIRST + i, sv.content.x[i], sv.content.z[i]);
     t->mussel = sv.mussel; t->mussel_fraction = 0; t->mussel_glint = 0;
     if (t->mussel.version == 1 && t->mussel.owned) {
         t->mussel.version = 2;
@@ -2298,6 +2373,8 @@ static void capture_save(const tank_t *t, save_t *sv) {
     sv->games_extra = t->games_extra;
     sv->profile = t->profile;
     sv->inventory = t->inventory;
+    sv->content = t->content; sv->content.version = 1;
+    memcpy(sv->content.rank, t->decor_rank + DECOR_LEGACY_SLOTS, DECOR_NEW_COUNT);
     sv->mussel = t->mussel;
     sv->game_income = t->game_income;
     sv->care = t->care;
@@ -2350,6 +2427,11 @@ static void capture_save(const tank_t *t, save_t *sv) {
     sv->journal = t->journal;
     const setup_place_snapshot_t *layout = setup_place_original();
     if (layout) {
+        memcpy(sv->content.rank, layout->rank + DECOR_LEGACY_SLOTS, DECOR_NEW_COUNT);
+        if (SD_IS_NEW_DECOR(layout->item)) {
+            int i = layout->item - SD_DECOR_FIRST;
+            sv->content.x[i] = layout->x; sv->content.z[i] = layout->z;
+        }
         /* Autosaves and JSON backups see the committed layout, never the live preview. */
         memcpy(sv->decor_rank, layout->rank, sizeof sv->decor_rank);
         sv->chest_rank = layout->rank[5];
@@ -2595,11 +2677,19 @@ static const json_field_t CARE_FIELDS[] = {
 #define INV(f, k, n, hi) { #f, offsetof(inventory_state_t, f), n, k, 0, hi }
 static const json_field_t INVENTORY_FIELDS[] = {
     INV(version, J_U8, 1, 1),
-    INV(stored, J_HEX, DECOR_SLOTS, 255),
-    INV(paid, J_HEX, DECOR_SLOTS, 255),
+    INV(stored, J_HEX, DECOR_LEGACY_SLOTS, 255),
+    INV(paid, J_HEX, DECOR_LEGACY_SLOTS, 255),
     INV(extra, J_HEX, sizeof(((inventory_state_t *)0)->extra), 255)
 };
 #undef INV
+#define CONTENT(f, k, n, hi) { #f, offsetof(decor_content_t, f), n, k, 0, hi }
+static const json_field_t CONTENT_FIELDS[] = {
+    CONTENT(version, J_U8, 1, 1), CONTENT(owned, J_U32, 1, (1u << DECOR_NEW_COUNT) - 1),
+    CONTENT(x, J_FLOAT, DECOR_NEW_COUNT, TANK_MAX_W),
+    CONTENT(z, J_HEX, DECOR_NEW_COUNT, 255), CONTENT(rank, J_HEX, DECOR_NEW_COUNT, 255),
+    CONTENT(stored, J_HEX, DECOR_NEW_COUNT, 255), CONTENT(paid, J_HEX, DECOR_NEW_COUNT, 255)
+};
+#undef CONTENT
 #define MUS(f, k, hi) { #f, offsetof(mussel_state_t, f), 1, k, 0, hi }
 static const json_field_t MUSSEL_FIELDS[] = {
     MUS(seconds, J_U16, MUSSEL_SECONDS - 1), MUS(owned, J_U8, 255),
@@ -2713,7 +2803,7 @@ char *progression_backup_json(const tank_t *t) {
     save_t sv; capture_save(t, &sv);
     char header[128], *text = NULL;
     size_t used = 0;
-    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":18,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
+    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":19,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
     if (!json_append(&text, &used, header)) goto fail;
     cJSON *tank = json_fields(&sv, SAVE_FIELDS, FIELD_COUNT(SAVE_FIELDS));
     if (!tank) goto fail;
@@ -2753,6 +2843,8 @@ char *progression_backup_json(const tank_t *t) {
         !json_append_value(&text, &used, json_fields(&sv.care, CARE_FIELDS, FIELD_COUNT(CARE_FIELDS))) ||
         !json_append(&text, &used, ",\"inventory\":") ||
         !json_append_value(&text, &used, json_fields(&sv.inventory, INVENTORY_FIELDS, FIELD_COUNT(INVENTORY_FIELDS))) ||
+        !json_append(&text, &used, ",\"content\":") ||
+        !json_append_value(&text, &used, json_fields(&sv.content, CONTENT_FIELDS, FIELD_COUNT(CONTENT_FIELDS))) ||
         !json_append(&text, &used, ",\"mussel\":") ||
         !json_append_value(&text, &used, json_fields(&sv.mussel, MUSSEL_FIELDS, FIELD_COUNT(MUSSEL_FIELDS))) ||
         !json_append(&text, &used, ",\"game_income\":") ||
@@ -2924,9 +3016,9 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     const cJSON *height = cJSON_GetObjectItemCaseSensitive(root, "height");
     const cJSON *fish = cJSON_GetObjectItemCaseSensitive(root, "fish");
     if (!cJSON_IsString(format) || strcmp(format->valuestring, "pocket-tank")
-        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 18 ||
+        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 19 ||
            schema->valuedouble != floor(schema->valuedouble)
-        || cJSON_GetArraySize(root) != (schema->valuedouble >= 18 ? 20 : schema->valuedouble >= 17 ? 17 : schema->valuedouble >= 16 ? 16 : schema->valuedouble >= 15 ? 14 : schema->valuedouble >= 14 ? 13 : schema->valuedouble >= 13 ? 12 : schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
+        || cJSON_GetArraySize(root) != (schema->valuedouble >= 19 ? 21 : schema->valuedouble >= 18 ? 20 : schema->valuedouble >= 17 ? 17 : schema->valuedouble >= 16 ? 16 : schema->valuedouble >= 15 ? 14 : schema->valuedouble >= 14 ? 13 : schema->valuedouble >= 13 ? 12 : schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
         || !cJSON_IsString(board) || strcmp(board->valuestring, "cyd2432s028")
         || !cJSON_IsNumber(width) || (width->valuedouble != 240 && width->valuedouble != 320)
         || !cJSON_IsNumber(height) || height->valuedouble * 4 != width->valuedouble * 3
@@ -2973,6 +3065,12 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     }
     if (!migrate_profile(&sv)) {
         snprintf(error, error_size, "Invalid profile; legacy Creative backups cannot migrate"); goto done;
+    }
+    if (schema->valuedouble >= 19 &&
+        (!json_read_fields(&sv.content, cJSON_GetObjectItemCaseSensitive(root, "content"),
+                          CONTENT_FIELDS, FIELD_COUNT(CONTENT_FIELDS), error, error_size) ||
+         !content_valid(&sv.content, &sv.inventory))) {
+        snprintf(error, error_size, "Invalid decoration content"); goto done;
     }
     if (schema->valuedouble >= 18 &&
         (!json_read_fields(&sv.inventory, cJSON_GetObjectItemCaseSensitive(root, "inventory"),
@@ -3366,6 +3464,9 @@ static void share_progress(save_t *to, const save_t *from) {
     memcpy(to->inventory.stored, from->inventory.stored, sizeof to->inventory.stored);
     memcpy(to->inventory.paid, from->inventory.paid, sizeof to->inventory.paid);
     to->inventory.version = 1;
+    memcpy(to->content.stored, from->content.stored, DECOR_NEW_COUNT);
+    memcpy(to->content.paid, from->content.paid, DECOR_NEW_COUNT);
+    to->content.version = 1;
 }
 
 static const char *aquarium_move(tank_t *t, int target) {
@@ -3423,7 +3524,7 @@ static const char *aquarium_move(tank_t *t, int target) {
             !companion_story_valid(&v->story, v->n_fish, v->bank_count, v->companion.away, v->polish.next_id) ||
             !companion_rpg_valid(&v->rpg, v->polish.next_id) ||
             !companion_games_valid(&v->games) || !extra_games_valid(&v->games_extra) || !creative_valid(&v->creative) ||
-            !inventory_valid(&v->inventory) ||
+            !inventory_valid(&v->inventory) || !content_valid(&v->content, &v->inventory) ||
             !mussel_valid(&v->mussel) ||
             !game_income_valid(&v->game_income, v->care.game_paid) ||
             (v->creative.enabled && v->n_fish + v->companion.away > CREATIVE_FISH_CAP) ||

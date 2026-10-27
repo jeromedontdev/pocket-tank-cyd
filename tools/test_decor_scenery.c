@@ -2,6 +2,7 @@
  * are never placeable (no decor slot) and bake into the cached backdrop. */
 #include "progression.h"
 #include "render.h"
+#include "companion.h"
 #include "cJSON.h"
 #ifdef NDEBUG
 #undef NDEBUG
@@ -21,8 +22,8 @@ static int test_decor_scenery_changed(const uint16_t *a, const uint16_t *b) {
 }
 
 static void test_decor_scenery_catalog(void) {
-    assert(SD_ITEM_COUNT == 43 && SD_SHOP_MUSSEL == 42 && SD_SCENERY_FIRST == 36 && SD_SCENERY_N == 6 && SD_SCENERY_MASK == 0x3f);
-    assert(DECOR_SLOTS == 16);
+    assert(SD_ITEM_COUNT == 63 && SD_SHOP_MUSSEL == 42 && SD_SCENERY_FIRST == 36 && SD_SCENERY_N == 6 && SD_SCENERY_MASK == 0x3f);
+    assert(DECOR_SLOTS == 36 && DECOR_LEGACY_SLOTS == 16 && WEAR_COUNT == 13);
     int prices = 0;
     for (int item = SD_SCENERY_FIRST; item < SD_SCENERY_END; item++) {
         assert(SD_IS_SCENERY(item) && SD_IS_FIXED_SCENERY(item));
@@ -147,6 +148,7 @@ static void test_decor_scenery_render(void) {
     tank_t t;
     tank_init(&t, 17);
     t.polish.scenery_unlocks = 0;
+    t.content.owned = 0;
     render_tank(&t, base, TANK_W);
     for (int item = SD_SCENERY_FIRST; item < SD_SCENERY_END; item++) {
         t.polish.scenery_unlocks = (uint8_t)(1u << (item - SD_SCENERY_FIRST));
@@ -161,8 +163,24 @@ static void test_decor_scenery_render(void) {
         for (int px = 0; px < TANK_W * TANK_H; px++) painted += art[px] != 0;
         assert(painted > 40);
     }
+    for (int item = SD_DECOR_FIRST; item < SD_ITEM_COUNT; item++) {
+        int index = item - SD_DECOR_FIRST;
+        assert(tank_ornament_w(item) == 40 && tank_ornament_h(item) == 40);
+        t.content.owned = UINT32_C(1) << index;
+        tank_decor_set(&t, item, 34 + index * (TANK_W - 68) / (DECOR_NEW_COUNT - 1),
+                       index & 1 ? DECOR_Z_FRONT : DECOR_Z_BACK);
+        render_tank(&t, art, TANK_W);
+        assert(test_decor_scenery_changed(base, art) > 40);
+        t.content.owned = 0;
+        render_tank(&t, art, TANK_W);
+        assert(!memcmp(base, art, TANK_W * TANK_H * sizeof *base));
+    }
     /* All six together still bake into the one cached backdrop. */
     t.polish.scenery_unlocks = SD_SCENERY_MASK;
+    t.content.owned = (1u << DECOR_NEW_COUNT) - 1;
+    for (int item = SD_DECOR_FIRST; item < SD_ITEM_COUNT; item++)
+        tank_decor_set(&t, item, 44 + (item % 6) * (TANK_W - 88) / 5,
+                       item & 1 ? DECOR_Z_FRONT : DECOR_Z_BACK);
     render_tank(&t, art, TANK_W);
     assert(test_decor_scenery_changed(base, art) > 6 * 40);
     render_set_decor_scratch(NULL); render_set_scene_cache(NULL); render_set_dirty_mask(NULL);
@@ -209,6 +227,10 @@ static void test_decor_scenery_variants(void) {
         for (int item = 16; item <= 20; item++) t.sd_unlocks |= UINT32_C(1) << item;
         for (int item = 22; item <= 27; item++) t.sd_unlocks |= UINT32_C(1) << item;
         t.polish.scenery_unlocks = SD_SCENERY_MASK;
+        t.content.owned = (UINT32_C(1) << DECOR_NEW_COUNT) - 1;
+        for (int item = SD_DECOR_FIRST; item < SD_ITEM_COUNT; item++)
+            tank_decor_set(&t, item, 34 + (item * 37) % (TANK_W - 68),
+                           item & 1 ? DECOR_Z_FRONT : DECOR_Z_BACK);
         for (int bed = 0; bed < VEG_BEDS_MAX; bed++)
             for (int i = 0; i < VEG_FRONDS_MAX; i++) t.veg_h[bed][i] = .2f + (i % 7) * .025f;
         for (int detail = SCENE_BALANCED; detail <= SCENE_ENHANCED; detail++)
@@ -242,6 +264,177 @@ static void test_decor_scenery_variants(void) {
     puts("PASS: crafted ornaments and sword foliage preserve full/warm-tile equality, day/night, both sizes, two themes and all three scene details without tank mutation");
 }
 
+static void test_harbor_garden_content(void) {
+    tank_t t, loaded, before;
+    tank_init(&t, 343);
+    assert(progression_reset(&t, 343) && !progression_mode_select(&t, GAME_MODE_NORMAL));
+    progression_setup_done(&t);
+    t.sd_balance = 100000;
+    uint32_t legacy = t.sd_unlocks;
+    uint64_t hashes[DECOR_NEW_COUNT] = {0};
+    uint16_t *art = calloc((size_t)TANK_W * TANK_H, sizeof *art); assert(art);
+    for (int item = SD_DECOR_FIRST; item < SD_ITEM_COUNT; item++) {
+        int i = item - SD_DECOR_FIRST;
+        assert(tank_decor_placeable(item) && tank_decor_slot(item) == DECOR_LEGACY_SLOTS + i);
+        assert(progression_inventory_duplicate(item) && SD_ITEMS[item].bit == 0);
+        before = t;
+        test_decor_scenery_reject_write(true);
+        assert(!progression_buy(&t, item) && !memcmp(&t, &before, sizeof t));
+        test_decor_scenery_reject_write(false);
+        assert(progression_buy(&t, item) && progression_item_owned(&t, item));
+        tank_decor_set(&t, item, 100 + i * 2, i & 1 ? DECOR_Z_FRONT : DECOR_Z_BACK);
+        assert(progression_inventory_buy(&t, item));
+        assert(progression_inventory_stored(&t, item) == 1);
+        assert(progression_inventory_place(&t, item));
+        assert(progression_inventory_placed(&t, item) == 2);
+        int copy = -1;
+        for (int k = 0; k < DECOR_EXTRA_CAP; k++)
+            if (t.inventory.extra[k].item == item + 1) copy = k;
+        assert(copy >= 0 && progression_inventory_store(&t, item, copy));
+        assert(progression_inventory_sell(&t, item) && progression_inventory_stored(&t, item) == 0);
+        before = t;
+        test_decor_scenery_reject_write(true);
+        assert(!progression_sell(&t, item) && !memcmp(&t, &before, sizeof t));
+        test_decor_scenery_reject_write(false);
+        memset(art, 0, (size_t)TANK_W * TANK_H * sizeof *art);
+        render_ornament_preview(art, TANK_W, item, TANK_W / 2, TANK_H / 2);
+        uint64_t hash = UINT64_C(1469598103934665603);
+        int ink = 0;
+        for (int p = 0; p < TANK_W * TANK_H; p++) {
+            ink += art[p] != 0; hash = (hash ^ art[p]) * UINT64_C(1099511628211);
+        }
+        assert(ink > 40);
+        for (int k = 0; k < i; k++) assert(hashes[k] != hash);
+        hashes[i] = hash;
+    }
+    free(art);
+    assert(t.sd_unlocks == legacy && t.content.owned == (1u << DECOR_NEW_COUNT) - 1);
+    assert(progression_save(&t));
+    assert(test_decor_scenery_reload(&loaded, 344) == AQUARIUM_SAVE_BYTES);
+    assert(loaded.content.owned == t.content.owned);
+    for (int item = SD_DECOR_FIRST; item < SD_ITEM_COUNT; item++) {
+        assert(progression_item_owned(&loaded, item));
+        assert(tank_decor_x(&loaded, item) == tank_decor_x(&t, item));
+        assert(tank_decor_z(&loaded, item) == tank_decor_z(&t, item));
+        assert(tank_decor_rank(&loaded, item) == tank_decor_rank(&t, item));
+    }
+    int ordered[DECOR_SLOTS]; assert(tank_decor_order(&loaded, ordered) >= DECOR_NEW_COUNT);
+    loaded.journal.xp = 100000;
+    for (int wear = WEAR_SAILOR; wear < WEAR_COUNT; wear++) {
+        before = loaded;
+        test_decor_scenery_reject_write(true);
+        assert(!companion_wearable(&loaded, 0, wear) && !memcmp(&loaded, &before, sizeof loaded));
+        test_decor_scenery_reject_write(false);
+        assert(companion_wearable(&loaded, 0, wear));
+        assert(companion_colors(&loaded, true, 0, 0xab));
+        assert(companion_wearables(&loaded.companion.active[0]) & (1u << (wear - 1)));
+        assert(companion_valid(&loaded.companion));
+        int balance = loaded.sd_balance;
+        assert(companion_wearable(&loaded, 0, wear) && loaded.sd_balance == balance);
+        for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++)
+            for (int part = 0; part < 4; part++) {
+                    fish_t f = loaded.fish[0]; f.variety = (uint8_t)variety;
+                    float x[8], y[8]; uint32_t color;
+                    int n = tank_wearable_polygon(&f, part, x, y, &color);
+                    if (variety == FISH_JELLYFISH && wear == WEAR_SCARF) {
+                        assert(!n);
+                        continue;
+                    }
+                    if (wear != WEAR_VIKING && wear != WEAR_SCARF && part > 1) {
+                        assert(n == 0);
+                        continue;
+                    }
+                    assert(n >= 3 && n <= 8 && color);
+                    if (wear == WEAR_VIKING && part == 0) {
+                        float min_y = y[0];
+                        for (int p = 1; p < n; p++) if (y[p] < min_y) min_y = y[p];
+                        assert(n == 7 && min_y <= -15);
+                    }
+                    if (wear == WEAR_VIKING && (part == 1 || part == 2)) {
+                        float min_x = x[0], max_x = x[0], min_y = y[0];
+                        for (int p = 1; p < n; p++) {
+                            if (x[p] < min_x) min_x = x[p];
+                            if (x[p] > max_x) max_x = x[p];
+                            if (y[p] < min_y) min_y = y[p];
+                        }
+                        if (part == 1) assert(min_x <= -4 && max_x <= 1.5f);
+                        else assert(max_x >= 11 && min_x > 0);
+                        assert(n == 4 && min_y <= -20);
+                    }
+                    if (wear == WEAR_SCARF) {
+                        float min_x = x[0], max_x = x[0], min_y = y[0], max_y = y[0];
+                        static const float head_by_type[] = {-8.7f,-13.5f,-8.7f,-7,-12,-7.5f,-15.5f,-7,-10.2f,-8.7f};
+                        static const float neck_by_type[] = {8,12,8,5,11,6,0,7,9,8};
+                        float head = head_by_type[variety], neck = neck_by_type[variety];
+                        for (int p = 1; p < n; p++) {
+                            if (x[p] < min_x) min_x = x[p];
+                            if (x[p] > max_x) max_x = x[p];
+                            if (y[p] < min_y) min_y = y[p];
+                            if (y[p] > max_y) max_y = y[p];
+                        }
+                        unsigned red = color >> 16, green = color >> 8 & 255, blue = color & 255;
+                        assert(n == 4 && red >= 0xd0 && red > green + 60 && red > blue + 60);
+                        /* The wrap is a solid gill band; knot and tails hang below it. */
+                        if (part == 0) assert(min_y <= head + 1 && max_y >= neck && max_x - min_x >= 6 && max_x <= 2);
+                        else if (part == 1) assert(min_x <= -9 && max_y >= neck + 4);
+                        else if (part == 2) assert(min_x <= -6 && max_y >= neck + 5);
+                        else assert(min_y <= neck - 3 && max_y >= neck + 1 && max_x - min_x >= 5);
+                    }
+                }
+        fish_t invalid_wear = loaded.fish[0];
+        invalid_wear.wearable = WEAR_VIKING;
+        float invalid_x[8], invalid_y[8]; uint32_t invalid_color;
+        assert(!tank_wearable_polygon(&invalid_wear, -1, invalid_x, invalid_y, &invalid_color));
+    }
+    assert((loaded.companion.active[0].tricks & 7) == (t.companion.active[0].tricks & 7));
+    unsigned wardrobe = companion_wearables(&loaded.companion.active[0]);
+    assert(tank_add_fish(&loaded, -1, -1) >= 0);
+    assert(!progression_bank_move(&loaded, -1, 0));
+    assert(companion_wearables(&loaded.companion.bank[0]) == wardrobe);
+    assert(!progression_bank_move(&loaded, 0, 0));
+    assert(loaded.fish[0].wearable == WEAR_SCARF && companion_wearables(&loaded.companion.active[0]) == wardrobe);
+    assert(progression_adventure_depart(&loaded, 0, 0));
+    assert(companion_wearables(&loaded.companion.traveler_bond) == wardrobe);
+    loaded.companion.adventure_s = companion_adventure_total(&loaded.companion, 0);
+    assert(progression_adventure_return(&loaded));
+    int returning = loaded.n_fish - 1;
+    assert(loaded.fish[returning].wearable == WEAR_SCARF &&
+           companion_wearables(&loaded.companion.active[returning]) == wardrobe);
+    char *json = progression_backup_json(&loaded); assert(json);
+    char error[128];
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+    assert(test_decor_scenery_reload(&t, 345) == AQUARIUM_SAVE_BYTES);
+    assert(t.content.owned == loaded.content.owned && t.fish[returning].wearable == WEAR_SCARF);
+    assert(t.companion.active[returning].wear_colors == 0xab &&
+           companion_wearables(&t.companion.active[returning]) == wardrobe);
+    cJSON *root = cJSON_Parse(json); free(json); assert(root);
+    cJSON *content = cJSON_GetObjectItemCaseSensitive(root, "content");
+    cJSON_ReplaceItemInObjectCaseSensitive(content, "owned", cJSON_CreateNumber(1u << DECOR_NEW_COUNT));
+    char *bad = cJSON_PrintUnformatted(root); cJSON_Delete(root); assert(bad);
+    assert(!progression_restore_json(bad, strlen(bad), true, error, sizeof error)); free(bad);
+    assert(progression_reset(&t, 346) && !progression_mode_select(&t, GAME_MODE_NORMAL));
+    progression_setup_done(&t); t.sd_balance = 10000;
+    assert(progression_buy(&t, 62) && progression_inventory_buy(&t, 62));
+    char *stale = progression_backup_json(&t); assert(stale);
+    assert(!progression_aquarium_move(&t, 1));
+    progression_setup_done(&t);
+    assert(!progression_item_owned(&t, 62) && progression_inventory_stored(&t, 62) == 1);
+    assert(progression_inventory_place(&t, 62) && progression_item_owned(&t, 62));
+    assert(!progression_aquarium_move(&t, 0));
+    assert(progression_item_owned(&t, 62) && !progression_inventory_stored(&t, 62));
+    assert(!progression_restore_json(stale, strlen(stale), true, error, sizeof error));
+    free(stale);
+    assert(!progression_aquarium_move(&t, 1) && progression_item_owned(&t, 62));
+    assert(progression_reset(&t, 347) && !progression_mode_select(&t, GAME_MODE_CREATIVE));
+    progression_setup_done(&t);
+    int balance = t.sd_balance;
+    assert(progression_buy(&t, 62) && progression_inventory_buy(&t, 62));
+    assert(t.sd_balance == balance && !t.content.paid[19]);
+    assert(progression_inventory_sell(&t, 62) && progression_sell(&t, 62));
+    assert(t.sd_balance == balance && !progression_item_owned(&t, 62));
+    puts("PASS: 20 unique static decorations, purchases/sales/copy storage, rollback, placement, binary/JSON ownership and six packed/colorable proportional wearables");
+}
+
 void test_decor_scenery(void) {
     test_decor_scenery_catalog();
     test_decor_scenery_buy_sell();
@@ -250,5 +443,6 @@ void test_decor_scenery(void) {
     test_decor_scenery_render();
     test_decor_scenery_notice();
     test_decor_scenery_variants();
+    test_harbor_garden_content();
     puts("PASS: six fixed sand scenery pieces buy/sell with save-failure rollback and notice, binary/JSON reload, cached backdrop art, no decor slots");
 }

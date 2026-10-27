@@ -17,6 +17,7 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 
 static const char *TAG = "cyd_display";
 static esp_lcd_panel_handle_t s_panel;
@@ -25,11 +26,18 @@ static uint16_t *s_stripe;
 static uint8_t s_brightness = 0xFF;
 static bool s_inverted;
 static bool s_backlight_ready;
-static uint32_t s_block_crc[3][CYD_PANEL_W / (CYD_STRIPE_ROWS / 2)];
-static bool s_block_valid[3][CYD_PANEL_W / (CYD_STRIPE_ROWS / 2)];
+static uint32_t s_block_crc[6][CYD_PANEL_W / (CYD_STRIPE_ROWS / 2)];
+static bool s_block_valid[6][CYD_PANEL_W / (CYD_STRIPE_ROWS / 2)];
 static int s_layout_width, s_layout_height, s_layout_tile;
-static int64_t s_wait_us, s_send_us;
+static int64_t s_wait_us, s_send_us, s_fill_us;
 static unsigned s_blocks_sent, s_blocks_skipped;
+static TaskHandle_t s_worker;
+static SemaphoreHandle_t s_job_done;
+static struct {
+    const uint16_t *pixels;
+    int top, bottom, left, right;
+} s_job;
+static void display_worker(void *arg);
 typedef struct {
     uint32_t crc;
     uint16_t x0, y0, x1, y1;
@@ -57,7 +65,7 @@ static void canonical_invalidate(int x0, int y0, int x1, int y1) {
         if (x0 >= right || x1 <= left) continue;
         int rows = CYD_PANEL_H * CYD_STRIPE_ROWS / 2 / (right - left);
         for (int y = y0 / rows * rows; y < y1; y += rows)
-            s_block_valid[top / 80][y / (CYD_STRIPE_ROWS / 2)] = false;
+            s_block_valid[top / 40][y / (CYD_STRIPE_ROWS / 2)] = false;
     }
 }
 /* Panel-specific power/gamma settings; the original CYD sequence stays unchanged. */
@@ -198,14 +206,34 @@ bool display_port_init(void) {
     return true;
 }
 
-void display_port_flush(const uint16_t *fb) {
+bool display_port_pipeline_init(void) {
+    if (s_worker) return true;
+    s_job_done = xSemaphoreCreateBinary();
+    if (!s_job_done) {
+        ESP_LOGE(TAG, "no completion semaphore for LCD pipeline");
+        return false;
+    }
+    xSemaphoreGive(s_job_done);
+    if (xTaskCreatePinnedToCore(display_worker, "lcd", 3072, NULL, 4, &s_worker, 1) != pdPASS) {
+        ESP_LOGE(TAG, "no internal RAM for LCD pipeline task");
+        vSemaphoreDelete(s_job_done);
+        s_job_done = NULL;
+        return false;
+    }
+    return true;
+}
+
+static void flush_region(const uint16_t *fb, int tile_start, int tile_end, int region_left, int region_right) {
     if (!s_panel) return;
-    int tile_start = render_tile_top(), tile_end = render_tile_bottom();
-    int region_left = render_region_left(), region_right = render_region_right();
+    int64_t started = esp_timer_get_time(), waited = s_wait_us, sent = s_send_us;
+    int canonical_height = tile_end - tile_start <= 40 ? 40 : 80;
+    if (tile_end == TANK_H && tile_start % 80 == 0 && s_layout_tile == 80)
+        canonical_height = 80;
     bool canonical = region_left == 0 && region_right == TANK_W &&
-        tile_start % 80 == 0 && (tile_end - tile_start == TANK_H ||
-        tile_end == (tile_start + 80 < TANK_H ? tile_start + 80 : TANK_H));
-    int tile_layout = canonical ? (tile_end - tile_start == TANK_H ? TANK_H : 80) :
+        (tile_end - tile_start == TANK_H ||
+        (tile_start % canonical_height == 0 &&
+         tile_end == (tile_start + canonical_height < TANK_H ? tile_start + canonical_height : TANK_H)));
+    int tile_layout = canonical ? (tile_end - tile_start == TANK_H ? TANK_H : canonical_height) :
         (s_layout_tile ? s_layout_tile : 80);
     if (s_layout_width != TANK_W || s_layout_height != TANK_H ||
         s_layout_tile != tile_layout || s_layout_inverted != s_inverted) {
@@ -269,7 +297,7 @@ void display_port_flush(const uint16_t *fb) {
                 target[native_x - panel_start] = (uint16_t)((pixel >> 8) | (pixel << 8));
             }
         }
-        int tile_index = tile_start / 80, block = native_y / (CYD_STRIPE_ROWS / 2);
+        int tile_index = tile_start / 40, block = native_y / (CYD_STRIPE_ROWS / 2);
         uint32_t crc = esp_crc32_le(0, (const uint8_t *)buffer, (size_t)count * region_width * sizeof *buffer);
         if (canonical && s_block_valid[tile_index][block] && s_block_crc[tile_index][block] == crc) {
             s_blocks_skipped++;
@@ -287,6 +315,7 @@ void display_port_flush(const uint16_t *fb) {
         int64_t now = esp_timer_get_time();
         if (pending) xSemaphoreTake(s_flush_done, portMAX_DELAY);
         s_wait_us += esp_timer_get_time() - now;
+        s_fill_us += esp_timer_get_time() - started - (s_wait_us - waited) - (s_send_us - sent);
         now = esp_timer_get_time();
         ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(s_panel, panel_start, native_y, panel_end, native_y + count, buffer));
         partial_invalidate(panel_start, native_y, panel_end, native_y + count);
@@ -308,19 +337,57 @@ void display_port_flush(const uint16_t *fb) {
     s_wait_us += esp_timer_get_time() - now;
 }
 
-void display_port_flush_prof(int64_t *wait_us, int64_t *send_us) {
+static void display_worker(void *arg) {
+    (void)arg;
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        flush_region(s_job.pixels, s_job.top, s_job.bottom, s_job.left, s_job.right);
+        xSemaphoreGive(s_job_done);
+    }
+}
+
+void display_port_wait(void) {
+    if (!s_worker) return;
+    xSemaphoreTake(s_job_done, portMAX_DELAY);
+    xSemaphoreGive(s_job_done);
+}
+
+void display_port_submit(const uint16_t *fb) {
+    if (!s_worker) {
+        display_port_flush(fb);
+        return;
+    }
+    xSemaphoreTake(s_job_done, portMAX_DELAY);
+    s_job.pixels = fb;
+    s_job.top = render_tile_top(); s_job.bottom = render_tile_bottom();
+    s_job.left = render_region_left(); s_job.right = render_region_right();
+    xTaskNotifyGive(s_worker);
+}
+
+void display_port_flush(const uint16_t *fb) {
+    display_port_wait();
+    flush_region(fb, render_tile_top(), render_tile_bottom(), render_region_left(), render_region_right());
+}
+
+void display_port_flush_prof(int64_t *wait_us, int64_t *send_us, int64_t *fill_us) {
+    display_port_wait();
     *wait_us = s_wait_us; *send_us = s_send_us;
-    s_wait_us = s_send_us = 0;
+    *fill_us = s_fill_us;
+    s_wait_us = s_send_us = s_fill_us = 0;
     ESP_LOGI(TAG, "LCD blocks: %u updated, %u unchanged", s_blocks_sent, s_blocks_skipped);
+    if (s_worker) ESP_LOGI(TAG, "LCD worker minimum free stack: %u bytes",
+                          (unsigned)uxTaskGetStackHighWaterMark(s_worker));
     s_blocks_sent = s_blocks_skipped = 0;
 }
 
 void display_port_sleep(void) {
+    display_port_wait();
     if (s_panel) esp_lcd_panel_disp_on_off(s_panel, false);
     backlight_apply(0);
 }
 
 void display_port_wake(void) {
+    display_port_wait();
     memset(s_block_valid, 0, sizeof s_block_valid);
     if (s_panel) {
         esp_lcd_panel_disp_on_off(s_panel, true);
@@ -329,6 +396,7 @@ void display_port_wake(void) {
 }
 
 void display_port_set_inverted(bool inverted) {
+    display_port_wait();
     if (s_inverted != inverted) memset(s_block_valid, 0, sizeof s_block_valid);
     s_inverted = inverted;
 }

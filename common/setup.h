@@ -43,14 +43,15 @@
  * allow the player to place the piece wherever they like ... similar to the
  * bubble column placement experience", plus a z-layer): one page over the
  * live tank, opened by the platform right after a purchase (and by the
- * shop's MOVE button for a piece already in the tank). A finger on the
+ * holding a decoration already in the tank). A finger on the
  * water drags the piece to that x (tank_decor_set clamps it inside the
  * window); a tap on overlapping placed decorations cycles through only
  * owned pieces and copies without moving them. Selecting another piece
  * drops the current preview back to its starting layout. The selected
  * footprint is outlined, and a marker stays at its starting position while
  * it is dragged. The page identifies the placed original or extra copy;
- * STORE returns an extra to inventory, DONE saves, and CANCEL restores the
+ * REMOVE returns the selected decoration to storage without a refund,
+ * DONE saves, and CANCEL restores the
  * original layout. */
 #ifndef POCKET_TANK_SETUP_H
 #define POCKET_TANK_SETUP_H
@@ -78,6 +79,7 @@ typedef struct {
 } setup_place_snapshot_t;
 const setup_place_snapshot_t *setup_place_original(void);
 void setup_begin_extra_place(tank_t *t, int copy);
+bool setup_begin_place_at(tank_t *t, float x, float y);
 /* RENAME A FISH (2026-10-01, Strato: "when you tap a fish and see its card
  * there should be a change name button"): the letter wheel again, one page
  * over the live tank with the fish ringed on its stage - the name page of
@@ -132,7 +134,7 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
 /* element ids (setup_hit / setup_activate) */
 #define SETUP_HIT_NEXT  1
 #define SETUP_HIT_BACK  2
-#define SETUP_HIT_SELL  5                /* the placement page's SELL (top left): once arms it, twice sells the piece */
+#define SETUP_HIT_REMOVE 5               /* Confirm removal from the tank into shared storage. */
 #define SETUP_HIT_BCK   6                /* the placement page's order arrows (2026-10-17): one step back in the stack ... */
 #define SETUP_HIT_FWD   7                /* ... and one step forward (tank_decor_shift) */
 #define SETUP_HIT_UP    3                /* the active slot's letter: next (A -> B) */
@@ -160,7 +162,7 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
 #define SETUP_TOP_BTN_Y (SETUP_Y + 24)
 #define SETUP_TOP_BACK_X (SETUP_X + 12)
 #define SETUP_TOP_NEXT_X (SETUP_X + SETUP_W - 12 - SETUP_TOP_BTN_W)
-#define SETUP_ORD_W      36                                 /* the order arrows, between SELL and DONE (the placement page) */
+#define SETUP_ORD_W      36                                 /* the order arrows, between REMOVE and DONE (the placement page) */
 #define SETUP_ORD_X0     (PAGE_W / 2 - SETUP_ORD_W - 8)
 #define SETUP_ORD_X1     (PAGE_W / 2 + 8)
 /* the letter wheel: FISH_NAME_MAX slots of a 6x font (30 x 42 px glyphs) at

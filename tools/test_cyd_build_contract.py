@@ -77,6 +77,20 @@ class CydBuildContractTests(unittest.TestCase):
                        "brightness.c", "ambient.c"):
             self.assertNotIn(source, size_flags[1].split())
 
+    def test_pipeline_preserves_single_framebuffer_and_update_startup(self):
+        memory = (FIRMWARE / "main" / "memory_plan.h").read_text()
+        self.assertIn("#define PLAN_FB_BYTES (240 * 180 * 2)", memory)
+        self.assertIn("#define PLAN_FB_COUNT 1", memory)
+        self.assertIn("#define PLAN_PIPELINE_ROWS 40", memory)
+        self.assertIn("#define PLAN_PIPELINE_BUFFERS 2", memory)
+        main = (FIRMWARE / "main" / "main.c").read_text()
+        self.assertIn("display_port_pipeline_init()", main[main.index("static void tank_task(void *arg) {"):])
+        self.assertNotIn("display_port_pipeline_init()", main[main.index("void app_main(void)"):])
+        display = (FIRMWARE / "main" / "display_port_cyd.c").read_text()
+        init = display[display.index("bool display_port_init(void)"):display.index("bool display_port_pipeline_init(void)")]
+        self.assertNotIn("xTaskCreate", init)
+        self.assertNotIn("heap_caps_malloc", display[display.index("bool display_port_pipeline_init(void)"):])
+
 
 if __name__ == "__main__":
     unittest.main()
