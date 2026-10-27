@@ -2,9 +2,9 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.16**
+**An illustrated tour of Pocket Tank CYD 2.3.17**
 
-**2.3.16 smoother background work:** weather checks at boot and hourly, even
+**2.3.17 smoother background work:** weather checks at boot and hourly, even
 after failures. Exact clock/decoration/helper caches reduce repeated rendering
 work without simplifying the artwork or slowing fish simulation. SD backup
 storage and readback run in a lower-priority background worker after a validated

@@ -20,9 +20,11 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Release 2.3.16 contains the rendering/weather/backup follow-up. The 2.3.15
-  attempt failed before publication on a strict-C POSIX test declaration;
-  preserve its existing tag and require the Linux native backup harness to pass.
+- Release 2.3.17 contains the rendering/weather/backup follow-up. The 2.3.15/16
+  attempts failed before publication on strict-C POSIX and lazy image-decode
+  test gates; preserve their tags. Require the Linux native backup harness
+  to pass; website tests must serve PNG/SVG with proper MIME types and wait
+  for lazy images to finish loading before requiring actual decode.
   Saves remain
   schema19 / 6336 bytes and companion v7. Weather acquisition is boot + hourly,
   including failures, with bounded offline attempts. Do not restore a 15-minute

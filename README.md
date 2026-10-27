@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.16
+# Pocket Tank CYD 2.3.17
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.16**. Stable firmware,
+now versioned independently. This source targets **2.3.17**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,11 +25,11 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.16: bounded rendering caches and background SD backups
+## New in 2.3.17: bounded rendering caches and background SD backups
 
-The 2.3.15 publication attempt stopped at a Linux-only test-harness declaration
-error; no 2.3.15 firmware release was published. This release fixes that harness
-and includes the complete optimization follow-up below.
+The 2.3.15 and 2.3.16 publication attempts stopped at test-harness gates, before
+publishing firmware: a strict-C POSIX declaration and lazy website-image
+decoding. This release corrects both and includes the complete follow-up below.
 
 Weather checks at boot and once per hour, including failed attempts, rather
 than every fifteen minutes. Offline connection attempts are bounded; optional
