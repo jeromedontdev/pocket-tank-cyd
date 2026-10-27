@@ -313,7 +313,7 @@ measurements. The remaining foreground cost and stalls need further diagnosis;
 the cache implementation alone is not evidence that fish motion is smoother.
 Verbose tracing was left off for testing.
 
-### Working-tree clock, foreground and simulation follow-up
+### 2.3.17 clock, foreground and simulation follow-up
 
 Clock command pages now contain six 40-row band bitsets. Replay visits only
 commands intersecting the current tile's bands, in original painter order;
@@ -357,13 +357,34 @@ quiet operation, and its regression test proves identical aquarium state.
 
 #### COM4 verification of the four-part follow-up
 
-The final application SHA256 is
+The pre-release measurement application SHA256 is
 `bc781f64dd2e9b97cc6d9deb3e7b2dbc499b6e15a6da5f8c8c2d0f02d218be2d`.
 Full 4-MiB recovery backup, application-only flash and complete application
 readback passed at 115,200 baud. Original CYD profile, Bolt/Pip/Kelp/Odie and
 successful saves were verified before and after all sixteen isolated fixtures.
 Verified HTTPS weather completed in 4.084 seconds; tracing was left off.
-These are local working-tree changes, not a new published release.
+Those measurements were taken before publication; the same optimization
+follow-up is now included in published 2.3.17.
+
+Release 2.3.17 is published from commit
+`bf11f3b08fe2c340306a589f238c0f96fe124859`. Release, main/tag CI and the
+release-pinned Pages deployment passed, including the Linux native backup
+harness, real browser persistence, screenshot decoding and USB migration gates.
+All 29 download assets were checked; 26 payload files matched their published
+checksums, and ZIP members matched standalone downloads. The published unified
+app is 1,765,776 bytes, leaving 200,304 bytes per OTA slot, with SHA256
+`8f709900d201be79c707ae134199694fc46e3b9690ce462b7ac2dd1df1c40444`.
+The live browser reports the exact release commit, and both board installers
+serve that same verified unified app.
+
+The clean locally built tagged 2.3.17 app was separately backed up, app-only
+flashed and fully read back on COM4, SHA256
+`679ae7238f2cb02c5ae306311b7b795f76d7949dbc88009015ea900d828afeb2`.
+Local and CI build metadata differ; do not treat their binary hashes as
+interchangeable. Final boot verified release 2.3.17, original CYD profile,
+HTTPS weather, Bolt/Pip/Kelp/Odie, saves and SD worker readback/cleanup.
+Tracing was left off. Tags 2.3.15/16 remain immutable failed publication attempts
+with no released firmware assets.
 
 The same adaptive five-fish fixtures compared with the immediately preceding
 flashed renderer:

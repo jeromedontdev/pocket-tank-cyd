@@ -31,6 +31,12 @@ or deployment is published. Update this file when its contracts change.
   poll or keep the radio/caches competing while idle. See the measured
   [four-part follow-up](firmware/CYD.md#com4-verification-of-the-four-part-follow-up);
   regular FPS gains are modest/mixed, and backup snapshot validation still hitches.
+  Published tag commit is `bf11f3b08fe2c340306a589f238c0f96fe124859`;
+  release/main/tag checks and release-pinned Pages passed. Published unified
+  app is1,765,776 bytes with200,304 bytes per OTA slot. COM4 runs a clean local
+  build of that tag, with full recovery backup/readback and residents/saves
+  verified. Local/CI binary hashes differ with build metadata: consult
+  firmware/CYD.md and recheck actual GitHub/Pages status before future claims.
 - Release 2.3.14 content expansion: exactly six new wearables (IDs7–12) and twenty
   static placeable ornaments (shop IDs43–62); existing IDs0–42 never move.
   Schema19 / 6336 bytes appends `decor_content_t` at6168, retaining schema18's
