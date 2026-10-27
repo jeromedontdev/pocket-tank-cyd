@@ -133,12 +133,16 @@ static void auto_prune(unsigned number) { assert(worker_context && number == new
 static size_t test_write(const void *p, size_t size, size_t n, FILE *file) {
     return fail_io == 1 ? 0 : fwrite(p, size, n, file);
 }
-static int test_flush(FILE *file) { return fail_io == 2 ? EOF : fflush(file); }
+static int test_flush(FILE *file) {
+    if (fail_io == 7 && fputc('!', file) == EOF) return EOF;
+    return fail_io == 2 ? EOF : fflush(file);
+}
 static int test_sync(int fd) { return fail_io == 3 ? -1 : fsync(fd); }
 static int test_close(FILE *file) { int err = fclose(file); return fail_io == 4 ? EOF : err; }
 static size_t test_read(void *p, size_t size, size_t n, FILE *file) {
     size_t got = fread(p, size, n, file);
     if (fail_io == 5 && got) ((char *)p)[0] ^= 1;
+    if (fail_io == 8 && got) return got - 1;
     return got;
 }
 static int test_rename(const char *from, const char *to) {
@@ -184,7 +188,7 @@ static void reset(void) {
 int main(void) {
     assert(mkdir(SAVE_DIR, 0755) == 0);
     memset(snapshot, 'x', sizeof snapshot - 1);
-    for (int failure = 0; failure <= 6; failure++) {
+    for (int failure = 0; failure <= 8; failure++) {
         reset(); fail_io = failure;
         sd_port_auto_backup_tick(&tank, 1);
         assert(pending && status_count == 0 && marker == 0 && validation_count == 1);
@@ -228,13 +232,14 @@ int main(void) {
         }
         assert(!pending && !sd_port_auto_backup_busy() && !marker_writes);
     }
-    for (int identity = 0; identity < 4; identity++) {
+    for (int identity = 0; identity < 5; identity++) {
         reset(); sd_port_auto_backup_tick(&tank, 1);
         tank_t original = tank;
         if (identity == 0) tank.aquariums.id[0]++;
         if (identity == 1) tank.aquariums.active++;
         if (identity == 2) tank.profile.mode++;
         if (identity == 3) tank.profile.chosen = 0;
+        if (identity == 4) tank.aquariums.id[1]++;
         run_worker(); sd_port_auto_backup_tick(&tank, 0);
         assert(!status_count && !marker_writes && !sd_port_auto_backup_busy());
         tank = original;
@@ -303,6 +308,10 @@ def main():
         section = source[source.index(start):source.index(end) if end else len(source)]
         assert "sd_port_auto_backup_busy()" in section, start
     storage = worker[:worker.index("static bool auto_network_busy")]
+    capture = worker[worker.index("static bool auto_start"):worker.index("static bool auto_request")]
+    assert capture.count("progression_restore_json(") == 1
+    assert capture.index("progression_restore_json(") < capture.index("xTaskCreatePinnedToCore(")
+    assert "progression_backup_json(tank)" in capture
     assert storage.count("vTaskDelay(pdMS_TO_TICKS(1))") == 2
     assert "if (n > 512) n = 512;" in storage
     assert "if (n > sizeof buffer) n = sizeof buffer;" in storage

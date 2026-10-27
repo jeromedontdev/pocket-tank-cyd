@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.17
+# Pocket Tank CYD 2.3.18
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.17**. Stable firmware,
+now versioned independently. This source targets **2.3.18**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,7 +25,42 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.17: bounded rendering caches and background SD backups
+## New in 2.3.18: everyday aquarium polish
+
+This follow-up prioritizes the aquarium itself: existing fish movement,
+individual reactions and understandable care feedback, not more mini-games,
+currencies or chores. Detailed artwork, fish update frequency, save schema 19 /
+6336 bytes, companion version 7, hardware profiles and partitions are preserved.
+
+Fish ease into a personality-scaled hover as they arrive at rest spots.
+Lazy fish pursue food more leisurely; close approaches steer more directly
+down to pellets. Bold fish are less startled by taps, including repeated taps.
+These are small changes to existing traits and steering, not new personality
+stats, extra animations or persistent state.
+
+Fish Interaction shows the next 10/25/50-bond trick milestone and the number
+of +5 greetings needed, with the existing 30-second greeting cooldown visible.
+Creative correctly shows its unlocked tricks; Follow still needs a tankmate.
+A Fish's Life explains the next stage in rounded-up growth-hours and that sleep
+grows fish more slowly. Existing rest/interest spots are explained without
+adding another care checklist.
+
+Rendering shares clock metadata across each immutable frame, uses exact paired
+RGB565 writes, and carries fractional light-scene deadlines without catch-up
+frames. Opaque final spans apply their identical lighting/dimming once per span;
+crown colors are prepared once per fan. Normal-scale LCD expansion reuses
+identical already-converted rows within the current DMA stripe rather than
+re-reading and byte-swapping the same source column. No faster SPI, new
+framebuffer or reduced detail is involved. Optional caches yield RAM to HTTPS.
+
+The preceding controlled COM4 clock/decor test improved **13.88 to 15.43 FPS**,
+with p95 **84 to 76 ms**; other scenes gained only 1-2%. These are scene-specific
+measurements, not a 30-FPS promise. Daily backup capture still takes about
+105 ms and can hitch, but normally happens only once per UTC day when enabled.
+It is not the focus of everyday animation work.
+See [hardware measurements and limitations](firmware/CYD.md#com4-beforeafter-measurements).
+
+## Retained from 2.3.17: bounded rendering caches and background SD backups
 
 The 2.3.15 and 2.3.16 publication attempts stopped at test-harness gates, before
 publishing firmware: a strict-C POSIX declaration and lazy website-image

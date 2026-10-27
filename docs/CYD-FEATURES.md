@@ -2,7 +2,33 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.17**
+**An illustrated tour of Pocket Tank CYD 2.3.18**
+
+**2.3.18 aquarium-first polish:** per-frame clock metadata is shared across
+tiles, final opaque spans reuse exact shaded colors, and repeated Normal-scale
+LCD rows reuse already-converted pixels within the same stripe. Fish keep their
+full simulation cadence and the illustrated artwork stays intact. The preceding
+clock/decor fixture improved from 13.88 to 15.43 FPS with p95 84 to 76 ms;
+other scenes gained only 1-2%. Daily backups still hitch briefly, but normally
+run just once per UTC day, not continuously.
+See [measurements and limitations](../firmware/CYD.md#com4-beforeafter-measurements).
+
+**2.3.18 fish behavior:** fish ease into a gentle hover near their existing
+rest destinations. Existing boldness and laziness now affect hover, tap-startle
+sensitivity and food pursuit: bold fish are less easily startled, lazy fish
+pursue pellets more leisurely, and close food dives are more direct. No new
+personality stats, currency or save fields are introduced.
+
+**2.3.18 understandable progress:** Fish Interaction now shows the next trick's
+bond target and the number of +5 greetings needed, with greetings 30 seconds
+apart. Bond progress stays. Creative skips bond locks, while Follow still needs
+a tankmate. A Fish's Life gives rounded-up growth-hours until the next stage,
+notes that sleep grows fish more slowly, and explains decor rest/interest spots.
+Elders do not show a nonexistent next stage. Nothing adds a new care obligation.
+
+![Fish Interaction: next trick, bond target and greeting cooldown](media/cyd-features/fish-interaction-feedback.png)
+
+![A Fish's Life: next stage, growth-hours and decor rest spots](media/cyd-features/fish-life-feedback.png)
 
 **2.3.17 smoother background work:** weather checks at boot and hourly, even
 after failures. Exact clock/decoration/helper caches reduce repeated rendering

@@ -9,9 +9,15 @@ typedef struct {
     uint32_t max_us;
 } frame_pacing_t;
 
-static inline uint32_t frame_pacing_delay_ticks(uint32_t elapsed_us, uint32_t tick_us) {
-    uint32_t remaining = elapsed_us < 33334 ? 33334 - elapsed_us : 0;
-    return remaining ? 1 + (remaining - 1) / tick_us : 1;
+typedef struct { int64_t next_us; } frame_schedule_t;
+
+/* Preserve the fractional 30-Hz phase while on time; never queue catch-up frames. */
+static inline uint32_t frame_schedule_delay_ticks(frame_schedule_t *s, int64_t started_us,
+                                                 int64_t finished_us, uint32_t tick_us) {
+    int64_t target = s->next_us ? s->next_us : started_us + 33334;
+    if (finished_us >= target) { s->next_us = 0; return 1; }
+    s->next_us = target + 33334;
+    return (uint32_t)((target - finished_us + tick_us - 1) / tick_us);
 }
 
 static inline void frame_pacing_add(frame_pacing_t *p, uint32_t us) {

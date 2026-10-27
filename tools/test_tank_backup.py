@@ -12,6 +12,7 @@ def main():
     parser.add_argument("--cc", default="cc", help="C compiler executable (including zig)")
     parser.add_argument("--clock-only", action="store_true", help="Run clock/weather bounds and settings only")
     parser.add_argument("--inventory-only", action="store_true", help="Run shop inventory and mussel income regressions")
+    parser.add_argument("--backup-validation-only", action="store_true", help="Run JSON validation regressions and native timing")
     parser.add_argument("--flat-edges", action="store_true", help="Test the CYD renderer without cosmetic vignette")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
@@ -24,7 +25,7 @@ def main():
         "companion.c", "companion_ui.c", "weather.c"
     )]
     # Metadata is generated deterministically by the same packer as the firmware.
-    with tempfile.TemporaryDirectory(prefix="pocket-tank-tests-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=".pocket-tank-tests-", dir=Path.cwd()) as temporary:
         temporary = Path(temporary)
         subprocess.run([
             sys.executable, str(root / "tools" / "pack_cyd_icons.py"),
@@ -53,10 +54,11 @@ def main():
         environment = dict(os.environ, POCKET_TANK_FAKE_UPDATE="", POCKET_TANK_TEST_SLOTS=str(temporary),
                            POCKET_TANK_WIFI=str(temporary / "wifi.txt"),
                            POCKET_TANK_WEATHER=str(temporary / "weather.bin"))
-        selected = (["--inventory-only"] if args.inventory_only else
+        selected = (["--backup-validation-only"] if args.backup_validation_only else
+                    ["--inventory-only"] if args.inventory_only else
                     ["--clock-only"] if args.clock_only else [str(path) for path in fixtures])
         subprocess.run([str(executable), *selected], check=True, env=environment)
-        if not args.clock_only and not args.inventory_only:
+        if not args.clock_only and not args.inventory_only and not args.backup_validation_only:
             subprocess.run([str(executable), "--inventory-only"], check=True, env=environment)
 
 

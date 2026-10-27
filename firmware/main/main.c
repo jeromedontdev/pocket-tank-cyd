@@ -400,7 +400,9 @@ static void render_benchmark(uint16_t *buffer) {
             tank_profile_clock_us = esp_timer_get_time;
             tank_tick(sample, .1f, advisor_rules);
             int64_t b = esp_timer_get_time();
+            render_frame_begin(sample);
             render_damage_begin(sample, frame == 0);
+            if (frame >= 10) draw += esp_timer_get_time() - b;
             int cursor = 0, x, y, width, height;
             unsigned slot = 0;
             while (render_damage_next(&cursor, &x, &y, &width, &height)) {
@@ -425,6 +427,7 @@ static void render_benchmark(uint16_t *buffer) {
             display_port_wait();
             if (frame >= 10) flush += esp_timer_get_time() - drain_start;
             render_tile(0, 0); render_region(0, 0);
+            render_frame_end();
             if (frame >= 10) tick += b - a;
             vTaskDelay(pdMS_TO_TICKS(5) + 1);
             if (frame >= 10) frame_pacing_add(&benchmark_pacing, (uint32_t)(esp_timer_get_time() - a));
@@ -506,6 +509,10 @@ static void tank_task(void *arg) {
      * scene prefetch wait, post-flush work and the frame limiter. */
     int64_t polls_us = 0, tick_us = 0, wait_us = 0, tail_us = 0, sleep_us = 0, slept_from = 0;
     static frame_pacing_t pacing;
+    uint64_t presentation_total_us = 0;
+    uint32_t presentation_frames = 0, presentation_max_us = 0;
+    int64_t last_presented = 0;
+    frame_schedule_t schedule = {0};
     uint32_t max_polls_us = 0, max_tick_us = 0, max_render_us = 0, max_flush_us = 0;
     ESP_LOGI(TAG, "tank task up | heap int %u KB", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
     for (;;) {
@@ -520,6 +527,9 @@ static void tank_task(void *arg) {
             memset(render_front_us, 0, sizeof render_front_us);
             memset(tank_profile_us, 0, sizeof tank_profile_us);
             memset(&pacing, 0, sizeof pacing);
+            presentation_total_us = presentation_frames = presentation_max_us = 0;
+            last_presented = 0;
+            memset(&schedule, 0, sizeof schedule);
             max_polls_us = max_tick_us = max_render_us = max_flush_us = 0;
         }
         int64_t now = esp_timer_get_time();
@@ -689,6 +699,7 @@ static void tank_task(void *arg) {
                 photo = !page && sd_port_photo_begin(TANK_W, TANK_H);
                 if (!photo) render_backup_status(page ? "PHOTO CANCELED - CLOSE THE PAGE" : "PHOTO FAILED - CHECK SD", false);
             }
+            render_frame_begin(&tank);
             render_damage_begin(&tank, photo || page ||
                 (touch_port_selected() >= 0 && !render_clock_active(&tank)) || setup_active() || touch_port_confirm_up() ||
                 touch_port_calibrating() || (!render_clock_active(&tank) && notice_current() != NULL));
@@ -760,7 +771,14 @@ static void tank_task(void *arg) {
             display_port_wait();
             flush_us += esp_timer_get_time() - pf_tail;
             pf_tail = esp_timer_get_time();
+            if (last_presented) {
+                uint32_t interval = (uint32_t)(pf_tail - last_presented);
+                presentation_total_us += interval; presentation_frames++;
+                if (interval > presentation_max_us) presentation_max_us = interval;
+            }
+            last_presented = pf_tail;
             render_tile(0, 0); render_region(0, 0);
+            render_frame_end();
             if (photo) {
                 sd_port_photo_end(photo_rows == TANK_H);
                 if (s_photo_reopen) touch_port_show_settings(true);
@@ -817,6 +835,9 @@ static void tank_task(void *arg) {
                          pacing.max_us / 1000.0, (unsigned long)pacing.over_50, (unsigned long)pacing.over_80,
                          (unsigned long)pacing.over_100, max_polls_us / 1000.0, max_tick_us / 1000.0,
                          max_render_us / 1000.0, max_flush_us / 1000.0);
+                ESP_LOGI("display", "render/LCD completion intervals: mean %.1f max %.1f ms (not panel VSYNC)",
+                         presentation_frames ? presentation_total_us / 1000.0 / presentation_frames : 0.0,
+                         presentation_max_us / 1000.0);
                 } else {
                     ESP_LOGI("display", "%.1f fps p95<=%.0f p99<=%.0f max %.0f ms render %.1f flush %.1f",
                              frames * 1e6f / (float)(now - last_log),
@@ -835,6 +856,7 @@ static void tank_task(void *arg) {
             render_us = flush_us = 0; frames = 0; drawn_rows = 0;
             polls_us = tick_us = wait_us = tail_us = sleep_us = 0;
             memset(&pacing, 0, sizeof pacing);
+            presentation_total_us = presentation_frames = presentation_max_us = 0;
             max_polls_us = max_tick_us = max_render_us = max_flush_us = 0;
             if (s_render_trace) {
             char goals[N_FISH_MAX * 16] = ""; size_t gl = 0;
@@ -849,10 +871,8 @@ static void tank_task(void *arg) {
             }
             last_log = now;
         }
-        /* Round the remaining budget up to ticks; late frames yield one tick,
-         * rather than accumulating a catch-up queue. */
-        TickType_t delay = frame_pacing_delay_ticks((uint32_t)(esp_timer_get_time() - now),
-                                                  portTICK_PERIOD_MS * 1000);
+        TickType_t delay = frame_schedule_delay_ticks(&schedule, now, esp_timer_get_time(),
+                                                     portTICK_PERIOD_MS * 1000);
         slept_from = esp_timer_get_time(); tail_us += slept_from - pf_tail;
         vTaskDelay(delay);
     }

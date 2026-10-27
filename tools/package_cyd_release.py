@@ -175,7 +175,18 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.17: exact rendering caches, hourly weather and background SD backups
+### New in 2.3.18: aquarium-first polish
+
+- Fish ease into personality-scaled rest hovers. Existing laziness affects food pursuit; close pellet approaches steer more directly downward. Bold fish are less startled by taps and repeated taps. No new personality stats, animation banks or persistent state.
+- Fish Interaction shows the next 10/25/50-bond trick target and rounded-up +5 greeting count, with the existing 30-second cooldown visible. Creative bypasses bond locks; Follow still needs a tankmate. A Fish's Life explains growth-hours to the next stage, slower sleep growth and decor rest/interest spots without adding chores.
+- Shared per-frame clock metadata freezes wall time across tiles and avoids repeating layout/caption/cache-key work. Optional metadata yields RAM to verified HTTPS and SD snapshots, with an explicit live-render fallback.
+- Exact final opaque spans shade a color once before paired stores; coral crowns share prepared stem/tip colors. Normal-scale LCD conversion copies repeated source-column rows only inside the current DMA stripe. No new framebuffer, faster SPI, reduced art detail or slower fish update frequency.
+- Absolute fractional 30-Hz deadlines avoid light-scene rounding drift and discard late-frame backlog. Completion diagnostics distinguish render/LCD intervals from panel VSYNC.
+- The preceding controlled COM4 adaptive clock/decor fixture improved 13.88 to 15.43 FPS (p95 84 to 76 ms, intervals above 80 ms 31/240 to zero). Other fixtures improved only 1.0-1.9%; this is not a universal speedup or a 30-FPS promise.
+- Complete backup validation keeps semantic/identity checks and unordered duplicate detection. Actual tank-task service improved only from 108.9 to about 105 ms; daily backups still hitch briefly and are not the everyday animation bottleneck.
+- Save schema 19 / 6336 bytes, companion version 7, partitions, calibration and hardware profiles remain unchanged. Back up first.
+
+### Retained from 2.3.17: exact rendering caches, hourly weather and background SD backups
 
 - The 2.3.15 and 2.3.16 attempts stopped before publication at test-harness gates: strict-C POSIX declarations and lazy website-image decoding. Both are corrected without bypassing the backup, image-decode or installer checks. Neither attempt published firmware assets.
 - Weather checks at boot and hourly, including failed attempts. Offline acquisition is bounded; optional rendering caches release RAM for verified HTTPS, then warm again after the radio stops.

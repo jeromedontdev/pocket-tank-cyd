@@ -10,14 +10,28 @@ HARNESS = r"""
 #include <stdio.h>
 #include "frame_pacing.h"
 int main(void) {
-    assert(frame_pacing_delay_ticks(0, 1000) == 34);
-    assert(frame_pacing_delay_ticks(30000, 1000) == 4);
-    assert(frame_pacing_delay_ticks(33333, 1000) == 1);
-    assert(frame_pacing_delay_ticks(33334, 1000) == 1);
-    assert(frame_pacing_delay_ticks(200000, 1000) == 1);
-    assert(frame_pacing_delay_ticks(0, 10000) == 4);
-    for (unsigned elapsed = 0; elapsed < 33334; elapsed++)
-        assert(elapsed + frame_pacing_delay_ticks(elapsed, 1000) * 1000 >= 33334);
+    for (unsigned elapsed = 0; elapsed <= 200000; elapsed++) {
+        frame_schedule_t s = {0};
+        unsigned delay = frame_schedule_delay_ticks(&s, 1000000, 1000000 + elapsed, 1000);
+        assert(delay >= 1);
+        if (elapsed < 33334) {
+            assert(elapsed + delay * 1000 >= 33334);
+            assert(s.next_us == 1066668);
+        } else assert(delay == 1 && !s.next_us);
+    }
+    for (unsigned tick = 1000; tick <= 10000; tick += 9000) {
+        frame_schedule_t s = {0};
+        int64_t now = 1000000;
+        for (int i = 1; i <= 30000; i++) {
+            now += 12000 + frame_schedule_delay_ticks(&s, now, now + 12000, tick) * tick;
+            int64_t target = 1000000 + (int64_t)i * 33334;
+            assert(now >= target && now < target + tick);
+        }
+        assert(frame_schedule_delay_ticks(&s, now, now + 250000, tick) == 1 && !s.next_us);
+        now += 250000 + tick;
+        unsigned delay = frame_schedule_delay_ticks(&s, now, now + 12000, tick);
+        assert(12000 + delay * tick >= 33334);
+    }
     frame_pacing_t p = {0};
     assert(!frame_pacing_percentile(&p, 99));
     for (unsigned i = 1; i <= 200; i++) frame_pacing_add(&p, i * 1000);
@@ -32,7 +46,7 @@ int main(void) {
     memset(&p, 0, sizeof p);
     frame_pacing_add(&p, 50000); frame_pacing_add(&p, 80000); frame_pacing_add(&p, 100000);
     assert(!p.over_100 && p.over_80 == 1 && p.over_50 == 2);
-    puts("PASS: frame pacing percentiles, conservative 2-ms bounds, exact maxima, stalls and threshold boundaries");
+    puts("PASS: absolute 30-Hz deadlines have no rounding drift over 30,000 frames at 1/10-ms ticks; late frames rebase without catch-up; histogram bounds and stalls");
 }
 """
 

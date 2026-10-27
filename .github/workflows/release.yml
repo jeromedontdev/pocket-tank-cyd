@@ -36,6 +36,8 @@ jobs:
           python tools/test_setup_placement.py
           python tools/test_wardrobe.py --cc gcc
           python tools/test_frame_pacing.py --cc gcc
+          python tools/test_fish_behavior.py --cc gcc
+          python tools/test_companion_feedback.py --cc gcc
           python tools/test_rpg.py --cc gcc
           python tools/test_page_art.py --cc gcc
           python tools/test_page_art.py --cc gcc --board elegoo

@@ -152,6 +152,92 @@ static uint64_t hash_frame(const uint16_t *fb) {
 }
 
 #ifndef RENDER_BASELINE
+static void check_packed_spans(void) {
+    uint16_t pixels[326];
+    for (int offset = 0; offset < 4; offset++)
+        for (int count = 0; count <= 320; count++) {
+            for (int i = 0; i < 326; i++) pixels[i] = 0xa53c;
+            uint16_t color = (uint16_t)(count * 503 + offset);
+            fill565_span(pixels + offset, count, color);
+            for (int i = 0; i < 326; i++)
+                assert(pixels[i] == (i >= offset && i < offset + count ? color : 0xa53c));
+        }
+    fprintf(stderr, "PASS: packed RGB565 stores preserve every pixel and guard at both halfword alignments, lengths 0-320\n");
+    for (int normal = 0; normal < 2; normal++) {
+        tank_resolution(normal != 0);
+        for (int y = 0; y < TANK_H; y += 7) for (int offset = 0; offset < 2; offset++) {
+            for (int i = 0; i < TANK_W * TANK_H; i++) frame[i] = tiled[i] = (uint16_t)(i * 37);
+            ctx_t c = ctx_full(frame, TANK_W, .73f);
+            src_t color = src_color(0xa6c871, c.dim);
+            int x0 = offset, x1 = TANK_W - 3;
+            uint16_t expected = color.v;
+            int a = vig_alpha((x0 + x1) >> 1, y);
+            if (a) px_darken(&expected, a);
+            for (int x = x0; x <= x1; x++) tiled[y * TANK_W + x] = expected;
+            span_final(&c, x0, x1, y, &color, 255);
+            assert(!memcmp(frame, tiled, (size_t)TANK_W * TANK_H * sizeof *frame));
+        }
+    }
+    fprintf(stderr, "PASS: final opaque spans preserve scalar dimming/vignette pixels and row guards at both scales\n");
+}
+
+static void check_frame_clock(void) {
+    for (int normal = 0; normal < 2; normal++) for (int theme = CLOCK_OFF; theme < CLOCK_THEME_COUNT; theme++)
+        for (int hidden = 0; hidden < 2; hidden++) {
+            tank_t t = {0};
+            tank_init(&t, 42);
+            tank_resolution(normal != 0);
+            t.companion.display_compact = normal != 0;
+            t.clock_requested = true;
+            t.aquariums.clock_theme = (uint8_t)theme;
+            t.aquariums.clock_flags = hidden ? CLOCK_HIDE_PANEL : 0;
+            render_clock_fixed_unix = frozen_unix;
+            for (int i = 0; i < TANK_W * TANK_H; i++) frame[i] = tiled[i] = (uint16_t)(i * 13);
+            render_work_caches(true);
+            render_clock_overlay(&t, frame, TANK_W, frozen_unix);
+            render_clock_layout_t expected, actual;
+            render_clock_layout(&t, &expected);
+            render_frame_begin(&t);
+            render_clock_fixed_unix++;
+            assert(render_clock_now() == frozen_unix);
+            render_clock_layout(&t, &actual);
+            assert(!memcmp(&expected, &actual, sizeof actual));
+            for (int y = 0; y < TANK_H; y += 40) {
+                render_tile(y, TANK_H - y < 40 ? TANK_H - y : 40);
+                render_clock_overlay(&t, tiled + y * TANK_W, TANK_W, render_clock_now());
+            }
+            render_tile(0, 0);
+            render_frame_end();
+            assert(render_clock_now() == frozen_unix + 1);
+            assert(!memcmp(frame, tiled, (size_t)TANK_W * TANK_H * 2));
+            render_clock_fixed_unix = 0;
+        }
+    render_work_caches(false);
+    tank_t t = {0};
+    tank_init(&t, 42);
+    t.clock_requested = true; t.aquariums.clock_theme = CLOCK_ANALOG;
+    render_clock_fixed_unix = frozen_unix;
+    memset(frame, 0x5c, sizeof frame); memset(tiled, 0x5c, sizeof tiled);
+    render_clock_overlay(&t, frame, TANK_W, frozen_unix);
+    render_work_caches(true);
+    fail_render_malloc = true;
+    render_frame_begin(&t);
+    assert(!g_frame_clock_key && !g_frame_has_clock);
+    render_clock_overlay(&t, tiled, TANK_W, frozen_unix);
+    render_frame_end();
+    fail_render_malloc = false;
+    assert(!memcmp(frame, tiled, (size_t)TANK_W * TANK_H * 2));
+    render_work_caches(false); render_work_caches(true);
+    render_frame_begin(&t);
+    assert(g_frame_clock_key && render_work_cache_bytes() == sizeof *g_frame_clock_key);
+    render_frame_end();
+    render_work_caches(false);
+    assert(!g_frame_clock_key && !render_work_cache_bytes());
+    render_clock_fixed_unix = 0;
+    fprintf(stderr, "PASS: frame-scoped clock metadata preserves all themes, panel modes, scales and exact tiled pixels across a wall-clock second boundary\n");
+    fprintf(stderr, "PASS: optional frame metadata allocation failure draws exact live pixels, retries after cache lease, accounts for bytes and releases all memory for TLS/SD\n");
+}
+
 static void check_motion_cache(void) {
     fish_t f = {0};
     for (int i = 0; i < 100; i++) {
@@ -707,12 +793,18 @@ static void pose(tank_t *t, int sample) {
 }
 
 static void draw_tiles(const tank_t *t, uint16_t *fb, int height) {
+#ifndef RENDER_BASELINE
+    render_frame_begin(t);
+#endif
     for (int y = 0; y < TANK_H; y += height) {
         int rows = TANK_H - y < height ? TANK_H - y : height;
         render_tile(y, rows);
         render_tank(t, fb + y * TANK_W, TANK_W);
     }
     render_tile(0, 0);
+#ifndef RENDER_BASELINE
+    render_frame_end();
+#endif
 }
 
 #ifndef RENDER_BASELINE
@@ -737,6 +829,8 @@ static void check_tick_profile(void) {
 #endif
 static void benchmark(int frames) {
 #ifndef RENDER_BASELINE
+    check_packed_spans();
+    check_frame_clock();
     check_tick_profile();
     check_motion_cache();
     check_castle_cache();
@@ -817,6 +911,9 @@ static void benchmark(int frames) {
                 int64_t damage_start = micros();
                 for (int i = 0; i < damage_frames; i++) {
                     pose(&damage_sample, i);
+#ifndef RENDER_BASELINE
+                    render_frame_begin(&damage_sample);
+#endif
                     render_damage_begin(&damage_sample, false);
                     int cursor = 0, x, y, width, height;
                     while (render_damage_next(&cursor, &x, &y, &width, &height)) {
@@ -831,6 +928,9 @@ static void benchmark(int frames) {
                         }
                     }
                     render_tile(0, 0); render_region(0, 0);
+#ifndef RENDER_BASELINE
+                    render_frame_end();
+#endif
                 }
                 int64_t damage_elapsed = micros() - damage_start;
                 printf("{\"width\":%d,\"detail\":%d,\"group\":%d,\"frames\":%d,"
@@ -956,6 +1056,9 @@ static void soak(int seconds) {
                 }
                 abort();
             }
+#ifndef RENDER_BASELINE
+            render_frame_begin(&t);
+#endif
             render_damage_begin(&t, step == 0);
             int cursor = 0, x, y, width, height;
             while (render_damage_next(&cursor, &x, &y, &width, &height)) {
@@ -974,6 +1077,9 @@ static void soak(int seconds) {
             }
             render_tile(0, 0);
             render_region(0, 0);
+#ifndef RENDER_BASELINE
+            render_frame_end();
+#endif
             if (memcmp(frame, retained, (size_t)TANK_W * TANK_H * 2)) {
                 fprintf(stderr, "Retained-region stress mismatch: case=%" PRIu64 " step=%d\n", checks, step);
                 abort();

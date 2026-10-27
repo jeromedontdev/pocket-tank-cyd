@@ -62,7 +62,8 @@ static int s_layout_width, s_layout_height, s_layout_tile;
 static int64_t s_wait_us, s_send_us, s_fill_us;
 static unsigned s_blocks_sent, s_blocks_skipped;
 static unsigned crc_calls;
-static int64_t esp_timer_get_time(void) { static int64_t t; return ++t; }
+static int64_t test_time;
+static int64_t esp_timer_get_time(void) { return ++test_time; }
 static uint32_t esp_crc32_le(uint32_t seed, const uint8_t *p, size_t n) {
     crc_calls++;
     uint32_t crc = ~seed;
@@ -123,7 +124,10 @@ static void verify_frame(const uint16_t *frame) {
 static void check_frame(uint16_t *frame, int height) {
     for (tile_y = 0; tile_y < TANK_H; tile_y += height) {
         tile_h = height == TANK_H ? 0 : TANK_H - tile_y < height ? TANK_H - tile_y : height;
+        int64_t before = test_time, fill = s_fill_us, wait = s_wait_us, send = s_send_us;
         display_port_flush(frame + tile_y * TANK_W);
+        assert(s_fill_us > fill);
+        assert((s_fill_us - fill) + (s_wait_us - wait) + (s_send_us - send) == test_time - before - 1);
     }
     verify_frame(frame);
 }

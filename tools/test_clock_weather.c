@@ -130,11 +130,19 @@ void test_clock_weather(void) {
                         render_work_caches(false);
                         render_clock_overlay(&tank, frame + 1, STRIDE, valid ? INT64_C(1735689600) : 0);
                         render_work_caches(true);
+                        bool requested = tank.clock_requested;
+                        int64_t previous_time = render_clock_fixed_unix;
+                        tank.clock_requested = true;
+                        render_clock_fixed_unix = valid ? INT64_C(1735689600) : 0;
+                        render_frame_begin(&tank);
                         for (int y = 0; y < TANK_H; y += 60) {
                             render_tile(y, 60);
                             render_clock_overlay(&tank, cached + 1 + y * STRIDE, STRIDE, valid ? INT64_C(1735689600) : 0);
                         }
                         render_tile(0, 0);
+                        render_frame_end();
+                        tank.clock_requested = requested;
+                        render_clock_fixed_unix = previous_time;
                         if (memcmp(frame, cached, (PIXELS + 2) * sizeof *frame)) {
                             fprintf(stderr, "Clock cache mismatch theme %d size %d position %d flags %d valid %d\n", theme, size, position, hidden, valid);
                             assert(false);

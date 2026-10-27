@@ -1,6 +1,7 @@
 #include "companion.h"
 #include "render.h"
 #include "progression.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -40,6 +41,38 @@ static void illustrated_button(uint16_t *fb, int stride, int x, int y, int w,
 }
 static unsigned bits(unsigned value) {
     unsigned n = 0; for (; value; value >>= 1) n += value & 1u; return n;
+}
+static void bond_progress_text(const tank_t *t, const companion_bond_t *bond,
+                               char *line, size_t size) {
+    static const char *const tricks[] = {"DART", "BUBBLES", "FOLLOW"};
+    static const unsigned need[] = {10, 25, 50};
+    if (progression_creative(t)) {
+        snprintf(line, size, "CREATIVE: ALL TRICKS OPEN.");
+        return;
+    }
+    for (int i = 0; i < 3; i++) if (bond->bond < need[i]) {
+        unsigned hellos = (need[i] - bond->bond + 4) / 5;
+        snprintf(line, size, "%s: %u BOND / %u HELLO%s.",
+                 tricks[i], need[i], hellos, hellos == 1 ? "" : "S");
+        return;
+    }
+    snprintf(line, size, "ALL TRICKS OPEN.");
+}
+static void life_progress_text(const tank_t *t, int fish, char *line, size_t size) {
+    static const char *const next_stage[] = {"JUVENILE", "ADULT", "ELDER"};
+    static const unsigned threshold[] = {STAGE_JUV_AGE, STAGE_ADULT_AGE, STAGE_ELDER_AGE};
+    const fish_t *f = &t->fish[fish];
+    if (f->stage >= STAGE_ELDER) {
+        snprintf(line, size, "ELDER: NO NEXT STAGE. AGE CONTINUES WITH TIME.");
+        return;
+    }
+    unsigned stage = (unsigned)f->stage;
+    float age = progression_age_s(t, fish);
+    if (!(age >= 0)) age = 0;
+    float remaining = age < threshold[stage] ? threshold[stage] - age : 0;
+    unsigned hours = (unsigned)ceilf(remaining / 3600);
+    snprintf(line, size, "NEXT: %s IN %u GROWTH-HOUR%s; SLEEP IS SLOWER.",
+             next_stage[stage], hours, hours == 1 ? "" : "S");
 }
 /* Shared 16x16, four-color sprites; scenery stays static and needs no cache. */
 static const char story_art[8][16][17] = {
@@ -384,14 +417,14 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
             render_text(fb, stride, 14, 153, 1, 0xffd998, line);
             render_text(fb, stride, 14, 173, 1, 0xa7c4ba,
                         life->friend_s >= 600 ? "Close companions" : life->friend_s >= 30 ? "Familiar companions" : "A friendship takes quiet time.");
-            companion_care_text(t, i, line, sizeof line);
+            life_progress_text(t, i, line, sizeof line);
             paragraph(fb, stride, 198, 0xe7f4dc, line);
             int spot = tank_favorite_decor(t, i);
-            snprintf(line, sizeof line, "FAVORITE: %s", spot < 0 ? "THE REEF" : SD_ITEMS[spot].name);
-            render_text(fb, stride, 14, 236, 1, 0xa7c4ba, line);
-            if (companion_rpg_contributor(t, life->id))
-                render_text(fb, stride, 14, 250, 1, 0xffd998, "LOST CURRENT: CHAPTER GUIDE");
-            snprintf(line, sizeof line, "FIRSTS: %u", bits(life->milestones));
+            snprintf(line, sizeof line, "REST SPOT: %s", spot < 0 ? "THE REEF" : SD_ITEMS[spot].name);
+            render_text(fb, stride, 14, 230, 1, 0xa7c4ba, line);
+            render_text(fb, stride, 14, 248, 1, 0xa7c4ba, "DECOR SETS REST/INTEREST SPOTS.");
+            snprintf(line, sizeof line, companion_rpg_contributor(t, life->id) ?
+                     "FIRSTS: %u / CHAPTER GUIDE" : "FIRSTS: %u", bits(life->milestones));
             stamp(fb, stride, 14, 266, STAMP_STAR, true);
             render_text(fb, stride, 40, 270, 1, 0xa7c4ba, line);
             snprintf(line, sizeof line, "KEEPSAKES: %u", bits(life->adventures));
@@ -610,7 +643,8 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
     char context[48];
     if (page == COMPANION_SECTION_RPG) companion_rpg_context(t, selected < t->n_fish ? selected : 0, context, sizeof context);
     else snprintf(context, sizeof context, "%s", page == COMPANION_SECTION_ADVENTURES ?
-                  "SAFE TRIPS: NO HUNGER OR AGING." : "Your aquarium, your pace.");
+                  "SAFE TRIPS: NO HUNGER OR AGING." : page == COMPANION_SECTION_CARE ?
+                  "HELLOS: 30S APART. BOND STAYS." : "Your aquarium, your pace.");
     if (page == COMPANION_SECTION_RPG)
         render_text_wrap(fb, stride, 14, 49, 420, notice[0] ? 0xffd998 : 0xa7c4ba, notice[0] ? notice : context);
     else render_text(fb, stride, 14, 55, 1, notice[0] ? 0xffd998 : 0xa7c4ba,
@@ -653,7 +687,8 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
             render_text(fb, stride, 64, 88, 1, 0xe7f4dc, line);
             button(fb, stride, 304, 110, 132, "NEXT FISH");
             illustrated_button(fb, stride, 12, 110, 278, "SAY HELLO (+5 BOND)", STAMP_HEART, true);
-            render_text(fb, stride, 14, 148, 1, 0xa7c4ba, "Hello every 30s. Bond never fades.");
+            bond_progress_text(t, b, line, sizeof line);
+            render_text(fb, stride, 14, 148, 1, 0xa7c4ba, line);
             companion_favorite_label(t, i, line, sizeof line);
             render_text(fb, stride, 14, 170, 1, 0xffd998, line);
             companion_care_text(t, i, line, sizeof line);
@@ -882,7 +917,7 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
                 static const unsigned need[] = {10, 25, 50};
                 static const char *const effects[] = {"Dart! BACK to watch.", "Bubbles! BACK to watch.", "Follow! BACK to watch."};
                 int i = selected < t->n_fish ? selected : 0;
-                if (t->companion.active[i].bond < need[j]) snprintf(notice, sizeof notice, "Locked: needs %u bond. Say hello.", need[j]);
+                if (!progression_creative(t) && t->companion.active[i].bond < need[j]) snprintf(notice, sizeof notice, "Locked: needs %u bond. Say hello.", need[j]);
                 else if (j == 2 && t->n_fish < 2) snprintf(notice, sizeof notice, "Follow needs a tankmate at home.");
                 else snprintf(notice, sizeof notice, "%s", companion_trick(t, i, j) ? effects[j] : "Save failed. Trick not started.");
             }

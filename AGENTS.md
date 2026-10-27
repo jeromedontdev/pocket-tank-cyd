@@ -33,10 +33,23 @@ or deployment is published. Update this file when its contracts change.
   regular FPS gains are modest/mixed, and backup snapshot validation still hitches.
   Published tag commit is `bf11f3b08fe2c340306a589f238c0f96fe124859`;
   release/main/tag checks and release-pinned Pages passed. Published unified
-  app is1,765,776 bytes with200,304 bytes per OTA slot. COM4 runs a clean local
+  app is1,765,776 bytes with200,304 bytes per OTA slot. At publication, COM4 ran a clean local
   build of that tag, with full recovery backup/readback and residents/saves
   verified. Local/CI binary hashes differ with build metadata: consult
   firmware/CYD.md and recheck actual GitHub/Pages status before future claims.
+- Before the 2.3.18 gameplay polish, the optimization follow-up was flashed on COM4, superseding that clean-tag
+  hardware baseline: local2.3.17/44dee70-dirty, app SHA256
+  `97aaf933e5b6dd806f6206ca9eac685d39f81538815c2cd5f6c36442b05707e2`.
+  Full backup/app readback, verified HTTPS, all16 fixture comparisons, three
+  SD worker diagnostics and original residents/wallet/settings/saves passed.
+  Adaptive clock/decor fixture13.88->15.43FPS, p9584->76ms, >80ms31->0/240;
+  other fixtures improve only1.0-1.9%. Live windows are not controlled A/B.
+  Actual backup pause remains about105ms (108.9ms before), not the larger
+  native-only validator speedup. Frame metadata is optional leased RAM; the
+  first permanent-key/extra-histogram trial broke HTTPS PSA memory allocation.
+  Current app1,767,264 bytes, slot headroom198,816, static DRAM79,731 bytes.
+  See [measurements and limitations](firmware/CYD.md#com4-beforeafter-measurements).
+  Those are pre-polish measurements, not the final 2.3.18 image identity.
 - Release 2.3.14 content expansion: exactly six new wearables (IDs7–12) and twenty
   static placeable ornaments (shop IDs43–62); existing IDs0–42 never move.
   Schema19 / 6336 bytes appends `decor_content_t` at6168, retaining schema18's
@@ -398,6 +411,21 @@ or deployment is published. Update this file when its contracts change.
   out of the hot path. Document remaining hitches and negative/mixed results.
   Detailed reference captures and exact pixel/hash tests are acceptance checks,
   not substitutes for device pacing and memory measurements.
+- Keep behavior polish on the existing bold/lazy traits and steering: rest
+  arrival eases toward a trait-scaled hover; laziness moderates food pursuit,
+  close food dives steer more directly, and bold fish startle less from taps.
+  Do not add a new personality record, save tail or cosmetic animation bank.
+  `tools/test_fish_behavior.py --cc gcc` checks continuity, all ten varieties,
+  tank edges, reactions and frame-step stability. Intentional behavior changes
+  alter trajectories: compare old/new renderer pixels using the same updated
+  simulation, not old trajectory hashes as an artwork acceptance test.
+- Care feedback stays read-only and grounded in actual rules. Fish Interaction
+  uses10/25/50 bond thresholds, ceil(+5 greeting) counts and the30-second cooldown;
+  Creative bypasses bond locks but Follow still needs a tankmate. Life uses
+  ceil-rounded growth-hours,25% growth during sleep and no elder next stage.
+  Keep feedback on existing pages, not another chore/checklist system.
+  `tools/test_companion_feedback.py --cc gcc` checks semantic thresholds,
+  cooldowns, stages and both-scale read-only layout; retain the page-art audit.
 
 ## Product constraints
 
@@ -498,8 +526,11 @@ or further split modules without a concrete maintenance benefit.
   scratch, masks, task stacks and DMA transfers must fit internal RAM.
   Do not "fix" an allocation failure by requiring PSRAM, selecting a PSRAM board,
   or enabling PSRAM-only code. SD storage cannot replace working RAM.
-- The loop has a **40 ms minimum frame interval (25 FPS ceiling)**, not a
-  promise of 25 FPS in a moving aquarium. The practical populated-tank goal is
+- The loop has a **33,334-us target interval (30 FPS ceiling)**, not a
+  promise of 30 FPS in a moving aquarium. Absolute deadlines preserve the
+  fractional phase without per-frame tick-rounding drift; late frames yield
+  one tick and discard their deadline, never queue catch-up frames.
+  The practical populated-tank goal is
   **10 FPS**, not the earlier 15 FPS aspiration.
 - Historical hardware observations in [firmware/CYD.md](firmware/CYD.md) and
   [the feature guide's performance notes](docs/CYD-FEATURES.md) include
@@ -541,6 +572,17 @@ or further split modules without a concrete maintenance benefit.
   existing span painter; do not reintroduce a full RGB565 sprite allocation
   that fails alongside clock caches or a slower duplicate pixel/mask loop.
   Castle/crown caches help only scenes containing those objects.
+  CYD frame scopes prepare clock metadata once and freeze wall time across
+  tiles: begin after simulation, end after the LCD drain, before any mutation
+  of tank/device settings/resolution/cache ownership. Unscoped rendering must
+  retain exact output. Opaque span paired stores must support both halfword
+  alignments, lengths0-320 and padded strides; never weaken alpha blending.
+  Native stress compares scoped full/tile/retained pixels and wall-time rollovers.
+  Frame metadata must stay an optional leased cache, accounted and freed before
+  HTTPS/SD, with a logged live-format fallback. A permanent key plus a second
+  timing histogram caused real COM4 TLS PSA -141 (insufficient memory), despite
+  about25KiB free before HTTPS. Keep completion diagnostics to mean/max counters;
+  verify actual HTTPS after any internal-RAM budget change, not just heap totals.
 - Daily backup capture/semantic validation stays on the tank task; immutable
   JSON ownership transfers to a CPU1 priority1 worker below LCD priority4.
   The worker must not access mutable tank/progression state. Keep its4-KiB
@@ -556,7 +598,15 @@ or further split modules without a concrete maintenance benefit.
   markers and removes its diagnostic file. Run
   `python tools\test_cyd_sd_backup.py --cc gcc` for ownership/failure/admission
   regressions. Do not claim backups are hitch-free: capture/validation remains
-  about109ms on the measured four-resident CYD.
+  about105ms on the latest measured four-resident CYD (about109ms before).
+  The working-tree follow-up optimizes canonical field/array traversal, not
+  validation coverage. Unordered imports still need exhaustive duplicate
+  checks; do not make a trusted-export exception that skips semantic/identity
+  validation. Re-measure the on-device pause after validator changes.
+  This is normally once per UTC day when enabled, after a90-second boot settle
+  and only if that day's success marker is absent. Failed attempts retry after
+  an hour; minute eligibility polls are not minute backups. Do not prioritize
+  this rare hitch over rendering/LCD costs paid every moving frame.
 - Fish stay full-rate; scenery clocks are independent (Balanced effects5Hz/
   grass2Hz, Enhanced10Hz/4Hz, staggered grass beds). Damage planning compares
   merged rectangle costs, not the old fixed40% promotion threshold. Serial
@@ -564,6 +614,10 @@ or further split modules without a concrete maintenance benefit.
   modes with identical40-row tiles. Frame pacing logs include2-ms upper-bound
   p50/p95/p99, exact maxima, slow counts, and main-stage maxima; worker timings
   overlap rendering and must not be added again to the main-task frame budget.
+  LCD fill profiling now counts each flush once, including all-skipped tiles;
+  older stripe-cumulative fill totals were inflated and are not an A/B baseline.
+  Keep the native elapsed=fill+wait+send assertion. Render/LCD completion
+  intervals are useful presentation diagnostics, not a panel-VSYNC timestamp.
 - At boot, `tank task up`, and periodic `TAG`/`display` lines, inspect **free
   internal heap and largest internal block**, cache usage, and rows rendered/
   flushed. A healthy total heap does not prove a contiguous DMA allocation
@@ -630,6 +684,8 @@ python -m unittest discover -s tools -p "test_*.py"
 python tools\test_tank_backup.py --cc gcc
 python tools\test_tank_backup.py --cc gcc --flat-edges
 python tools\test_rpg.py --cc gcc
+python tools\test_fish_behavior.py --cc gcc
+python tools\test_companion_feedback.py --cc gcc
 python tools\test_page_art.py --cc gcc
 python tools\test_renderer_stress.py --cc gcc --frames 1200 --seconds 30
 python tools\test_creative.py --cc gcc

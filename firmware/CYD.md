@@ -423,6 +423,170 @@ backup/inventory tests, deferred-worker failure/identity/scheduling tests, and
 clock occlusion, clipped tiles/regions, exact final lighting and use by the
 actual tiled tank without a second sprite allocation.
 
+### 2.3.18 everyday rendering and fish behavior
+
+The final opaque-span path prepares its identical lit/vignetted RGB565 value
+once before the paired fill, rather than repeating the same darkening for every
+pixel. Coral/cluster crown fans prepare their two dimmed source colors once.
+The LCD worker copies consecutive identical Normal-scale conversion rows within
+the current stripe: the 240-to-320 expansion maps some adjacent physical rows
+to the same logical source column. Copies never cross stripe ownership, and
+CRC/overlap invalidation, 40-MHz SPI and delayed-DMA lifetime remain unchanged.
+No new framebuffer, allocation or permanent table is introduced by these paths.
+
+Existing fish steering now eases rest speed within 36 logical pixels toward
+a hover of `1.2 + 2.4 * bold + 0.5 * (1 - lazy)`. Food pursuit is multiplied by
+`1 - 0.18 * lazy`; downward food steering rises from 0.72 to 1 over the final
+80 pixels. Tap-startle sensitivity is `1.25 - 0.5 * clamp(bold, 0, 1)`, applied
+to existing stress/trust changes, including repeated taps. These intentional
+behavior changes reuse existing traits and runtime fields; they do not change
+care cadence, save layout, species artwork, traits themselves or reward rules.
+The focused behavior test covers all ten renderer varieties, both display
+scales, turn/edge continuity, rest transitions at 0.033/0.1-second steps,
+finite nonnegative speeds, food/tap/enrichment responses and renderer purity.
+
+Fish Interaction's next target uses the actual 10/25/50 bond thresholds and
+ceil-divides the remaining bond by five, alongside the 30-second greeting
+cooldown and remaining wait. Creative bypasses bond locks but not Follow's
+tankmate requirement. A Fish's Life shows ceil-rounded growth-hours for the
+next stage, a slower-sleep caveat (growth runs at25% during sleep) and existing
+decor rest/interest spots; elders have no next-stage countdown. Presentation
+is read-only. Focused semantic tests cover all bond values0-100, cooldown
+boundaries, every stage, fractional hours, awake/night growth and both scales.
+The 518-screen menu audit and actual-renderer screenshots check the layout.
+
+Final source acceptance also compares the 2.3.17 renderer against the updated
+simulation: all 12 scene hashes and 48 sampled frame hashes match, separating
+intentional steering changes from pixel changes. Flat/rounded 30-second soaks
+checked 17,486/16,443 full/tile/retained frame sets. The embedded icon bank,
+delayed-DMA LCD ownership/scaling/inversion, absolute deadlines, scoped clocks,
+complete backup/inventory, profiles, Creative, RPG, wardrobe, hourly weather,
+SD worker and native simulator checks passed. There were 41 Python contract
+tests with one expected skip. The final Emscripten 4.0.18/Playwright 1.56.1
+browser build passed all 63 shop entries, touch/mobile/fullscreen, durable
+save/import, exclusive-tab and corruption/quota recovery checks.
+
+### 2.3.18 frame-pacing and snapshot follow-up
+
+The renderer can bracket an immutable frame with `render_frame_begin` and
+`render_frame_end`. The CYD loop and isolated hardware fixtures use this scope
+after simulation and end it after the LCD worker drains. Clock layout, wrapped
+captions, weather/status text and command-cache identity are prepared once,
+rather than repeatedly formatting the same metadata for each tile. Wall time
+is frozen through the frame, so a second rollover cannot split the clock across
+tiles. Regions outside the clock bounds skip replay. Unscoped callers retain
+their existing behavior; end the scope before changing tank/device/cache state.
+The metadata is an optional cache, included in cache-byte diagnostics and
+released with the other work caches before HTTPS or SD snapshots. Allocation
+failure explicitly falls back to live formatting. The first hardware trial's
+permanent metadata plus a second timing histogram consumed enough internal RAM
+to fail certificate signature verification with PSA error -141 (insufficient
+memory). That design was rejected: metadata is leased and completion timing
+uses only mean/max counters, not a second permanent histogram. Never disable
+TLS verification or dismiss that error as a bad certificate.
+
+Opaque RGB565 spans use aligned paired stores, preserving odd starting
+addresses, odd lengths and guard pixels. Clock alpha-255 remains the exact
+255/256 blend; it is not replaced with an opaque store. Fish poses, decoration
+detail, geometry, scenery cadence and save formats are unchanged. No
+interpolation or extra framebuffer is introduced.
+
+The 30-Hz light-scene limiter now carries absolute fractional deadlines instead
+of independently rounding every frame's delay. A late frame yields one tick
+and discards the old phase; it never schedules catch-up frames. This does not
+make a CPU-bound aquarium run at 30 FPS. Tests exercise 30,000 deadlines at both
+1-ms and 10-ms scheduler ticks, stall recovery and exact percentile boundaries.
+Verbose diagnostics also report render/LCD completion intervals separately
+from frame-start intervals; neither is a panel-VSYNC measurement.
+
+LCD worker fill accounting is corrected: the old implementation repeatedly
+added elapsed fill time since the start of the tile at each stripe submission,
+inflating its reported cost, and missed all-unchanged tiles. It now accounts
+for each entire flush exactly once, subtracting wire waits and send calls.
+Do not compare old and new **fill** numbers as a performance improvement.
+Native delayed-DMA tests require fill + wait + send to equal elapsed time for
+both changed and skipped transfers; buffer ownership and LCD output are intact.
+
+Complete backup validation uses a guarded linear field/array traversal for
+canonical exported JSON; unordered imports retain exhaustive duplicate checks.
+Validation is not skipped for self-exported data. The tank task still captures
+and semantically validates an immutable snapshot, and the worker still verifies
+exact storage readback. Worker/core/stack limits and identity-bound daily
+completion remain unchanged.
+
+Before the separate fish-behavior polish, native validation preserved all twelve 2.3.17 reference scene hashes and 48
+sampled frame hashes. Thirty-second flat/rounded soaks checked 17,962 and 16,170
+full/tile/retained frame sets, including scoped partial regions, all clock
+themes, day/night, scales and turn/dive wardrobe geometry. Clock/weather,
+complete backup/inventory, deferred SD worker, pacing and LCD tests passed;
+41 Python contracts passed with one expected skip. The final Emscripten build
+also passed actual browser gameplay, mobile/fullscreen, all 63 shop entries,
+save/import persistence, exclusive-tab and corruption/quota recovery checks.
+
+The final memory-safe candidate uses 79,731 bytes of static DRAM, compared with
+80,963 in the rejected trial. Its app is 1,767,264 bytes, leaving 198,816 bytes
+per existing OTA slot. A fresh full 4-MiB recovery dump, application-only COM4
+flash to the positively detected `ota_0` slot and complete application readback
+verified SHA256
+`97aaf933e5b6dd806f6206ca9eac685d39f81538815c2cd5f6c36442b05707e2`.
+After reboot, HTTPS had 26,260 bytes free / 24,576 largest internal block and
+completed certificate-verified weather acquisition successfully in 1.873 seconds.
+The radio/cache lease ended normally. This is a local working-tree build on
+2.3.17 at that stage, before the separate 2.3.18 gameplay polish and final build.
+
+#### COM4 before/after measurements
+
+The clean tagged 2.3.17 release was measured immediately before the
+follow-up, then the memory-safe candidate repeated all sixteen fixed-seed
+five-fish fixtures (240 measured frames after ten warmups). Both runs used
+Normal scale, Balanced scenery, identical simulation steps, 40-row tiles and
+the same service reserve. Default adaptive-mode results:
+
+| Fixture | FPS before / after | p95 frame ms before / after | p99 frame ms before / after |
+| --- | ---: | ---: | ---: |
+| 0, first species group | 19.47 / 19.84 | 58 / 56 | 62 / 62 |
+| 1, second species group/theme | 18.73 / 19.09 | 60 / 60 | 64 / 62 |
+| 2, clock and mixed decorations | 13.88 / 15.43 | 84 / 76 | 96 / 80 |
+| 3, repeated foreground decorations | 16.72 / 16.89 | 68 / 66 | 72 / 72 |
+
+The clock-heavy case improved 11.2%; its maximum fell from 95.9 to 79.9 ms,
+and intervals above 80 ms fell from 31/240 to 0/240. Other adaptive fixtures
+improved only 1.0-1.9%. No fixture in any of the four diagnostic modes regressed
+in mean FPS. Clock-heavy pipeline/full improved 15.05 to 16.39 FPS, while
+deliberately fragmented partial updates improved 10.39 to 12.37 FPS but remained
+slower than adaptive/full. The existing damage-cost policy is therefore retained.
+
+The clock stage reports 8.28 to 3.65 ms in the adaptive clock fixture. Metadata
+preparation is now counted once in the aggregate render budget, outside that
+stage, so the stage difference alone is not the complete saving. The new
+benchmark render total also includes damage planning; older draw totals timed
+only tile drawing. FPS and whole-frame percentiles are directly comparable.
+Likewise, the LCD fill-accounting correction is not a wire-speed improvement.
+
+Three quiet resident windows before flashing reported 10.8/11.7/12.9 FPS and
+p95 bounds of 106/104/98 ms; afterward they reported 16.4/16.9/16.7 FPS and
+70/74/76 ms. The first after-window still had a 192-ms maximum, with subsequent
+windows at 80/84 ms. Fish positions, poses, warmup and weather state can vary,
+so these live windows are observations, not the controlled fixture comparison.
+Detailed tracing separately exposes LCD completion gaps, render stages and
+main-task phases; normal operation was left with verbose tracing off.
+
+The same aquarium's backup diagnostic before flashing took 36.908 ms to export
+and 68.896 ms for full semantic/identity validation, for 108.923 ms total
+tank-task service. Three final samples took 37.061-37.113 ms to export,
+64.869-65.981 ms to validate, and 104.835-105.954 ms total service.
+Worker storage/readback/cleanup took 427.852-431.902 ms, versus 429.046 ms before.
+All three files verified and were removed without changing backup counters or
+daily markers. **This is only a small reduction in the actual backup pause,**
+despite a larger native validator microbenchmark improvement. The remaining
+roughly 105-ms main-task work still hitches; diagnostic frame windows reached
+216-218 ms versus 227 ms before. Do not claim hitch-free backups.
+
+Final hardware/profile/save checks retained Bolt/Pip (elder), Kelp/Odie (adult),
+the unchanged 7,738-wallet / 11,378-earned accounting, shop ownership, fish
+upgrades and all clock settings. No progression, save schema or partition
+changes were made.
+
 The existing 86,400-byte internal framebuffer is partitioned into two alternating
 40-row working tiles. An LCD worker on core 1 rotates/checksums/transmits the
 previous tile while the tank task on core 0 renders the next. Submission captures

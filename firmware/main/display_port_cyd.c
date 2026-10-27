@@ -275,15 +275,23 @@ static void flush_region(const uint16_t *fb, int tile_start, int tile_end, int r
     for (int native_y = native_start; native_y < native_end; native_y += rows) {
         int count = native_end - native_y < rows ? native_end - native_y : rows;
         uint16_t *buffer = s_stripe + stripe * (CYD_STRIPE_BYTES / 2 / sizeof(uint16_t));
+#if !CYD_DIAGNOSTIC_PATTERN
+        int previous_x = -1;
+#endif
         for (int row = 0; row < count; row++) {
+            uint16_t *target = buffer + row * region_width;
 #if !CYD_DIAGNOSTIC_PATTERN
             int logical_x = (native_y + row) * TANK_W / CYD_PANEL_W;
 #if CYD_LCD_MIRROR_X
             logical_x = TANK_W - 1 - logical_x;
 #endif
             if (s_inverted) logical_x = TANK_W - 1 - logical_x;
+            if (row && logical_x == previous_x) {
+                memcpy(target, target - region_width, (size_t)region_width * sizeof *target);
+                continue;
+            }
+            previous_x = logical_x;
 #endif
-            uint16_t *target = buffer + row * region_width;
             for (int native_x = panel_start; native_x < panel_end; native_x++) {
 #if CYD_DIAGNOSTIC_PATTERN
                 uint16_t pixel = cyd_test_colors[native_x * 8 / CYD_PANEL_H];
@@ -315,7 +323,6 @@ static void flush_region(const uint16_t *fb, int tile_start, int tile_end, int r
         int64_t now = esp_timer_get_time();
         if (pending) xSemaphoreTake(s_flush_done, portMAX_DELAY);
         s_wait_us += esp_timer_get_time() - now;
-        s_fill_us += esp_timer_get_time() - started - (s_wait_us - waited) - (s_send_us - sent);
         now = esp_timer_get_time();
         ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(s_panel, panel_start, native_y, panel_end, native_y + count, buffer));
         partial_invalidate(panel_start, native_y, panel_end, native_y + count);
@@ -335,6 +342,7 @@ static void flush_region(const uint16_t *fb, int tile_start, int tile_end, int r
     int64_t now = esp_timer_get_time();
     if (pending) xSemaphoreTake(s_flush_done, portMAX_DELAY);
     s_wait_us += esp_timer_get_time() - now;
+    s_fill_us += esp_timer_get_time() - started - (s_wait_us - waited) - (s_send_us - sent);
 }
 
 static void display_worker(void *arg) {

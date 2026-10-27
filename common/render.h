@@ -25,6 +25,10 @@
 #define PAGE_FRAME_W PAGE_W
 #define PAGE_FRAME_H PAGE_H
 void render_tile(int y, int height);
+/* Optional immutable frame scope: freeze wall time and share clock metadata across tiles.
+ * End before changing the tank, device settings, resolution, or work-cache ownership. */
+void render_frame_begin(const tank_t *t);
+void render_frame_end(void);
 int render_tile_top(void);
 int render_tile_bottom(void);
 const char *render_palette_name(bool sand, int index);

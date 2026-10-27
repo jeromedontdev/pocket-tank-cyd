@@ -93,6 +93,14 @@
     <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">GitHub release</a>.
     The current release includes all eight internally stored aquariums, shared
     inventory, pearl-mussel income, eighteen games and the audited menus below.
+    <strong>2.3.18</strong> focuses on the aquarium: fish movement, care
+    feedback and less repeated rendering work, without new currencies or games.
+    Frame-scoped clocks, exact shaded spans and reused LCD scaling rows preserve
+    detailed artwork and full-rate fish simulation. The preceding clock/decor
+    fixture improved from 13.88 to 15.43 FPS; gains elsewhere were only 1-2%.
+    Performance remains scene-dependent, not a 30-FPS promise.
+    Fish ease into rest spots; existing boldness and laziness affect hovering,
+    food pursuit and tap-startle reactions.
     <strong>2.3.17</strong> checks weather at boot and hourly, reuses exact
     clock/decoration/helper rendering work, and moves SD backup storage/readback
     into a background worker. Tested tank-task backup blocking fell from 718 to
@@ -465,6 +473,21 @@
       medals, with up to five bonus dollars per game per day (90 across
       eighteen games), shared across tanks and difficulty, and no Journal XP.
       Existing progress stays yours.</p>
+    <p><strong>2.3.18:</strong> Fish Interaction explains the next bond milestone
+      and +5 greetings, including the 30-second cooldown. A Fish's Life shows
+      the next stage in growth-hours, notes slower growth during sleep, and
+      explains decoration rest/interest spots. Creative skips bond locks;
+      Follow still needs a tankmate. No new checklist or missed-day penalty.</p>
+    <div class="gallery">
+      <figure>
+        <img class="screen" src="./media/fish-interaction-feedback.png" loading="lazy" width="240" height="180" alt="Fish Interaction showing the next trick bond target and greeting cooldown">
+        <figcaption>Know what your next greeting contributes.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/fish-life-feedback.png" loading="lazy" width="320" height="240" alt="A Fish's Life showing growth-hours until the next stage and decoration rest spots">
+        <figcaption>Growth explained without adding chores.</figcaption>
+      </figure>
+    </div>
     <figure>
       <img class="screen" src="./media/journal-goals.png" loading="lazy" width="320" height="240" alt="Pocket Tank CYD daily care checklist with feeding, connection and reef care rewards">
       <figcaption>Collections → Goals opens TODAY. Milestones remain one tap away.</figcaption>

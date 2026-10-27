@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <time.h>
 
 static unsigned char saved[8192];
 static size_t saved_size;
@@ -160,6 +161,8 @@ static void test_mode_care_notices(void) {
 void net_sim_advance(float dt);
 static void invalid(const char *text, size_t len) {
     int before = writes;
+    assert(!progression_restore_json(text, len, false, error, sizeof error));
+    assert(error[0] && writes == before);
     assert(!progression_restore_json(text, len, true, error, sizeof error));
     assert(error[0] && writes == before);
 }
@@ -3797,9 +3800,102 @@ static void test_mussel(void) {
     test_unix = now;
     puts("PASS: shop-purchased per-aquarium mussels, transactional purchase/passive payout, health/600s/daily limits, legacy pearls/creature migration, restore/switch and Creative free/no-income");
 }
+static void reverse_json_fields(cJSON *value) {
+    cJSON *entry;
+    cJSON_ArrayForEach(entry, value) reverse_json_fields(entry);
+    if (!cJSON_IsObject(value)) return;
+    cJSON *reversed = cJSON_CreateObject(); assert(reversed);
+    while (value->child) {
+        entry = cJSON_DetachItemViaPointer(value, value->child);
+        assert(cJSON_InsertItemInArray(reversed, 0, entry));
+    }
+    value->child = reversed->child;
+    reversed->child = NULL;
+    cJSON_Delete(reversed);
+}
+static void test_backup_validation(void) {
+    tank_t t;
+    saved_size = 0; tank_init(&t, 951); boot_enlarged(&t); progression_setup_done(&t);
+    add_bank_candidate(&t, 1); add_bank_candidate(&t, 2);
+    companion_polish_observe(&t);
+    assert(progression_save(&t));
+    char *json = progression_backup_json(&t); assert(json);
+    int before = writes;
+    assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
+    cJSON *root = cJSON_Parse(json); assert(root);
+    reverse_json_fields(root);
+    char *reordered = cJSON_PrintUnformatted(root); cJSON_Delete(root); assert(reordered);
+    assert(progression_restore_json(reordered, strlen(reordered), false, error, sizeof error));
+    static const char *const sections[] = {
+        "tank", "companion", "polish", "story", "games", "rpg", "creative",
+        "games_extra", "profile", "care", "inventory", "content", "mussel", "game_income"
+    };
+    cJSON *canonical = cJSON_Parse(json); assert(canonical);
+    for (int order = 0; order < 2; order++) {
+        const char *text = order ? reordered : json;
+        for (size_t i = 0; i < sizeof sections / sizeof *sections; i++) {
+            for (int fault = 0; fault < 4; fault++) {
+                root = cJSON_Parse(text); assert(root);
+                cJSON *section = cJSON_GetObjectItemCaseSensitive(root, sections[i]);
+                assert(section && section->child && section->child->next);
+                const cJSON *fields = cJSON_GetObjectItemCaseSensitive(canonical, sections[i])->child;
+                cJSON *first = cJSON_GetObjectItemCaseSensitive(section, fields->string);
+                cJSON *second = cJSON_GetObjectItemCaseSensitive(section, fields->next->string);
+                if (fault == 0) {
+                    cJSON *duplicate = cJSON_Duplicate(first, true); assert(duplicate);
+                    cJSON_Delete(cJSON_DetachItemViaPointer(section, second));
+                    assert(cJSON_AddItemToObject(section, duplicate->string, duplicate));
+                } else if (fault == 1) {
+                    cJSON_Delete(cJSON_DetachItemViaPointer(section, first));
+                    assert(cJSON_AddNumberToObject(section, "unknown", 0));
+                } else if (fault == 2) cJSON_Delete(cJSON_DetachItemViaPointer(section, first));
+                else assert(cJSON_AddNumberToObject(section, "unknown", 0));
+                invalid_object(root);
+            }
+        }
+        root = cJSON_Parse(text);
+        cJSON *fish = cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(root, "fish"), 0);
+        replace_number(fish, "trust", 11); invalid_object(root);
+        root = cJSON_Parse(text);
+        cJSON *array = cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(root, "tank"), "ms_seen");
+        assert(array && array->child);
+        cJSON_Delete(cJSON_DetachItemViaPointer(array, array->child)); invalid_object(root);
+        root = cJSON_Parse(text);
+        array = cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(root, "tank"), "ms_seen");
+        assert(cJSON_AddItemToArray(array, cJSON_CreateNumber(0))); invalid_object(root);
+    }
+    assert(writes == before);
+    unsigned char original[AQUARIUM_SAVE_BYTES], canonical_save[AQUARIUM_SAVE_BYTES];
+    assert(saved_size == sizeof original);
+    memcpy(original, saved, sizeof original);
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+    memcpy(canonical_save, saved, sizeof canonical_save);
+    memcpy(saved, original, sizeof original);
+    assert(progression_restore_json(reordered, strlen(reordered), true, error, sizeof error));
+    assert(!memcmp(saved, canonical_save, sizeof canonical_save));
+    before = writes;
+    for (int order = 0; order < 2; order++) {
+        const char *text = order ? reordered : json;
+        size_t length = strlen(text);
+        const int repeats = 5000;
+        clock_t started = clock();
+        for (int i = 0; i < repeats; i++)
+            assert(progression_restore_json(text, length, false, error, sizeof error));
+        printf("BENCH: %s complete validation (%zu bytes, %d residents), %.1f us/call (%d repeats)\n",
+               order ? "reversed" : "canonical", length, t.n_fish,
+               1e6 * (double)(clock() - started) / CLOCKS_PER_SEC / repeats, repeats);
+    }
+    assert(writes == before);
+    cJSON_Delete(canonical); free(reordered); free(json);
+    puts("PASS: ordered/unordered complete backup validation, duplicate/missing/extra fields, array bounds and no writes");
+}
 int main(int argc, char **argv) {
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
+    if (argc == 2 && !strcmp(argv[1], "--backup-validation-only")) {
+        test_backup_validation();
+        return 0;
+    }
     if (argc >= 2 && !strcmp(argv[1], "--content-only")) {
         extern void test_decor_scenery(void);
         test_wearables();
@@ -3838,6 +3934,7 @@ int main(int argc, char **argv) {
         puts("PASS: all historical binary save fixtures migrate with empty inventory");
         return 0;
     }
+    if (argc < 2 || strcmp(argv[1], "--clock-only")) test_backup_validation();
     test_tank_polish();
     test_story();
     test_genetics();

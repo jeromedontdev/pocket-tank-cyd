@@ -2409,8 +2409,9 @@ static void tank_startle(tank_t *t, float x, float y) {
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
         if (tank_dist(f->x, f->y, x, y) < STARTLE_RADIUS) {
-            f->stress = fminf(10, f->stress + 2.5f);
-            f->trust = fmaxf(0, f->trust - 0.4f);
+            float sensitivity = 1.25f - 0.5f * clampf(f->bold, 0, 1);
+            f->stress = fminf(10, f->stress + 2.5f * sensitivity);
+            f->trust = fmaxf(0, f->trust - 0.4f * sensitivity);
         }
     }
     shrimp_scatter(t, x, y, STARTLE_RADIUS);
@@ -2438,7 +2439,11 @@ void tank_touch_tap(tank_t *t, float x, float y) {
     tank_emit(TEV_TAP, -1);
     if (t->startled) {                              /* chasing: keep them spooked */
         t->startle_x = x; t->startle_y = y; t->startle_cooldown = STARTLE_COOLDOWN;
-        for (int i = 0; i < t->n_fish; i++) t->fish[i].stress = fminf(10, t->fish[i].stress + 0.6f);
+        for (int i = 0; i < t->n_fish; i++) {
+            fish_t *f = &t->fish[i];
+            float sensitivity = 1.25f - 0.5f * clampf(f->bold, 0, 1);
+            f->stress = fminf(10, f->stress + 0.6f * sensitivity);
+        }
         shrimp_scatter(t, x, y, STARTLE_RADIUS);
     } else if (t->tap_count >= 3) tank_startle(t, x, y);   /* aggressive: engage */
 }
@@ -2733,7 +2738,8 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
             float slow = clampf(d / 60, 0.4f + h * 0.35f, 1);
             tg.x = t->food[i].x; tg.y = t->food[i].y;
             tg.y = fminf(tg.y, TANK_SAND_TOP - tank_fish_clearance(f));
-            tg.speed = lerpf(29, 62, f->bold) * slow * (0.75f + h * 0.55f);
+            tg.speed = lerpf(29, 62, f->bold) * slow * (0.75f + h * 0.55f) *
+                       (1 - 0.18f * f->lazy);
             return tg;   /* skip the margin clamp: pellets rest at the floor */
         }
         tg.valid = false;
@@ -2988,11 +2994,21 @@ static void update_fish(tank_t *t, int idx, float dt) {
     /* fish prefer shallow climb/dive angles while cruising; full vertical
      * agility stays available for urgent goals */
     bool agile = f->goal.id == GOAL_FLEE_SHADOW || f->goal.id == GOAL_DART_PLAY;
-    float desired = atan2f((tg.y - f->y) * (agile ? 1.0f : 0.72f), tg.x - f->x);
+    float vertical = agile ? 1.0f : 0.72f;
+    if (f->goal.id == GOAL_SEEK_FOOD && tg.y > f->y) {
+        float approach = clampf(1 - tank_dist(f->x, f->y, tg.x, tg.y) / 80, 0, 1);
+        vertical = lerpf(vertical, 1.0f, approach);
+    }
+    float desired = atan2f((tg.y - f->y) * vertical, tg.x - f->x);
     /* final food approach: let the fish dip to the floor for the pellet
      * instead of hovering above it on wall-avoidance (the "staring" bug) */
     bool final_approach = f->goal.id == GOAL_SEEK_FOOD &&
                           tank_dist(f->x, f->y, tg.x, tg.y) < 40;
+    if (f->goal.id == GOAL_REST && tg.valid) {
+        float arrival = clampf(tank_dist(f->x, f->y, tg.x, tg.y) / 36, 0, 1);
+        float hover = 1.2f + f->bold * 2.4f + (1 - f->lazy) * 0.5f;
+        tg.speed = lerpf(hover, tg.speed, arrival);
+    }
     bool hit; float push = wall_avoidance(f, &hit);
     if (hit && !final_approach)
         desired = norm_ang(desired + norm_ang(push - desired) * 0.62f);

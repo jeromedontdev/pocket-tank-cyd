@@ -21,8 +21,23 @@
 
 #define TAU 6.2831853f
 static bool g_clock_synchronized;
+static const tank_t *g_frame_tank;
+static int64_t g_frame_clock;
+static bool g_frame_has_clock;
+#define CLOCK_CAPTION_ROWS 9
+typedef struct {
+    aquarium_state_t settings;
+    render_clock_layout_t layout;
+    int64_t time;
+    int width, height, cosmetic, valid_time, weather_code;
+    unsigned epoch;
+    char lines[CLOCK_CAPTION_ROWS][64];
+} clock_key_t;
+static clock_key_t *g_frame_clock_key;
+static bool g_frame_key_failed;
 int64_t render_clock_fixed_unix;
 static int64_t render_clock_now(void) {
+    if (g_frame_tank) return g_frame_clock;
     return render_clock_fixed_unix ? render_clock_fixed_unix :
         g_clock_synchronized ? clock_port_now_unix() : 0;
 }
@@ -126,6 +141,8 @@ void render_work_caches(bool enabled) {
     g_work_enabled = enabled;
     g_work_epoch++;
     if (!enabled) {
+        free(g_frame_clock_key); g_frame_clock_key = NULL;
+        g_frame_key_failed = false;
         for (size_t p = 0; p < CLOCK_RUN_CAP / CLOCK_RUN_PAGE; p++) {
             free(g_clock_runs[p]); g_clock_runs[p] = NULL;
         }
@@ -142,6 +159,7 @@ void render_work_caches(bool enabled) {
 }
 size_t render_work_cache_bytes(void) {
     size_t bytes = (g_snail_art ? 8 * 37 * 19 : 0) + (g_urchin_art ? 16 * URCHIN_POSE_BYTES : 0);
+    if (g_frame_clock_key) bytes += sizeof *g_frame_clock_key;
     if (g_castle_art) bytes += CASTLE_FRONT_BYTES;
     if (g_veg_poses) bytes += VEG_BEDS_MAX * sizeof *g_veg_poses;
     if (g_crown_poses) bytes += sizeof *g_crown_poses;
@@ -300,11 +318,20 @@ static inline void blend565(uint16_t *p, const src_t *s, int a) {
     int r = dr + ((s->r - dr) * a >> 8), g = dg + ((s->g - dg) * a >> 8), b = db + ((s->b - db) * a >> 8);
     *p = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
 }
+static void fill565_span(uint16_t *out, int count, uint16_t color) {
+    if (count <= 0) return;
+    if ((uintptr_t)out & 2) { *out++ = color; count--; }
+    typedef uint32_t alias_word_t __attribute__((__may_alias__));
+    alias_word_t *words = (alias_word_t *)out;
+    uint32_t pair = (uint32_t)color << 16 | color;
+    for (int i = 0; i < count / 2; i++) words[i] = pair;
+    if (count & 1) out[count - 1] = color;
+}
 static void blend255_span(uint16_t *out, int count, const src_t *s) {
     bool red = s->r > 0 && !(s->r & 7), green = s->g > 0 && !(s->g & 3);
     bool blue = s->b > 0 && !(s->b & 7);
     if (!red && !green && !blue) {
-        for (int i = 0; i < count; i++) out[i] = s->v;
+        fill565_span(out, count, s->v);
         return;
     }
     /* At alpha 255, only an exact channel quantization boundary can lose a level. */
@@ -352,7 +379,7 @@ static inline void span(ctx_t *c, int x0, int x1, int y, const src_t *s, int alp
         }
         if (left > right) continue;
         uint16_t *p = &CTX_PX(c, left, y);
-        if (alpha >= 255) for (int x = left; x <= right; x++) *p++ = s->v;
+        if (alpha >= 255) fill565_span(p, right - left + 1, s->v);
         else              for (int x = left; x <= right; x++) blend565(p++, s, alpha);
     }
 }
@@ -1048,7 +1075,8 @@ static inline void span_final(ctx_t *c, int x0, int x1, int y, const src_t *s, i
     if (l) dirty_clear_span(x0, x1, y);         /* lit here: a fish under it must not be lit again by the dirty pass */
     if (alpha >= 255) {                         /* opaque: a store, no PSRAM read */
         uint16_t v = l ? px_lit(s->v, l) : s->v;
-        for (int x = x0; x <= x1; x++, p++) { *p = v; if (a) px_darken(p, a); }
+        if (a) px_darken(&v, a);
+        fill565_span(p, x1 - x0 + 1, v);
         return;
     }
     for (int x = x0; x <= x1; x++, p++) {
@@ -1885,6 +1913,7 @@ static void draw_crown(ctx_t *c, float ox, float oy, int n_t, float a0, float a1
     *bx0 = *by0 = 1 << 20; *bx1 = *by1 = -1;
     if (n_t < 1) return;
     uint32_t bead = mix(pale, 0xffffff, 0.55f);
+    src_t stem_color = src_color(pale, c->dim), bead_color = src_color(bead, c->dim);
     const crown_pose_t *pose = crown_pose(ox, oy, n_t, a0, a1, len, seed, clock);
     int point = pose ? pose->offset : 0;
     for (int k = 0; k < n_t; k++) {
@@ -1902,7 +1931,7 @@ static void draw_crown(ctx_t *c, float ox, float oy, int n_t, float a0, float a1
             } else crown_point(ox, oy, a, sway, k, n_t, len, i, n, &ix, &iy);
             if (ix == lx && iy == ly) continue;
             if (g_clip_k >= 0 && pc_covered_above(g_clip_k, ix, iy)) continue;   /* under a piece above its own */
-            px_blend(c, ix, iy, i == n ? bead : pale, i == n ? 255 : 190);
+            px_blend_s(c, ix, iy, i == n ? &bead_color : &stem_color, i == n ? 255 : 190);
             if (ix < *bx0) *bx0 = ix;
             if (ix > *bx1) *bx1 = ix;
             if (iy < *by0) *by0 = iy;
@@ -7919,7 +7948,6 @@ bool render_clock_active(const tank_t *t) {
     int delay = CLOCK_DELAYS[setting < CLOCK_DELAY_COUNT ? setting : 0];
     return t->clock_requested || (delay >= 0 && t->clock_idle_s >= delay);
 }
-#define CLOCK_CAPTION_ROWS 9
 static void weather_icon(ctx_t *c, int x, int y, int size, int code) {
     if (code < 0 || !weather_condition(code)) return;
     bool sun = code <= 2, cloud = code > 0, fog = code == 45 || code == 48;
@@ -7981,6 +8009,7 @@ static int clock_caption_lines(const tank_t *t, char lines[CLOCK_CAPTION_ROWS][6
     return count;
 }
 void render_clock_layout(const tank_t *t, render_clock_layout_t *layout) {
+    if (t == g_frame_tank && g_frame_has_clock) { *layout = g_frame_clock_key->layout; return; }
     int size = clock_layout_size(t->aquariums.clock_layout), position = clock_layout_position(t->aquariums.clock_layout);
     if (size >= CLOCK_SIZE_COUNT) size = CLOCK_LARGE;
     static const int widths[] = {220, 172, 116, 0, 98}, heights[] = {112, 90, 68, 0, 56};
@@ -8303,15 +8332,8 @@ static void clock_overlay_live(const tank_t *t, uint16_t *fb, int stride, int64_
         }
     }
 }
-typedef struct {
-        aquarium_state_t settings;
-        render_clock_layout_t layout;
-        int64_t time;
-        int width, height, cosmetic, valid_time, weather_code;
-        unsigned epoch;
-        char lines[CLOCK_CAPTION_ROWS][64];
-} clock_key_t;
 static clock_key_t clock_key(const tank_t *t, int64_t unix_time) {
+    if (t == g_frame_tank && g_frame_has_clock && unix_time == g_frame_clock) return *g_frame_clock_key;
     clock_key_t key; memset(&key, 0, sizeof key);
     key.settings = t->aquariums; key.width = TANK_W; key.height = TANK_H;
     key.cosmetic = t->companion.cosmetic; key.epoch = g_work_epoch;
@@ -8321,10 +8343,26 @@ static clock_key_t clock_key(const tank_t *t, int64_t unix_time) {
     render_clock_layout(t, &key.layout); clock_caption_lines(t, key.lines, key.layout.w, key.layout.caption_scale);
     return key;
 }
+void render_frame_begin(const tank_t *t) {
+    g_frame_tank = NULL;
+    g_frame_clock = render_clock_now();
+    if (g_work_enabled && render_clock_active(t) && !g_frame_clock_key && !g_frame_key_failed) {
+        g_frame_clock_key = malloc(sizeof *g_frame_clock_key);
+        if (!g_frame_clock_key) {
+            fprintf(stderr, "Clock frame metadata cache unavailable; formatting tiles live\n");
+            g_frame_key_failed = true;
+        }
+    }
+    g_frame_has_clock = render_clock_active(t) && g_frame_clock_key != NULL;
+    if (g_frame_has_clock) *g_frame_clock_key = clock_key(t, g_frame_clock);
+    g_frame_tank = t;
+}
+void render_frame_end(void) { g_frame_tank = NULL; }
 static bool clock_damage_changed(const tank_t *t) {
     static clock_key_t previous;
     static bool active;
     bool now_active = render_clock_active(t);
+    if (!active && !now_active) return false;
     clock_key_t key = clock_key(t, render_clock_now());
     bool changed = active != now_active || memcmp(&previous, &key, sizeof key);
     if (changed) {
@@ -8338,6 +8376,11 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
     static clock_key_t previous;
     static bool valid, alloc_failed, overflow_reported;
     static unsigned attempt_epoch;
+    if (t == g_frame_tank && g_frame_has_clock) {
+        const render_clock_layout_t *l = &g_frame_clock_key->layout;
+        if (render_region_right() <= l->x || render_region_left() >= l->x + l->w ||
+            render_tile_bottom() <= l->y || render_tile_top() >= l->y + l->h) return;
+    }
     if (!g_work_enabled) { clock_overlay_live(t, fb, stride, unix_time); return; }
     clock_key_t key = clock_key(t, unix_time);
     if (attempt_epoch != g_work_epoch) { attempt_epoch = g_work_epoch; alloc_failed = false; }
@@ -8386,8 +8429,7 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
                 if (alpha != 256) source = src_color(run->color, 1);
                 for (int y = y0; y <= y1; y++) {
                     if (alpha == 256) {
-                        uint16_t *out = &CTX_PX(&c, x0, y);
-                        for (int x = x0; x <= x1; x++) *out++ = (uint16_t)run->color;
+                        fill565_span(&CTX_PX(&c, x0, y), x1 - x0 + 1, (uint16_t)run->color);
                     } else if (alpha == 255) {
                         blend255_span(&CTX_PX(&c, x0, y), x1 - x0 + 1, &source);
                     } else {

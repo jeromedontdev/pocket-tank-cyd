@@ -2876,13 +2876,29 @@ static bool json_read_fields(void *data, const cJSON *obj, const json_field_t *f
     if (!cJSON_IsObject(obj) || cJSON_GetArraySize(obj) != (int)count + (fields == BANK_FIELDS ? 1 : 0) + extra) {
         snprintf(error, size, "Missing, extra or duplicate fields"); return false;
     }
+    /* Self-exports use descriptor order. Check the entire prefix before using
+     * it: accepting one matching key at a time could miss a later duplicate.
+     * Reordered/older imports retain the exhaustive lookup below. The only
+     * trailing keys are bank.fish and companion.mussel_colors, checked by callers. */
+    const cJSON *ordered = obj->child;
+    bool in_order = true;
+    for (size_t k = 0; k < count; k++) {
+        if (!ordered || !ordered->string || strcmp(ordered->string, fields[k].name)) {
+            in_order = false; break;
+        }
+        ordered = ordered->next;
+    }
+    ordered = in_order ? obj->child : NULL;
     for (size_t k = 0; k < count; k++) {
         const json_field_t *f = &fields[k];
         uint8_t *p = (uint8_t *)data + f->offset;
         const cJSON *value = NULL, *entry;
-        int found = 0;
-        cJSON_ArrayForEach(entry, obj) if (entry->string && !strcmp(entry->string, f->name)) { value = entry; found++; }
-        if (found != 1) goto invalid;
+        if (ordered) { value = ordered; ordered = ordered->next; }
+        else {
+            int found = 0;
+            cJSON_ArrayForEach(entry, obj) if (entry->string && !strcmp(entry->string, f->name)) { value = entry; found++; }
+            if (found != 1) goto invalid;
+        }
         if (f->kind == J_HEX) {
             if (!cJSON_IsString(value) || strlen(value->valuestring) != f->count * 2) goto invalid;
             for (size_t i = 0; i < f->count; i++) {
@@ -2892,9 +2908,10 @@ static bool json_read_fields(void *data, const cJSON *obj, const json_field_t *f
             }
             continue;
         }
-        if ((f->count > 1 || f->kind == J_NAMES) && (!cJSON_IsArray(value) || cJSON_GetArraySize(value) != (int)f->count)) goto invalid;
-        for (size_t i = 0; i < f->count; i++) {
-            const cJSON *v = f->count > 1 || f->kind == J_NAMES ? cJSON_GetArrayItem(value, (int)i) : value;
+        bool array = f->count > 1 || f->kind == J_NAMES;
+        if (array && (!cJSON_IsArray(value) || cJSON_GetArraySize(value) != (int)f->count)) goto invalid;
+        const cJSON *v = array ? value->child : value;
+        for (size_t i = 0; i < f->count; i++, v = v->next) {
             if (f->kind == J_NAMES) {
                 if (!cJSON_IsString(v) || strlen(v->valuestring) > FISH_NAME_MAX) goto invalid;
                 for (const char *s = v->valuestring; *s; s++) if ((unsigned char)*s < 32 || (unsigned char)*s > 126) goto invalid;
