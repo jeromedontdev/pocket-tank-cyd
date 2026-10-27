@@ -12,7 +12,8 @@ async function main() {
     const name = path.join(root, decodeURIComponent(new URL(req.url, "http://localhost").pathname));
     if (!name.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
     fs.readFile(name, (error, data) => {
-      const types = { ".html": "text/html", ".mjs": "text/javascript", ".json": "application/json" };
+      const types = { ".html": "text/html", ".mjs": "text/javascript", ".json": "application/json",
+        ".png": "image/png", ".svg": "image/svg+xml" };
       res.writeHead(error ? 404 : 200, { "Content-Type": types[path.extname(name)] || "application/octet-stream" });
       res.end(error ? "Not found" : data);
     });
@@ -119,6 +120,10 @@ async function main() {
       for (const name of ["harbor-garden-decorations.png", "jellyfish-wardrobe.png"]) {
         const image = page.locator(`img[src="./media/${name}"]`);
         await image.scrollIntoViewIfNeeded();
+        await page.waitForFunction(name => {
+          const img = document.querySelector(`img[src="./media/${name}"]`);
+          return img && img.complete && img.naturalWidth > 0;
+        }, name);
         await image.evaluate(img => img.decode());
         assert.equal(await image.evaluate(img => img.naturalWidth > 0 && img.clientWidth <= innerWidth), true);
       }
