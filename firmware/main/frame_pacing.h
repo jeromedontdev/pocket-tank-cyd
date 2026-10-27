@@ -9,6 +9,11 @@ typedef struct {
     uint32_t max_us;
 } frame_pacing_t;
 
+static inline uint32_t frame_pacing_delay_ticks(uint32_t elapsed_us, uint32_t tick_us) {
+    uint32_t remaining = elapsed_us < 33334 ? 33334 - elapsed_us : 0;
+    return remaining ? 1 + (remaining - 1) / tick_us : 1;
+}
+
 static inline void frame_pacing_add(frame_pacing_t *p, uint32_t us) {
     unsigned bin = us / 2000;
     p->bins[bin < 128 ? bin : 127]++;

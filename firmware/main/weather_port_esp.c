@@ -47,11 +47,11 @@ static bool save(const weather_config_t *c) {
     if (ok) { saved = *c; saved_valid = true; }
     return ok;
 }
-static bool fetch(const char *url, char *body, size_t *length, int *error) {
+static bool fetch(const char *url, char **body, size_t *length, int *error) {
     esp_http_client_config_t config = {
         .url = url, .crt_bundle_attach = esp_crt_bundle_attach,
         .timeout_ms = 8000, .disable_auto_redirect = true,
-        .buffer_size = 1024, .buffer_size_tx = 1024,
+        .buffer_size = 1024, .buffer_size_tx = 512,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) { *error = WEATHER_ERR_MEMORY; return false; }
@@ -71,10 +71,16 @@ static bool fetch(const char *url, char *body, size_t *length, int *error) {
         if (status != 200 || declared > WEATHER_BODY_MAX)
             ESP_LOGW(TAG, "https status %d, declared length %lld", status, (long long)declared);
         if (status == 200 && declared <= WEATHER_BODY_MAX) {
+            *body = heap_caps_malloc(WEATHER_BODY_MAX + 2, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+            if (!*body) {
+                *error = WEATHER_ERR_MEMORY;
+                ESP_LOGE(TAG, "no memory for %u-byte response buffer", (unsigned)WEATHER_BODY_MAX + 2);
+                goto cleanup;
+            }
             size_t n = 0;
             int64_t began = esp_timer_get_time();
             while (n <= WEATHER_BODY_MAX && esp_timer_get_time() - began < 20000000) {
-                int got = esp_http_client_read(client, body + n, (int)(WEATHER_BODY_MAX + 1 - n));
+                int got = esp_http_client_read(client, *body + n, (int)(WEATHER_BODY_MAX + 1 - n));
                 if (got < 0) break;
                 if (!got) {
                     ok = esp_http_client_is_complete_data_received(client) && n > 0 && n <= WEATHER_BODY_MAX;
@@ -82,9 +88,10 @@ static bool fetch(const char *url, char *body, size_t *length, int *error) {
                 }
                 n += (size_t)got;
             }
-            if (ok) { body[n] = 0; *length = n; }
+            if (ok) { (*body)[n] = 0; *length = n; }
         }
     }
+cleanup:
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return ok;
@@ -143,15 +150,15 @@ void weather_port_esp_service(void) {
     static weather_request_t request;   /* only the net worker touches these */
     static weather_result_t result;
     if (!claim(false, &request)) return;
+    int64_t started = esp_timer_get_time();
     memset(&result, 0, sizeof result);
     result.operation = request.operation; result.generation = request.generation;
     if (net_port_connected()) {
         char url[256];
-        char *body = heap_caps_malloc(WEATHER_BODY_MAX + 2, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+        char *body = NULL;
         size_t n = 0;
-        result.error = body ? WEATHER_ERR_HTTP : WEATHER_ERR_MEMORY;
-        if (!body) ESP_LOGE(TAG, "no memory for %u-byte response buffer", (unsigned)WEATHER_BODY_MAX + 2);
-        if (body && query_url(&request, url, sizeof url) && fetch(url, body, &n, &result.error)) {
+        result.error = WEATHER_ERR_HTTP;
+        if (query_url(&request, url, sizeof url) && fetch(url, &body, &n, &result.error)) {
             result.ok = request.operation == WEATHER_SEARCH ?
                 weather_parse_cities(body, n, result.cities, &result.count) :
                 weather_parse_current(body, n, &result.reading);
@@ -161,6 +168,9 @@ void weather_port_esp_service(void) {
         free(body);
     } else result.error = WEATHER_ERR_OFFLINE;
     finish(&result);
+    ESP_LOGI(TAG, "request %d finished in %lld ms: %s (error %d)",
+             request.operation, (long long)((esp_timer_get_time() - started) / 1000),
+             result.ok ? "OK" : "FAILED", result.error);
 }
 void weather_port_init(void) { }
 bool weather_port_start(const weather_request_t *r) {

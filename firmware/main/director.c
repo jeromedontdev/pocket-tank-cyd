@@ -171,6 +171,7 @@ static void help(void) {
     ESP_LOGI(TAG, "algae <steps|clear> | veg <bed 0-2|all> <0.03-1> | light (toggle) | auto | sleep <hours> | save");
     ESP_LOGI(TAG, "STAGED TANKS: fresh / stages / stage are disabled on hardware; use simulator demos");
     ESP_LOGI(TAG, "benchmark (bounded RAM-only five-fish Normal/Balanced LCD test; pauses real care, never saves fixtures)");
+    ESP_LOGI(TAG, "perf on|off (verbose frame tracing; off by default to avoid serial-induced stalls)");
     ESP_LOGI(TAG, "stash / restore / staging / age: disabled for expanded saves; use simulator demos");
     ESP_LOGI(TAG, "milestones [off] (the page, on cue; on the device: tap the open stats card)");
     ESP_LOGI(TAG, "journal | journal tap <x> <y> | journal demo (disabled on hardware; use simulator)");
@@ -254,6 +255,15 @@ static void run(tank_t *t, char *line) {
     if (!strcmp(c, "sd")) { sd_port_command(t, argc, argv); return; }
     if (!strcmp(c, "help")) help();
     else if (!strcmp(c, "benchmark")) device_render_benchmark();
+    else if (!strcmp(c, "perf")) {
+        if (argc != 2 || (strcmp(argv[1], "on") && strcmp(argv[1], "off"))) {
+            ESP_LOGW(TAG, "usage: perf on|off");
+            return;
+        }
+        bool enabled = !strcmp(argv[1], "on");
+        device_render_trace(enabled);
+        ESP_LOGI(TAG, "verbose frame tracing %s", enabled ? "ON (serial output can stall frames)" : "OFF");
+    }
     else if (!strcmp(c, "state")) show_state(t);
     else if (!strcmp(c, "wifi")) {                            /* the saved network (docs/OTA.md) */
         char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];

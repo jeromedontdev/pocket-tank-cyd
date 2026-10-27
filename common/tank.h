@@ -930,7 +930,9 @@ void  tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold
 /* face the fish the way its heading points, at once (no turn plays): for
  * code that places a fish by hand - the sim's scenes, the wake restore */
 void  tank_fish_face(fish_t *f);
-void  tank_tick(tank_t *t, float dt, advisor_fn advise);
+extern int64_t (*tank_profile_clock_us)(void);
+extern int64_t tank_profile_us[3];
+void tank_tick(tank_t *t, float dt, advisor_fn advise);
 /* Sleep metabolism (device drowse mode: screen dark, fish asleep). Advances
  * ONLY slow physiology - hunger up, energy recovered, stress gone - at
  * real-hours scale; no movement, no goals, no eating, no trickle. Sleeping

@@ -374,8 +374,8 @@ void display_port_flush_prof(int64_t *wait_us, int64_t *send_us, int64_t *fill_u
     *wait_us = s_wait_us; *send_us = s_send_us;
     *fill_us = s_fill_us;
     s_wait_us = s_send_us = s_fill_us = 0;
-    ESP_LOGI(TAG, "LCD blocks: %u updated, %u unchanged", s_blocks_sent, s_blocks_skipped);
-    if (s_worker) ESP_LOGI(TAG, "LCD worker minimum free stack: %u bytes",
+    ESP_LOGD(TAG, "LCD blocks: %u updated, %u unchanged", s_blocks_sent, s_blocks_skipped);
+    if (s_worker) ESP_LOGD(TAG, "LCD worker minimum free stack: %u bytes",
                           (unsigned)uxTaskGetStackHighWaterMark(s_worker));
     s_blocks_sent = s_blocks_skipped = 0;
 }

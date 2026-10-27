@@ -93,6 +93,12 @@
     <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">GitHub release</a>.
     The current release includes all eight internally stored aquariums, shared
     inventory, pearl-mussel income, eighteen games and the audited menus below.
+    <strong>2.3.15</strong> checks weather at boot and hourly, reuses exact
+    clock/decoration/helper rendering work, and moves SD backup storage/readback
+    into a background worker. Tested tank-task backup blocking fell from 718 to
+    109 ms; snapshot validation still briefly pauses a frame. Regular FPS gains
+    are modest and scene-dependent, not a universal speedup. Saves and partitions
+    are unchanged from 2.3.14.
     <strong>2.3.14</strong> adds twenty detailed static decorations and six
     wearables, species-aware accessory fitting, and 33% smaller aquarium fish.
     Jellyfish keep ties, bowties and bandanas; only the wraparound scarf is unavailable.

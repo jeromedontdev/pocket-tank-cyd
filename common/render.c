@@ -33,18 +33,61 @@ typedef struct { int16_t x0, x1, y; uint16_t alpha; uint32_t color; } paint_run_
 /* alpha: low nine bits hold blend alpha (256 = RGB565 store); upper bits hold extra rows. */
 #define CLOCK_RUN_CAP 2048
 #define CLOCK_RUN_PAGE 256
-static paint_run_t *g_clock_runs[CLOCK_RUN_CAP / CLOCK_RUN_PAGE];
-static paint_run_t *clock_run(size_t index) {
-    return &g_clock_runs[index / CLOCK_RUN_PAGE][index % CLOCK_RUN_PAGE];
-}
+#define CLOCK_INDEX_ROWS 40
+#define CLOCK_INDEX_BANDS ((TANK_MAX_H + CLOCK_INDEX_ROWS - 1) / CLOCK_INDEX_ROWS)
+typedef struct {
+    paint_run_t runs[CLOCK_RUN_PAGE];
+    uint32_t bands[CLOCK_INDEX_BANDS][CLOCK_RUN_PAGE / 32];
+} clock_run_page_t;
+static clock_run_page_t *g_clock_runs[CLOCK_RUN_CAP / CLOCK_RUN_PAGE];
 static size_t g_clock_run_count;
+static paint_run_t *clock_run(size_t index) {
+    return &g_clock_runs[index / CLOCK_RUN_PAGE]->runs[index % CLOCK_RUN_PAGE];
+}
+static void clock_index_build(void) {
+    for (size_t p = 0; p < CLOCK_RUN_CAP / CLOCK_RUN_PAGE; p++)
+        if (g_clock_runs[p]) memset(g_clock_runs[p]->bands, 0, sizeof g_clock_runs[p]->bands);
+    for (size_t i = 0; i < g_clock_run_count; i++) {
+        const paint_run_t *run = clock_run(i);
+        unsigned end = (unsigned)(run->y + (run->alpha >> 9)) / CLOCK_INDEX_ROWS;
+        if (end >= CLOCK_INDEX_BANDS) end = CLOCK_INDEX_BANDS - 1;
+        for (unsigned band = (unsigned)run->y / CLOCK_INDEX_ROWS; band <= end; band++)
+            g_clock_runs[i / CLOCK_RUN_PAGE]->bands[band][i % CLOCK_RUN_PAGE / 32] |=
+                UINT32_C(1) << (i % 32);
+    }
+}
 static bool g_recording, g_record_overflow, g_work_enabled;
 static unsigned g_work_epoch;
 static uint8_t *g_snail_art, *g_urchin_art;
+enum { CASTLE_FRONT_W = 178, CASTLE_FRONT_H = 109,
+       CASTLE_FRONT_BYTES = CASTLE_FRONT_W * CASTLE_FRONT_H / 2 };
+static uint8_t *g_castle_art;
+typedef struct {
+    float clock, sway[VEG_FRONDS_MAX];
+    int detail, seed;
+    bool valid, sword;
+} veg_pose_t;
+static veg_pose_t *g_veg_poses;
+typedef struct {
+    float ox, oy, a0, a1, len;
+    int tentacles, seed, offset;
+} crown_pose_t;
+typedef struct {
+    float clock;
+    int count, used;
+    crown_pose_t poses[13];
+    int16_t points[1024][2];
+} crown_cache_t;
+static crown_cache_t *g_crown_poses;
+static bool g_crown_failed;
+enum { URCHIN_POSE_BYTES = 37 * 24 / 2 };
 typedef struct {
     uint32_t palette[64];
     uint64_t mask[110];
     int item, width, height;
+    uint16_t foreground[64];
+    float foreground_dim;
+    bool foreground_valid;
     uint8_t pixels[];
 } ornament_art_t;
 static ornament_art_t *g_ornament_art;
@@ -70,7 +113,7 @@ static bool record_run(int x0, int x1, int y, uint32_t color, unsigned alpha) {
     if (g_clock_run_count == CLOCK_RUN_CAP) { g_record_overflow = true; return true; }
     size_t page = g_clock_run_count / CLOCK_RUN_PAGE;
     if (!g_clock_runs[page]) {
-        g_clock_runs[page] = malloc(CLOCK_RUN_PAGE * sizeof(paint_run_t));
+        g_clock_runs[page] = malloc(sizeof *g_clock_runs[page]);
         if (!g_clock_runs[page]) { g_record_overflow = true; return true; }
     }
     paint_run_t *run = clock_run(g_clock_run_count++);
@@ -88,17 +131,24 @@ void render_work_caches(bool enabled) {
         }
         free(g_snail_art); g_snail_art = NULL;
         free(g_urchin_art); g_urchin_art = NULL;
+        free(g_castle_art); g_castle_art = NULL;
+        free(g_veg_poses); g_veg_poses = NULL;
+        free(g_crown_poses); g_crown_poses = NULL;
+        g_crown_failed = false;
         free(g_ornament_art); g_ornament_art = NULL;
         g_ornament_selected = -1;
         g_ornament_failed = false;
     }
 }
 size_t render_work_cache_bytes(void) {
-    size_t bytes = (g_snail_art ? 8 * 37 * 19 : 0) + (g_urchin_art ? 16 * 37 * 24 : 0);
+    size_t bytes = (g_snail_art ? 8 * 37 * 19 : 0) + (g_urchin_art ? 16 * URCHIN_POSE_BYTES : 0);
+    if (g_castle_art) bytes += CASTLE_FRONT_BYTES;
+    if (g_veg_poses) bytes += VEG_BEDS_MAX * sizeof *g_veg_poses;
+    if (g_crown_poses) bytes += sizeof *g_crown_poses;
     if (g_ornament_art) bytes += sizeof *g_ornament_art +
         (size_t)g_ornament_art->width * g_ornament_art->height;
     for (size_t p = 0; p < CLOCK_RUN_CAP / CLOCK_RUN_PAGE; p++)
-        if (g_clock_runs[p]) bytes += CLOCK_RUN_PAGE * sizeof(paint_run_t);
+        if (g_clock_runs[p]) bytes += sizeof *g_clock_runs[p];
     return bytes;
 }
 static int g_tile_y, g_tile_h;
@@ -249,6 +299,22 @@ static inline void blend565(uint16_t *p, const src_t *s, int a) {
     int dr = (*p >> 11) << 3, dg = ((*p >> 5) & 63) << 2, db = (*p & 31) << 3;
     int r = dr + ((s->r - dr) * a >> 8), g = dg + ((s->g - dg) * a >> 8), b = db + ((s->b - db) * a >> 8);
     *p = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+}
+static void blend255_span(uint16_t *out, int count, const src_t *s) {
+    bool red = s->r > 0 && !(s->r & 7), green = s->g > 0 && !(s->g & 3);
+    bool blue = s->b > 0 && !(s->b & 7);
+    if (!red && !green && !blue) {
+        for (int i = 0; i < count; i++) out[i] = s->v;
+        return;
+    }
+    /* At alpha 255, only an exact channel quantization boundary can lose a level. */
+    for (int i = 0; i < count; i++) {
+        uint16_t old = out[i], decrement = 0;
+        if (red && (old & 0xf800) < (s->v & 0xf800)) decrement += 0x0800;
+        if (green && (old & 0x07e0) < (s->v & 0x07e0)) decrement += 0x0020;
+        if (blue && (old & 0x001f) < (s->v & 0x001f)) decrement++;
+        out[i] = s->v - decrement;
+    }
 }
 static inline void px_blend_s(ctx_t *c, int x, int y, const src_t *s, int a) {
     if (record_run(x, x, y, (uint32_t)s->r << 16 | (uint32_t)s->g << 8 | (uint32_t)s->b, (unsigned)a)) return;
@@ -811,6 +877,7 @@ static void draw_creature_portrait(ctx_t *c, float x, float y, float scale, int 
 /* optional per-stage frame profiling (render.h) */
 int64_t (*render_clock_us)(void) = NULL;
 int64_t render_prof_us[8];
+int64_t render_front_us[3];
 int64_t render_helper_us[3];
 #define PROF_MARK() (render_clock_us ? render_clock_us() : 0)
 #define PROF_ADD(i, t0) do { if (render_clock_us) { int64_t _n = render_clock_us(); render_prof_us[i] += _n - (t0); (t0) = _n; } } while (0)
@@ -1187,6 +1254,27 @@ static float veg_spine(const tank_t *t, float bx, float sway, int seg, int segs,
 static int bubble_step(const tank_t *t) { (void)t; return render_scene_detail() == SCENE_ENHANCED ? 1 : 2; }
 static int shrimp_step(void) { return render_scene_detail() == SCENE_ENHANCED ? 1 : 2; }
 static int shrimp_draw_count(const tank_t *t) { return (t->shrimp_n + shrimp_step() - 1) / shrimp_step(); }
+static float veg_cached_sway(const tank_t *t, int b, bool sword, int i, int seed) {
+    static unsigned epoch;
+    static bool failed;
+    if (epoch != g_work_epoch) { epoch = g_work_epoch; failed = false; }
+    if (g_work_enabled && !g_veg_poses && !failed) {
+        g_veg_poses = calloc(VEG_BEDS_MAX, sizeof *g_veg_poses);
+        if (!g_veg_poses) { fprintf(stderr, "Grass pose cache unavailable; calculating live\n"); failed = true; }
+    }
+    if (!g_work_enabled || !g_veg_poses) return veg_sway(t, sword, i, seed, t->clock);
+    veg_pose_t *pose = &g_veg_poses[b];
+    float clock = veg_clock(t, t->clock, seed);
+    int detail = render_scene_detail();
+    if (!pose->valid || pose->clock != clock || pose->detail != detail ||
+        pose->seed != seed || pose->sword != sword) {
+        pose->clock = clock; pose->detail = detail;
+        pose->seed = seed; pose->sword = sword; pose->valid = true;
+        for (int frond = 0; frond < VEG_FRONDS_MAX; frond++)
+            pose->sway[frond] = veg_sway(t, sword, frond, seed, t->clock);
+    }
+    return pose->sway[i];
+}
 static void draw_veg(ctx_t *c, const tank_t *t, int b, int seed, int layer, bool final) {
     veg_tint_fill(c->dim);
     int n; tank_veg_bed(t, b, NULL, NULL, NULL, &n);
@@ -1211,11 +1299,9 @@ static void draw_veg(ctx_t *c, const tank_t *t, int b, int seed, int layer, bool
         if (scene_box_hidden((int)bx - 12, y_top, (int)bx + 12, y_bot)) continue;
         if (y_bot >= c->oy + c->h) y_bot = c->oy + c->h - 1;
         if (y_top < c->oy) y_top = c->oy;
-        float sway = veg_sway(t, sword, i, seed, t->clock);
-        /* the swaying chain of segment centres (the frond's spine) */
-        float xs[VEG_MAX_SEGS + 1];
-        for (int seg = 0; seg <= segs; seg++)
-            xs[seg] = veg_spine(t, bx, sway, seg, segs, i, seed, t->clock);
+        float sway = veg_cached_sway(t, b, sword, i, seed);
+        int spine_k = -1;
+        float spine0 = 0, spine1 = 0;
         /* one span per pixel row, centred on the spine, half-width tapering
          * toward the tip: the same silhouette the old chain of overlapping
          * ellipses drew (their union was a 5 px ribbon), at ~a quarter fewer
@@ -1234,7 +1320,12 @@ static void draw_veg(ctx_t *c, const tank_t *t, int b, int seed, int layer, bool
                                : root - (root - tip) * u;
             if (half < tip) half = tip;
             int k = (int)sp; float fr = sp - k;
-            float cx = xs[k] + (xs[k + 1] - xs[k]) * fr;
+            if (k != spine_k) {
+                spine0 = veg_spine(t, bx, sway, k, segs, i, seed, t->clock);
+                spine1 = veg_spine(t, bx, sway, k + 1, segs, i, seed, t->clock);
+                spine_k = k;
+            }
+            float cx = spine0 + (spine1 - spine0) * fr;
             src_t s; s.v = pal[y];                              /* opaque: only .v is read */
             if (sword && half >= 2) {
                 int vein = (int)cx;
@@ -1340,7 +1431,16 @@ static int castle_tone(int mode, int lx, int y, float u) {
     return t < CT_LIGHT ? CT_LIGHT : t > CT_DARK ? CT_DARK : t;
 }
 typedef struct { ctx_t *c; int cx; int layer; bool final; } cst_t;
-static inline void castle_put(const cst_t *k, int x, int y, uint16_t v) {
+static bool g_castle_record;
+static inline void castle_put(const cst_t *k, int x, int y, unsigned tone) {
+    if (g_castle_record) {
+        int col = x - k->cx + 90, row = y - CASTLE_FY + 108;
+        if ((unsigned)col < CASTLE_FRONT_W && (unsigned)row < CASTLE_FRONT_H) {
+            unsigned index = (unsigned)(row * CASTLE_FRONT_W + col), shift = (index & 1) * 4;
+            g_castle_art[index / 2] = (uint8_t)((g_castle_art[index / 2] & ~(15u << shift)) | ((tone + 1) << shift));
+        }
+        return;
+    }
     ctx_t *c = k->c;
     if (!CTX_IN(c, x, y)) return;
     { int lx = x - k->cx + CASTLE_MASK_W / 2, r = y - (CASTLE_FY - CASTLE_ROWS);
@@ -1349,7 +1449,7 @@ static inline void castle_put(const cst_t *k, int x, int y, uint16_t v) {
           if (k->layer == 1) castle_front()[r][lx >> 5] |= 1u << (lx & 31);
       } }
     uint16_t *p = &CTX_PX(c, x, y);
-    *p = v;
+    *p = (uint16_t)masks()->colors[k->layer][tone][y - (CASTLE_FY - CASTLE_ROWS)];
     if (k->final) {                          /* vignetted here, and untagged: the sweep must not darken it again */
         PK_LIGHT_PX(p, x, y);
         int a = g_vig ? g_vig[y * TANK_W + x] : vig_alpha(x, y);
@@ -1363,12 +1463,14 @@ static void castle_span(const cst_t *k, int lx0, int lx1, int y, int mode, float
     int r = y - (CASTLE_FY - CASTLE_ROWS);
     if (r < 0 || r >= CASTLE_ROWS + 12) return;
     const ctx_t *c = k->c;                       /* clip to the window first: tones cost */
-    if ((unsigned)(y - c->oy) >= (unsigned)c->h) return;
-    if (k->cx + lx0 < c->ox) lx0 = c->ox - k->cx;
-    if (k->cx + lx1 > c->ox + c->w - 1) lx1 = c->ox + c->w - 1 - k->cx;
+    if (!g_castle_record) {
+        if ((unsigned)(y - c->oy) >= (unsigned)c->h) return;
+        if (k->cx + lx0 < c->ox) lx0 = c->ox - k->cx;
+        if (k->cx + lx1 > c->ox + c->w - 1) lx1 = c->ox + c->w - 1 - k->cx;
+    }
     float uw = ux1 > ux0 ? ux1 - ux0 : 1;
     for (int lx = lx0; lx <= lx1; lx++)
-        castle_put(k, k->cx + lx, y, masks()->colors[k->layer][castle_tone(mode, lx, y, (lx - ux0) / uw)][r]);
+        castle_put(k, k->cx + lx, y, (unsigned)castle_tone(mode, lx, y, (lx - ux0) / uw));
 }
 static void castle_rect(const cst_t *k, int lx0, int lx1, int ytop, int ybot, int mode) {
     for (int y = ytop; y <= ybot; y++) castle_span(k, lx0, lx1, y, mode, (float)lx0, (float)lx1);
@@ -1426,7 +1528,7 @@ static void castle_gate_trim(const cst_t *k) {
         int y = ys - j, r = y - (CASTLE_FY - CASTLE_ROWS);
         if (r < 0) continue;
         for (int i = 0; i <= 2 * R; i++)
-            if (g_ring[j][i] >= 0) castle_put(k, k->cx + i - R, y, masks()->colors[k->layer][g_ring[j][i]][r]);
+            if (g_ring[j][i] >= 0) castle_put(k, k->cx + i - R, y, (unsigned)g_ring[j][i]);
     }
     castle_rect(k, -R, -CASTLE_ARCH_R - 1, ys + 1, CASTLE_FY, 3);
     castle_rect(k,  CASTLE_ARCH_R + 1, R,  ys + 1, CASTLE_FY, 3);
@@ -1484,12 +1586,42 @@ static void castle_front_row(const cst_t *k) {
     castle_merlons(k, 56, 86, FY - 70);
     castle_window(k, 71, 7, FY - 44, FY - 30);
 }
+static void castle_front_cached(const cst_t *k) {
+    static unsigned epoch;
+    static int floor;
+    static bool failed;
+    if (epoch != g_work_epoch) { epoch = g_work_epoch; failed = false; }
+    if (g_work_enabled && !g_castle_art && !failed) {
+        g_castle_art = malloc(CASTLE_FRONT_BYTES);
+        if (!g_castle_art) { fprintf(stderr, "Castle front cache unavailable; drawing live\n"); failed = true; }
+        floor = -1;
+    }
+    if (!g_work_enabled || !g_castle_art) { castle_front_row(k); return; }
+    if (floor != CASTLE_FY) {
+        _Static_assert(CT_N < 16, "castle tones and transparency fit lossless nibbles");
+        memset(g_castle_art, 0, CASTLE_FRONT_BYTES);
+        g_castle_record = true;
+        castle_front_row(k);
+        g_castle_record = false;
+        floor = CASTLE_FY;
+    }
+    const ctx_t *c = k->c;
+    int first = c->ox > k->cx - 90 ? c->ox : k->cx - 90;
+    int last = c->ox + c->w < k->cx + 88 ? c->ox + c->w : k->cx + 88;
+    int top = c->oy > CASTLE_FY - 108 ? c->oy : CASTLE_FY - 108;
+    int bottom = c->oy + c->h < CASTLE_FY + 1 ? c->oy + c->h : CASTLE_FY + 1;
+    for (int y = top; y < bottom; y++) for (int x = first; x < last; x++) {
+        unsigned index = (unsigned)((y - CASTLE_FY + 108) * CASTLE_FRONT_W + x - k->cx + 90);
+        unsigned tone = (g_castle_art[index / 2] >> ((index & 1) * 4)) & 15;
+        if (tone) castle_put(k, x, y, tone - 1);
+    }
+}
 /* the whole castle (front = 0: the keep, then the front row over it - the
  * scene bake), or the front row alone (front = 1: over the fish) */
 static void draw_castle(ctx_t *c, int cx, int front, bool final) {
     castle_tint_fill(c->dim);
     cst_t k = { c, cx, 1, final };
-    if (front) { castle_front_row(&k); return; }
+    if (front) { castle_front_cached(&k); return; }
     k.layer = 0;
     int FY = CASTLE_FY;
     /* the base: a low rubble mound the towers stand on */
@@ -1506,7 +1638,7 @@ static void draw_castle(ctx_t *c, int cx, int front, bool final) {
     /* the curtain wall behind the gate's opening, then the courtyard's dark */
     castle_back_wall(&k);                    /* the arch is OPEN (2026-10-17): the tank behind shows through it */
     k.layer = 1;
-    castle_front_row(&k);
+    castle_front_cached(&k);
 }
 
 /* ---- the coral, procedural (2026-09-23; Strato's coral-single.png: a
@@ -1705,29 +1837,77 @@ static void coral_tint_fill(uint32_t rgb, float dim) {
  * with its own phase (seed), a bright bead at the end; the bounding box
  * through the pointers (x1 < x0 = nothing drawn). The coral's crown and the
  * cluster's bloom both use it (2026-09-24). */
+static void crown_point(float ox, float oy, float a, float sway, int k, int n_t, float len,
+                        int i, int n, int *x, int *y) {
+    float s = (float)i / n;
+    float ang = a + sway * s + (k - (n_t - 1) * 0.5f) * 0.05f * s;
+    *x = (int)(ox + cosf(ang) * len * s + 0.5f);
+    *y = (int)(oy + sinf(ang) * len * s + 0.5f);
+}
+static const crown_pose_t *crown_pose(float ox, float oy, int n_t, float a0, float a1,
+                                     float len, int seed, float clock) {
+    int n = (int)(len + 0.5f);
+    if (!g_work_enabled || g_crown_failed || n < 1 || n_t < 1 || n > 1024 / n_t) return NULL;
+    if (!g_crown_poses) {
+        g_crown_poses = calloc(1, sizeof *g_crown_poses);
+        if (!g_crown_poses) {
+            fprintf(stderr, "Crown pose cache unavailable; drawing live\n");
+            g_crown_failed = true;
+            return NULL;
+        }
+    }
+    crown_cache_t *cache = g_crown_poses;
+    if (cache->clock != clock) {
+        cache->clock = clock; cache->count = cache->used = 0;
+    }
+    for (int j = 0; j < cache->count; j++) {
+        const crown_pose_t *p = &cache->poses[j];
+        if (p->ox == ox && p->oy == oy && p->a0 == a0 && p->a1 == a1 &&
+            p->len == len && p->tentacles == n_t && p->seed == seed) return p;
+    }
+    if (cache->count == 13 || cache->used + n_t * n > 1024) cache->count = cache->used = 0;
+    crown_pose_t *p = &cache->poses[cache->count++];
+    *p = (crown_pose_t){ox, oy, a0, a1, len, n_t, seed, cache->used};
+    for (int k = 0; k < n_t; k++) {
+        float a = n_t == 1 ? (a0 + a1) * 0.5f : a0 + (a1 - a0) * k / (n_t - 1);
+        float sway = 0.22f * fast_sin(clock * 1.3f + (k + seed) * 0.9f);
+        for (int i = 1; i <= n; i++) {
+            int x, y;
+            crown_point(ox, oy, a, sway, k, n_t, len, i, n, &x, &y);
+            cache->points[cache->used][0] = (int16_t)x;
+            cache->points[cache->used++][1] = (int16_t)y;
+        }
+    }
+    return p;
+}
 static void draw_crown(ctx_t *c, float ox, float oy, int n_t, float a0, float a1, float len, uint32_t pale,
                        int seed, float clock, int *bx0, int *by0, int *bx1, int *by1) {
     *bx0 = *by0 = 1 << 20; *bx1 = *by1 = -1;
     if (n_t < 1) return;
     uint32_t bead = mix(pale, 0xffffff, 0.55f);
+    const crown_pose_t *pose = crown_pose(ox, oy, n_t, a0, a1, len, seed, clock);
+    int point = pose ? pose->offset : 0;
     for (int k = 0; k < n_t; k++) {
-        float a = n_t == 1 ? (a0 + a1) * 0.5f : a0 + (a1 - a0) * k / (n_t - 1);
-        float sway = 0.22f * fast_sin(clock * 1.3f + (k + seed) * 0.9f);
-        float lx = ox, ly = oy;
+        float a = 0, sway = 0;
+        if (!pose) {
+            a = n_t == 1 ? (a0 + a1) * 0.5f : a0 + (a1 - a0) * k / (n_t - 1);
+            sway = 0.22f * fast_sin(clock * 1.3f + (k + seed) * 0.9f);
+        }
+        int lx = (int)(ox + 0.5f), ly = (int)(oy + 0.5f);
         int n = (int)(len + 0.5f);
         for (int i = 1; i <= n; i++) {
-            float s = (float)i / n;
-            float ang = a + sway * s + (k - (n_t - 1) * 0.5f) * 0.05f * s;   /* the outer ones curl outward */
-            float x = ox + cosf(ang) * len * s, y = oy + sinf(ang) * len * s;
-            int ix = (int)(x + 0.5f), iy = (int)(y + 0.5f);
-            if (ix == (int)(lx + 0.5f) && iy == (int)(ly + 0.5f)) continue;
+            int ix, iy;
+            if (pose) {
+                ix = g_crown_poses->points[point][0]; iy = g_crown_poses->points[point++][1];
+            } else crown_point(ox, oy, a, sway, k, n_t, len, i, n, &ix, &iy);
+            if (ix == lx && iy == ly) continue;
             if (g_clip_k >= 0 && pc_covered_above(g_clip_k, ix, iy)) continue;   /* under a piece above its own */
             px_blend(c, ix, iy, i == n ? bead : pale, i == n ? 255 : 190);
             if (ix < *bx0) *bx0 = ix;
             if (ix > *bx1) *bx1 = ix;
             if (iy < *by0) *by0 = iy;
             if (iy > *by1) *by1 = iy;
-            lx = x; ly = y;
+            lx = ix; ly = iy;
         }
     }
     if (*bx1 >= *bx0) { *bx0 -= 1; *by0 -= 1; *bx1 += 1; *by1 += 1; }
@@ -2464,6 +2644,7 @@ static void draw_snail(ctx_t *c, const tank_t *t, bool upright_pass) {
  * and work faster while it chews. The dome's centre is (urchin_x,
  * URCHIN_FLOOR_Y); its flat base sits on the root line, UR_BASE below. */
 enum { UR_T0, UR_T1, UR_T2, UR_T3, UR_T4, UR_T5, UR_NONE };
+_Static_assert(UR_NONE < 16, "urchin tones fit lossless four-bit cache");
 static const uint32_t URCHIN_RGB[UR_NONE] = { 0x320746, 0x66107d, 0x9732b1, 0xbe53bc, 0xf88ab8, 0xfff0d3 };
 #define UR_SPINES 11
 #define UR_FACE    5
@@ -2551,20 +2732,23 @@ static void draw_urchin(ctx_t *c, const tank_t *t) {
         epoch = g_work_epoch; cached_chewing = chewing; ready = 0; failed = false;
     }
     if (g_work_enabled && !g_urchin_art && !failed) {
-        g_urchin_art = malloc(16 * 37 * 24);
+        g_urchin_art = malloc(16 * URCHIN_POSE_BYTES);
         if (!g_urchin_art) { fprintf(stderr, "Urchin artwork cache unavailable; drawing live\n"); failed = true; }
     }
     float speed = chewing ? 2.6f : 0.8f;
     float phase = fmodf(t->clock * speed, TAU);
     if (phase < 0) phase += TAU;
     int pose = (int)(phase * (16 / TAU) + 0.5f) & 15;
-    uint8_t *art = g_work_enabled && g_urchin_art ? g_urchin_art + pose * 37 * 24 : NULL;
+    uint8_t *art = g_work_enabled && g_urchin_art ? g_urchin_art + pose * URCHIN_POSE_BYTES : NULL;
     ur_pose_t p;
     if (!art || !(ready & (1u << pose))) {
         urchin_pose(&p, art ? pose * (TAU / 16) / speed : t->clock, chewing);
         if (art) {
-            for (int ly = -16; ly <= 7; ly++) for (int lx = -18; lx <= 18; lx++)
-                art[(ly + 16) * 37 + lx + 18] = (uint8_t)urchin_tone(lx + 0.5f, ly + 0.5f, &p);
+            for (int i = 0; i < 37 * 24; i += 2) {
+                unsigned low = (unsigned)urchin_tone(i % 37 - 18 + .5f, i / 37 - 16 + .5f, &p);
+                unsigned high = (unsigned)urchin_tone((i + 1) % 37 - 18 + .5f, (i + 1) / 37 - 16 + .5f, &p);
+                art[i / 2] = (uint8_t)(low | (high << 4));
+            }
             ready |= (uint16_t)(1u << pose);
         }
     }
@@ -2579,7 +2763,9 @@ static void draw_urchin(ctx_t *c, const tank_t *t) {
         unsigned have = 0;
         for (int lx = -18; lx <= 18; lx++) {
             if (!CTX_IN(c, cx + lx, y)) continue;
-            int tone = art ? art[(ly + 16) * 37 + lx + 18] : urchin_tone((float)lx + 0.5f, (float)ly + 0.5f, &p);
+            int index = (ly + 16) * 37 + lx + 18;
+            int tone = art ? (art[index / 2] >> ((index & 1) * 4)) & 15 :
+                urchin_tone((float)lx + 0.5f, (float)ly + 0.5f, &p);
             if (tone == UR_NONE) continue;
             if (!(have & (1u << tone))) {
                 tones[tone] = src_color(mix(w, palette[tone], UR_TINT), c->dim);
@@ -3993,12 +4179,22 @@ static uint32_t ornament_pixel(int item, int x, int y) {
 }
 static uint32_t locked_rgb(uint16_t v);
 static void ornament_select(const tank_t *t) {
-    int selected = -1, most = 1;
-    if (g_work_enabled) for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
-        int item = t->inventory.extra[i].item - 1;
-        if (item < 9 || item == 13 || item == 21) continue;
-        int count = progression_inventory_placed(t, item);
-        if (count > most) { most = count; selected = item; }
+    int selected = -1, most = 0;
+    if (g_work_enabled) {
+        uint8_t counts[SD_ITEM_COUNT] = {0};
+        for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+            unsigned item = (unsigned)t->inventory.extra[i].item - 1;
+            if (item < SD_ITEM_COUNT) counts[item]++;
+        }
+        for (int slot = 0; slot < DECOR_SLOTS; slot++) {
+            int item = tank_decor_slot_item(slot);
+            if (item < 9 || item == 13 || item == 21) continue;
+            int count = counts[item] + progression_item_owned(t, item);
+            if (!count) continue;
+            int score = count * tank_ornament_w(item) * tank_ornament_h(item);
+            if (tank_decor_z(t, item) == DECOR_Z_FRONT) score *= 2;
+            if (score > most) { most = score; selected = item; }
+        }
     }
     if (selected == g_ornament_selected) return;
     free(g_ornament_art); g_ornament_art = NULL;
@@ -4045,6 +4241,13 @@ static uint32_t ornament_cached_pixel(int item, int x, int y) {
 static uint32_t shop_art_color(uint32_t rgb, bool lit, uint32_t background) {
     return lit ? rgb : mix(background, locked_rgb(rgb565(rgb, 1)), 179 / 255.0f);
 }
+static void ornament_foreground_palette(ornament_art_t *art, float dim) {
+    if (!art->foreground_valid || art->foreground_dim != dim) {
+        for (int i = 0; i < 64; i++)
+            art->foreground[i] = rgb565(art->palette[i], dim);
+        art->foreground_dim = dim; art->foreground_valid = true;
+    }
+}
 static void draw_ornament(ctx_t *c, int item, int x0, int y0, int scale, bool final, bool lit, uint32_t background) {
     if (!c->scaled && (x0 >= c->ox + c->w ||
         x0 + tank_ornament_w(item) * scale <= c->ox)) return;
@@ -4057,16 +4260,31 @@ static void draw_ornament(ctx_t *c, int item, int x0, int y0, int scale, bool fi
     }
     int width = tank_ornament_w(item);
     const ornament_art_t *cached = ornament_art(item);
+    bool foreground = cached && lit && scale == 1 && !c->scaled && !g_recording;
+    if (foreground) ornament_foreground_palette(g_ornament_art, c->dim);
     for (int y = first; y <= last; y++) {
-        for (int x = 0; x < width; x++) {
+        for (int x = 0; x < width;) {
             uint32_t rgb = cached ? cached->palette[cached->pixels[y * width + x]] : ornament_pixel(item, x, y);
+            int start = x++;
             if (!rgb) continue;
+            while (x < width) {
+                uint32_t next = cached ? cached->palette[cached->pixels[y * width + x]] : ornament_pixel(item, x, y);
+                if (next != rgb) break;
+                x++;
+            }
             rgb = shop_art_color(rgb, lit, background);
-            src_t color = src_color(rgb, c->dim);
-            int left = x0 + x * scale, top = y0 + y * scale;
+            /* Opaque unscaled spans need only RGB565; recording retains full channels. */
+            src_t color = foreground && !final ?
+                (src_t){0, 0, 0, cached->foreground[cached->pixels[y * width + start]]} :
+                src_color(rgb, c->dim);
+            int left = x0 + start * scale, right = x0 + x * scale - 1, top = y0 + y * scale;
             for (int row = 0; row < scale; row++) {
-                if (final) span_final(c, left, left + scale - 1, top + row, &color, 255);
-                else span(c, left, left + scale - 1, top + row, &color, 255);
+                if (final) {
+                    /* Keep each original cell's lighting sample, but share its source color. */
+                    for (int cell = start; cell < x; cell++)
+                        span_final(c, x0 + cell * scale, x0 + (cell + 1) * scale - 1,
+                                   top + row, &color, 255);
+                } else span(c, left, right, top + row, &color, 255);
             }
         }
     }
@@ -4096,6 +4314,8 @@ static void mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
 static void draw_tank_mussel(ctx_t *c, const tank_t *t) {
     if (!progression_item_owned(t, SD_SHOP_MUSSEL)) return;
     float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
+    if (!c->scaled && (x + 21 < c->ox || x - 21 >= c->ox + c->w ||
+        y + 10 < c->oy || y - 36 >= c->oy + c->h)) return;
     if (crawl) fill_ellipse(c, x + crawl * 9, y + 5, 8, 2, 0x769d91, 220);
     draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0, true, 0, t->companion.mussel_colors);
     if (t->mussel_glint > 0) {
@@ -4568,6 +4788,13 @@ void render_set_backdrop_cache(void *buf, size_t bytes) {
     g_backdrop_words = bytes / sizeof(uint16_t);
     g_backdrop_dim = -1;
 }
+void render_backdrop_stats(unsigned *cached_rows, size_t *bytes) {
+    *cached_rows = 0; *bytes = 0;
+    if (!g_backdrop || g_backdrop_dim < 0) return;
+    for (int y = 0; y < g_backdrop_height; y++)
+        *cached_rows += g_backdrop_row[y] != UINT16_MAX;
+    *bytes = (size_t)g_backdrop_row[g_backdrop_height] * sizeof *g_backdrop;
+}
 static uint16_t backdrop_pixel(int x, int y, uint32_t water, float dim) {
     uint32_t h = (uint32_t)(x * 2654435761u);
     int top = TANK_SAND_TOP + 4 - (int)((h >> 8) % 5);
@@ -4580,6 +4807,43 @@ static inline void backdrop_fill(uint16_t *row, int left, int right, int y, uint
         if (left < g_hidden_right[y]) left = g_hidden_right[y];
         for (int x = left; x < right; x++) row[x] = color;
     }
+}
+static bool backdrop_matches(const uint16_t *pixels, size_t at) {
+    for (int x = 0; x < TANK_W;) {
+        unsigned token = g_backdrop[at++], count = token & 0x7fff;
+        if (token & 0x8000) {
+            if (memcmp(pixels + x, g_backdrop + at, count * sizeof *pixels)) return false;
+            at += count;
+        } else {
+            uint16_t color = g_backdrop[at++];
+            for (unsigned i = 0; i < count; i++) if (pixels[x + i] != color) return false;
+        }
+        x += (int)count;
+    }
+    return true;
+}
+static bool backdrop_encode(const uint16_t *pixels, size_t *used) {
+    for (int x = 0; x < TANK_W;) {
+        int end = x + 1;
+        while (end < TANK_W && pixels[end] == pixels[x]) end++;
+        if (end - x >= 3) {
+            if (*used + 2 > g_backdrop_words || *used + 2 >= UINT16_MAX) return false;
+            g_backdrop[(*used)++] = (uint16_t)(end - x);
+            g_backdrop[(*used)++] = pixels[x];
+        } else {
+            while (end < TANK_W) {
+                if (end + 2 < TANK_W && pixels[end] == pixels[end + 1] && pixels[end] == pixels[end + 2]) break;
+                end++;
+            }
+            size_t count = (size_t)(end - x);
+            if (*used + count + 1 > g_backdrop_words || *used + count + 1 >= UINT16_MAX) return false;
+            g_backdrop[(*used)++] = (uint16_t)(0x8000 | count);
+            memcpy(g_backdrop + *used, pixels + x, count * sizeof *pixels);
+            *used += count;
+        }
+        x = end;
+    }
+    return true;
 }
 static void backdrop_prepare(const tank_t *t, float dim) {
     scene_sig_t sig; memset(&sig, 0, sizeof sig);
@@ -4641,31 +4905,12 @@ static void backdrop_prepare(const tank_t *t, float dim) {
         }
         /* Adjacent RGB565 rows often coincide after quantization. Reuse the
          * prior runs before consuming more of the fixed backdrop budget. */
-        if (y && g_backdrop_row[y - 1] != UINT16_MAX) {
-            size_t at = g_backdrop_row[y - 1];
-            int x = 0;
-            while (x < TANK_W) {
-                int count = g_backdrop[at++];
-                uint16_t previous = g_backdrop[at++];
-                int end = x + count;
-                while (x < end && pixels[x] == previous) x++;
-                if (x != end) break;
-            }
-            if (x == TANK_W) {
-                g_backdrop_row[y] = g_backdrop_row[y - 1];
-                continue;
-            }
+        if (y && g_backdrop_row[y - 1] != UINT16_MAX &&
+            backdrop_matches(pixels, g_backdrop_row[y - 1])) {
+            g_backdrop_row[y] = g_backdrop_row[y - 1];
+            continue;
         }
-        uint16_t color = pixels[0];
-        int count = 1;
-        bool fits = true;
-        for (int x = 1; x <= TANK_W; x++) {
-            uint16_t next = x < TANK_W ? pixels[x] : 0;
-            if (x < TANK_W && next == color) { count++; continue; }
-            if (used + 2 > g_backdrop_words || used + 2 >= UINT16_MAX) { fits = false; break; }
-            g_backdrop[used++] = (uint16_t)count; g_backdrop[used++] = color;
-            count = 1; color = next;
-        }
+        bool fits = backdrop_encode(pixels, &used);
         g_backdrop_row[y] = fits ? (uint16_t)start : UINT16_MAX;
         if (!fits) used = start; /* A complex row can render live without invalidating cached rows. */
     }
@@ -4673,22 +4918,34 @@ static void backdrop_prepare(const tank_t *t, float dim) {
     g_scene_occluded = occluded;
     g_backdrop_row[TANK_H] = (uint16_t)used;
 }
+static void backdrop_draw_row(const ctx_t *c, uint16_t *fb, int stride, int y) {
+    const uint16_t *source = g_backdrop + g_backdrop_row[y];
+    uint16_t *row = fb + (y - g_tile_y) * stride;
+    int right_edge = c->ox + c->w;
+    for (int x = 0; x < right_edge;) {
+        unsigned token = *source++;
+        int count = (int)(token & 0x7fff), end = x + count;
+        int left = x > c->ox ? x : c->ox, right = end < right_edge ? end : right_edge;
+        if (token & 0x8000) {
+            int visible_end = g_scene_occluded && right > g_hidden_left[y] ? g_hidden_left[y] : right;
+            if (left < visible_end)
+                memcpy(row + left, source + left - x, (size_t)(visible_end - left) * sizeof *row);
+            if (g_scene_occluded) {
+                if (left < g_hidden_right[y]) left = g_hidden_right[y];
+                if (left < right) memcpy(row + left, source + left - x, (size_t)(right - left) * sizeof *row);
+            }
+            source += count;
+        } else backdrop_fill(row, left, right, y, *source++);
+        x = end;
+    }
+}
 static void draw_scene(const tank_t *t, uint16_t *fb, int stride, float dim) {
     ctx_t c = ctx_full(fb, stride, dim);
     backdrop_prepare(t, dim);
     /* water gradient #0a3c46 → #08272f → #031015 */
     for (int y = render_tile_top(); y < render_tile_bottom(); y++) {
         if (g_backdrop && g_backdrop_row[y] != UINT16_MAX) {
-            size_t at = g_backdrop_row[y];
-            uint16_t *row = fb + (y - g_tile_y) * stride;
-            for (int x = 0; x < TANK_W;) {
-                int count = g_backdrop[at++];
-                uint16_t color = g_backdrop[at++];
-                int end = x + count;
-                int left = x > c.ox ? x : c.ox, right = end < c.ox + c.w ? end : c.ox + c.w;
-                backdrop_fill(row, left, right, y, color);
-                x = end;
-            }
+            backdrop_draw_row(&c, fb, stride, y);
             continue;
         }
         uint32_t water = water_rgb(y);
@@ -4947,7 +5204,7 @@ static bool clock_solid(const tank_t *t) {
     return render_clock_active(t) && !(t->aquariums.clock_flags & CLOCK_HIDE_PANEL);
 }
 static int g_damage_policy;
-static uint32_t g_damage_pixel_ns = 900, g_damage_rectangle_us = 200;
+static uint32_t g_damage_pixel_ns = 900, g_damage_rectangle_us = 4000;
 void render_damage_policy(int policy) {
     g_damage_policy = policy;
 }
@@ -4955,8 +5212,7 @@ void render_damage_costs(uint32_t pixel_ns, uint32_t rectangle_us) {
     g_damage_pixel_ns = pixel_ns;
     g_damage_rectangle_us = rectangle_us;
 }
-static void damage_select_plan(void) {
-    int rows = (TANK_H + 39) / 40;
+static uint64_t damage_plan_cost(void) {
     uint64_t pixels = 0;
     unsigned rectangles = 0;
     uint16_t planned_blocks[sizeof g_damage_blocks / sizeof g_damage_blocks[0]];
@@ -4967,14 +5223,32 @@ static void damage_select_plan(void) {
         rectangles += (unsigned)(height + 39) / 40;
     }
     memcpy(g_damage_blocks, planned_blocks, sizeof planned_blocks);
-    /* Compare the actual merged plan with canonical tiles, rather than promote
-       every scene above an arbitrary damage percentage to a full repaint. */
-    uint64_t partial_cost = pixels * g_damage_pixel_ns + (uint64_t)rectangles * g_damage_rectangle_us * 1000;
-    uint64_t full_cost = (uint64_t)TANK_W * TANK_H * g_damage_pixel_ns +
-        (uint64_t)rows * g_damage_rectangle_us * 1000;
-    if (g_damage_policy == RENDER_DAMAGE_FULL ||
-        (g_damage_policy == RENDER_DAMAGE_ADAPTIVE && partial_cost >= full_cost))
-        for (int row = 0; row < rows; row++) g_damage_blocks[row] = (uint16_t)((1u << ((TANK_W + 31) / 32)) - 1);
+    return pixels * g_damage_pixel_ns + (uint64_t)rectangles * g_damage_rectangle_us * 1000;
+}
+static void damage_select_plan(void) {
+    if (g_damage_policy == RENDER_DAMAGE_PARTIAL) return;
+    int rows = (TANK_H + 39) / 40;
+    if (g_damage_policy == RENDER_DAMAGE_ADAPTIVE) {
+        uint16_t exact[sizeof g_damage_blocks / sizeof g_damage_blocks[0]];
+        memcpy(exact, g_damage_blocks, sizeof exact);
+        uint64_t exact_cost = damage_plan_cost();
+        /* Nearby spans share scene setup and clock replay when drawn together. */
+        for (int row = 0; row < rows; row++) {
+            unsigned bits = g_damage_blocks[row];
+            if (!bits) continue;
+            unsigned first = (unsigned)__builtin_ctz(bits);
+            unsigned last = 31u - (unsigned)__builtin_clz(bits);
+            g_damage_blocks[row] = (uint16_t)(((1u << (last + 1)) - 1) & (0xffffu << first));
+        }
+        uint64_t joined_cost = damage_plan_cost();
+        if (exact_cost <= joined_cost) memcpy(g_damage_blocks, exact, sizeof exact);
+        uint64_t partial_cost = exact_cost < joined_cost ? exact_cost : joined_cost;
+        uint64_t full_cost = (uint64_t)TANK_W * TANK_H * g_damage_pixel_ns +
+            (uint64_t)rows * g_damage_rectangle_us * 1000;
+        if (partial_cost < full_cost) return;
+    }
+    for (int row = 0; row < rows; row++)
+        g_damage_blocks[row] = (uint16_t)((1u << ((TANK_W + 31) / 32)) - 1);
 }
 void render_damage_begin(const tank_t *t, bool force_full) {
     static bool was_simple;
@@ -5217,14 +5491,7 @@ static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float d
     backdrop_prepare(t, dim);
     for (int y = c.oy; y < c.oy + c.h;) {
         if (g_backdrop && g_backdrop_row[y] != UINT16_MAX) {
-            size_t at = g_backdrop_row[y];
-            uint16_t *row = fb + (y - g_tile_y) * stride;
-            for (int x = 0; x < TANK_W;) {
-                int count = g_backdrop[at++]; uint16_t color = g_backdrop[at++];
-                int end = x + count;
-                backdrop_fill(row, x > c.ox ? x : c.ox, end < c.ox + c.w ? end : c.ox + c.w, y, color);
-                x = end;
-            }
+            backdrop_draw_row(&c, fb, stride, y);
             y++;
         } else {
             int start = y++;
@@ -5449,12 +5716,18 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     /* vegetation, FRONT layer: the alternating fronds drawn over the fish,
        so a fish inside a canopy is woven through it (each span applies its
        own vignette and untags itself, so the fish rects below skip it) */
+    int64_t front_start = PROF_MARK();
     if (g_veg_mask_cx >= 0) g_veg_arch_pass = 1;     /* (the arch's pixels were drawn before the fish) */
     for (int b = 0; b < tank_veg_beds(t); b++)
         if (bed_z(t, b) == DECOR_Z_MIDDLE) VEG_PASS(b, 1);
     for (int b = 0; b < tank_veg_beds(t); b++)          /* a FRONT-layer piece last: over the grass and the fish */
         if (bed_z(t, b) == DECOR_Z_FRONT) VEG_PASS(b, -1);
     g_veg_arch_pass = 0;
+    if (render_clock_us) {
+        int64_t now = render_clock_us();
+        render_front_us[0] += now - front_start;
+        front_start = now;
+    }
 #undef VEG_PASS
     /* the pieces IN FRONT that are not in the scene (a placement page is up,
        or no scene cache): live, in order, over everything; then every piece
@@ -5473,11 +5746,17 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     if ((t->sd_unlocks & SD_ITEM_SEAHORSE) && t->sh_x >= 0 && t->sh_front) draw_seahorse(&c, t);   /* the seahorse's front lane (its rect is marked above) */
     { int kc = pc_index(2); if (kc >= 0 && g_pc[kc].z == DECOR_Z_FRONT) arch_shade(&c, kc, g_pc[kc].cx, t->night, true); }   /* the tunnel through a castle IN FRONT: shaded, whatever passes it */
     draw_inventory_extras(&c, t, DECOR_Z_FRONT);
+    if (render_clock_us) {
+        int64_t now = render_clock_us();
+        render_front_us[1] += now - front_start;
+        front_start = now;
+    }
     if (progression_item_owned(t, SD_SHOP_MUSSEL)) {
         float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
         draw_tank_mussel(&c, t);
         DYN_RECT((int)x - 21, (int)y - 36, (int)x + 21, (int)y + 10);
     }
+    if (render_clock_us) render_front_us[2] += render_clock_us() - front_start;
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) if (t->inventory.extra[i].item) {
         const inventory_extra_t *copy = &t->inventory.extra[i];
         int item = copy->item - 1, half = tank_ornament_w(item) / 2 + 2;
@@ -8063,7 +8342,7 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
     clock_key_t key = clock_key(t, unix_time);
     if (attempt_epoch != g_work_epoch) { attempt_epoch = g_work_epoch; alloc_failed = false; }
     if (!g_clock_runs[0] && !alloc_failed) {
-        g_clock_runs[0] = malloc(CLOCK_RUN_PAGE * sizeof(paint_run_t));
+        g_clock_runs[0] = malloc(sizeof *g_clock_runs[0]);
         if (!g_clock_runs[0]) { fprintf(stderr, "Clock graphics cache unavailable; drawing live\n"); alloc_failed = true; }
         valid = false;
     }
@@ -8076,6 +8355,7 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
         clock_overlay_live(t, NULL, TANK_W, unix_time);
         render_tile(tile_y, tile_h); render_region(region_x, region_w);
         g_recording = false;
+        if (!g_record_overflow) clock_index_build();
         if (g_record_overflow && !overflow_reported) {
             fprintf(stderr, "Clock graphics cache capacity/memory exhausted; drawing this layout live\n");
             overflow_reported = true;
@@ -8083,24 +8363,39 @@ void render_clock_overlay(const tank_t *t, uint16_t *fb, int stride, int64_t uni
     }
     if (g_record_overflow) { clock_overlay_live(t, fb, stride, unix_time); return; }
     ctx_t c = ctx_full(fb, stride, 1);
-    for (size_t i = 0; i < g_clock_run_count; i++) {
-        const paint_run_t *run = clock_run(i);
-        unsigned alpha = run->alpha & 511;
-        int x0 = run->x0 > c.ox ? run->x0 : c.ox;
-        int x1 = run->x1 < c.ox + c.w ? run->x1 : c.ox + c.w - 1;
-        if (x0 > x1) continue;
-        src_t source = {0};
-        if (alpha != 256) source = src_color(run->color, 1);
-        for (int y = run->y; y <= run->y + (run->alpha >> 9); y++) {
-            if (y < c.oy || y >= c.oy + c.h) continue;
-            if (alpha == 256) {
-                uint16_t *out = &CTX_PX(&c, x0, y);
-                for (int x = x0; x <= x1; x++) *out++ = (uint16_t)run->color;
-                dirty_span(x0, x1, y);
-            } else if (alpha < 255) {
-                span(&c, x0, x1, y, &source, (int)alpha);
-            } else {
-                for (int x = x0; x <= x1; x++) px_blend_s(&c, x, y, &source, (int)alpha);
+    unsigned first_band = (unsigned)c.oy / CLOCK_INDEX_ROWS;
+    unsigned last_band = (unsigned)(c.oy + c.h - 1) / CLOCK_INDEX_ROWS;
+    for (size_t p = 0; p * CLOCK_RUN_PAGE < g_clock_run_count; p++) {
+        const clock_run_page_t *page = g_clock_runs[p];
+        for (unsigned word = 0; word < CLOCK_RUN_PAGE / 32; word++) {
+            uint32_t visible = 0;
+            for (unsigned band = first_band; band <= last_band; band++) visible |= page->bands[band][word];
+            while (visible) {
+                unsigned bit = (unsigned)__builtin_ctz(visible);
+                visible &= visible - 1;
+                const paint_run_t *run = &page->runs[word * 32 + bit];
+                int y0 = run->y > c.oy ? run->y : c.oy;
+                int y1 = run->y + (run->alpha >> 9);
+                if (y1 >= c.oy + c.h) y1 = c.oy + c.h - 1;
+                if (y0 > y1) continue;
+                unsigned alpha = run->alpha & 511;
+                int x0 = run->x0 > c.ox ? run->x0 : c.ox;
+                int x1 = run->x1 < c.ox + c.w ? run->x1 : c.ox + c.w - 1;
+                if (x0 > x1) continue;
+                src_t source = {0};
+                if (alpha != 256) source = src_color(run->color, 1);
+                for (int y = y0; y <= y1; y++) {
+                    if (alpha == 256) {
+                        uint16_t *out = &CTX_PX(&c, x0, y);
+                        for (int x = x0; x <= x1; x++) *out++ = (uint16_t)run->color;
+                    } else if (alpha == 255) {
+                        blend255_span(&CTX_PX(&c, x0, y), x1 - x0 + 1, &source);
+                    } else {
+                        uint16_t *out = &CTX_PX(&c, x0, y);
+                        for (int x = x0; x <= x1; x++) blend565(out++, &source, (int)alpha);
+                    }
+                    dirty_span(x0, x1, y);
+                }
             }
         }
     }

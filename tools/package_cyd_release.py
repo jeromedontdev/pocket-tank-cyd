@@ -175,7 +175,18 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.14: fish-first rendering and detailed harbor/garden content
+### New in 2.3.15: exact rendering caches, hourly weather and background SD backups
+
+- Weather checks at boot and hourly, including failed attempts. Offline acquisition is bounded; optional rendering caches release RAM for verified HTTPS, then warm again after the radio stops.
+- Tile-band clock command indexing and exact alpha-255 blending avoid repeated work without changing pixels. Static ornament RGB565 palettes, bounded helper/castle/crown/grass caches and compressed backdrop rows retain live-render fallbacks.
+- Simulation reuses exact shrimp/fish calculations without reducing fish update frequency. Diagnostics now separate helper upkeep, social/advisor work and fish steering.
+- Daily SD backups capture and semantically validate immutable JSON on the tank task, then a CPU1 worker below LCD priority writes, verifies and prunes files. Completion is identity-safe and the daily marker advances only on success. Other SD/network operations are excluded while busy.
+- COM4 testing reduced observed tank-task backup service from 718 to 109 ms; worker storage/readback took 442 ms. The diagnostic frame window still reached 221 ms: snapshot validation is not hitch-free.
+- Controlled adaptive five-fish fixtures measured 19.51 / 18.75 / 14.00 / 16.72 FPS versus 19.40 / 18.75 / 13.80 / 16.79 before this follow-up. Clock work fell from 8.24 to 7.88 ms in the clock-heavy fixture; p95 frame times were unchanged. Gains are small and mixed, not a universal speedup.
+- Exact reference scene/frame hashes, flat/rounded tile/cache tests, backup/identity/failure tests, all sixteen COM4 hardware fixtures and verified HTTPS weather passed. Original fish and saves were retained.
+- Save schema 19 / 6336 bytes and companion version 7 are unchanged from 2.3.14. Hardware profiles, partitions and calibration are unchanged. Back up first; do not downgrade to firmware that cannot read the expanded save.
+
+### Retained from 2.3.14: fish-first rendering and detailed harbor/garden content
 
 - Aquarium fish draw 33% smaller at every life stage, including wearables and selection rings. Saved growth, simulation sizes and tap targets are unchanged; menu portraits remain readable.
 - Twenty detailed static shop decorations and six accessories: Sailor Cap, Pirate Hat, Beret, Sun Hat, Viking Helm and Scarf. Artwork stays procedural and uses bounded indexed caches, without new animation banks.

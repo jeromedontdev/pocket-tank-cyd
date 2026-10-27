@@ -17,10 +17,15 @@
 #include "advisor.h"
 #ifndef RENDER_BASELINE
 static bool fail_render_calloc;
+static bool fail_render_malloc;
+static void *renderer_malloc(size_t bytes) {
+    return fail_render_malloc ? NULL : malloc(bytes);
+}
 static void *renderer_calloc(size_t count, size_t bytes) {
     return fail_render_calloc ? NULL : calloc(count, bytes);
 }
 #define calloc renderer_calloc
+#define malloc renderer_malloc
 #endif
 /* Freeze wall time across all render paths belonging to the same frame. */
 #define clock_port_now_unix renderer_test_now
@@ -32,6 +37,7 @@ static void *renderer_calloc(size_t count, size_t bytes) {
 #undef clock_port_now_unix
 #ifndef RENDER_BASELINE
 #undef calloc
+#undef malloc
 #endif
 
 static int64_t frozen_unix = INT64_C(1792803600);
@@ -222,7 +228,11 @@ static void check_ornament_art(void) {
         for (unsigned i = 0; i < sizeof items / sizeof items[0]; i++) {
             int item = items[i];
             tank_t t = {0};
-            t.inventory.extra[0].item = t.inventory.extra[1].item = (uint8_t)(item + 1);
+            if (pass == 2 && SD_ITEMS[item].bit) t.sd_unlocks = SD_ITEMS[item].bit;
+            else {
+                t.inventory.extra[0].item = (uint8_t)(item + 1);
+                if (!pass) t.inventory.extra[1].item = (uint8_t)(item + 1);
+            }
             ornament_select(&t);
             for (int y = 0; y < tank_ornament_h(item); y++)
                 for (int x = -1; x <= tank_ornament_w(item); x++)
@@ -247,7 +257,7 @@ static void check_ornament_art(void) {
     ornament_select(&sample);
     assert(ornament_cached_pixel(10, 12, 8) == ornament_pixel(10, 12, 8));
     assert(g_ornament_art);
-    fprintf(stderr, "PASS: exact indexed ornament sprites/masks, animated fallback, bounded lifetime and allocation failure\n");
+    fprintf(stderr, "PASS: exact indexed ornament sprites/masks for single originals, single extras and repeated copies; animated fallback, bounded lifetime and allocation failure\n");
 }
 static void check_damage_merge(void) {
     tank_resolution(true);
@@ -259,8 +269,210 @@ static void check_damage_merge(void) {
     assert(!render_damage_next(&cursor, &x, &y, &w, &h));
     fprintf(stderr, "PASS: odd-row damage merges without extra pixels or exceeding an 80-row buffer\n");
 }
+static void check_foreground_art(void) {
+    g_pk_lx = -1;
+    for (int normal = 0; normal < 2; normal++) {
+        tank_resolution(normal != 0);
+        for (int item = 9; item < SD_ITEM_COUNT; item++) {
+            if (!tank_decor_placeable(item) || item == 13 || item == 21) continue;
+            tank_t t = {0};
+            t.inventory.extra[0].item = (uint8_t)(item + 1);
+            for (int mode = 0; mode < 8; mode++) {
+                int x0 = mode & 1 ? -5 : TANK_W / 2;
+                int y0 = TANK_H - tank_ornament_h(item) - 5;
+                float dim = mode & 2 ? .45f : 1;
+                bool final = (mode & 4) != 0;
+                g_scene_occluded = (mode & 1) != 0;
+                for (int y = 0; y < TANK_H; y++) {
+                    g_hidden_left[y] = 10; g_hidden_right[y] = 20;
+                }
+                memset(frame, 0x5a, sizeof frame);
+                memset(tiled, 0x5a, sizeof tiled);
+                bool enabled = g_work_enabled;
+                g_work_enabled = false;
+                ctx_t live = ctx_full(frame, TANK_W, dim);
+                draw_ornament(&live, item, x0, y0, 1, final, true, 0);
+                g_work_enabled = enabled;
+                render_work_caches(true); ornament_select(&t);
+                render_region(7, TANK_W - 19);
+                for (int y = 0; y < TANK_H; y += 17) {
+                    render_tile(y, TANK_H - y < 17 ? TANK_H - y : 17);
+                    ctx_t cached = ctx_full(tiled + y * TANK_W, TANK_W, dim);
+                    draw_ornament(&cached, item, x0, y0, 1, final, true, 0);
+                }
+                g_scene_occluded = false;
+                render_tile(0, 0); render_region(0, 0);
+                assert(g_ornament_art && g_ornament_art->foreground_valid);
+                for (int y = 0; y < TANK_H; y++) for (int x = 0; x < TANK_W; x++)
+                    assert(tiled[y * TANK_W + x] == (x >= 7 && x < TANK_W - 12 ? frame[y * TANK_W + x] : 0x5a5a));
+            }
+        }
+    }
+    render_work_caches(false); render_work_caches(true);
+    tank_t t = {0}; t.inventory.extra[0].item = 11;
+    ornament_select(&t);
+    assert(ornament_art(10));
+    ctx_t c = ctx_full(frame, TANK_W, 1);
+    fail_render_malloc = true;
+    draw_ornament(&c, 10, 100, 100, 1, true, true, 0);
+    fail_render_malloc = false;
+    assert(g_ornament_art->foreground_valid);
+    assert(sizeof g_ornament_art->foreground == 128);
+    render_work_caches(false); render_work_caches(true);
+    tank_init(&t, 0x5167);
+    t.inventory.extra[0].item = 17;
+    t.inventory.extra[0].x = TANK_W / 2;
+    t.inventory.extra[0].z = DECOR_Z_FRONT;
+    for (int y = 0; y < TANK_H; y += 40) {
+        render_tile(y, TANK_H - y < 40 ? TANK_H - y : 40);
+        render_tank(&t, tiled + y * TANK_W, TANK_W);
+    }
+    render_tile(0, 0);
+    assert(g_ornament_selected == 16 && g_ornament_art && g_ornament_art->foreground_valid);
+    render_work_caches(false);
+    assert(!render_work_cache_bytes());
+    render_work_caches(true);
+    fprintf(stderr, "PASS: 128-byte RGB565 foreground palette preserves exact live colors, transparency, clipped tiles/regions, clock occlusion, night/vignette; full tiled tank uses it without a second allocation\n");
+}
+static void check_castle_cache(void) {
+    for (int normal = 0; normal < 2; normal++) {
+        tank_resolution(normal != 0);
+        for (int mode = 0; mode < 8; mode++) {
+            int cx = mode & 1 ? 12 : TANK_W / 2;
+            bool final = (mode & 2) != 0;
+            float dim = mode & 4 ? .45f : 1;
+            memset(frame, 0x5a, sizeof frame);
+            memset(tiled, 0x5a, sizeof tiled);
+            render_work_caches(false);
+            ctx_t live = ctx_full(frame, TANK_W, dim);
+            draw_castle(&live, cx, 1, final);
+            render_work_caches(true);
+            for (int y = 0; y < TANK_H; y += 17) {
+                render_tile(y, TANK_H - y < 17 ? TANK_H - y : 17);
+                ctx_t cached = ctx_full(tiled + y * TANK_W, TANK_W, dim);
+                draw_castle(&cached, cx, 1, final);
+            }
+            render_tile(0, 0);
+            assert(g_castle_art);
+            assert(!memcmp(frame, tiled, sizeof frame));
+        }
+    }
+    render_work_caches(false); render_work_caches(true);
+    ctx_t c = ctx_full(frame, TANK_W, 1);
+    fail_render_malloc = true;
+    draw_castle(&c, TANK_W / 2, 1, false);
+    assert(!g_castle_art);
+    fail_render_malloc = false;
+    render_work_caches(false); render_work_caches(true);
+    draw_castle(&c, TANK_W / 2, 1, false);
+    assert(g_castle_art && CASTLE_FRONT_BYTES == 9701);
+    render_work_caches(false);
+    assert(!g_castle_art && !render_work_cache_bytes());
+    render_work_caches(true);
+    fprintf(stderr, "PASS: lossless castle front matches live day/night, final lighting, edge clipping and 17-row tiles; allocation failure/recovery and release\n");
+}
+static void check_crown_cache(void) {
+    g_clip_k = -1;
+    for (int normal = 0; normal < 2; normal++) {
+        tank_resolution(normal != 0);
+        for (int mode = 0; mode < 12; mode++) {
+            int cx = mode & 1 ? 12 : TANK_W / 2;
+            float clock = mode * .19f, growth = 1.1f + mode * .4f;
+            float dim = mode & 2 ? .45f : 1;
+            int live_box[4], cached_box[4];
+            memset(frame, 0x5a, sizeof frame);
+            memset(tiled, 0x5a, sizeof tiled);
+            render_work_caches(false);
+            ctx_t live = ctx_full(frame, TANK_W, dim);
+            draw_coral_crown(&live, cx, 0x9186bf, growth, clock,
+                             live_box, live_box + 1, live_box + 2, live_box + 3);
+            draw_cluster_crown(&live, cx, 0, growth, clock,
+                               live_box, live_box + 1, live_box + 2, live_box + 3);
+            render_work_caches(true);
+            for (int y = 0; y < TANK_H; y += 17) {
+                render_tile(y, TANK_H - y < 17 ? TANK_H - y : 17);
+                ctx_t cached = ctx_full(tiled + y * TANK_W, TANK_W, dim);
+                draw_coral_crown(&cached, cx, 0x9186bf, growth, clock,
+                                 cached_box, cached_box + 1, cached_box + 2, cached_box + 3);
+                draw_cluster_crown(&cached, cx, 0, growth, clock,
+                                   cached_box, cached_box + 1, cached_box + 2, cached_box + 3);
+                assert(!memcmp(live_box, cached_box, sizeof live_box));
+            }
+            render_tile(0, 0);
+            assert(g_crown_poses && !memcmp(frame, tiled, sizeof frame));
+            for (int j = 0; j < 20; j++) assert(crown_pose(cx + j, 100, 9, -2, -1, 15, 0, clock));
+            assert(crown_pose(cx, 100, 9, -2, -1, 15, 0, clock + 1));
+            assert(g_crown_poses->count == 1 && g_crown_poses->used == 135);
+        }
+    }
+    render_work_caches(false); render_work_caches(true);
+    fail_render_calloc = true;
+    assert(!crown_pose(100, 100, 9, -2, -1, 15, 0, 1));
+    fail_render_calloc = false;
+    render_work_caches(false); render_work_caches(true);
+    assert(crown_pose(100, 100, 9, -2, -1, 15, 0, 1));
+    render_work_caches(false);
+    assert(!g_crown_poses && !render_work_cache_bytes());
+    render_work_caches(true);
+    fprintf(stderr, "PASS: crown pose reuse matches live pixels and bounds across tiles, growth, clocks, day/night and cache overflow/failure/release\n");
+}
+static void check_backdrop_codec(void) {
+    uint16_t *saved = g_backdrop;
+    size_t saved_words = g_backdrop_words;
+    uint16_t storage[TANK_MAX_W + 8], pixels[TANK_MAX_W];
+    g_backdrop = storage + 1;
+    for (int normal = 0; normal < 2; normal++) {
+        tank_resolution(normal != 0);
+        for (int mode = 0; mode < 4; mode++) {
+            for (int x = 0; x < TANK_W; x++)
+                pixels[x] = mode == 0 ? 0x1234 : mode == 1 ? (uint16_t)x :
+                    mode == 2 ? (uint16_t)(x / 2) : (uint16_t)(x < 100 ? 0x4321 : x < 200 ? x : 0x5678);
+            for (int capacity = 0; capacity <= TANK_W + 4; capacity++) {
+                for (unsigned i = 0; i < sizeof storage / sizeof *storage; i++) storage[i] = 0xa57b;
+                g_backdrop_words = (size_t)capacity;
+                size_t used = 0;
+                bool fits = backdrop_encode(pixels, &used);
+                assert(used <= (size_t)capacity);
+                assert(storage[0] == 0xa57b && storage[capacity + 1] == 0xa57b);
+                if (fits) {
+                    assert(backdrop_matches(pixels, 0));
+                    pixels[TANK_W / 2] ^= 1;
+                    assert(!backdrop_matches(pixels, 0));
+                    pixels[TANK_W / 2] ^= 1;
+                }
+                if (capacity == TANK_W + 4) assert(fits);
+                if (capacity == TANK_W + 4) {
+                    g_backdrop_row[0] = 0;
+                    render_tile(0, 1); render_region(7, TANK_W - 19);
+                    ctx_t c = ctx_full(frame, TANK_W, 1);
+                    for (int hidden = 0; hidden < 2; hidden++) {
+                        for (int x = 0; x < TANK_W; x++) frame[x] = 0xa57b;
+                        g_scene_occluded = hidden != 0;
+                        g_hidden_left[0] = TANK_W / 3; g_hidden_right[0] = TANK_W * 2 / 3;
+                        backdrop_draw_row(&c, frame, TANK_W, 0);
+                        for (int x = 0; x < TANK_W; x++) {
+                            bool drawn = x >= 7 && x < TANK_W - 12 &&
+                                (!hidden || x < g_hidden_left[0] || x >= g_hidden_right[0]);
+                            assert(frame[x] == (drawn ? pixels[x] : 0xa57b));
+                        }
+                    }
+                    g_scene_occluded = false;
+                    render_tile(0, 0); render_region(0, 0);
+                }
+            }
+        }
+    }
+    g_backdrop = saved; g_backdrop_words = saved_words; g_backdrop_dim = -1;
+    fprintf(stderr, "PASS: hybrid literal/run backdrop codec preserves every pixel, detects changed rows, bounds every capacity and compresses noisy rows to width+1 words\n");
+}
 static void check_scenery_cadence(void) {
     tank_t t = {0};
+    render_work_caches(false); render_work_caches(true);
+    fail_render_calloc = true;
+    assert(veg_cached_sway(&t, 0, false, 0, VEG_SEED[0]) == veg_sway(&t, false, 0, VEG_SEED[0], t.clock));
+    assert(!g_veg_poses);
+    fail_render_calloc = false;
+    render_work_caches(false); render_work_caches(true);
     for (int detail = SCENE_BALANCED; detail <= SCENE_ENHANCED; detail++) {
         if (detail == SCENE_SIMPLE) continue;
         render_device_t device = {0, 0, false, -1, (uint8_t)detail};
@@ -275,6 +487,14 @@ static void check_scenery_cadence(void) {
         float grass_rate = detail == SCENE_ENHANCED ? 4 : 2;
         float initial[VEG_BEDS_MAX];
         for (int b = 0; b < VEG_BEDS_MAX; b++) initial[b] = veg_clock(&t, 0, VEG_SEED[b]);
+        for (int step = 0; step < 20; step++) {
+            t.clock = step * .017f;
+            for (int b = 0; b < VEG_BEDS_MAX; b++)
+                for (int i = 0; i < VEG_FRONDS_MAX; i++)
+                    for (int sword = 0; sword < 2; sword++)
+                        assert(veg_cached_sway(&t, b, sword != 0, i, VEG_SEED[b]) ==
+                               veg_sway(&t, sword != 0, i, VEG_SEED[b], t.clock));
+        }
         int changed = 0;
         for (int b = 0; b < VEG_BEDS_MAX; b++)
             changed += initial[b] != veg_clock(&t, 1 / grass_rate * .4f, VEG_SEED[b]);
@@ -283,6 +503,10 @@ static void check_scenery_cadence(void) {
         fish_motion_t a = fish_motion(&f, .01f), b = fish_motion(&f, .04f);
         assert(a.tail != b.tail);
     }
+    assert(g_veg_poses);
+    render_work_caches(false);
+    assert(!g_veg_poses && !render_work_cache_bytes());
+    render_work_caches(true);
     fprintf(stderr, "PASS: background holds at independent cadence, beds stagger updates, fish tails keep full-rate motion\n");
 }
 static void check_damage_cost_plan(void) {
@@ -296,7 +520,18 @@ static void check_damage_cost_plan(void) {
     for (int i = 0; i < 6; i++) g_damage_blocks[i] = 0x155;
     render_damage_costs(900, 100000);
     damage_select_plan();
+    for (int i = 0; i < 6; i++) assert(g_damage_blocks[i] == 0x1ff);
+    for (int i = 0; i < 6; i++) g_damage_blocks[i] = 0x255;
+    damage_select_plan();
     for (int i = 0; i < 6; i++) assert(g_damage_blocks[i] == 0x3ff);
+    render_damage_costs(900, 4000);
+    for (int i = 0; i < 6; i++) g_damage_blocks[i] = 0x155;
+    damage_select_plan();
+    for (int i = 0; i < 6; i++) assert(g_damage_blocks[i] == 0x1ff);
+    memset(g_damage_blocks, 0, sizeof g_damage_blocks);
+    g_damage_blocks[2] = 0x201;
+    damage_select_plan();
+    assert(g_damage_blocks[2] == 0x201);
     render_damage_policy(RENDER_DAMAGE_PARTIAL);
     for (int i = 0; i < 6; i++) g_damage_blocks[i] = 0x155;
     damage_select_plan();
@@ -304,9 +539,9 @@ static void check_damage_cost_plan(void) {
     render_damage_policy(RENDER_DAMAGE_FULL);
     damage_select_plan();
     for (int i = 0; i < 6; i++) assert(g_damage_blocks[i] == 0x3ff);
-    render_damage_costs(900, 200);
+    render_damage_costs(900, 4000);
     render_damage_policy(saved_policy);
-    fprintf(stderr, "PASS: 50%% damage stays partial when cheaper, costly fragmentation promotes full, policy overrides preserve plans\n");
+    fprintf(stderr, "PASS: contiguous damage stays partial, fragmented bands join when cheaper, sparse distant spans stay separate, and full/partial overrides preserve plans\n");
 }
 static void check_fish_display_scale(void) {
     for (int normal = 0; normal < 2; normal++) {
@@ -480,9 +715,34 @@ static void draw_tiles(const tank_t *t, uint16_t *fb, int height) {
     render_tile(0, 0);
 }
 
+#ifndef RENDER_BASELINE
+static int64_t tick_test_clock;
+static int64_t tick_test_now(void) { tick_test_clock += 7; return tick_test_clock; }
+static void check_tick_profile(void) {
+    tank_t plain, profiled;
+    tank_init(&plain, 0x5167);
+    profiled = plain;
+    memset(tank_profile_us, 0, sizeof tank_profile_us);
+    tank_profile_clock_us = NULL;
+    tank_tick(&plain, .04f, advisor_rules);
+    tank_profile_clock_us = tick_test_now;
+    tick_test_clock = 0;
+    tank_tick(&profiled, .04f, advisor_rules);
+    tank_profile_clock_us = NULL;
+    assert(!memcmp(&plain, &profiled, sizeof plain));
+    for (int i = 0; i < 3; i++) assert(tank_profile_us[i] == 7);
+    memset(tank_profile_us, 0, sizeof tank_profile_us);
+    fprintf(stderr, "PASS: simulation stage profiling preserves exact aquarium state and accounts for all three phases\n");
+}
+#endif
 static void benchmark(int frames) {
 #ifndef RENDER_BASELINE
+    check_tick_profile();
     check_motion_cache();
+    check_castle_cache();
+    check_foreground_art();
+    check_crown_cache();
+    check_backdrop_codec();
     check_ornament_art();
     check_damage_merge();
     check_scenery_cadence();

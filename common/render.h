@@ -66,6 +66,8 @@ extern int64_t (*render_clock_us)(void);
 extern int64_t render_clock_fixed_unix; /* Diagnostic-only; zero uses the device clock. */
 extern int64_t render_prof_us[8];
 extern int64_t render_helper_us[3];
+/* Nested front-stage costs: vegetation, decorations/helpers, mussel. */
+extern int64_t render_front_us[3];
 
 /* Optional static-scene cache (TANK_W*TANK_H uint16): the water gradient,
  * pebbles and backdrop decor are rendered once per lighting state and copied each
@@ -74,6 +76,7 @@ extern int64_t render_helper_us[3];
 void render_set_scene_cache(uint16_t *buf);
 /* Lossless row RLE of background and a stable decoration prefix; complex rows draw live. */
 void render_set_backdrop_cache(void *buf, size_t bytes);
+void render_backdrop_stats(unsigned *cached_rows, size_t *bytes);
 /* Begin once after simulation; ranges include old bounds and require retained LCD contents. */
 void render_damage_begin(const tank_t *t, bool force_full);
 enum { RENDER_DAMAGE_ADAPTIVE, RENDER_DAMAGE_PARTIAL, RENDER_DAMAGE_FULL };

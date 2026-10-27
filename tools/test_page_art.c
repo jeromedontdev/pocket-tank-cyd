@@ -516,6 +516,90 @@ static void check_font_clock_cache(void) {
     render_work_caches(false);
 }
 
+static uint16_t replay_background(int index) {
+    return (uint16_t)((unsigned)index * 251u + 0x39e7u);
+}
+static void check_clock_replay_pixels(void) {
+    for (unsigned tone = 0; tone < 256; tone++) {
+        src_t source = src_color(tone << 16 | ((tone * 73) & 255) << 8 | ((tone * 151) & 255), 1);
+        for (unsigned old = 0; old < 65536; old++) {
+            uint16_t expected = (uint16_t)old, actual = expected;
+            blend565(&expected, &source, 255);
+            blend255_span(&actual, 1, &source);
+            assert(actual == expected);
+        }
+    }
+    tank_t tank = {0};
+    for (int theme = CLOCK_OFF + 1; theme < CLOCK_THEME_COUNT; theme++)
+        for (int size = 0; size < CLOCK_SIZE_COUNT; size++)
+            for (int flags = 0; flags < 2; flags++) {
+                tank.aquariums.clock_theme = (uint8_t)theme;
+                tank.aquariums.clock_layout = clock_layout_set_size(0, size);
+                tank.aquariums.clock_flags = flags ? CLOCK_HIDE_PANEL | CLOCK_12H : 0;
+                int64_t now = INT64_C(1792803600) + theme * 3661;
+                for (int i = 0; i < TANK_W * TANK_H; i++)
+                    full_frame[i] = repeated[i] = replay_background(i);
+                render_work_caches(false);
+                clock_overlay_live(&tank, full_frame, TANK_W, now);
+                render_work_caches(true);
+                render_clock_overlay(&tank, repeated, TANK_W, now);
+                assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
+                if (!g_record_overflow) for (size_t i = 0; i < g_clock_run_count; i++) {
+                    const paint_run_t *run = clock_run(i);
+                    for (unsigned band = 0; band < CLOCK_INDEX_BANDS; band++) {
+                        bool intersects = run->y < (int)(band + 1) * CLOCK_INDEX_ROWS &&
+                            run->y + (run->alpha >> 9) >= (int)band * CLOCK_INDEX_ROWS;
+                        bool indexed = (g_clock_runs[i / CLOCK_RUN_PAGE]->bands[band][i % CLOCK_RUN_PAGE / 32] >>
+                                        (i % 32)) & 1;
+                        assert(indexed == intersects);
+                    }
+                }
+                for (int i = 0; i < TANK_W * TANK_H; i++) repeated[i] = replay_background(i);
+                render_region(7, TANK_W - 19);
+                for (int y = 0; y < TANK_H; y += 37) {
+                    render_tile(y, TANK_H - y < 37 ? TANK_H - y : 37);
+                    render_clock_overlay(&tank, repeated + y * TANK_W, TANK_W, now);
+                }
+                render_tile(0, 0); render_region(0, 0);
+                for (int y = 0; y < TANK_H; y++) for (int x = 0; x < TANK_W; x++) {
+                    int i = y * TANK_W + x;
+                    assert(repeated[i] == (x >= 7 && x < TANK_W - 12 ? full_frame[i] : replay_background(i)));
+                }
+            }
+    render_work_caches(false);
+    puts("PASS: cached clock spans match live pixels on nonuniform RGB565 backgrounds, all faces/sizes, transparent panels and clipped tiles/regions");
+}
+
+static void check_ornament_spans(void) {
+    for (int item = 9; item < SD_DECOR_FIRST + DECOR_NEW_COUNT; item++) {
+        if (!tank_decor_placeable(item)) continue;
+        for (int mode = 0; mode < 8; mode++) {
+            bool final = (mode & 1) != 0, lit = (mode & 2) != 0;
+            int scale = mode & 4 ? 2 : 1, y0 = TANK_H / 2 - 5, x0 = -3;
+            for (int i = 0; i < TANK_W * TANK_H; i++)
+                full_frame[i] = repeated[i] = replay_background(i);
+            render_tile(TANK_H / 2, 17); render_region(7, 93);
+            ctx_t expected = ctx_full(full_frame, TANK_W, mode & 4 ? .45f : 1);
+            ctx_t actual = ctx_full(repeated, TANK_W, expected.dim);
+            for (int y = 0; y < tank_ornament_h(item); y++)
+                for (int x = 0; x < tank_ornament_w(item); x++) {
+                    uint32_t rgb = ornament_pixel(item, x, y);
+                    if (!rgb) continue;
+                    src_t source = src_color(shop_art_color(rgb, lit, 0x173942), expected.dim);
+                    for (int row = 0; row < scale; row++) {
+                        int left = x0 + x * scale, top = y0 + y * scale + row;
+                        if (final) span_final(&expected, left, left + scale - 1, top, &source, 255);
+                        else span(&expected, left, left + scale - 1, top, &source, 255);
+                    }
+                }
+            draw_ornament(&actual, item, x0, y0, scale, final, lit, 0x173942);
+            assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
+            render_tile(0, 0); render_region(0, 0);
+        }
+    }
+    puts("PASS: ornament row spans preserve per-pixel reference artwork, dim/locked colors, final lighting and clipped/scaled geometry");
+}
+
 static void check_companion_navigation(void) {
     tank_t tank;
     tank_init(&tank, 77);
@@ -1330,6 +1414,33 @@ static void check_page_asset(int kind, int item, int x, int y) {
     render_tile(0, 0);
 }
 
+static void check_packed_urchin(void) {
+    tank_t t; tank_init(&t, 42);
+    t.sd_unlocks |= SD_ITEM_URCHIN;
+    t.urchin_x = 100;
+    t.urchin_frond = 0;
+    ctx_t c = {pixels, 448, 1.0f, 0, 0, 448, 368, false};
+    render_work_caches(true);
+    for (int chewing = 0; chewing < 2; chewing++) {
+        t.urchin_chew = chewing;
+        float speed = chewing ? 2.6f : .8f;
+        for (int pose = 0; pose < 16; pose++) {
+            t.clock = pose * (TAU / 16) / speed;
+            draw_urchin(&c, &t);
+            assert(g_urchin_art);
+            ur_pose_t p; urchin_pose(&p, t.clock, chewing != 0);
+            const uint8_t *art = g_urchin_art + pose * URCHIN_POSE_BYTES;
+            for (int i = 0; i < 37 * 24; i++)
+                assert(((art[i / 2] >> ((i & 1) * 4)) & 15) ==
+                       urchin_tone(i % 37 - 18 + .5f, i / 37 - 16 + .5f, &p));
+        }
+    }
+    assert(16 * URCHIN_POSE_BYTES == 7104);
+    render_work_caches(false);
+    assert(!g_urchin_art);
+    memset(pixels, 0, sizeof pixels);
+    puts("PASS: all 32 packed urchin poses preserve every tone including odd-row nibble boundaries; 7104-byte cache and release");
+}
 int main(int argc, char **argv) {
     assert(argc >= 2 && argc <= 4);
     const char *gallery = argc > 2 && strcmp(argv[2], "-") ? argv[2] : NULL;
@@ -1339,6 +1450,7 @@ int main(int argc, char **argv) {
     icon_bank_bytes = fread(icon_bank, 1, sizeof icon_bank, icons);
     assert(!ferror(icons) && feof(icons));
     assert(!fclose(icons));
+    check_packed_urchin();
     ctx_t c = {pixels, 448, 1.0f, 0, 0, 448, 368, false};
     check_puzzle_games();
     check_puzzle_rewards();
@@ -1401,6 +1513,8 @@ int main(int argc, char **argv) {
         check_fish_material();
         check_font_coverage();
         check_font_clock_cache();
+        check_clock_replay_pixels();
+        check_ornament_spans();
         check_companion_navigation();
         check_content_page_tiles();
         check_inventory_ui();

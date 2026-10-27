@@ -173,9 +173,9 @@ static bool radio_up(void) {
     if (background) {
         /* One tiny HTTPS request at a time; aggregation throughput is wasted
          * on this no-PSRAM device and retains scarce packet/reorder buffers. */
-        cfg.static_rx_buf_num = 3;
-        cfg.dynamic_rx_buf_num = 4;
-        cfg.dynamic_tx_buf_num = 4;
+        cfg.static_rx_buf_num = 2;
+        cfg.dynamic_rx_buf_num = 2;
+        cfg.dynamic_tx_buf_num = 2;
         cfg.cache_tx_buf_num = 0;
         cfg.ampdu_rx_enable = 0;
         cfg.ampdu_tx_enable = 0;
@@ -531,11 +531,16 @@ static void background_weather_work(void) {
     }
 }
 static void background_weather(void) {
+    /* An idle worker wake is not a network lease: exposing it as busy can
+     * make the tank discard warmed artwork caches once per second. */
+    if (!atomic_load(&s_weather) && !atomic_load(&s_weather_radio)) return;
     atomic_store(&s_background_busy, true);
+    vTaskPrioritySet(NULL, 3); /* below the core-1 LCD worker during TLS/crypto */
     background_weather_work();
     /* After the join attempt, so a queued request sees the fresh link. */
     if (atomic_load(&s_weather) && !atomic_load(&s_foreground)) weather_port_esp_service();
     atomic_store(&s_background_busy, false);
+    vTaskPrioritySet(NULL, 5);
 }
 static void worker(void *arg) {
     (void)arg;

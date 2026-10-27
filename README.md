@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.14
+# Pocket Tank CYD 2.3.15
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.14**. Stable firmware,
+now versioned independently. This source targets **2.3.15**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,7 +25,32 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.14: fish-first rendering and harbor/garden artwork
+## New in 2.3.15: bounded rendering caches and background SD backups
+
+Weather checks at boot and once per hour, including failed attempts, rather
+than every fifteen minutes. Offline connection attempts are bounded; optional
+artwork caches yield RAM to verified HTTPS and warm again after the radio stops.
+
+Clock replay indexes commands by tile band. Static decoration palettes, helper
+poses and compressed backdrop rows avoid repeated work without changing a pixel.
+Simulation reuses exact calculations without lowering fish update frequency.
+No faster SPI, new framebuffer, reduced detail or save-format change is required.
+
+Daily SD backups capture and validate an immutable snapshot on the tank task;
+a lower-priority CPU1 worker writes and verifies it while rendering continues.
+COM4 testing reduced the observed tank-task backup service from **718 to 109 ms**,
+with storage/readback completing in **442 ms** in the worker. Snapshot validation
+still causes a brief hitch; this is not completely hitch-free.
+
+Controlled five-fish fixtures measured **19.51 / 18.75 / 14.00 / 16.72 FPS**
+versus **19.40 / 18.75 / 13.80 / 16.79** immediately before this follow-up.
+The clock-heavy case's clock work fell from 8.24 to 7.88 ms, but p95 frame
+times stayed unchanged. Gains are small and scene-dependent, not a universal
+speedup. See [hardware measurements and limitations](firmware/CYD.md#com4-verification-of-the-four-part-follow-up).
+Schema 19 / 6336-byte saves and companion version 7 are unchanged from 2.3.14;
+back up first and do not downgrade to older save formats.
+
+## Retained from 2.3.14: fish-first rendering and harbor/garden artwork
 
 Twenty detailed static decorations join the shop, with six new wearables:
 Sailor Cap, Pirate Hat, Beret, Sun Hat, Viking Helm and Scarf. Accessories use

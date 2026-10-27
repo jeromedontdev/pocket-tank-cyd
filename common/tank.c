@@ -2056,12 +2056,15 @@ static void shrimp_tick(tank_t *t, float dt) {
        the glass; the ones nearest a corner pellet still reach it */
     float half = (fp >= 0 ? spread * 0.45f : spread) * 0.5f + 16;
     gx = clampf(gx, TANK_FX0 + half, TANK_FX1 - half);
+    float dart_decay = 0;
+    bool have_dart_decay = false;
     for (int i = 0; i < n; i++) {
         shrimp_t *q = &t->shrimp[i];
         q->ph += dt; q->pecking = 0;
         if (q->dart > 0) {
             q->dart -= dt;
-            float k = powf(0.2f, dt); q->vx *= k; q->vy *= k;
+            if (!have_dart_decay) { dart_decay = powf(0.2f, dt); have_dart_decay = true; }
+            q->vx *= dart_decay; q->vy *= dart_decay;
         } else {
             float ox = (shrimp_hash(i, 1) - 0.5f) * spread;
             float oy = (shrimp_hash(i, 2) - 0.5f) * (t->companion.display_compact ? 16 : 24);
@@ -2074,7 +2077,9 @@ static void shrimp_tick(tank_t *t, float dt) {
             if (t->companion.display_compact) { sx *= 0.75f; sy *= 0.75f; }
             for (int j = 0; j < n; j++) {
                 if (j == i) continue;
-                float nx = (q->x - t->shrimp[j].x) / sx, ny = (q->y - t->shrimp[j].y) / sy, e = sqrtf(nx * nx + ny * ny);
+                float nx = (q->x - t->shrimp[j].x) / sx, ny = (q->y - t->shrimp[j].y) / sy;
+                if (fabsf(nx) >= 1 || fabsf(ny) >= 1) continue;
+                float e = sqrtf(nx * nx + ny * ny);
                 if (e < 1 && e > 0) { wx += nx / e * (1 - e) * 22; wy += ny / e * (1 - e) * 9; }
             }
             float a = fminf(1, dt * 2.5f);
@@ -3089,7 +3094,9 @@ static void update_fish(tank_t *t, int idx, float dt) {
     if (f->goal.id != GOAL_FLEE_SHADOW)
         for (int i = 0; i < t->n_fish; i++) {
             if (i == idx) continue;
-            float d = tank_dist(f->x, f->y, t->fish[i].x, t->fish[i].y), r = 36 * f->size;
+            float r = 36 * f->size;
+            if (fabsf(f->x - t->fish[i].x) >= r || fabsf(f->y - t->fish[i].y) >= r) continue;
+            float d = tank_dist(f->x, f->y, t->fish[i].x, t->fish[i].y);
             if (d < r) {
                 float away = atan2f(f->y - t->fish[i].y, f->x - t->fish[i].x);
                 desired = norm_ang(desired + norm_ang(away - desired) * (0.35f + 0.5f * (1 - d / r)));
@@ -3115,7 +3122,8 @@ static void update_fish(tank_t *t, int idx, float dt) {
     const float TURN_SETTLE  = 1.3f;     /* s after a turn before the next can begin */
     if (!f->facing) f->facing = cosf(f->heading) < 0 ? -1 : 1;
     bool urgent = agile || (t->ravenous && f->hunger > 6.5f) || (t->startled && touch_speed >= 55);
-    bool behind = cosf(desired) * f->facing < -BEHIND_BAND;
+    float desired_cos = cosf(desired);
+    bool behind = desired_cos * f->facing < -BEHIND_BAND;
     bool settling = f->behind < 0;
     if (settling) f->behind = fminf(0, f->behind + dt);
     else if (behind) f->behind += dt;
@@ -3130,8 +3138,8 @@ static void update_fish(tank_t *t, int idx, float dt) {
         f->behind = -(urgent ? 0.65f : TURN_SETTLE);
     }
     bool glancing = behind && f->behind > 0;
-    if (cosf(desired) * f->facing < 0)   /* on its own side until it turns */
-        desired = atan2f(sinf(desired), f->facing * fabsf(cosf(desired)));
+    if (desired_cos * f->facing < 0)   /* on its own side until it turns */
+        desired = atan2f(sinf(desired), f->facing * fabsf(desired_cos));
     float turn = clampf(norm_ang(desired - f->heading), -f->turn_rate * dt, f->turn_rate * dt);
     f->heading = norm_ang(f->heading + turn);
     /* the yaw follows the side: a full turn in ~0.5 s at mira's turn rate
@@ -3199,7 +3207,16 @@ static uint32_t state_signature(const tank_t *t, int idx) {
          | (uint32_t)band3(f->bored) << 13;      /* a fish going stale is asked again (2026-09-14) */
 }
 
+int64_t (*tank_profile_clock_us)(void);
+int64_t tank_profile_us[3];
+static int64_t tick_profile_finish(int stage, int64_t started) {
+    if (!tank_profile_clock_us) return 0;
+    int64_t now = tank_profile_clock_us();
+    tank_profile_us[stage] += now - started;
+    return now;
+}
 void tank_tick(tank_t *t, float dt, advisor_fn advise) {
+    int64_t profile_started = tank_profile_clock_us ? tank_profile_clock_us() : 0;
     t->clock += dt;
     /* the light: on while the device is handled, off LIGHT_IDLE_S after the
      * last touch or movement (tank_handled) - a tank left on the desk goes
@@ -3263,6 +3280,7 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
     urchin_tick(t, dt);
     seahorse_tick(t, dt);
     shrimp_tick(t, dt);
+    profile_started = tick_profile_finish(0, profile_started);
     if ((int)t->clock != (int)(t->clock - dt)) {
         for (int i = 0; i < t->n_fish; i++)
             for (int j = 0; j < t->n_fish; j++) {
@@ -3342,6 +3360,7 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
         if (f->goal.id == GOAL_SEEK_FOOD || f->hunger < 8.0f) f->starve_flagged = false;
     }
 
+    profile_started = tick_profile_finish(1, profile_started);
     for (int i = 0; i < t->n_fish; i++) {
         update_fish(t, i, dt);
         if (t->companion.cozy) {
@@ -3356,4 +3375,5 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
      * every frame the finger stays down). Clearing it at the top of the tick
      * was the old bug that kept the drift-to-finger reflex from ever firing. */
     t->hold_active = false;
+    tick_profile_finish(2, profile_started);
 }

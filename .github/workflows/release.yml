@@ -46,6 +46,7 @@ jobs:
           python tools/test_internal_tanks.py --cc gcc
           python tools/test_cyd_display.py --cc gcc
           python tools/test_cyd_sd_init.py --cc gcc
+          python tools/test_cyd_sd_backup.py --cc gcc
           python tools/test_cyd_touch_defaults.py --cc gcc
           python tools/test_board_hardware.py --cc gcc
           python tools/test_cyd_settings.py --cc gcc

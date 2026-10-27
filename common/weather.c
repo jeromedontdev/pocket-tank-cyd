@@ -9,8 +9,8 @@
 static weather_config_t cfg;
 static weather_reading_t reading;
 static bool busy, dirty, have, failed, searching;
-static float due, age, search_wait;
-static unsigned failures;
+static float due, age, search_wait, connect_wait;
+enum { WEATHER_REFRESH_SECONDS = 3600, WEATHER_STALE_SECONDS = 7200 };
 static uint32_t generation;
 static char query[40], message[64];
 static weather_city_t cities[WEATHER_CITY_MAX];
@@ -140,11 +140,11 @@ void weather_init(void) {
     weather_config_t loaded;
     if (weather_port_load(&loaded) && weather_config_valid(&loaded)) cfg = loaded;
     busy = dirty = have = failed = searching = false;
-    due = age = search_wait = 0; failures = 0; generation = 1;
+    due = age = search_wait = connect_wait = 0; generation = 1;
     query[0] = message[0] = 0; city_count = page = 0;
     last_error = WEATHER_ERR_NONE;
 }
-static void changed(void) { dirty = true; ++generation; due = 0; failures = 0; }
+static void changed(void) { dirty = true; ++generation; due = connect_wait = 0; }
 static bool start(int op) {
     weather_request_t r = {0};
     r.operation = op; r.generation = generation; r.config = cfg;
@@ -152,7 +152,7 @@ static bool start(int op) {
     if (!weather_port_start(&r)) {
         last_error = WEATHER_ERR_MEMORY;
         snprintf(message, sizeof message, "Low memory; retry later");
-        due = 60;
+        due = op == WEATHER_CURRENT ? WEATHER_REFRESH_SECONDS : 60;
         if (op == WEATHER_CURRENT) failed = true;
         if (op == WEATHER_SEARCH) searching = false;
         return false;
@@ -175,6 +175,9 @@ void weather_tick(float dt) {
     if (isfinite(dt) && dt > 0) {
         if (have) age += dt;
         if (searching) search_wait += dt;
+        if (!busy && !dirty && !searching && cfg.enabled && cfg.located && due <= 0)
+            connect_wait += dt;
+        else connect_wait = 0;
         if (due > 0) { due -= dt; if (due < 0) due = 0; }
     }
     weather_result_t r;
@@ -195,14 +198,22 @@ void weather_tick(float dt) {
                 failed = !r.ok;
                 last_error = r.error;
                 snprintf(message, sizeof message, "%s", r.error == WEATHER_ERR_MEMORY ? "Low memory; retry later" : "");
-                if (r.ok) { reading = r.reading; have = true; age = 0; failures = 0; due = 900; }
-                else { if (failures < 5) ++failures; due = (float)(30u << failures); if (due > 900) due = 900; }
+                if (r.ok) { reading = r.reading; have = true; age = 0; }
+                due = WEATHER_REFRESH_SECONDS;
             }
         }
     }
     net_port_weather(network_requested());
     if (busy) return;
     if (dirty) { if (due <= 0) start(WEATHER_SAVE); return; }
+    if (!searching && cfg.enabled && cfg.located && due <= 0 &&
+        !net_port_connected() && connect_wait >= 30) {
+        failed = true; last_error = WEATHER_ERR_OFFLINE;
+        snprintf(message, sizeof message, "Offline; next check in 1 hour");
+        due = WEATHER_REFRESH_SECONDS; connect_wait = 0;
+        net_port_weather(false);
+        return;
+    }
     if (searching) {
         if (!net_port_connected()) {
             if (search_wait >= 30) {
@@ -225,7 +236,7 @@ void weather_caption(char *out, size_t cap) {
     else {
         double t = cfg.fahrenheit ? reading.celsius * 1.8 + 32 : reading.celsius;
         const char *state = failed && last_error == WEATHER_ERR_OFFLINE ? " [offline]" :
-            age >= 1800 || failed ? " [stale]" : "";
+            age >= WEATHER_STALE_SECONDS || failed ? " [stale]" : "";
         snprintf(out, cap, "%s %.0f%c %s%s", cfg.city.name, t, cfg.fahrenheit ? 'F' : 'C', weather_condition(reading.code), state);
     }
 }
@@ -240,7 +251,7 @@ void weather_clock_lines(char *city, size_t city_cap, char *detail, size_t detai
     else {
         double t = cfg.fahrenheit ? reading.celsius * 1.8 + 32 : reading.celsius;
         const char *state = failed && last_error == WEATHER_ERR_OFFLINE ? "OFFLINE " :
-            age >= 1800 || failed ? "STALE " : "";
+            age >= WEATHER_STALE_SECONDS || failed ? "STALE " : "";
         snprintf(detail, detail_cap, "%s%.0f%c %s", state, t, cfg.fahrenheit ? 'F' : 'C', weather_condition(reading.code));
     }
 }

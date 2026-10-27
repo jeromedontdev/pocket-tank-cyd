@@ -3189,6 +3189,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     }
     /* A restore resumes the snapshot, not years of offline simulation. */
     sv.saved_unix = clock_port_now_unix();
+    cJSON_Delete(root); root = NULL;
     if (!commit) {
         save_t *current = calloc(1, sizeof *current);
         if (!current) { snprintf(error, error_size, "Not enough memory to validate restore"); goto done; }
@@ -3211,7 +3212,6 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         if (identity_error) { snprintf(error, error_size, "%s", identity_error); goto done; }
     }
     if (commit) {
-        cJSON_Delete(root); root = NULL;
         /* Portable backups replace only the active aquarium, never its purchased slot identity. */
         save_t *current = calloc(1, sizeof *current);
         if (!current) { snprintf(error, error_size, "Not enough memory for restore identity"); goto done; }

@@ -20,6 +20,8 @@
 #include "version.h"
 #include "touch_port.h"
 #include "ambient.h"
+#include "weather.h"
+#include "setup.h"
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -39,6 +41,17 @@ static FILE *s_upload;
 static bool s_bank;
 static size_t s_uploaded;
 static uint32_t s_upload_crc;
+static FILE *s_photo;
+typedef enum { AUTO_IDLE, AUTO_RUNNING, AUTO_DONE } auto_state_t;
+static portMUX_TYPE s_auto_mux = portMUX_INITIALIZER_UNLOCKED;
+static auto_state_t s_auto_state;
+
+bool sd_port_auto_backup_busy(void) {
+    portENTER_CRITICAL(&s_auto_mux);
+    bool busy = s_auto_state != AUTO_IDLE;
+    portEXIT_CRITICAL(&s_auto_mux);
+    return busy;
+}
 
 static bool verify_bank(FILE *file) {
     uint8_t buffer[512];
@@ -97,7 +110,9 @@ const icon_t *icons_resolve(const icon_t *icon) {
 }
 #define SAVE_DIR "/sdcard/pocket-tank"
 static bool legacy_aquarium_ready(void) {
-    if (!s_mounted || s_upload) return false;
+    if (!s_mounted || s_upload || s_photo || sd_port_auto_backup_busy()) {
+        ESP_LOGE(TAG, "legacy import unavailable: SD unavailable/busy"); return false;
+    }
     if (mkdir(SAVE_DIR, 0755) != 0 && errno != EEXIST) {
         ESP_LOGE(TAG, "aquarium directory: %s", strerror(errno)); return false;
     }
@@ -174,22 +189,24 @@ static bool backup_write(const tank_t *tank, const char *prefix, char path[96]) 
     if (fsync(fileno(file)) != 0) ok = false;
     if (fclose(file) != 0) ok = false;
     free(text);
-    char error[96]; size_t read_len = 0;
+    char error[96] = "write, flush or SD readback failed"; size_t read_len = 0;
     char *readback = ok ? backup_read(temp, &read_len) : NULL;
+    if (readback && (read_len != len || esp_crc32_le(0, (const uint8_t *)readback, read_len) != crc))
+        snprintf(error, sizeof error, "readback length/CRC mismatch");
     ok = readback && read_len == len && esp_crc32_le(0, (const uint8_t *)readback, read_len) == crc
         && progression_restore_json(readback, read_len, false, error, sizeof error);
     free(readback);
     if (ok) ok = rename(temp, path) == 0;
     if (!ok) {
-        ESP_LOGE(TAG, "backup write/readback validation failed; previous backups untouched");
+        ESP_LOGE(TAG, "backup write/readback validation failed: %s; previous backups untouched", error);
         if (remove(temp) != 0) ESP_LOGW(TAG, "could not remove incomplete backup: %s", strerror(errno));
     } else ESP_LOGI(TAG, "JSON BACKUP verified: %s (%u bytes)", path, (unsigned)len);
     return ok;
 }
 static void backup_action(tank_t *tank, bool restore, bool confirmed, const char *prefix, unsigned requested) {
     render_work_caches(false);
-    if (!tank || !s_mounted || s_upload) {
-        ESP_LOGE(TAG, "backup unavailable: no tank/card or upload active");
+    if (!tank || !s_mounted || s_upload || s_photo || sd_port_auto_backup_busy()) {
+        ESP_LOGE(TAG, "backup unavailable: no tank/card or SD operation active");
         render_backup_status("SD UNAVAILABLE / BUSY", false); return;
     }
     if (!restore) {
@@ -254,6 +271,19 @@ void sd_port_backup_action(tank_t *tank, bool restore, bool confirmed) {
 static float s_auto_wait = 90;          /* settle after boot before the first try */
 static uint32_t s_auto_day;
 static bool s_auto_day_loaded;
+typedef struct {
+    char *text;
+    size_t length;
+    uint32_t crc, day, id[2];
+    uint8_t active, mode, chosen;
+    bool ok, diagnostic;
+} auto_job_t;
+static auto_job_t s_auto_job;
+static struct {
+    uint32_t id[2];
+    uint8_t active, mode, chosen;
+    bool pending, diagnostic;
+} s_auto_request;
 static void auto_prune(unsigned newest) {
     DIR *dir = opendir(SAVE_DIR);
     if (!dir) return;
@@ -271,50 +301,236 @@ static void auto_prune(unsigned newest) {
         else ESP_LOGI(TAG, "auto backup pruned: %s", path);
     }
 }
-bool sd_port_auto_backup_now(tank_t *tank) {
-    if (!tank || !s_mounted || s_upload) { ESP_LOGW(TAG, "auto backup skipped: SD unavailable/busy"); return false; }
-    char path[96]; unsigned n;
-    if (!backup_write(tank, "auto", path) || sscanf(path, SAVE_DIR "/auto-%4u.json", &n) != 1) {
-        ESP_LOGE(TAG, "auto backup FAILED; retrying in an hour");
+/* The worker owns only immutable JSON, never a tank pointer or the restore
+ * validator (which reads the current save and shared identity state). */
+static bool auto_store(const auto_job_t *job) {
+    int64_t started = esp_timer_get_time();
+    char path[96], temp[104]; unsigned latest;
+    const char *prefix = job->diagnostic ? "auto-test" : "auto";
+    if (!backup_latest(prefix, path, &latest) || latest >= 9999) {
+        ESP_LOGE(TAG, "auto backup slots unavailable"); return false;
+    }
+    snprintf(path, sizeof path, SAVE_DIR "/%s-%04u.json", prefix, latest + 1);
+    snprintf(temp, sizeof temp, "%s.tmp", path);
+    struct stat st;
+    if (stat(temp, &st) == 0 || errno != ENOENT) {
+        ESP_LOGE(TAG, "auto backup temporary destination exists or cannot be checked"); return false;
+    }
+    if (stat(path, &st) == 0 || errno != ENOENT) {
+        ESP_LOGE(TAG, "auto backup destination exists or cannot be checked"); return false;
+    }
+    FILE *file = fopen(temp, "wb");
+    if (!file) { ESP_LOGE(TAG, "create auto backup: %s", strerror(errno)); return false; }
+    bool ok = true;
+    for (size_t offset = 0; ok && offset < job->length;) {
+        size_t n = job->length - offset;
+        if (n > 512) n = 512;
+        ok = fwrite(job->text + offset, 1, n, file) == n;
+        offset += n;
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    if (fflush(file) != 0) ok = false;
+    if (fsync(fileno(file)) != 0) ok = false;
+    if (fclose(file) != 0) ok = false;
+    file = ok ? fopen(temp, "rb") : NULL;
+    ok = file != NULL;
+    uint8_t buffer[512]; size_t offset = 0; uint32_t crc = 0;
+    while (ok && offset < job->length) {
+        size_t n = job->length - offset;
+        if (n > sizeof buffer) n = sizeof buffer;
+        ok = fread(buffer, 1, n, file) == n &&
+             !memcmp(buffer, job->text + offset, n);
+        if (ok) { crc = esp_crc32_le(crc, buffer, n); offset += n; }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    if (file) {
+        ok = ok && offset == job->length && crc == job->crc &&
+             fgetc(file) == EOF && !ferror(file);
+        if (fclose(file) != 0) ok = false;
+    }
+    if (ok && rename(temp, path) != 0) {
+        ESP_LOGE(TAG, "auto backup rename: %s", strerror(errno)); ok = false;
+    }
+    if (!ok) {
+        ESP_LOGE(TAG, "auto backup write/flush/readback failed; previous backups untouched");
+        if (remove(temp) != 0) ESP_LOGW(TAG, "auto backup cleanup: %s", strerror(errno));
         return false;
     }
-    auto_prune(n);
-    if (!companion_backup_record(tank)) ESP_LOGE(TAG, "auto backup verified but its status could not be saved");
+    ESP_LOGI(TAG, "JSON AUTO BACKUP verified: %s (%u bytes)", path, (unsigned)job->length);
+    if (job->diagnostic) {
+        if (remove(path) != 0) {
+            ESP_LOGE(TAG, "auto backup diagnostic cleanup: %s", strerror(errno)); return false;
+        }
+    } else auto_prune(latest + 1);
+    ESP_LOGI(TAG, "auto backup worker storage/readback%s: %lld us",
+             job->diagnostic ? " diagnostic" : "", (long long)(esp_timer_get_time() - started));
     return true;
 }
-void sd_port_auto_backup_tick(tank_t *tank, float dt) {
-    if (!ambient_auto_backup() || !s_mounted) return;
+static void auto_worker(void *arg) {
+    auto_job_t *job = arg;
+    job->ok = auto_store(job);
+    free(job->text); job->text = NULL;
+    portENTER_CRITICAL(&s_auto_mux);
+    s_auto_state = AUTO_DONE;
+    portEXIT_CRITICAL(&s_auto_mux);
+    vTaskDelete(NULL);
+}
+static bool auto_network_busy(void) {
+    const update_manifest_t *manifest = NULL; int percent = 0;
+    return weather_network_needed() || net_port_weather_active() || net_port_connected() ||
+        setup_active() || update_active() ||
+        net_port_scan_state() == NET_BUSY || net_port_connect_state() == NET_BUSY ||
+        net_port_check_state(&manifest) == NET_BUSY || net_port_install_state(&percent) == NET_BUSY;
+}
+static bool auto_start(tank_t *tank, uint32_t day, bool diagnostic) {
+    if (!tank || !s_mounted || s_upload || s_photo || sd_port_auto_backup_busy()) {
+        ESP_LOGW(TAG, "auto backup skipped: SD unavailable/busy"); return false;
+    }
+    if (auto_network_busy()) {
+        ESP_LOGW(TAG, "auto backup deferred: network/setup owns working memory"); return false;
+    }
+    render_work_caches(false);
+    int64_t started = esp_timer_get_time();
+    char *text = progression_backup_json(tank);
+    int64_t captured = esp_timer_get_time();
+    char error[96] = "not enough memory for JSON snapshot";
+    size_t length = text ? strlen(text) : 0;
+    /* Validate against the live identity domain here, before handing off. Exact
+     * byte readback then proves the worker stored this validated snapshot. */
+    if (!text || !progression_restore_json(text, length, false, error, sizeof error)) {
+        free(text); ESP_LOGE(TAG, "auto backup snapshot rejected: %s", error); return false;
+    }
+    ESP_LOGI(TAG, "auto backup tank-task snapshot: %lld us; semantic/identity validation: %lld us",
+             (long long)(captured - started), (long long)(esp_timer_get_time() - captured));
+    s_auto_job = (auto_job_t){
+        .text = text, .length = length,
+        .crc = esp_crc32_le(0, (const uint8_t *)text, length), .day = day,
+        .id = {tank->aquariums.id[0], tank->aquariums.id[1]},
+        .active = tank->aquariums.active, .mode = tank->profile.mode, .chosen = tank->profile.chosen,
+        .diagnostic = diagnostic,
+    };
+    portENTER_CRITICAL(&s_auto_mux);
+    s_auto_state = AUTO_RUNNING;
+    portEXIT_CRITICAL(&s_auto_mux);
+    /* Share CPU1 below the LCD worker, rather than starving behind CPU0's
+     * mostly CPU-bound tank task. SD uses SPI3; the LCD owns SPI2. */
+    if (xTaskCreatePinnedToCore(auto_worker, "sd_backup", 4096, &s_auto_job,
+                                tskIDLE_PRIORITY + 1, NULL, 1) != pdPASS) {
+        free(text); s_auto_job.text = NULL;
+        portENTER_CRITICAL(&s_auto_mux);
+        s_auto_state = AUTO_IDLE;
+        portEXIT_CRITICAL(&s_auto_mux);
+        ESP_LOGE(TAG, "auto backup worker allocation failed; retrying later"); return false;
+    }
+    ESP_LOGI(TAG, "auto backup snapshot queued (%u bytes)", (unsigned)length);
+    return true;
+}
+/* Commands run below the director's multi-kilobyte frame. Never capture or
+ * validate there: even a successful return can have overwritten the stack guard. */
+static bool auto_request(tank_t *tank, bool diagnostic) {
+    if (!tank || !s_mounted || s_upload || s_photo || sd_port_auto_backup_busy() ||
+        s_auto_request.pending || auto_network_busy()) {
+        ESP_LOGE(TAG, "auto backup request rejected: SD/network busy or unavailable"); return false;
+    }
+    s_auto_request.id[0] = tank->aquariums.id[0];
+    s_auto_request.id[1] = tank->aquariums.id[1];
+    s_auto_request.active = tank->aquariums.active;
+    s_auto_request.mode = tank->profile.mode;
+    s_auto_request.chosen = tank->profile.chosen;
+    s_auto_request.diagnostic = diagnostic;
+    s_auto_request.pending = true;
+    ESP_LOGI(TAG, "auto backup request queued for tank service");
+    return true;
+}
+bool sd_port_auto_backup_now(tank_t *tank) {
+    return auto_request(tank, false);
+}
+static void auto_complete(tank_t *tank) {
+    portENTER_CRITICAL(&s_auto_mux);
+    bool done = s_auto_state == AUTO_DONE;
+    portEXIT_CRITICAL(&s_auto_mux);
+    if (!done) return;
+    bool same = tank && tank->aquariums.id[0] == s_auto_job.id[0] &&
+        tank->aquariums.id[1] == s_auto_job.id[1] && tank->aquariums.active == s_auto_job.active &&
+        tank->profile.mode == s_auto_job.mode && tank->profile.chosen == s_auto_job.chosen;
+    s_auto_wait = s_auto_job.ok ? 60 : 3600;
+    if (!s_auto_job.ok) ESP_LOGE(TAG, "auto backup FAILED; retrying in an hour");
+    else if (!same) ESP_LOGW(TAG, "auto backup saved; tank changed, status/day not applied");
+    else if (!s_auto_job.diagnostic) {
+        if (!companion_backup_record(tank)) ESP_LOGE(TAG, "auto backup verified but its status could not be saved");
+        if (s_auto_job.day) {
+            nvs_handle_t h;
+            esp_err_t err = nvs_open("tank", NVS_READWRITE, &h);
+            if (err == ESP_OK) {
+                err = nvs_set_u32(h, "autobk_day", s_auto_job.day);
+                if (err == ESP_OK) err = nvs_commit(h);
+                nvs_close(h);
+            }
+            if (err == ESP_OK) s_auto_day = s_auto_job.day;
+            else {
+                ESP_LOGE(TAG, "auto backup verified but day not saved: %s", esp_err_to_name(err));
+                s_auto_wait = 3600;
+            }
+        }
+    }
+    portENTER_CRITICAL(&s_auto_mux);
+    s_auto_state = AUTO_IDLE;
+    portEXIT_CRITICAL(&s_auto_mux);
+}
+void sd_port_auto_backup_service(tank_t *tank, float dt, bool allow_start) {
+    auto_complete(tank);
+    if (s_auto_request.pending) {
+        if (!tank || tank->aquariums.id[0] != s_auto_request.id[0] ||
+            tank->aquariums.id[1] != s_auto_request.id[1] ||
+            tank->aquariums.active != s_auto_request.active ||
+            tank->profile.mode != s_auto_request.mode || tank->profile.chosen != s_auto_request.chosen) {
+            s_auto_request.pending = false;
+            ESP_LOGE(TAG, "auto backup request canceled: tank identity changed");
+        } else {
+            if (!allow_start || sd_port_auto_backup_busy() || s_upload || s_photo ||
+                weather_network_needed_after(dt) || auto_network_busy()) return;
+            bool diagnostic = s_auto_request.diagnostic;
+            s_auto_request.pending = false;
+            if (!auto_start(tank, 0, diagnostic)) s_auto_wait = 3600;
+            return;
+        }
+    }
+    if (!allow_start || !ambient_auto_backup() || !s_mounted || sd_port_auto_backup_busy()) return;
     s_auto_wait -= dt;
     if (s_auto_wait > 0) return;
     s_auto_wait = 60;
     int64_t now = clock_port_now_unix();
     if (now < 1600000000LL) return;
     uint32_t day = (uint32_t)(now / 86400);
-    nvs_handle_t h;
     if (!s_auto_day_loaded) {
-        if (nvs_open("tank", NVS_READONLY, &h) == ESP_OK) { nvs_get_u32(h, "autobk_day", &s_auto_day); nvs_close(h); }
+        nvs_handle_t h;
+        esp_err_t err = nvs_open("tank", NVS_READONLY, &h);
+        if (err == ESP_OK) { err = nvs_get_u32(h, "autobk_day", &s_auto_day); nvs_close(h); }
+        if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+            ESP_LOGE(TAG, "auto backup day read: %s", esp_err_to_name(err)); s_auto_wait = 3600; return;
+        }
         s_auto_day_loaded = true;
     }
     if (day == s_auto_day) return;
+    if (s_upload || s_photo || weather_network_needed_after(dt) || auto_network_busy()) return;
     ESP_LOGI(TAG, "daily auto backup (day %lu)", (unsigned long)day);
-    if (!sd_port_auto_backup_now(tank)) { s_auto_wait = 3600; return; }
-    s_auto_day = day;
-    if (nvs_open("tank", NVS_READWRITE, &h) == ESP_OK) {
-        if (nvs_set_u32(h, "autobk_day", day) != ESP_OK || nvs_commit(h) != ESP_OK) ESP_LOGE(TAG, "auto backup day not saved");
-        nvs_close(h);
-    }
+    if (!auto_start(tank, day, false)) s_auto_wait = 3600;
+}
+void sd_port_auto_backup_tick(tank_t *tank, float dt) {
+    sd_port_auto_backup_service(tank, dt, true);
 }
 
 /* 1.3 photo mode: the live tank, captured tile by tile during one full
  * repaint, as a top-down RGB565 BMP in pocket-tank/photos. */
 #define PHOTO_DIR SAVE_DIR "/photos"
-static FILE *s_photo;
 static int s_photo_rows;
 static char s_photo_path[64];
 static void put16(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
 static void put32(uint8_t *p, uint32_t v) { put16(p, v); put16(p + 2, v >> 16); }
 bool sd_port_photo_begin(int width, int height) {
-    if (!s_mounted || s_upload || s_photo) return false;
+    if (!s_mounted || s_upload || s_photo || sd_port_auto_backup_busy()) {
+        ESP_LOGE(TAG, "photo unavailable: SD unavailable/busy"); return false;
+    }
     if ((mkdir(SAVE_DIR, 0755) != 0 && errno != EEXIST) || (mkdir(PHOTO_DIR, 0755) != 0 && errno != EEXIST)) {
         ESP_LOGE(TAG, "photo directory: %s", strerror(errno)); return false;
     }
@@ -425,7 +641,7 @@ static void update_error(const char *message) {
 }
 void sd_port_update_action(tank_t *tank) {
     touch_port_show_updates(true);
-    if (!tank || !s_mounted || s_upload) { update_error("SD UNAVAILABLE / BUSY"); return; }
+    if (!tank || !s_mounted || s_upload || s_photo || sd_port_auto_backup_busy()) { update_error("SD UNAVAILABLE / BUSY"); return; }
     FILE *file = fopen(UPDATE_PATH, "rb");
     if (!file) { update_error("NO POCKET-TANK/UPDATE.PTU"); return; }
     sd_update_header_t header;
@@ -503,7 +719,17 @@ static void update_upload(unsigned long size) {
 }
 void sd_port_command(tank_t *tank, int argc, char **argv) {
     if (!s_mounted) { ESP_LOGE(TAG, "SD FAIL not mounted"); return; }
-    if (argc == 2 && !strcmp(argv[1], "update")) sd_port_update_action(tank);
+    if (sd_port_auto_backup_busy() || s_photo) {
+        ESP_LOGE(TAG, "SD FAIL automatic backup or photo active; retry later"); return;
+    }
+    if (s_upload && !(argc >= 2 && (!strcmp(argv[1], "cancel") ||
+            !strcmp(argv[1], "chunk") || !strcmp(argv[1], "finish")))) {
+        ESP_LOGE(TAG, "SD FAIL upload active; finish or cancel first"); return;
+    }
+    if (argc == 2 && !strcmp(argv[1], "auto-verify")) {
+        if (!auto_request(tank, true)) ESP_LOGE(TAG, "SD automatic backup diagnostic not queued");
+    }
+    else if (argc == 2 && !strcmp(argv[1], "update")) sd_port_update_action(tank);
     else if (argc == 3 && !strcmp(argv[1], "update-upload")) {
         char *end; unsigned long size = strtoul(argv[2], &end, 10);
         if (!*argv[2] || *end) update_error("INVALID UPLOAD SIZE");

@@ -39,6 +39,18 @@ class CydBuildContractTests(unittest.TestCase):
         for previous, current in zip(ordered, ordered[1:]):
             self.assertLessEqual(previous[1], current[0])
 
+    def test_weather_response_memory_follows_verified_tls_handshake(self):
+        source = (FIRMWARE / "main" / "weather_port_esp.c").read_text()
+        fetch = source[source.index("static bool fetch("):source.index("static bool query_url(")]
+        self.assertLess(fetch.index("esp_http_client_open(client, 0)"),
+                        fetch.index("heap_caps_malloc(WEATHER_BODY_MAX + 2"))
+        self.assertLess(fetch.index("esp_http_client_fetch_headers(client)"),
+                        fetch.index("heap_caps_malloc(WEATHER_BODY_MAX + 2"))
+        self.assertIn(".crt_bundle_attach = esp_crt_bundle_attach", fetch)
+        self.assertIn("declared <= WEATHER_BODY_MAX", fetch)
+        self.assertIn("esp_http_client_cleanup(client)", fetch)
+        self.assertIn(".buffer_size = 1024, .buffer_size_tx = 512", fetch)
+
     def test_update_mode_defers_tank_only_memory(self):
         main = (FIRMWARE / "main" / "main.c").read_text()
         app = main[main.index("void app_main(void)"):]
@@ -76,6 +88,20 @@ class CydBuildContractTests(unittest.TestCase):
         for source in ("main.c", "display_port_cyd.c", "touch_port_xpt2046.c",
                        "brightness.c", "ambient.c"):
             self.assertNotIn(source, size_flags[1].split())
+
+    def test_backup_completion_and_network_memory_exclusion(self):
+        main = (FIRMWARE / "main" / "main.c").read_text()
+        loop = main[main.index("static void tank_task(void *arg) {"):main.index("static void request_update(void) {")]
+        self.assertIn("sd_port_auto_backup_service(&tank, dt, !weather_network_needed_after(dt));", loop)
+        self.assertNotIn("sd_port_auto_backup_tick(", loop)
+        self.assertIn("render_work_caches(!weather_lease && !backup_busy);", loop)
+        self.assertIn("if (!backup_busy) weather_tick(dt);", loop)
+        self.assertIn("if (s_benchmark_requested && !sd_port_auto_backup_busy())", loop)
+        for signature in ("static void request_update(void)", "void device_wifi_setup(void)",
+                          "void device_provision_request(void)"):
+            start = main.index(signature + " {")
+            self.assertTrue(main[start:].splitlines()[1].strip().startswith(
+                "if (backup_network_blocked()) return;"), signature)
 
     def test_pipeline_preserves_single_framebuffer_and_update_startup(self):
         memory = (FIRMWARE / "main" / "memory_plan.h").read_text()

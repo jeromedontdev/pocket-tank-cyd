@@ -20,6 +20,12 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- Release 2.3.15 contains the rendering/weather/backup follow-up. Saves remain
+  schema19 / 6336 bytes and companion v7. Weather acquisition is boot + hourly,
+  including failures, with bounded offline attempts. Do not restore a 15-minute
+  poll or keep the radio/caches competing while idle. See the measured
+  [four-part follow-up](firmware/CYD.md#com4-verification-of-the-four-part-follow-up);
+  regular FPS gains are modest/mixed, and backup snapshot validation still hitches.
 - Release 2.3.14 content expansion: exactly six new wearables (IDs7–12) and twenty
   static placeable ornaments (shop IDs43–62); existing IDs0–42 never move.
   Schema19 / 6336 bytes appends `decor_content_t` at6168, retaining schema18's
@@ -361,6 +367,27 @@ or deployment is published. Update this file when its contracts change.
   simulator preview is session-only. Test both scales and transitions, and
   never infer FPS gains without actual-unit measurements.
 
+## Art direction and optimization priorities
+
+- Preserve the detailed, cohesive illustrated aquarium: readable silhouettes,
+  structural shading, material-specific texture, fittings and highlights.
+  New decorations must match the detailed harbor/garden set, not regress to
+  simplistic flat shapes. Keep holes transparent and previews consistent with
+  placed art; inspect actual-renderer captures at both scales.
+- Fit every wearable to each species and life stage, including turns and dive
+  poses. When a fit genuinely cannot work, exclude it consistently from purchase,
+  equip and rendering rather than showing broken gear. Jellyfish exclude only
+  the wraparound scarf; ties, bowties and bandanas remain supported.
+- Optimize for visibly smooth fish motion and fewer long frames, not a higher
+  menu FPS or smaller file alone. Preserve fish cadence, artwork, care behavior,
+  saves and touch targets. Prefer exact reuse, clipping and bounded caches over
+  reduced detail, new animation banks, faster SPI or additional framebuffers.
+- Measure controlled populated hardware fixtures and p95/p99/max frame times;
+  compare total frame cost, not one faster stage. Keep unsuccessful prototypes
+  out of the hot path. Document remaining hitches and negative/mixed results.
+  Detailed reference captures and exact pixel/hash tests are acceptance checks,
+  not substitutes for device pacing and memory measurements.
+
 ## Product constraints
 
 - Supported boards: **ESP32-2432S028 CYD** (existing revision) and
@@ -496,6 +523,29 @@ or further split modules without a concrete maintenance benefit.
   drawing if unavailable. Some scene/card/dirty caches are deliberately
   disabled on CYD. Never enable them wholesale or assume all caches can
   coexist. Preserve explicit diagnostics and tested fallback correctness.
+- Clock pages index commands into40-row bands, retaining painter order and
+  replaying cross-band commands only once. Alpha255 is the original255/256
+  blend, not an opaque store. Preserve exact boundary correction tests.
+  The selected static ornament uses a128-byte dimmed RGB565 palette and the
+  existing span painter; do not reintroduce a full RGB565 sprite allocation
+  that fails alongside clock caches or a slower duplicate pixel/mask loop.
+  Castle/crown caches help only scenes containing those objects.
+- Daily backup capture/semantic validation stays on the tank task; immutable
+  JSON ownership transfers to a CPU1 priority1 worker below LCD priority4.
+  The worker must not access mutable tank/progression state. Keep its4-KiB
+  stack,32-KiB JSON bound,512-byte I/O scratch, cooperative yields, exact
+  readback, failure rollback and identity-safe success-only daily marker.
+  Service completion unconditionally even when automatic backup is disabled.
+  Keep optional caches released and exclude new weather/SD/network operations
+  while busy; reject user network entry explicitly with a retry message.
+  Defer console backup requests to shallow tank service: nested validation
+  under director dispatch overflowed the12-KiB tank stack. CPU0 worker
+  starvation stretched storage to16.6s; CPU1 measured about442ms.
+  `sd auto-verify` tests the real worker without changing saves, counters or day
+  markers and removes its diagnostic file. Run
+  `python tools\test_cyd_sd_backup.py --cc gcc` for ownership/failure/admission
+  regressions. Do not claim backups are hitch-free: capture/validation remains
+  about109ms on the measured four-resident CYD.
 - Fish stay full-rate; scenery clocks are independent (Balanced effects5Hz/
   grass2Hz, Enhanced10Hz/4Hz, staggered grass beds). Damage planning compares
   merged rectangle costs, not the old fixed40% promotion threshold. Serial

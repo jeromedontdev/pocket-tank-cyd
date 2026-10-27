@@ -204,12 +204,12 @@ int main(int argc, char **argv) {
     weather_caption(caption, sizeof caption); assert(strstr(caption, "25C"));
     assert(weather_port_load(&saved) && saved.located && !saved.fahrenheit);
     assert(!strcmp(saved.city.country, "France"));
-    /* Sleeping Wi-Fi retains fresh values and makes no request before 15m. */
+    /* Sleeping Wi-Fi retains fresh values and makes no request before one hour. */
     char city[64], detail[64];
     weather_clock_lines(city, sizeof city, detail, sizeof detail);
     assert(strstr(detail, "25C") && !strstr(detail, "OFFLINE") && !strstr(detail, "STALE"));
     remove(getenv("POCKET_TANK_WEATHER_CURRENT_FIXTURE"));
-    weather_tick(890); pump();
+    weather_tick(3590); pump();
     assert(!weather_network_needed() && !net_sim_radio_on());
     weather_caption(caption, sizeof caption);
     assert(strstr(caption, "25C") && !strstr(caption, "[stale]"));
@@ -235,17 +235,20 @@ int main(int argc, char **argv) {
     assert(!weather_network_needed() && !net_sim_radio_on());
     /* Failed updates retain values, label stale, and sleep through backoff. */
     remove(getenv("POCKET_TANK_WEATHER_CURRENT_FIXTURE"));
-    weather_tick(901); pump();
+    weather_tick(3601); pump();
     weather_caption(caption, sizeof caption); assert(strstr(caption, "[stale]") && strstr(caption, "26C"));
     weather_clock_lines(city, sizeof city, detail, sizeof detail);
     assert(strstr(detail, "STALE") && !strstr(detail, "OFFLINE"));
     assert(!weather_network_needed() && !net_sim_radio_on());
     write_fixture("POCKET_TANK_WEATHER_CURRENT_FIXTURE", current);
     pump(); weather_caption(caption, sizeof caption); assert(strstr(caption, "[stale]"));
-    weather_tick(61); pump(); weather_caption(caption, sizeof caption); assert(!strstr(caption, "[stale]"));
+    weather_tick(3590); pump();
+    assert(!weather_network_needed() && !net_sim_radio_on());
+    weather_caption(caption, sizeof caption); assert(strstr(caption, "[stale]"));
+    weather_tick(11); pump(); weather_caption(caption, sizeof caption); assert(!strstr(caption, "[stale]"));
     assert(strstr(caption, "25C") && !weather_network_needed() && !net_sim_radio_on());
     /* Disabling invalidates in-flight results and persists independently. */
-    weather_tick(901); net_sim_advance(2); weather_tick(0);
+    weather_tick(3601); net_sim_advance(2); weather_tick(0);
     tap(100, 68);
     assert(weather_network_needed()); /* pending CURRENT must drain before release */
     pump();
@@ -278,6 +281,22 @@ int main(int argc, char **argv) {
     weather_tick(31);
     assert(!weather_network_needed() && !net_sim_radio_on());
     assert(net_port_creds_set("Fishbowl", "password"));
+    /* A boot refresh with missing credentials stops after 30 seconds, then
+     * stays asleep for an hour even if credentials become available. */
+    tap(100, 68); pump();
+    assert(weather_port_load(&saved) && saved.enabled);
+    assert(net_port_creds_forget());
+    weather_init();
+    weather_tick(0);
+    assert(weather_network_needed());
+    weather_tick(31); pump();
+    assert(!weather_network_needed() && !net_sim_radio_on());
+    assert(net_port_creds_set("Fishbowl", "password"));
+    weather_tick(3590); pump();
+    assert(!weather_network_needed() && !net_sim_radio_on());
+    weather_tick(11); pump();
+    assert(!weather_network_needed() && !net_sim_radio_on());
+    weather_caption(caption, sizeof caption); assert(strstr(caption, "77F"));
     /* Direct port mailbox carries generation and bounded parsed fixtures. */
     weather_request_t request = {0};
     request.operation = WEATHER_SEARCH; request.generation = 123; strcpy(request.query, "Paris");
@@ -316,6 +335,6 @@ int main(int argc, char **argv) {
     tap(320, 340); pump(); saw_ellipsis = false;
     weather_render(NULL, TANK_W, 3); assert(saw_ellipsis);
     tap(390, 20); tap(390, 20); tap(100, 68); pump();
-    puts("Weather: parser, config, threaded mailbox, QWERTY, units, sleeping refresh/backoff and Wi-Fi ownership tests passed");
+    puts("Weather: parser, config, mailbox, QWERTY, units, boot/hourly success/failure refresh, bounded offline attempts and Wi-Fi ownership tests passed");
     return 0;
 }

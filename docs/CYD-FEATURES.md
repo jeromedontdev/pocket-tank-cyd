@@ -2,7 +2,17 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.14**
+**An illustrated tour of Pocket Tank CYD 2.3.15**
+
+**2.3.15 smoother background work:** weather checks at boot and hourly, even
+after failures. Exact clock/decoration/helper caches reduce repeated rendering
+work without simplifying the artwork or slowing fish simulation. SD backup
+storage and readback run in a lower-priority background worker after a validated
+snapshot; the measured tank-task service fell from 718 to 109 ms. Snapshot
+validation still briefly pauses a frame. Controlled FPS changes are small and
+mixed: the clock-heavy fixture improved from 13.80 to 14.00 FPS with unchanged
+p95 frame time. No save schema, partition, calibration or hardware-profile
+changes. See [the complete hardware results](../firmware/CYD.md#com4-verification-of-the-four-part-follow-up).
 
 **2.3.14 roomier tank:** aquarium fish are 33% smaller in width and height
 at every life stage, including their fins, patterns and wearables. Relative
@@ -985,11 +995,14 @@ choose F/C. Only your city query/selected coordinates go to Open-Meteo over
 HTTPS; nothing infers your location. Saved Wi-Fi is required, and unavailable,
 offline or stale readings are identified rather than replaced with fake data.
 Weather settings are device-wide, separate from aquarium backups.
-Weather refreshes about every **15 minutes**, with a stale warning after
-**30 minutes**. Wi-Fi sleeps between refreshes and reconnects when needed;
+When enabled with a saved city, weather checks **at boot and once per hour**,
+with a stale warning after **two hours** or a failed check.
+Wi-Fi sleeps between refreshes and reconnects when needed;
 the last reading stays visible without a false offline warning during sleep.
 City searches also temporarily wake Wi-Fi. Failed updates retain the reading
-with a stale/offline warning and retry with backoff.
+with a stale/offline warning and wait one hour before the next automatic attempt.
+An automatic attempt that cannot connect relinquishes its lease after 30 seconds.
+Explicit city searches and setting changes can request an immediate update.
 The city and conditions now use a bordered, larger-text clock
 area rather than a tiny aquarium caption.
 The clock's **SIZE** control scales its face. Captions keep a readable native

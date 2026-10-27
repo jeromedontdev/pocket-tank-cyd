@@ -25,6 +25,18 @@ static size_t saved_size;
 static int writes;
 static bool reject_write;
 static bool reject_erase;
+static bool require_json_released_before_load;
+static size_t json_allocations;
+static unsigned checked_identity_loads;
+static void *tracked_json_malloc(size_t size) {
+    void *result = malloc(size);
+    if (result) json_allocations++;
+    return result;
+}
+static void tracked_json_free(void *memory) {
+    if (memory) { assert(json_allocations); json_allocations--; }
+    free(memory);
+}
 static unsigned char slots[AQUARIUM_CAP][AQUARIUM_SAVE_BYTES];
 static bool slot_exists[AQUARIUM_CAP], card_ready = true, reject_slot_read, reject_slot_write;
 static int slot_write_count, reject_slot_number;
@@ -41,6 +53,10 @@ bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_
     assert(size == AQUARIUM_SAVE_BYTES); memcpy(slots[slot], data, size); slot_exists[slot] = true; return true;
 }
 bool persist_port_load(void *buf, size_t max, size_t *got) {
+    if (require_json_released_before_load) {
+        assert(!json_allocations);
+        checked_identity_loads++;
+    }
     if (!saved_size) return false;
     *got = saved_size < max ? saved_size : max;
     memcpy(buf, saved, *got); return true;
@@ -246,8 +262,19 @@ static void test_bank(void) {
     tank_init(&loaded, 5); boot_enlarged(&loaded);
     assert(loaded.bank_count == FISH_BANK_CAP && !memcmp(loaded.bank, t.bank, sizeof t.bank));
     char *json = progression_backup_json(&t); assert(json && strlen(json) < 32768);
+    cJSON_Hooks hooks = {tracked_json_malloc, tracked_json_free};
+    cJSON_InitHooks(&hooks);
+    require_json_released_before_load = true;
+    checked_identity_loads = 0;
+    int before_validation = writes;
     assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
+    assert(writes == before_validation && !json_allocations && checked_identity_loads);
+    checked_identity_loads = 0;
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+    assert(!json_allocations && checked_identity_loads);
+    require_json_released_before_load = false;
+    cJSON_InitHooks(NULL);
+    puts("PASS: restore validation and commit release all parsed JSON before loading current identity; validation never writes");
     tank_init(&loaded, 3); boot_enlarged(&loaded);
     assert(loaded.bank_count == t.bank_count && !memcmp(loaded.bank, t.bank, sizeof t.bank));
     /* Root order and whitespace must not affect incremental bank parsing. */

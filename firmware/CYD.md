@@ -33,6 +33,375 @@ icon; failed payouts, Creative mode and loading a save do not trigger it.
 
 ## Release 2.3.14: fish-first rendering pipeline
 
+### Working-tree motion/pacing follow-up
+
+The local follow-up raises the light-scene ceiling from 25 to 30 FPS, rounding
+the remaining 33,334-us budget up to scheduler ticks and always yielding at least
+one tick. Late frames do not queue catch-up frames. This is a ceiling, not a
+promise of 30 FPS in a populated aquarium.
+
+The ten-second default timing report is now one short line. `perf on` enables
+the detailed phase/heap/goal trace; `perf off` restores the default. Tracing is
+RAM-only, defaults off after reboot, and can itself stall animation through
+synchronous serial output. Errors and warnings are unaffected. LCD block/worker
+stack reports are debug-level diagnostics. The isolated `benchmark` remains
+available independently of verbose tracing.
+
+Urchin pose tones are packed losslessly into nibbles (7,104 instead of 14,208
+bytes for all sixteen poses); neither pose count nor colors change. Cache tests
+check every pixel in both chewing states. Clock-cache replay clips vertical runs
+before color conversion, and off-tile mussels skip their procedural draw calls.
+Save data, movement behavior, fish sizes and wardrobe geometry are unchanged.
+
+Before the follow-up, a 34-second COM4 sample of the populated saved aquarium
+reported 13.6-14.0 FPS, 88-94-ms p95 bounds, and 147-168-ms maximum intervals.
+Rendering took 57-59 ms/frame, so merely raising the FPS cap cannot make that
+aquarium run at 30 FPS. Compare warmed samples and keep network/scene differences
+separate from any claimed improvement.
+
+The final 92-second live COM4 sample had ordinary windows of 13.7-16.2 FPS,
+76-84-ms p95 bounds and 83-97-ms maxima after initial warmup. Wi-Fi startup
+and subsequent activity produced separate 203-537-ms maximum intervals; those
+stalls remain unresolved. These moving-scene samples are indicative, not a
+controlled A/B benchmark or a guaranteed speedup. Full app readback, runtime
+profile, all four resident names and a successful save were verified. `perf`
+on/off was checked over serial and left off for user testing. Native coverage
+includes 18,172 full/tile/retained frame sets in a 30-second soak, all 32 packed
+urchin states, clock layouts, wardrobe clearance and LCD buffer ownership.
+
+### Working-tree render-cost follow-up
+
+The existing `perf on` stage timers identified about 11-12 ms/frame in clock
+replay and 21-22 ms/frame in the combined fish/front stage in the resident tank.
+Clock replay now blends already-clipped RGB565 spans directly, retaining the
+exact alpha-255 blend rather than replacing it with an opaque store. Ornament
+rows group equal-color opaque pixels into spans; final-lit pixels retain their
+individual lighting/vignette sample points. Neither change alters artwork.
+Verbose traces and benchmark results additionally separate front vegetation,
+front decorations/helpers and the mussel; these are nested costs, not extra
+terms to add to the existing fish/front time.
+
+A complete on-device fixed-seed baseline also exposed repeated render setup in
+fragmented partial updates: pipeline/full achieved 19.32, 18.55, 13.99 and
+14.90 FPS across its four fixtures, versus 15.20, 14.55, 9.65 and 11.53 FPS
+with the old adaptive plan. The planner now compares exact damage, joined
+horizontal spans per 40-row band, and full repaint. Its local default is
+900 ns/pixel plus 4,000 us per rendered tile rectangle, accounting for scene
+setup/replay rather than just LCD command overhead. These are estimated costs,
+not universal hardware constants. Sparse distant spans remain separate when
+joining would cost more; explicit full/partial diagnostic overrides remain.
+No new framebuffer or heap cache is needed.
+
+The final app was backed up, app-only flashed and byte-readback verified on COM4
+(SHA256 `576123166df26f2e14bfa79848f8bce43cbef189c3bc17fe83b926a3ac2f8a0e`).
+Repeating all sixteen fixed-seed hardware benchmark cases gave these adaptive
+mode results (240 measured frames per fixture, after ten warmup frames):
+
+| Fixture | Before FPS | After FPS | Before p95 bound | After p95 bound |
+| --- | ---: | ---: | ---: | ---: |
+| 0: first species group | 15.20 | 19.65 | 80 ms | 58 ms |
+| 1: second species group/theme | 14.55 | 18.99 | 84 ms | 60 ms |
+| 2: clock and mixed decorations | 9.65 | 13.98 | 132 ms | 84 ms |
+| 3: repeated decorations | 11.53 | 16.95 | 106 ms | 66 ms |
+
+These are synthetic on-device comparisons, not a promise of those rates in the
+resident aquarium. Resident verbose samples changed from 12.1-12.2 FPS and
+11.5-12.2 ms clock time to 13.6-15.4 FPS and 6.8-7.8 ms clock time; movement,
+warmup and scene differences make those live samples indicative only. A final
+quiet 34-second capture after the benchmark reported 13.3-14.2 FPS, p95 bounds
+86-96 ms and maxima 89-104 ms. One earlier live sample still had a 371-ms frame
+with a 290-ms polling phase, so non-render stalls are not fixed by this work.
+The original CYD profile, Bolt/Pip/Kelp/Odie and successful saves were verified
+before and after the benchmark; verbose tracing was left off.
+
+Native regressions compare all clock faces/sizes and transparent panels against
+live drawing on nonuniform RGB565 backgrounds, including clipped tiles/regions.
+Ornament spans match the original per-pixel drawing with dim/locked colors and
+final lighting. Deterministic reference scene hashes and retained-frame stress
+tests guard against missing fish, trails, altered colors or layer changes.
+All twelve deterministic scene hashes and 48 sampled frame hashes match the
+pre-change renderer. The 30-second retained/full/tile soak, rounded-edge variant,
+page-art suite and 40 Python tests (one skipped) passed.
+
+### Working-tree scenery-cache follow-up
+
+The existing indexed ornament cache no longer requires duplicate purchases to
+activate. It considers every placed static ornament, including the original
+copy, ranks by covered area/copy count with preference for foreground pieces,
+and retains one bounded lossless sprite. Animated buoy/jelly geometry remains
+live. This matters for the resident tank's single chest/shell/starfish/anchor:
+neither castle nor crown caches help a tank without those decorations.
+Selection counts extra copies once and visits only decoration slots; it does
+not scan the complete shop catalog and recount inventory for every candidate
+on every tile.
+Equal-color foreground cells also share source-color conversion while keeping
+each original cell's separate lighting/vignette sample; this is not a wider
+lighting span or a change to the artwork.
+
+The castle's foreground wall/towers now use an optional lossless four-bit
+tone map (9,701 bytes, including transparent pixels). The original procedural
+geometry builds it once per floor/resolution, and replay uses the existing
+row palette, per-pixel lighting, vignette and silhouette masks. Color/night
+changes do not require new geometry; network and SD operations release it with
+the other optional caches. Allocation failure is logged and draws the original
+geometry. No framebuffer or save format changes are needed.
+
+The fixed backdrop budget now stores mixed repeated-color runs and literal
+RGB565 spans, instead of paying two words for every isolated pixel. Noisy
+rows need at most width+1 words, and adjacent identical rows still share their
+encoding. Both Simple and Balanced/Enhanced paths use the same clipped,
+clock-occlusion-aware decoder. Verbose traces and benchmarks report cached
+row coverage and occupied bytes so fallback is measurable.
+
+Grass holds its per-bed/frond sway values between existing staggered pose
+updates. Trimming, growth and placement still supply live frond roots/heights.
+The 320-byte pose table is optional and released before networking, rather than
+permanently consuming the scarce TLS heap.
+Instead of rebuilding an entire spine for each intersecting tile, drawing
+calculates only the segment endpoints reached by visible rows and reuses them
+within that segment. The original floating-point geometry and animation
+cadences remain unchanged.
+
+Coral and reef-cluster crown geometry also holds its exact rounded filament
+points for the existing secondary-animation pose. An optional 4,524-byte cache
+shares up to thirteen host fans and 1,024 points across tiles/partial regions,
+instead of repeating their sine/cosine calculations for every tile. Lighting,
+occlusion against higher decorations, alpha blending and damage bounds are
+still evaluated live. Pose/growth/placement changes rebuild the appropriate
+geometry; capacity overflow safely replaces older entries. Network/SD cache
+release frees this allocation too, and allocation failure logs a live fallback.
+
+Services taking at least 20 ms now log their name and exact duration:
+touch (including between tiles), console, UI actions, ambient, SD automatic
+backup, weather/cache setup and weather tick. Backup validation failures also
+report the actual restore-validation error rather than an undifferentiated
+message. These diagnostics identify blocking work; they do not move storage
+operations to an unsafe worker that shares mutable aquarium state.
+The first instrumented boot traced a 295-ms polling stall to daily SD backup
+validation, specifically "Not enough memory to validate restore". The parser
+retained the complete JSON tree while allocating a current-save identity
+snapshot in validation-only mode, although all JSON fields had already been
+copied/checked. It now releases that tree before either validation-only or
+committing identity checks. All mode/inventory/fish-identity checks remain, and
+validation-only never writes.
+The corrected validator successfully wrote and verified the 12,610-byte daily
+SD backup. Its then-synchronous storage/validation work took 718 ms, contributing
+to an 802-ms frame on that boot. The daily-backup marker prevents repeating it
+on every subsequent reboot that day.
+
+Daily SD storage now uses a single low-priority worker. The tank task releases
+optional render caches, captures bounded JSON (maximum 32 KiB), and performs
+the existing semantic/current-save identity validation before queuing it.
+Snapshot creation/semantic validation remain measured tank-task work; directory
+scanning, chunked writes, flush/fsync, exact byte/length/CRC readback, rename and
+pruning run off the animation path. The worker never calls the restore validator
+or accesses the live tank, current save, NVS, or rendering. It retains one JSON
+buffer, a 512-byte I/O buffer and a 4 KiB stack, not a second full readback copy.
+The worker is pinned to CPU1 at priority1, below the CPU1 LCD worker at
+priority4; the CPU0 tank task also runs at priority4. This avoids starving SD
+behind CPU0's mostly CPU-bound rendering. SD uses SPI3 and LCD uses SPI2;
+the immutable mailbox and SD exclusion do not require tank-core affinity.
+Both write and readback loops retain a one-tick cooperative delay per 512-byte
+chunk (1 ms at the configured 1,000 Hz tick). Network exclusion remains unchanged.
+Only a successful verified rename permits pruning or a daily completion marker.
+Completion updates backup status/NVS on the tank task, and only if the original
+aquarium ID, slot and profile still match. Errors leave the daily marker unset
+and retry after an hour; changing tanks leaves the saved file but applies no
+status/day to the replacement tank.
+
+`sd_port_auto_backup_now()` now reports **request queued**, not captured or
+completed. Both this API and `sd auto-verify` defer JSON capture/validation to
+the next admitted shallow main-loop service call, never the console/director
+call chain. Pending requests retain aquarium/profile identity and are canceled
+if it changes before capture. Pending requests do not assert busy or block
+network completion; only allocated jobs do. Explicit requests still work when
+the daily setting is disabled. Call
+`sd_port_auto_backup_tick()` even when automatic backups are disabled so it can
+collect completion. `sd_port_auto_backup_busy()` covers running and uncollected
+completion: use it to keep optional caches released and exclude new weather/
+foreground network leases until collection. Backup admission also defers while
+weather/setup owns working memory. User SD backup/restore, update/upload,
+legacy import and photos reject overlapping background storage with an explicit
+busy error. The native regression `tools/test_cyd_sd_backup.py --cc <compiler>`
+checks deferred ownership, write/flush/fsync/readback/rename failures, busy and
+memory gates, tank-switch safety and success-only daily markers.
+For explicit admission control, call
+`sd_port_auto_backup_service(tank, dt, allow_start)` unconditionally: `false`
+blocks new daily jobs but still collects completion. The built-in checks cover
+predicted weather deadlines, background radio/teardown, connected Wi-Fi,
+setup/update UI and each foreground scan/connect/check/install `NET_BUSY` state.
+There is no aggregate `net_port_busy()` API.
+
+Run `sd auto-verify` with networking idle to exercise the exact deferred worker
+without changing the tank save, backup counters or daily marker. It creates,
+verifies and removes an `auto-test-NNNN.json` file; it does not prune daily
+backups. It still needs backup service/tick calls for completion collection.
+Separate serial timings report JSON capture, semantic/identity validation and
+worker storage/readback in microseconds. The earlier 718 ms measurement combined
+these stages; it is not a measured post-change snapshot bound. JSON is bounded
+to 32 KiB and parser depth to eight, but semantic parsing/current-save I/O remains
+synchronous and has no hard wall-time guarantee. Profile these stage logs on the
+device before claiming the entire daily-backup animation pause is eliminated.
+
+The first hardware diagnostic exposed a tank-task stack overflow after capture
+and validation returned. Compiled Xtensa frames were 6,528 bytes for export and
+6,496 for restore validation (sequential, not additive); invoking them under the
+director's 2,576-byte command dispatcher and SD command's 528-byte frame left
+too little of the 12 KiB tank stack for parser/storage/library calls. Deferring
+explicit requests removes that command nesting, using the same shallow path as
+daily backups without increasing stack RAM. The native regression asserts
+requests perform no capture/validation until service admits them; hardware
+reverification is required after this fix.
+
+The same boot exposed the narrow TLS memory margin after adding even a small
+permanent pose table. Moving that table into the releasable work cache and
+reducing the weather client's TX scratch from 1,024 to 512 bytes leaves more
+handshake room; RX scratch, certificate verification and the 4-KiB body limit
+are unchanged.
+Boot checks still exposed an intermittent PSA `-141` allocation failure during
+certificate signature verification with about 26 KiB of internal heap free.
+A subsequent boot completed verified HTTPS in 1.873 seconds without changing
+the image. The scratch reduction and cache release improve headroom, but do
+not establish that TLS's peak-memory problem is eliminated. Certificate
+verification remains mandatory and failures remain explicit.
+
+Native tests cover the castle's cached/live day/night and clipped tile pixels,
+allocation failure/recovery and release, bounded hybrid encoding at every
+capacity, literal/run decoding around clock occlusion, and grass pose cache
+invalidation. All twelve reference scene hashes and 48 sampled frame hashes
+match the previous renderer exactly. The 30-second soak checked 18,564
+full/tile/retained frame sets without tank mutation. Rounded-edge and page-art
+checks passed, as did the actual 20-ms slow-service wrapper harness.
+The full native backup/inventory suite also checks with tracked cJSON
+allocations that both restore paths release the parser before identity loading.
+Crown regressions additionally compare cached/live pixels and damage bounds
+through growth, clocks, day/night and seventeen-row tiles, including capacity
+overflow, allocation failure, recovery and release.
+
+Final COM4 validation used app SHA256
+`8db078320053b2ad955963aa5c474829f950cf64ebc54be9ef539818f1993445`.
+The original CYD profile, Bolt/Pip/Kelp/Odie and successful saves were verified
+before and after all sixteen isolated hardware benchmark cases. Full-flash
+backup and full application readback passed at 115,200 baud after faster serial
+reads reported corrupt packets. No NVS/SD restore or synthetic save was applied.
+The final boot completed verified HTTPS in 4.379 seconds.
+
+The resident backdrop covered 240/240 rows in 15,452 bytes; optional artwork
+occupied 31,192 bytes, confirming that the single-ornament cache was active.
+The resident tank has no castle/crowns, so those caches cannot explain any
+resident speed improvement. Its foreground decoration/helper group still
+cost 7.9-8.6 ms per frame in verbose samples, down from the earlier
+9.8-11.1-ms live samples (not a controlled identical-pose comparison).
+
+This follow-up did **not** demonstrate an overall FPS improvement over the
+preceding working-tree renderer:
+
+| Adaptive/pipeline fixture | Previous FPS | Follow-up FPS | Previous p95 bound | Follow-up p95 bound |
+|---|---:|---:|---:|---:|
+| 0 | 19.65 | 19.40 | 58 ms | 58 ms |
+| 1 | 18.99 | 18.75 | 60 ms | 60 ms |
+| 2, clock/mixed decor | 13.98 | 13.80 | 84 ms | 84 ms |
+| 3, repeated decor | 16.95 | 16.79 | 66 ms | 66 ms |
+
+Fixture 2's vegetation stage fell from 16.65 to 12.91 ms, but total rendering
+remained about 55 ms and tick/other stages offset that saving. Render time in
+fixtures 0/1/3 fell from 32.50/34.48/41.26 to 31.29/33.42/40.29 ms.
+Overall FPS remains about 1% lower while p95 bounds match. The final quiet
+resident windows were 13.4, 14.9 and 14.1 FPS, with p95 bounds 84-92 ms and
+maxima 193, 90 and 93 ms. Live scenes vary, so these are not controlled A/B
+measurements. The remaining foreground cost and stalls need further diagnosis;
+the cache implementation alone is not evidence that fish motion is smoother.
+Verbose tracing was left off for testing.
+
+### Working-tree clock, foreground and simulation follow-up
+
+Clock command pages now contain six 40-row band bitsets. Replay visits only
+commands intersecting the current tile's bands, in original painter order;
+multi-row commands spanning bands are replayed once, not once per index hit.
+The index adds 192 bytes per allocated 256-command page (at most 1,536 bytes),
+and is released with the optional artwork caches. Cache construction and
+capacity/allocation failure still retain the live-render fallback.
+
+The alpha-255 clock path preserves the original 255/256 blend exactly, but
+avoids general per-channel multiply/blend work. RGB565 channels can differ from
+an opaque store only at exact quantization boundaries; replay applies those
+boundary corrections using the destination pixel. Native tests compare all
+65,536 destination colors against 256 source combinations covering every
+8-bit value in each channel, as well as all clock faces/sizes and clipped
+transparent layouts.
+
+The selected static foreground ornament holds a 128-byte dimmed RGB565 palette
+alongside its indexed pixels and transparency mask. Each tile paints only
+visible opaque pixels, preserving clock occlusion and dirty/bounds tracking.
+Day/night dim changes invalidate the palette. Final painting still applies the original
+per-pixel vignette at the current position; a pumpkin lighting that final
+painting uses the original live lighting path.
+Scaled previews and dim/locked shop artwork retain their original paths.
+Opaque foreground runs reuse the existing clipped span painter with a packed
+color lookup, rather than a second per-pixel painter or transparency-mask scan.
+No second sprite allocation is needed: the full RGB565 sprite prototype could
+not reliably allocate on the original CYD alongside the clock caches. Indexed
+artwork allocation failure still explicitly falls back to the live artwork,
+without changing placement or artwork. The isolated benchmark releases optional
+caches before allocating its fixture, then warms them on the fixture.
+
+Simulation keeps its original update cadence and math. Shrimp dart decay is
+calculated once per tick when needed rather than once per darting shrimp;
+fish steering reuses its unchanged desired-heading cosine. Axis rejection
+avoids square roots for fish/shrimp separation pairs that cannot interact,
+while nearby pairs retain the original distance and steering calculation.
+Deterministic scene/frame hashes remain identical after these changes.
+Verbose traces and benchmark results now split simulation into upkeep/helpers,
+social/advisor work and fish steering. The timer hook is off during ordinary
+quiet operation, and its regression test proves identical aquarium state.
+
+#### COM4 verification of the four-part follow-up
+
+The final application SHA256 is
+`bc781f64dd2e9b97cc6d9deb3e7b2dbc499b6e15a6da5f8c8c2d0f02d218be2d`.
+Full 4-MiB recovery backup, application-only flash and complete application
+readback passed at 115,200 baud. Original CYD profile, Bolt/Pip/Kelp/Odie and
+successful saves were verified before and after all sixteen isolated fixtures.
+Verified HTTPS weather completed in 4.084 seconds; tracing was left off.
+These are local working-tree changes, not a new published release.
+
+The same adaptive five-fish fixtures compared with the immediately preceding
+flashed renderer:
+
+| Fixture | FPS before / after | p95 frame ms before / after | Tick ms before / after |
+| --- | ---: | ---: | ---: |
+| 0 | 19.40 / 19.51 | 58 / 58 | 3.70 / 3.49 |
+| 1 | 18.75 / 18.75 | 60 / 60 | 3.82 / 3.71 |
+| 2, clock and mixed decorations | 13.80 / 14.00 | 84 / 84 | 3.80 / 3.60 |
+| 3, repeated foreground copies | 16.79 / 16.72 | 66 / 66 | 3.86 / 3.72 |
+
+Clock work in fixture 2 fell from 8.24 to 7.88 ms, and frames above 80 ms
+fell from 36/240 to 28/240. Regular FPS changes are small and mixed, not a
+universal speedup. The resident quiet windows were 13.6/13.4/12.3 FPS with
+p95 94/94/100 ms; their changing fish poses/care state are not controlled
+before/after comparisons.
+
+The non-mutating `sd auto-verify` diagnostic captured 12,619 bytes in 37.852 ms
+and validated semantic identity in 68.426 ms. Total tank-task service was
+109.202 ms, versus the earlier observed 718-ms synchronous backup service.
+The CPU1 worker completed storage, exact readback verification and diagnostic
+cleanup in 441.815 ms while rendering continued. Keeping it on CPU0 had
+stretched storage to 16.6 seconds under the higher-priority tank task; CPU1
+priority 1 avoids that starvation while remaining below the LCD worker.
+The diagnostic does not change saves, backup numbering or the daily marker.
+Its frame window still reached 221 ms: snapshot/validation is not hitch-free,
+but the earlier backup-associated 802-ms frame was not reproduced.
+Console backup requests defer heavy capture to the shallow tank service,
+rather than nesting validation under the console dispatcher's large stack.
+
+Final native checks preserved all twelve reference scene hashes and 48 sampled
+frame hashes. The flat 30-second soak checked 18,214 full/tile/retained frame
+sets; the rounded-edge soak checked 2,765. Page-art, complete native
+backup/inventory tests, deferred-worker failure/identity/scheduling tests, and
+41 Python contracts (one skipped) passed. Foreground tests cover dim changes,
+clock occlusion, clipped tiles/regions, exact final lighting and use by the
+actual tiled tank without a second sprite allocation.
+
 The existing 86,400-byte internal framebuffer is partitioned into two alternating
 40-row working tiles. An LCD worker on core 1 rotates/checksums/transmits the
 previous tile while the tank task on core 0 renders the next. Submission captures
@@ -49,7 +418,9 @@ allocation failure is logged explicitly and retains synchronous tile transfers.
 Damage no longer becomes full-screen merely for crossing 40% of the block grid.
 The planner counts actual merged pixels and 40-row transfer rectangles, comparing
 their estimated cost with canonical full-screen tiles. Initial cost estimates
-are 900 ns/pixel and 200 us/rectangle, not a claimed hardware-calibrated optimum;
+were 900 ns/pixel and 200 us/rectangle in release 2.3.14; the working-tree
+render-cost follow-up above also accounts for repeated renderer setup. These
+are not claimed hardware-calibrated optima;
 the RAM-only diagnostic overrides permit direct partial/full comparisons.
 Simple detail deliberately retains its existing cheap full repaint.
 
@@ -1689,10 +2060,12 @@ city. No location is inferred: only the entered city search or selected
 coordinates are sent to Open-Meteo over certificate-verified HTTPS. These
 device-wide NVS settings are separate from aquarium saves and backups.
 
-Weather joins the saved Wi-Fi network in the background, retries disconnected
-links with backoff, and yields to foreground Wi-Fi setup/update work. Its radio
+Weather joins the saved Wi-Fi network in the background and yields to
+foreground Wi-Fi setup/update work. Automatic checks start at boot and then
+once per hour, including after failed checks. An automatic check that cannot
+connect relinquishes its lease after 30 seconds and waits an hour. Its radio
 lease is held only while connecting/requesting/polling a refresh or city search;
-it is released immediately after completion and during retry backoff.
+it is released immediately after completion and between hourly checks.
 Cached readings remain visible during deliberate sleep without an offline
 label; actual failed refreshes still report stale/offline status.
 Disabling weather or forgetting the city also releases its ownership. City searches
@@ -1704,8 +2077,39 @@ Configuration saves are asynchronous and do not acquire the network.
 `weather_network_needed_after(dt)` predicts a deadline crossing before the tick
 so the renderer frees optional work caches before the worker can start Wi-Fi.
 
-Current temperature and conditions refresh about every 15 minutes. Readings
-30 minutes old are marked stale; offline/unavailable states remain visible
+Idle one-second network-worker wakes do not claim a weather lease or evict
+renderer caches. Only pending work or radio cleanup enters the busy wrapper.
+Background weather temporarily lowers the net worker from priority 5 to 3,
+below the core-1 LCD worker's priority 4; it restores priority 5 on return.
+Foreground setup/OTA retain their original priority and packet buffers.
+Background weather uses two static RX, two dynamic RX and two dynamic TX buffers,
+with aggregation disabled. Its bounded response buffer is allocated only after
+the verified TLS handshake and response headers, not during certificate checks.
+Lease duration/cache-release timing and actual request duration are logged at
+their transitions, not every frame. Real network work still needs the optional
+cache RAM; this change does not promise stall-free TLS or radio initialization.
+
+The hourly follow-up was app-only flashed/read back on COM4. Initial boot tests
+exposed PSA error -141 (insufficient memory) during certificate verification.
+Deferring the response allocation and reducing background packet buffers
+subsequently produced a successful, parsed HTTPS weather response with error 0;
+certificate verification stays enabled. The startup lease was released and did
+not recur during the remainder of the capture. The final priority-adjusted build
+completed its verified weather request in 3.820 seconds and released the lease
+after 11.035 seconds during an 80-second boot capture. Its startup maximum frame
+interval was 616 ms, versus 2,839 ms in the preceding build; these are separate
+boot samples, not a controlled benchmark, and a visible startup hitch remains.
+COM4 app readback, original CYD profile, all four fish and saving were verified.
+A separate later 387-ms interval
+coincided with an SD auto-backup validation failure, so not every long frame
+should be attributed to Wi-Fi. Native tests advance the scheduler
+through hourly success/failure boundaries and boot-without-credentials timeout;
+they also execute the actual ESP worker wrapper with mocked services to check
+3,600 idle wakes, radio cleanup, cancellation, foreground handoff and priority
+restoration. An actual one-hour wall-clock observation was not performed.
+
+Current temperature and conditions refresh hourly. Readings
+two hours old or failed refreshes are marked stale; offline/unavailable states remain visible
 instead of inventing data. Weather uses a bordered, larger-text area attached
 to the clock, with its own city line. Weather and optional fish-activity text
 have reserved space separate from the clock face. Open-Meteo

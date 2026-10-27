@@ -24,6 +24,7 @@ HARNESS = r"""
 #define portMAX_DELAY 0
 #define ESP_ERROR_CHECK(call) assert((call) == 0)
 #define ESP_LOGI(...) ((void)0)
+#define ESP_LOGD(...) ((void)0)
 static int TANK_W = 240, TANK_H = 180, tile_y, tile_h;
 static int region_x, region_w;
 static int render_region_left(void) { return region_w ? region_x : 0; }
