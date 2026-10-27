@@ -88,8 +88,8 @@ FPS gain. Sparse-plan tests also cover stale damage bits when switching from
 320-wide to 240-wide rendering; off-screen old columns must never produce
 negative-width transfer regions.
 
-The local 2.3.14 unified app measures **1,753,680 bytes**, leaving **212,400 bytes**
-(10.80%) free in each unchanged OTA slot. Release CI rebuilds and publishes the
+The published 2.3.14 unified app measures **1,753,664 bytes**, leaving **212,416 bytes**
+(10.80%) free in each unchanged OTA slot. Release CI builds and publishes the
 verified board-specific and unified packages.
 
 ## Release 2.3.11: indexed RGB and selective canonical invalidation
