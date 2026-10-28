@@ -23,8 +23,8 @@ or deployment is published. Update this file when its contracts change.
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
   edit-mode/mirror/save-speed and menu-performance follow-ups, unified build,
-  app 1,772,608 bytes, slot headroom 193,472, SHA256
-  `ef7cd077911273b5887d557fbec9a86ee4d0aae32aa4e2494da96abd03c1f3a2`
+  app 1,772,320 bytes, slot headroom 193,760, SHA256
+  `6dcbf9a54e7345dd9bee24a3eb8ae81575a0094c52f67b5c84718b473e7bad75`
   (see [menu performance](firmware/CYD.md#menu-performance-and-the-placement-button-row)).
   Fresh full recovery backup, app readback/profile and saves passed. Residents/settings remain intact; the wallet
   changes only from normal passive income. Tracing is off. These follow-ups
@@ -463,6 +463,8 @@ or deployment is published. Update this file when its contracts change.
   13-16 live because no clock face occludes damage; measure before claiming more.
   The place page has no on-screen CANCEL (DONE only; serial `setup off`
   reverts); MIRROR has its own row (`SETUP_MIRROR_Y`) above the depth bar.
+  Text over the live tank uses `text_plate` (white on a dark plate); there is
+  no copy counter or tap-to-select hint.
 - Still pages: `main.c` skips render+flush while a static full page
   (milestones/life/bank/journal, settings, shop/aquariums) is unchanged. It
   redraws on page change, while touched and 400 ms after, and every 500 ms. If

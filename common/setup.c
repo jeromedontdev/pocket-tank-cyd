@@ -624,6 +624,12 @@ void setup_touch(tank_t *t, float x, float y, bool down) {
 static void text_c(uint16_t *fb, int stride, int cx, int y, int scale, uint32_t rgb, const char *s) {
     render_text(fb, stride, cx - render_text_w(s, scale) / 2, y, scale, rgb, s);
 }
+/* white text on a dark plate: readable over bright water and sand */
+static void text_plate(uint16_t *fb, int stride, int cx, int y, int scale, const char *s) {
+    int w = render_text_w(s, scale);
+    render_rect_blend(fb, stride, cx - w / 2 - 6, y - 4, w + 12, 7 * scale + 8, C_PANEL, 210);
+    text_c(fb, stride, cx, y, scale, C_TEXT, s);
+}
 static void lines_c(uint16_t *fb, int stride, int y, int pitch, uint32_t rgb, const char *const *ls, int n) {
     for (int i = 0; i < n; i++) text_c(fb, stride, SETUP_X + SETUP_W / 2, y + i * pitch, 2, rgb, ls[i]);
 }
@@ -874,7 +880,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         char title[40];
         if (s_save_error) snprintf(title, sizeof title, "%s", s_place_error ? s_place_error : "SAVE FAILED - RETRY");
         else snprintf(title, sizeof title, "PREVIEW: %s", SD_ITEMS[s_item].name);
-        text_c(fb, stride, CX, SETUP_Y + 7, render_text_w(title, 2) <= SETUP_W ? 2 : 1, C_CAPT, title);
+        text_plate(fb, stride, CX, SETUP_Y + 7, render_text_w(title, 2) <= SETUP_W ? 2 : 1, title);
         render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, "DONE", 2);
         render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H,
                       C_INNER, s_remove_armed ? C_GO_E : C_DIM, s_remove_armed ? "REMOVE?" : "REMOVE", 2);
@@ -885,7 +891,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
            pieces at this depth, lit when there is a piece to pass; the relation
            is named on the hint line ("UNDER THE CORAL"). The page draws once per
            tile, so its lookups run once a frame (keyed by the clock and the page's look). */
-        static struct { const tank_t *t; float clock; uint32_t sig; int below, above; bool overlap; char rel[40]; } memo;
+        static struct { const tank_t *t; float clock; uint32_t sig; int below, above; char rel[40]; } memo;
         uint32_t sig = setup_place_signature(t);
         if (memo.t != t || memo.clock != clock || memo.sig != sig) {
             memo.t = t; memo.clock = clock; memo.sig = sig;
@@ -904,8 +910,6 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                 else if (memo.below >= 0) snprintf(memo.rel, sizeof memo.rel, "IN FRONT OF %s%s", the, SD_ITEMS[memo.below].name);
                 if (render_text_w(memo.rel, 2) <= rel_avail) break;
             }
-            place_copy_t overlaps[SD_ITEM_COUNT + DECOR_EXTRA_CAP];
-            memo.overlap = place_candidates_at(t, placed_x(t), FLOOR * TANK_H / PAGE_H, overlaps) > 1;
         }
         int below = memo.below, above = memo.above;
         const char *rel = memo.rel;
@@ -919,7 +923,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         static const char *const coral_hint[DECOR_Z_N] = { "BEHIND THE GRASS AND THE FISH", "", "IN FRONT OF EVERYTHING" };
         int z = placed_z(t), zi = tank_decor_z_index(s_item, z);
         int n = tank_decor_z_count(s_item), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;   /* the item's own depths */
-        text_c(fb, stride, CX, SETUP_DEPTH_Y - 18, 2, C_CAPT, "DEPTH");
+        text_plate(fb, stride, CX, SETUP_DEPTH_Y - 18, 2, "DEPTH");
         render_rect(fb, stride, bx, SETUP_DEPTH_Y, bw, SETUP_DEPTH_H, C_KEY);
         for (int i = 0; i < n; i++) {
             int sx = bx + i * SETUP_DEPTH_SEG_W, zi_ = tank_decor_z_at(s_item, i);
@@ -927,16 +931,16 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                            render_rect_edge(fb, stride, sx + 1, SETUP_DEPTH_Y + 1, SETUP_DEPTH_SEG_W - 2, SETUP_DEPTH_H - 2, C_EDGE); }
             else if (i > 0) render_rect(fb, stride, sx, SETUP_DEPTH_Y + 6, 1, SETUP_DEPTH_H - 12, C_DIM);   /* a divider */
             depth_tile(t, fb, stride, sx, SETUP_DEPTH_Y + 4, SETUP_DEPTH_SEG_W, SETUP_DEPTH_TILE_H, zi_, s_item, clock);
-            text_c(fb, stride, sx + SETUP_DEPTH_SEG_W / 2, SETUP_DEPTH_Y + SETUP_DEPTH_TILE_H + 10, 2, i == zi ? C_TEXT : dim(C_CAPT, 45), zl[zi_]);
+            text_c(fb, stride, sx + SETUP_DEPTH_SEG_W / 2, SETUP_DEPTH_Y + SETUP_DEPTH_TILE_H + 10, 2, i == zi ? C_TEXT : dim(C_CAPT, 75), zl[zi_]);
         }
         render_rect_edge(fb, stride, bx, SETUP_DEPTH_Y, bw, SETUP_DEPTH_H, C_EDGE);
         if (s_item == 4) {
             /* the cluster: a LOOK row of three tiles - the coral, the tubes and
                the brain as three bands over the look's name - the pick ringed */
             int look = tank_cluster_scheme(t);
-            render_rect_blend(fb, stride, -PAGE_X, SETUP_LOOK_Y - 22, PAGE_FRAME_W, SETUP_LOOK_H + 30, C_PANEL, 110);
+            render_rect_blend(fb, stride, -PAGE_X, SETUP_LOOK_Y - 22, PAGE_FRAME_W, SETUP_LOOK_H + 30, C_PANEL, 190);
             render_text(fb, stride, SETUP_LOOK_X + 2, SETUP_LOOK_Y - 18, 2, C_CAPT, "LOOK");
-            if (rel[0]) render_text(fb, stride, SETUP_LOOK_X + SETUP_LOOK_N * SETUP_LOOK_PX - SETUP_LOOK_PX + SETUP_LOOK_W - 2 - render_text_w(rel, 2), SETUP_LOOK_Y - 18, 2, C_CAPT, rel);
+            if (rel[0]) render_text(fb, stride, SETUP_LOOK_X + SETUP_LOOK_N * SETUP_LOOK_PX - SETUP_LOOK_PX + SETUP_LOOK_W - 2 - render_text_w(rel, 2), SETUP_LOOK_Y - 18, 2, C_TEXT, rel);
             for (int i = 0; i < SETUP_LOOK_N; i++) {
                 int x = SETUP_LOOK_X + i * SETUP_LOOK_PX; bool on = i == look;
                 const cluster_scheme_t *sc = &CLUSTER_SCHEMES[i];
@@ -954,9 +958,9 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                page's swatches, shorter), the pick ringed, the hint under the
                row's caption */
             uint32_t rgb = tank_coral_rgb(t);
-            render_rect_blend(fb, stride, -PAGE_X, SETUP_COL_Y - 22, PAGE_FRAME_W, SETUP_COL_H + 30, C_PANEL, 110);
+            render_rect_blend(fb, stride, -PAGE_X, SETUP_COL_Y - 22, PAGE_FRAME_W, SETUP_COL_H + 30, C_PANEL, 190);
             render_text(fb, stride, SETUP_COL_X + 2, SETUP_COL_Y - 18, 2, C_CAPT, "COLOR");
-            if (rel[0]) render_text(fb, stride, SETUP_COL_X + (SETUP_COL_N - 1) * SETUP_COL_PX + SETUP_COL_W - 2 - render_text_w(rel, 2), SETUP_COL_Y - 18, 2, C_CAPT, rel);
+            if (rel[0]) render_text(fb, stride, SETUP_COL_X + (SETUP_COL_N - 1) * SETUP_COL_PX + SETUP_COL_W - 2 - render_text_w(rel, 2), SETUP_COL_Y - 18, 2, C_TEXT, rel);
             (void)coral_hint;
             for (int i = 0; i < SETUP_COL_N; i++) {
                 int x = SETUP_COL_X + i * SETUP_COL_PX;
@@ -965,7 +969,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                 render_rect_edge(fb, stride, x, SETUP_COL_Y, SETUP_COL_W, SETUP_COL_H, on ? C_TEXT : C_DIM);
                 if (on) render_rect_edge(fb, stride, x + 1, SETUP_COL_Y + 1, SETUP_COL_W - 2, SETUP_COL_H - 2, C_TEXT);
             }
-        } else text_c(fb, stride, CX, SETUP_DEPTH_HINT_Y, 2, C_CAPT, rel[0] ? rel : s_item == 2 || s_item >= 8 ? castle_hint[z] : hint[z]);
+        } else text_plate(fb, stride, CX, SETUP_DEPTH_HINT_Y, 2, rel[0] ? rel : s_item == 2 || s_item >= 8 ? castle_hint[z] : hint[z]);
         float x0 = placed_x(t) - tank_decor_half_w(s_item) - 10, x1 = placed_x(t) + tank_decor_half_w(s_item) + 10, top = TANK_BOT - 16 - 40;
         if (s_item == 0) tank_veg_bed(t, 3, NULL, NULL, &top, NULL);   /* the leaves' reach */
         if (s_item == 2) top = TANK_BOT - 16 - 146;                    /* the tallest spire */
@@ -982,14 +986,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         render_rect_blend(fb, stride, original_x - 1, sy, 3, FLOOR - sy + 4, C_TEXT, 180);
         render_rect(fb, stride, original_x - 6, FLOOR - 17, 12, 2, C_TEXT);
         chevron(fb, stride, (int)((x0 + x1) * 0.5f), FLOOR - 34, true, C_EDGE);
-        int total = place_copy_count(t), number = place_copy_number(t);
-        bool selected_owned = s_extra >= 0 ? t->inventory.extra[s_extra].item == s_item + 1 :
-                              progression_item_owned(t, s_item);
-        char copy_status[64];
-        if (!selected_owned) snprintf(copy_status, sizeof copy_status, "PREVIEW - NOT AN OWNED COPY");
-        else snprintf(copy_status, sizeof copy_status, "COPY %d OF %d - REMOVE STORES IT", number, total);
-        text_c(fb, stride, CX, 276, 1, C_TEXT, copy_status);
-        text_c(fb, stride, CX, 296, 2, C_CAPT, memo.overlap ? "TAP COPY TO SELECT - DRAG TO MOVE" : "DRAG IT LEFT OR RIGHT");
+        text_plate(fb, stride, CX, 296, 2, "DRAG IT LEFT OR RIGHT");
     } else if (page_is_name()) {
         /* straight on the tank: the fish being named wears a ring in its own
            colour, its name spans the middle in that colour, the active slot

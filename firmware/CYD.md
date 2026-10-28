@@ -640,8 +640,10 @@ after a fresh full backup (`edit-text-com4-backup.bin`). Not released.
 - **Placement buttons.** MIRROR moved to its own row under DONE
   (`SETUP_MIRROR_Y`, 24 px); the depth bar and everything below moved down 8 px
   so MIRROR no longer covers the IN FRONT segment. The on-screen CANCEL is
-  gone (DONE saves; serial `setup off` still reverts). The copy line is shorter
-  ("COPY n OF m - REMOVE STORES IT") so it fits on the screen.
+  gone (DONE saves; serial `setup off` still reverts). The copy line ("COPY n
+  OF m") and the "TAP COPY TO SELECT" hint were removed (tapping an overlap
+  still cycles copies). The title, DEPTH, the layer/hint line and the drag hint
+  are white on dark plates (`text_plate`) so they read over bright water.
 - **Tile culling for page art.** `fill_ellipse`, `fill_poly_palette`, the icon
   blitters and `render_fish_preview` clamp their loops to the page rows inside
   the current 40-row tile (`page_clamp_rows`) instead of walking the whole page
@@ -665,9 +667,10 @@ COM4 measurements (frames/s are loop iterations, so touch is sampled this often)
 | Milestones | 6.4 Hz, 138 ms/frame | ~28 Hz, 54 ms per redraw |
 | Place / live | 8.3 / 13-16 FPS | 8.2-8.5 / 14-16 FPS (unchanged) |
 
-COM4 runs this unified image: app 1,772,608 bytes, SHA256
-`ef7cd077911273b5887d557fbec9a86ee4d0aae32aa4e2494da96abd03c1f3a2`, flashed
-after a fresh full backup (`menu-skip-com4-backup.bin`). Not released.
+COM4 runs this unified image (with the readable placement text): app
+1,772,320 bytes, SHA256
+`6dcbf9a54e7345dd9bee24a3eb8ae81575a0094c52f67b5c84718b473e7bad75`, flashed
+after a fresh full backup (`place-text-com4-backup.bin`). Not released.
 
 ### 2.3.18 frame-pacing and snapshot follow-up
 
