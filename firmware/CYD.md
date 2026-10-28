@@ -826,11 +826,31 @@ Further trim (same section):
 
 COM4 after the trim: boot weather `https start` free 29,004 B, largest
 27,648 B, OK in 2.1 s. Heap 42-48 KB, largest block 32 KB, live and in the
-shop (was 33/19 KB), while the artwork cache grows to 33 KB. FPS 13.5-15 with
-~90-105 changed rows/frame, the same as earlier runs at that load. `save` takes 214 ms;
+shop (was 33/19 KB), while the artwork cache grows to 33 KB. Live FPS 13.5-15
+with ~90-105 changed rows/frame. `save` takes 214 ms;
 `bank verify` and the SD auto backup pass. App 1,786,000 bytes, 180,080 bytes of
 headroom, SHA256 `b973b4e4668e85c00745c0024a42b9b0a2d5dbf0d2996b07c7b494f4864d5ff1`.
 Backup: `memory-trim-com4-backup.bin`.
+
+#### FPS regression since 6510382: flash cache, not work
+
+The fixed `benchmark` (mode 3) dropped 11-13% between 6510382 (2026-10-27
+evening) and this image: fixtures 1/2/3 at 19.16/15.66/17.03 fell to
+16.72/13.94/14.89 FPS. Fish steering went from 2.4 to 3.4 ms and vegetation
+rose 1.5-2 ms, with no change to those code paths. The host renderer profile
+(`test_renderer_stress.py --frames 400 --seconds 0`, old worktree vs HEAD)
+is identical within noise, and LCD worker fill is unchanged. All hot code
+runs from flash (DIO 40 MHz) through the 32 KB cache. The ~16 KB of new code
+(the minigame/menu art kits, movable scenery) reshuffled which loops miss it.
+
+Experiment: `IRAM_ATTR` on tank_tick, draw_fish_core, pc_draw, draw_veg,
+veg_span and span (+37.7 KB IRAM).
+- Gains: tick 4.9 -> 2.1 ms; fixtures 0/1 at 19.9/19.55 FPS, above the old baseline.
+- Cost: the IRAM heap is NOT spare. It fell 54 -> 17 KB and boot internal heap
+  74 -> 38 KB. Wi-Fi init failed with ESP_ERR_NO_MEM. The artwork cache shrank
+  from 33 KB to 8-11 KB, so fixtures 2/3 dropped to 12.3 FPS.
+- Reverted. Any IRAM pinning costs internal heap one-for-one, so a future fix
+  must be small and targeted, or a faster flash clock (a board-wide change).
 
 ### 2.3.18 frame-pacing and snapshot follow-up
 
