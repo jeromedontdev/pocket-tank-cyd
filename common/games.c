@@ -284,8 +284,9 @@ void render_games_tick(float dt) {
         if (g_game.reveal <= 0) g_game.first = g_game.second = -1;
     }
 }
-static bool game_reef_connected(void) {
-    bool wet[9] = {false};
+/* which tiles the inlet's water reaches; true when it also leaves by OUT */
+static bool game_reef_flow(bool wet[9]) {
+    for (int i = 0; i < 9; i++) wet[i] = false;
     if (!(g_game.pipes[3] & 8)) return false;
     wet[3] = true;
     static const int dx[] = {0, 1, 0, -1}, dy[] = {-1, 0, 1, 0};
@@ -297,6 +298,10 @@ static bool game_reef_connected(void) {
         }
     }
     return wet[5] && (g_game.pipes[5] & 2);
+}
+static bool game_reef_connected(void) {
+    bool wet[9];
+    return game_reef_flow(wet);
 }
 static void game_extra_tap(float x, float y) {
     if (g_game.page == GAME_DEFENDER && y >= 96 && y < 294 && x >= 24 && x < 424 && g_game.cooldown <= 0) {
@@ -580,41 +585,350 @@ bool render_games_tap(tank_t *t, float x, float y) {
     }
     return false;
 }
+/* ---- game art kit (2026-10) ----
+ * The playfields share the aquarium's illustrated look: a lit water column
+ * over sand, and shaded props (pearls, shells, rocks, coral, crabs, lanterns,
+ * bronze pipes) built from opaque ellipses/polygons, with a few translucent
+ * touches. Every page here redraws each frame, so the kit stays at a handful
+ * of spans per prop and the backdrop costs what the old flat fill did. */
+#define GA_GOLD   0xf2c45a
+#define GA_PEARL  0xf1ebdf
+#define GA_SAND   0xc9a46c
+#define GA_STONE  0x2f4f59
+#define GA_SHADOW 0x05161d
+#define GA_FLOOR  322
+static uint32_t ga_mix(uint32_t a, uint32_t b, int p) {
+    int ar = a >> 16 & 255, ag = a >> 8 & 255, ab = a & 255;
+    int br = b >> 16 & 255, bg = b >> 8 & 255, bb = b & 255;
+    return (uint32_t)(ar + (br - ar) * p / 256) << 16 | (uint32_t)(ag + (bg - ag) * p / 256) << 8 |
+           (uint32_t)(ab + (bb - ab) * p / 256);
+}
+static uint32_t ga_dark(uint32_t c, int p) { return ga_mix(c, GA_SHADOW, p); }
+static uint32_t ga_lite(uint32_t c, int p) { return ga_mix(c, 0xfff8ea, p); }
+static void ga_fill(render_ctx_t *c, int x, int y, int w, int h, uint32_t rgb) {
+    render_internal_rect_fill(c, x, y, w, h, rgb);
+}
+static void ga_ell(render_ctx_t *c, float x, float y, float rx, float ry, uint32_t rgb) {
+    render_internal_ellipse(c, x, y, rx, ry, rgb, 255);
+}
+static void ga_quad(render_ctx_t *c, float x0, float y0, float x1, float y1,
+                    float x2, float y2, float x3, float y3, uint32_t rgb, int alpha) {
+    const float xs[4] = {x0, x1, x2, x3}, ys[4] = {y0, y1, y2, y3};
+    render_internal_poly(c, xs, ys, 4, rgb, alpha);
+}
+static void ga_tri(render_ctx_t *c, float x0, float y0, float x1, float y1, float x2, float y2, uint32_t rgb) {
+    const float xs[3] = {x0, x1, x2}, ys[3] = {y0, y1, y2};
+    render_internal_poly(c, xs, ys, 3, rgb, 255);
+}
+/* cos/sin of i * pi / 8 for i = 0..16, filled once (the S3's trig is software) */
+static float g_ga_cos[17], g_ga_sin[17];
+static void ga_trig(void) {
+    if (g_ga_cos[0] != 0) return;
+    for (int i = 0; i <= 16; i++) { g_ga_cos[i] = cosf(i * 3.14159265f / 8); g_ga_sin[i] = sinf(i * 3.14159265f / 8); }
+}
+/* water column, light shafts, sand and a dark footer band for the status line */
+static uint32_t g_ga_top, g_ga_bottom;
+#define GA_BAND_Y(i) (48 + (GA_FLOOR - 48) * (i) / 12)
+static uint32_t ga_band(int i) { return ga_mix(g_ga_top, g_ga_bottom, i * 256 / 11); }
+/* A translucent tint over the flat water bands, drawn as opaque pre-mixed
+   fills: game pages redraw every frame and per-pixel blends cost FPS. */
+static void ga_wash(render_ctx_t *c, int x, int y, int w, int h, uint32_t rgb, int alpha) {
+    for (int i = 0; i < 12; i++) {
+        int y0 = GA_BAND_Y(i) > y ? GA_BAND_Y(i) : y, y1 = GA_BAND_Y(i + 1) < y + h ? GA_BAND_Y(i + 1) : y + h;
+        if (y1 > y0) ga_fill(c, x, y0, w, y1 - y0, ga_mix(ga_band(i), rgb, alpha));
+    }
+}
+static void ga_backdrop(render_ctx_t *c, uint32_t top, uint32_t bottom) {
+    g_ga_top = top; g_ga_bottom = bottom;
+    ga_fill(c, 0, 0, PAGE_W, 48, MSP_INK);
+    ga_fill(c, 0, 47, PAGE_W, 1, 0x1f4b57);
+    /* Each band is five opaque runs - water, shaft, water, shaft, water - so no
+       pixel is written twice; the light shafts drift a step per band. */
+    static const int shaft[2][4] = {{70, 112, 196, 128}, {262, 286, 350, 312}};
+    for (int i = 0; i < 12; i++) {
+        int y0 = GA_BAND_Y(i), h = GA_BAND_Y(i + 1) - y0, x = 0;
+        uint32_t band = ga_band(i);
+        for (int k = 0; k < 2; k++) {
+            const int *sh = shaft[k];
+            int l = sh[0] + (sh[3] - sh[0]) * (2 * i + 1) / 24, r = sh[1] + (sh[2] - sh[1]) * (2 * i + 1) / 24;
+            ga_fill(c, x, y0, l - x, h, band);
+            ga_fill(c, l, y0, r - l, h, ga_mix(band, 0xd8f4f2, k ? 12 : 16));
+            x = r;
+        }
+        ga_fill(c, x, y0, PAGE_W - x, h, band);
+    }
+    for (int side = 0; side < 2; side++) {       /* kelp at the glass edges: stepped stalks */
+        int x = side ? PAGE_W - 12 : 6, s = side ? -1 : 1;
+        for (int i = 0; i < 4; i++) {
+            int y = GA_FLOOR - i * 46, sway = (i & 1 ? 5 : -3) * s;
+            for (int k = 0; k < 3; k++) ga_fill(c, x + sway * k / 2, y - 16 * (k + 1), 6, 16, 0x2f6b44);
+            ga_ell(c, x + 3 + sway + 8 * s, y - 26, 8, 4, i & 1 ? 0x3f8552 : 0x356f47);
+        }
+    }
+    ga_fill(c, 0, GA_FLOOR, PAGE_W, 12, ga_dark(GA_SAND, 70));
+    for (int i = 0; i < 9; i++) ga_ell(c, 18 + i * 52, GA_FLOOR + 1, 30, 4, GA_SAND);
+    for (int i = 0; i < 7; i++) ga_ell(c, 42 + i * 63, GA_FLOOR + 6, 4, 2, ga_dark(GA_SAND, 120));
+    ga_fill(c, 0, GA_FLOOR + 12, PAGE_W, PAGE_H - GA_FLOOR - 12, 0x061a21);
+}
+/* readable status text: a dark glass plate sized to the string */
+static void ga_hud(render_ctx_t *c, int x, int y, int scale, uint32_t rgb, const char *s) {
+    int w = render_text_w(s, scale);
+    render_internal_rect_blend(c, x - 6, y - 4, w + 12, 7 * scale + 8, 0x04141a, 190);
+    ga_fill(c, x - 6, y - 4, w + 12, 1, 0x3f7884);
+    render_internal_text(c, x, y, scale, rgb, s);
+}
+/* a bevelled block: dark lip below/right, light lip above/left */
+static void ga_block(render_ctx_t *c, int x, int y, int w, int h, uint32_t base) {
+    ga_fill(c, x, y, w, h, ga_dark(base, 130));
+    ga_fill(c, x, y, w - 2, h - 3, base);
+    ga_fill(c, x + 2, y, w - 6, 3, ga_lite(base, 95));
+    ga_fill(c, x, y + 2, 3, h - 7, ga_lite(base, 50));
+}
+/* a recessed socket (an empty board cell) */
+static void ga_socket(render_ctx_t *c, int x, int y, int w, int h, uint32_t base) {
+    ga_fill(c, x, y, w, h, base);
+    ga_fill(c, x, y, w, 3, ga_dark(base, 120));
+    ga_fill(c, x, y + 3, 3, h - 3, ga_dark(base, 70));
+    ga_fill(c, x + 3, y + h - 2, w - 3, 2, ga_lite(base, 40));
+}
+static void ga_speckle(render_ctx_t *c, int x, int y, int w, int h, unsigned seed, uint32_t rgb) {
+    if (w < 14 || h < 14) return;
+    for (int i = 0; i < 4; i++) {
+        seed = seed * 1103515245u + 12345u;
+        ga_fill(c, x + 4 + (int)(seed >> 8) % (w - 10), y + 5 + (int)(seed >> 18) % (h - 10), 3, 2, rgb);
+    }
+}
+static void ga_pearl(render_ctx_t *c, float x, float y, float r, uint32_t tint) {
+    ga_ell(c, x + r * 0.12f, y + r * 0.16f, r, r, ga_dark(tint, 120));
+    ga_ell(c, x, y, r * 0.9f, r * 0.9f, tint);
+    ga_ell(c, x - r * 0.2f, y - r * 0.2f, r * 0.55f, r * 0.5f, ga_lite(tint, 120));
+    ga_ell(c, x - r * 0.36f, y - r * 0.4f, r * 0.22f + 0.6f, r * 0.18f + 0.6f, 0xffffff);
+}
+static void ga_bubble(render_ctx_t *c, float x, float y, float r, uint32_t tint) {
+    render_internal_ellipse(c, x, y, r, r, tint, 46);
+    render_internal_annulus(c, x, y, r, r - 3, ga_lite(tint, 110), 170);
+    render_internal_ellipse(c, x + r * 0.1f, y + r * 0.62f, r * 0.5f, r * 0.13f, ga_lite(tint, 60), 120);
+    render_internal_ellipse(c, x - r * 0.4f, y - r * 0.42f, r * 0.28f, r * 0.18f, 0xffffff, 230);
+    render_internal_ellipse(c, x + r * 0.45f, y - r * 0.12f, r * 0.08f + 1, r * 0.14f + 1, 0xffffff, 150);
+}
+static void ga_rock(render_ctx_t *c, float x, float y, float w, float h, uint32_t base) {
+    ga_ell(c, x + w * 0.04f, y + h * 0.1f, w * 0.5f, h * 0.48f, ga_dark(base, 150));
+    ga_ell(c, x - w * 0.14f, y - h * 0.02f, w * 0.36f, h * 0.42f, base);
+    ga_ell(c, x + w * 0.2f, y + h * 0.02f, w * 0.3f, h * 0.36f, ga_dark(base, 45));
+    ga_ell(c, x - w * 0.2f, y - h * 0.18f, w * 0.18f, h * 0.14f, ga_lite(base, 70));
+    ga_ell(c, x + w * 0.06f, y - h * 0.34f, w * 0.16f, h * 0.09f + 1, 0x5f8c4f);
+}
+/* branching coral: stalks with rounded tips */
+static void ga_coral(render_ctx_t *c, float x, float y, float s, uint32_t tint) {
+    uint32_t dark = ga_dark(tint, 80), tip = ga_lite(tint, 90);
+    ga_quad(c, x - 3 * s, y, x + 3 * s, y, x + 2 * s, y - 14 * s, x - 2 * s, y - 14 * s, dark, 255);
+    ga_quad(c, x - 1 * s, y - 8 * s, x + 2 * s, y - 10 * s, x - 8 * s, y - 19 * s, x - 10 * s, y - 16 * s, tint, 255);
+    ga_quad(c, x + 1 * s, y - 6 * s, x - 1 * s, y - 9 * s, x + 9 * s, y - 17 * s, x + 11 * s, y - 14 * s, tint, 255);
+    ga_ell(c, x - 9 * s, y - 18 * s, 2.6f * s, 2.6f * s, tip);
+    ga_ell(c, x + 10 * s, y - 16 * s, 2.6f * s, 2.6f * s, tip);
+    ga_ell(c, x, y - 15 * s, 2.8f * s, 2.8f * s, tip);
+}
+static void ga_grass(render_ctx_t *c, float x, float y, float s) {
+    static const float lean[] = {-7, -2, 4, 9};
+    for (int i = 0; i < 4; i++) {
+        float bx = x + (i - 1.5f) * 4 * s;
+        ga_quad(c, bx - 1.6f * s, y, bx + 1.6f * s, y, bx + lean[i] * s + 0.6f * s, y - (16 + (i & 1) * 5) * s,
+                bx + lean[i] * s - 0.6f * s, y - (16 + (i & 1) * 5) * s, i & 1 ? 0x6fb35c : 0x4f9550, 255);
+    }
+}
+/* a gold buoy (gate post) */
+static void ga_buoy(render_ctx_t *c, float x, float y) {
+    ga_fill(c, (int)x - 1, (int)y + 8, 3, 12, 0x6b5a3f);
+    ga_ell(c, x, y, 8, 9, ga_dark(GA_GOLD, 90));
+    ga_ell(c, x - 1, y - 1, 7, 8, GA_GOLD);
+    ga_fill(c, (int)x - 7, (int)y - 1, 14, 3, 0xd25a4a);
+    ga_ell(c, x - 3, y - 4, 2.4f, 2.2f, 0xfff4cf);
+}
+static void ga_chest(render_ctx_t *c, float x, float y, float s) {
+    render_internal_ellipse(c, x, y, 40 * s, 26 * s, 0xffd77a, 34);
+    ga_ell(c, x, y + 14 * s, 30 * s, 5 * s, ga_dark(GA_SAND, 140));
+    ga_ell(c, x, y - 4 * s, 24 * s, 12 * s, 0x6e4122);
+    ga_ell(c, x, y - 5 * s, 22 * s, 10 * s, 0x93592c);
+    ga_fill(c, (int)(x - 24 * s), (int)(y - 2 * s), (int)(48 * s), (int)(16 * s), 0x7a4824);
+    ga_fill(c, (int)(x - 24 * s), (int)(y + 6 * s), (int)(48 * s), (int)(2 * s), 0x5a3218);
+    ga_fill(c, (int)(x - 24 * s), (int)(y - 3 * s), (int)(48 * s), (int)(3 * s), GA_GOLD);
+    ga_fill(c, (int)(x - 17 * s), (int)(y - 14 * s), (int)(4 * s), (int)(28 * s), ga_dark(GA_GOLD, 40));
+    ga_fill(c, (int)(x + 13 * s), (int)(y - 14 * s), (int)(4 * s), (int)(28 * s), ga_dark(GA_GOLD, 40));
+    ga_fill(c, (int)(x - 4 * s), (int)(y - 4 * s), (int)(8 * s), (int)(9 * s), GA_GOLD);
+    ga_fill(c, (int)(x - 1 * s), (int)(y - 1 * s), (int)(2 * s) + 1, (int)(4 * s), 0x3a2410);
+    ga_pearl(c, x - 30 * s, y + 10 * s, 4 * s, GA_GOLD);
+    ga_pearl(c, x + 29 * s, y + 11 * s, 3.5f * s, GA_GOLD);
+    ga_pearl(c, x - 6 * s, y - 15 * s, 3 * s, GA_PEARL);
+}
+/* fishing line from (x, y0) to a hook whose bend sits at (x, y1) */
+static void ga_hook(render_ctx_t *c, int x, int y0, int y1) {
+    ga_fill(c, x, y0, 2, y1 - y0 + 1, 0xd5e6e8);
+    ga_ell(c, x + 1, y0 + 10, 5, 6, 0xe9e2d8);
+    ga_ell(c, x + 1, y0 + 12, 5, 3, 0xd94f43);
+    ga_trig();
+    for (int i = 0; i <= 8; i += 2)              /* the bend: dots round the lower half */
+        ga_ell(c, x - 5 + g_ga_cos[i] * 6, y1 + g_ga_sin[i] * 6, 1.8f, 1.8f, 0xb7c3c6);
+    ga_tri(c, x - 11, y1 + 1, x - 10, y1 - 7, x - 7, y1 - 2, 0xb7c3c6);
+}
+static void ga_crab(render_ctx_t *c, float x, float y, bool armored) {
+    uint32_t shell = armored ? 0x9a62b8 : 0xe4654f, dark = ga_dark(shell, 110);
+    for (int side = -1; side <= 1; side += 2) {
+        for (int i = 0; i < 3; i++)
+            ga_quad(c, x + side * 9, y + 1 + i * 3, x + side * 9, y + 3 + i * 3,
+                    x + side * (19 + i * 2), y + 7 + i * 4, x + side * (19 + i * 2), y + 5 + i * 4, dark, 255);
+        ga_quad(c, x + side * 10, y - 2, x + side * 12, y + 1, x + side * 17, y - 7, x + side * 15, y - 9, dark, 255);
+        ga_ell(c, x + side * 18, y - 10, 5.5f, 4.5f, shell);
+        ga_tri(c, x + side * 16, y - 15, x + side * 22, y - 16, x + side * 19, y - 10, ga_dark(shell, 30));
+        ga_ell(c, x + side * 17, y - 11, 2, 1.6f, ga_lite(shell, 90));
+    }
+    ga_ell(c, x, y + 1, 14, 9, dark);
+    ga_ell(c, x, y, 13, 8, shell);
+    ga_ell(c, x - 3, y - 3, 7, 3.5f, ga_lite(shell, 80));
+    if (armored) for (int i = -2; i <= 2; i++) ga_tri(c, x + i * 5 - 2, y - 5, x + i * 5 + 2, y - 5, x + i * 5, y - 11, 0xe0c6ef);
+    for (int side = -1; side <= 1; side += 2) {
+        ga_fill(c, (int)x + side * 4 - 1, (int)y - 12, 2, 6, dark);
+        ga_ell(c, x + side * 4, y - 13, 2.6f, 2.6f, 0xffffff);
+        ga_ell(c, x + side * 4, y - 13, 1.2f, 1.4f, MSP_INK);
+    }
+}
+/* a little yellow submarine facing right */
+static void ga_sub(render_ctx_t *c, float x, float y, float s) {
+    ga_ell(c, x - 15 * s, y, 3 * s, 7 * s, 0x6f7a7c);
+    ga_ell(c, x, y + 1 * s, 15 * s, 8 * s, ga_dark(GA_GOLD, 110));
+    ga_ell(c, x, y, 14 * s, 7 * s, 0xf3c94b);
+    ga_ell(c, x - 3 * s, y - 3 * s, 8 * s, 2.5f * s, 0xfff0b0);
+    ga_fill(c, (int)(x - 3 * s), (int)(y - 12 * s), (int)(8 * s), (int)(6 * s), 0xd8a93a);
+    ga_fill(c, (int)(x + 1 * s), (int)(y - 16 * s), (int)(2 * s) + 1, (int)(5 * s), 0x6f7a7c);
+    ga_ell(c, x + 6 * s, y, 3.4f * s, 3.4f * s, 0x6f7a7c);
+    ga_ell(c, x + 6 * s, y, 2.4f * s, 2.4f * s, 0x9fe6f4);
+}
+/* a lantern on a stone tile; lit lanterns glow */
+static void ga_lantern(render_ctx_t *c, int x, int y, int w, int h, bool lit) {
+    ga_block(c, x, y, w, h, lit ? 0x4b5a4f : 0x24414b);
+    float cx = x + w / 2.0f - 1, cy = y + h / 2.0f;
+    if (lit) render_internal_ellipse(c, cx, cy, w * 0.46f, h * 0.48f, 0xffd77a, 70);
+    ga_fill(c, (int)cx - 8, (int)cy - 13, 16, 4, 0x1b2a2f);
+    ga_fill(c, (int)cx - 3, (int)cy - 16, 6, 3, 0x1b2a2f);
+    ga_ell(c, cx, cy, 7, 9, lit ? 0xffcf56 : 0x2c4852);
+    ga_ell(c, cx, cy + 1, 4, 5, lit ? 0xfff6d2 : 0x37545e);
+    ga_fill(c, (int)cx - 1, (int)cy - 9, 2, 18, lit ? 0xd8a43a : 0x1b2a2f);
+    ga_fill(c, (int)cx - 8, (int)cy + 9, 16, 4, 0x1b2a2f);
+}
+/* a scallop shell, hinge at the bottom */
+static void ga_shell(render_ctx_t *c, float x, float y, float s, uint32_t tint) {
+    float xs[11], ys[11];
+    ga_trig();
+    for (int pass = 0; pass < 2; pass++) {
+        float g = pass ? 1.0f : 1.08f, oy = pass ? 0 : 1.2f * s;
+        for (int i = 0; i < 9; i++) {
+            xs[i] = x + g_ga_cos[8 + i] * 16 * s * g; ys[i] = y + 2 * s + oy + g_ga_sin[8 + i] * 14 * s * g;
+        }
+        xs[9] = x + 5 * s; ys[9] = y + 9 * s + oy; xs[10] = x - 5 * s; ys[10] = y + 9 * s + oy;
+        render_internal_poly(c, xs, ys, 11, pass ? tint : ga_dark(tint, 110), 255);
+    }
+    for (int i = -2; i <= 2; i++)
+        ga_quad(c, x + i * 1.2f * s - 0.8f, y + 7 * s, x + i * 1.2f * s + 0.8f, y + 7 * s,
+                x + i * 6 * s + 1, y - 9 * s, x + i * 6 * s - 1, y - 9 * s, ga_dark(tint, 70), 255);
+    ga_ell(c, x - 5 * s, y - 6 * s, 4 * s, 2 * s, ga_lite(tint, 110));
+    ga_quad(c, x - 7 * s, y + 6 * s, x + 7 * s, y + 6 * s, x + 5 * s, y + 11 * s, x - 5 * s, y + 11 * s, ga_dark(tint, 40), 255);
+}
+static void ga_food(render_ctx_t *c, float x, float y, int kind) {
+    if (kind == 0) {
+        static const float fx[] = {-7, 3, -1, 7}, fy[] = {-3, -6, 4, 3};
+        for (int i = 0; i < 4; i++)
+            ga_quad(c, x + fx[i] - 4, y + fy[i] - 1, x + fx[i] + 2, y + fy[i] - 4, x + fx[i] + 4, y + fy[i] + 2,
+                    x + fx[i] - 2, y + fy[i] + 3, i & 1 ? 0xf08a4b : 0xe4c35a, 255);
+    } else if (kind == 1) {
+        for (int i = 0; i < 6; i++) ga_ell(c, x - 10 + i * 4, y + (i & 1 ? -2 : 2), 3.2f, 2.8f, i == 5 ? 0xf2a2b4 : 0xd9707f);
+        ga_ell(c, x + 10, y - 2, 1, 1, MSP_INK);
+    } else {
+        ga_quad(c, x - 2, y + 7, x + 1, y + 7, x - 8, y - 8, x - 11, y - 6, 0x4f9550, 255);
+        ga_ell(c, x - 5, y - 2, 6, 3.4f, 0x6fb35c);
+        ga_ell(c, x + 5, y - 1, 7, 4, 0x5aa253);
+        ga_fill(c, (int)x - 1, (int)y - 1, 11, 1, 0x9fd27c);
+    }
+}
+/* a bronze pipe run from (x0,y0) of length/size along one axis; wet carries water */
+static void ga_pipe(render_ctx_t *c, int x, int y, int w, int h, bool wet) {
+    ga_fill(c, x, y, w, h, 0x5a3c22);
+    bool across = w > h;
+    if (across) {
+        ga_fill(c, x, y + 2, w, h - 4, 0xb07a40);
+        ga_fill(c, x, y + 3, w, 2, 0xe2b06c);
+        ga_fill(c, x, y + h / 2 - 1, w, 3, wet ? 0x73e5ff : 0x3a2818);
+    } else {
+        ga_fill(c, x + 2, y, w - 4, h, 0xb07a40);
+        ga_fill(c, x + 3, y, 2, h, 0xe2b06c);
+        ga_fill(c, x + w / 2 - 1, y, 3, h, wet ? 0x73e5ff : 0x3a2818);
+    }
+}
+static void ga_flag(render_ctx_t *c, float x, float y, float s) {
+    ga_ell(c, x, y + 12 * s, 8 * s, 2.5f * s, ga_dark(GA_SAND, 100));
+    ga_fill(c, (int)(x - 1), (int)(y - 14 * s), 2, (int)(26 * s), 0xd8d0c0);
+    ga_quad(c, x + 1, y - 14 * s, x + 14 * s, y - 10 * s, x + 13 * s, y - 4 * s, x + 1, y - 5 * s, GA_GOLD, 255);
+    ga_fill(c, (int)(x + 4 * s), (int)(y - 10 * s), (int)(5 * s), (int)(2 * s), 0xd25a4a);
+}
+static void ga_key(render_ctx_t *c, float x, float y, float s) {
+    render_internal_annulus(c, x - 8 * s, y, 6 * s, 3 * s, GA_GOLD, 255);
+    ga_fill(c, (int)(x - 3 * s), (int)(y - 1.5f * s), (int)(17 * s), (int)(3 * s) + 1, GA_GOLD);
+    ga_fill(c, (int)(x + 9 * s), (int)(y + 1 * s), (int)(3 * s), (int)(5 * s), GA_GOLD);
+    ga_fill(c, (int)(x + 4 * s), (int)(y + 1 * s), (int)(3 * s), (int)(4 * s), GA_GOLD);
+    ga_ell(c, x - 10 * s, y - 2 * s, 1.6f * s, 1.4f * s, 0xfff4cf);
+}
+static void ga_crate(render_ctx_t *c, float x, float y, float s) {
+    int w = (int)(28 * s), h = (int)(22 * s), x0 = (int)(x - w / 2), y0 = (int)(y - h / 2);
+    ga_block(c, x0, y0, w, h, 0x9a6a3c);
+    ga_fill(c, x0 + 2, y0 + h / 2 - 1, w - 4, 2, 0x5e3c1e);
+    ga_quad(c, x0 + 3, y0 + 3, x0 + 6, y0 + 3, x0 + w - 3, y0 + h - 4, x0 + w - 6, y0 + h - 4, 0x5e3c1e, 255);
+}
+/* sea-glass tile colours for 2048 values 2, 4, 8 ... 1024 */
+static const uint32_t g_ga_glass[11] = {
+    0x0b2630, 0x9fd8e2, 0x7fd3b8, 0xf2c45a, 0xf09a5a, 0xe2786a, 0xd8608e, 0xb27ae0, 0x7f8cf0, 0x5ac3f0, 0xfff0b0
+};
 static void game_practice_render(render_ctx_t *c) {
     char text[64];
     render_internal_button(c, 280, 54, 144, 32, 0x1c2f36, MSP_TEAL, "FINISH", 1);
     if (g_game.page == GAME_LIGHTHOUSE || g_game.page == GAME_SLIDE || g_game.page == GAME_MERGE) {
         snprintf(text, sizeof text, "MOVES %d", g_game.moves);
-        render_internal_text(c, 24, 62, 2, MSP_TEAL, text);
+        ga_hud(c, 24, 62, 2, MSP_TEAL, text);
         int side = g_game.page == GAME_SLIDE ? 3 : 4;
         int width = side == 3 ? 64 : 56, height = side == 3 ? 64 : 48;
         int start = side == 3 ? 128 : 112;
+        ga_block(c, start - 8, 92, side * width + 12, side * height + 12, 0x1d3941);
         for (int i = 0; i < side * side; i++) {
             int x = start + i % side * width, y = 100 + i / side * height, value = g_game.board[i];
-            uint32_t color = g_game.page == GAME_LIGHTHOUSE ? (value ? 0xffdc73 : 0x24404b) :
-                value ? (g_game.page == GAME_MERGE && value > 3 ? 0xffa3cf : 0x73e5ff) : 0x102831;
-            render_internal_rect_fill(c, x, y, width - 6, height - 6, color);
-            if (g_game.page == GAME_LIGHTHOUSE) {
-                render_internal_ring(c, x + 25, y + 21, 11, value ? 0xffffff : 0x45616c);
-            } else if (value) {
-                snprintf(text, sizeof text, "%d", g_game.page == GAME_MERGE ? 1 << value : value);
-                render_internal_text(c, x + (width - 6 - render_text_w(text, 2)) / 2, y + (height - 22) / 2, 2, MSP_INK, text);
-            }
+            int w = width - 6, h = height - 6;
+            if (g_game.page == GAME_LIGHTHOUSE) { ga_lantern(c, x, y, w, h, value); continue; }
+            if (!value) { ga_socket(c, x, y, w, h, 0x0a232c); continue; }
+            uint32_t base = g_game.page == GAME_SLIDE ? 0xd8c094 : g_ga_glass[value > 10 ? 10 : value];
+            ga_block(c, x, y, w, h, base);
+            if (g_game.page == GAME_SLIDE) {
+                ga_speckle(c, x, y, w, h, (unsigned)value * 7u, ga_dark(base, 40));
+                ga_shell(c, x + 11, y + 11, 0.3f, 0xe9a48c);
+            } else render_internal_ellipse(c, x + 12, y + 9, 7, 3, 0xffffff, 120);
+            snprintf(text, sizeof text, "%d", g_game.page == GAME_MERGE ? 1 << value : value);
+            render_internal_text(c, x + (w - render_text_w(text, 2)) / 2, y + (h - 14) / 2, 2, MSP_INK, text);
         }
         if (g_game.page == GAME_MERGE) {
             static const char *const arrows[] = {"< LEFT", "RIGHT >", "UP", "DOWN"};
             for (int i = 0; i < 4; i++) render_internal_button(c, 24 + i * 100, 298, 94, 32, 0x1c2f36, MSP_TEAL, arrows[i], 1);
-        } else render_internal_text(c, 48, 306, 1, MSP_TEAL, g_game.page == GAME_LIGHTHOUSE ?
-                        "TOGGLE CROSSES. ALL DARK WINS." : "ORDER 1 TO 8; GAP AT THE END.");
+        } else ga_hud(c, 48, 306, 1, MSP_TEAL, g_game.page == GAME_LIGHTHOUSE ?
+                      "TOGGLE CROSSES. ALL DARK WINS." : "ORDER 1 TO 8; GAP AT THE END.");
     } else if (g_game.page == GAME_SONAR) {
         snprintf(text, sizeof text, "PEARLS %d/5  LEFT %d", g_game.pairs, g_game.remaining);
-        render_internal_text(c, 24, 62, 1, MSP_TEAL, text);
+        ga_hud(c, 24, 62, 1, MSP_TEAL, text);
+        render_internal_annulus(c, 50, 262, 34, 32, 0x9fe6f4, 70);
+        render_internal_annulus(c, 50, 262, 24, 22, 0x9fe6f4, 110);
+        ga_sub(c, 50, 264, 0.9f);
+        ga_block(c, 108, 106, 232, 192, 0x1a3a44);
         for (int line = 0; line < 5; line++) {
             int row = 0, col = 0;
             for (int i = 0; i < 5; i++) {
                 row += g_game.board[line * 5 + i] == 1 || g_game.board[line * 5 + i] == 2;
                 col += g_game.board[i * 5 + line] == 1 || g_game.board[i * 5 + line] == 2;
             }
+            ga_ell(c, 94, 127 + line * 36, 11, 11, 0x06222b);
+            ga_ell(c, 134 + line * 44, 97, 11, 11, 0x06222b);
             snprintf(text, sizeof text, "%d", row);
             render_internal_text(c, 88, 120 + line * 36, 2, 0xffdc73, text);
             snprintf(text, sizeof text, "%d", col);
@@ -622,25 +936,44 @@ static void game_practice_render(render_ctx_t *c) {
         }
         for (int i = 0; i < 25; i++) {
             int x = 114 + i % 5 * 44, y = 112 + i / 5 * 36, value = g_game.board[i];
-            render_internal_rect_fill(c, x, y, 38, 30, value == 2 ? 0x1c5145 : value == 3 ? 0x24404b : 0x173540);
-            if (value == 2) render_internal_ring(c, x + 19, y + 15, 9, 0xffdc73);
-            if (value == 3) render_internal_text(c, x + 14, y + 7, 2, MSP_TEAL, "X");
+            if (value == 2) {
+                ga_socket(c, x, y, 38, 30, 0x184a44);
+                ga_ell(c, x + 19, y + 20, 15, 7, 0x6b5a7a);
+                ga_ell(c, x + 19, y + 19, 12, 5, 0x2a1e30);
+                ga_pearl(c, x + 19, y + 15, 6, GA_PEARL);
+            } else if (value == 3) {
+                ga_socket(c, x, y, 38, 30, 0x0d2a33);
+                ga_ell(c, x + 19, y + 17, 6, 3, 0x2f4f59);
+                render_internal_text(c, x + 14, y + 7, 2, 0x5f8a96, "X");
+            } else {
+                ga_block(c, x, y, 38, 30, 0x2b5560);
+                ga_speckle(c, x, y, 38, 30, (unsigned)i * 13u + 5u, 0x406d78);
+            }
         }
-        render_internal_text(c, 48, 306, 1, MSP_TEAL, "GOLD: PEARLS IN EACH ROW/COLUMN.");
+        ga_hud(c, 48, 306, 1, MSP_TEAL, "GOLD: PEARLS IN EACH ROW/COLUMN.");
     } else if (g_game.page == GAME_STACK) {
         snprintf(text, sizeof text, "LAYERS %d/12  WIDTH %d", g_game.rounds, g_game.remaining);
-        render_internal_text(c, 24, 88, 2, MSP_TEAL, text);
+        ga_hud(c, 24, 88, 2, MSP_TEAL, text);
+        int top_l = g_game.board[g_game.rounds * 2], top_r = g_game.board[g_game.rounds * 2 + 1];
+        int guide = 268 - g_game.rounds * 14;
+        if (guide > 112 && top_r > top_l) {
+            render_internal_rect_blend(c, 24 + top_l * 20, 112, 2, guide - 112, 0xd8f4f2, 60);
+            render_internal_rect_blend(c, 22 + top_r * 20, 112, 2, guide - 112, 0xd8f4f2, 60);
+        }
         for (int i = 0; i <= g_game.rounds; i++) {
             int left = g_game.board[i * 2], right = g_game.board[i * 2 + 1];
-            render_internal_rect_fill(c, 24 + left * 20, 282 - i * 14, (right - left) * 20, 11,
-                      i % 2 ? 0x73e5ff : 0x89ffb1);
+            if (right <= left) continue;
+            uint32_t base = i % 2 ? 0x7fc6cf : 0xd9b98a;
+            ga_block(c, 24 + left * 20, 282 - i * 14, (right - left) * 20, 12, base);
+            ga_fill(c, 30 + left * 20, 288 - i * 14, (right - left) * 20 - 14, 1, ga_dark(base, 50));
         }
-        render_internal_rect_fill(c, 24 + (int)roundf(g_game.px) * 20, 268 - g_game.rounds * 14,
-                  g_game.remaining * 20, 11, 0xffdc73);
+        int mx = 24 + (int)roundf(g_game.px) * 20, my = 268 - g_game.rounds * 14;
+        ga_block(c, mx, my, g_game.remaining * 20, 12, GA_GOLD);
+        render_internal_ellipse(c, mx + 12, my + 3, 7, 2, 0xffffff, 170);
         render_internal_button(c, 24, 298, 400, 32, 0x1c2f36, MSP_TEAL, "DROP - KEEP THE OVERLAP", 2);
     } else if (g_game.page == GAME_ECHO) {
         snprintf(text, sizeof text, "%s  LENGTH %d/12", g_game.launched ? "WATCH" : "REPEAT", g_game.rounds);
-        render_internal_text(c, 24, 88, 2, MSP_TEAL, text);
+        ga_hud(c, 24, 88, 2, MSP_TEAL, text);
         float beat = g_game_relaxed ? 1.15f : 0.8f;
         int step = (int)(g_game.travel / beat);
         int lit = g_game.launched && step < g_game.rounds &&
@@ -648,67 +981,103 @@ static void game_practice_render(render_ctx_t *c) {
         static const uint32_t colors[] = {0xffdc73, 0x73e5ff, 0xffa3cf, 0x89ffb1};
         for (int i = 0; i < 4; i++) {
             int x = 64 + i % 2 * 160, y = 110 + i / 2 * 90;
-            render_internal_rect_fill(c, x, y, 148, 78, i == lit ? colors[i] : 0x173540);
+            bool on = i == lit;
+            ga_block(c, x, y, 148, 78, on ? ga_mix(colors[i], 0x0b2630, 70) : ga_mix(colors[i], 0x0b2630, 205));
+            if (on) render_internal_ellipse(c, x + 52, y + 38, 44, 32, 0xffffff, 90);
+            ga_shell(c, x + 52, y + 40, 1.3f, on ? ga_lite(colors[i], 120) : ga_dark(colors[i], 40));
             render_internal_rect_edge(c, x, y, 148, 78, colors[i]);
             snprintf(text, sizeof text, "%d", i + 1);
-            render_internal_text(c, x + 66, y + 25, 3, i == lit ? MSP_INK : colors[i], text);
+            render_internal_text(c, x + 100, y + 28, 3, on ? MSP_INK : colors[i], text);
         }
         snprintf(text, sizeof text, g_game.launched ? "WATCH THE FLASHES; THEN COPY." : "YOUR TURN: %d OF %d", g_game.moves, g_game.rounds);
-        render_internal_text(c, 64, 306, 1, MSP_TEAL, text);
+        ga_hud(c, 64, 306, 1, MSP_TEAL, text);
     }
+}
+static void ga_board_cell(render_ctx_t *c, int x, int y, int tile, bool tactics) {
+    ga_socket(c, x, y, 46, 36, tactics ? 0x1f4954 : 0x2c5148);
+    if (tile == 3) ga_rock(c, x + 23, y + 20, 40, 28, 0x5b6a6c);
+    else if (tile == 4) ga_flag(c, x + 18, y + 19, 1.0f);
+    else if (tile == 2 && tactics) ga_crab(c, x + 23, y + 22, false);
+    else if (tile == 2) ga_grass(c, x + 23, y + 34, 1.0f);
+    else if (tile == 1) ga_coral(c, x + 23, y + 34, 1.15f, 0xe2786a);
 }
 static void game_extra_render(render_ctx_t *c) {
     char text[80];
     if (g_game.page == GAME_DEFENDER) {
         snprintf(text, sizeof text, "WAVE %d/5  REEF %d  SCORE %d", g_game.wave, g_game.hp, g_game.score);
-        render_internal_text(c, 24, 88, 2, MSP_TEAL, text);
+        ga_hud(c, 24, 88, 2, MSP_TEAL, text);
+        static const uint32_t reef[] = {0xe2786a, 0xf0a060, 0xd8608e};
+        ga_ell(c, 224, 312, 204, 9, 0x3b4f4a);
+        for (int i = 0; i < 12; i++) ga_coral(c, 42 + i * 33 + (i > 5 ? 12 : -12), 312, 0.75f, reef[i % 3]);
+        ga_ell(c, 224, 305, 21, 9, 0x6a4f7a);
+        ga_ell(c, 224, 302, 19, 7, 0xb08cc0);
+        for (int i = -2; i <= 2; i++) ga_fill(c, 223 + i * 7, 298, 2, 9, 0x8a6a9a);
+        ga_pearl(c, 224, 294, 6, GA_PEARL);
         for (int i = 0; i < 8; i++) {
-            if (g_game.foes[i].hp) {
-                int x = (int)g_game.foes[i].x, y = (int)g_game.foes[i].y;
-                render_internal_rect_fill(c, x - 14, y - 9, 28, 18, g_game.foes[i].hp > 1 ? 0xff8173 : 0xffdc73);
-                render_internal_rect_fill(c, x - 7, y - 4, 4, 4, MSP_INK);
-            }
-            if (g_game.shots[i].hp) render_internal_ring(c, (int)g_game.shots[i].x, (int)g_game.shots[i].y, 4, 0x73e5ff);
+            if (g_game.foes[i].hp) ga_crab(c, g_game.foes[i].x, g_game.foes[i].y, g_game.foes[i].hp > 1);
+            if (g_game.shots[i].hp) ga_pearl(c, g_game.shots[i].x, g_game.shots[i].y, 4.5f, 0xc8f3ff);
         }
-        render_internal_rect_fill(c, 32, 300, 384, 8, 0x89ffb1); render_internal_ring(c, 224, 300, 14, MSP_TEAL);
-        render_internal_text(c, 60, 316, 2, MSP_TEAL, "TAP THE WATER TO AIM AND FIRE");
+        ga_hud(c, 60, 320, 2, MSP_TEAL, "TAP THE WATER TO AIM AND FIRE");
     } else if (g_game.page == GAME_RUNNER) {
         snprintf(text, sizeof text, "GATES %d/18  HULL %d  SCORE %d", g_game.rounds, g_game.hp, g_game.score);
-        render_internal_text(c, 24, 88, 2, MSP_TEAL, text);
+        ga_hud(c, 24, 88, 2, MSP_TEAL, text);
         for (int i = 0; i < 5; i++) {
             int x = 24 + i * 80;
-            render_internal_rect_fill(c, x, 110, 76, 180, 0x102831);
+            ga_wash(c, x, 110, 76, 180, 0x041820, 105);
+            render_internal_rect_blend(c, x, 110, 2, 180, 0x9fd8e2, 50);
             int y = 110 + (int)g_game.travel;
-            if (i != g_game.target && i != (g_game.target + 1) % 5) render_internal_rect_fill(c, x + 5, y, 66, 14, 0x8b6570);
-            else if (i == g_game.target) render_internal_ring(c, x + 38, y + 6, 7, 0xffdc73);
+            if (i != g_game.target && i != (g_game.target + 1) % 5) {
+                ga_rock(c, x + 22, y + 8, 40, 18, 0x56676b);
+                ga_rock(c, x + 52, y + 7, 36, 16, 0x4c5c60);
+            } else if (i == g_game.target) {
+                render_internal_ellipse(c, x + 38, y + 7, 14, 14, 0xffd77a, 50);
+                ga_ell(c, x + 39, y + 8, 8, 8, ga_dark(GA_GOLD, 110));
+                ga_ell(c, x + 38, y + 7, 7.5f, 7.5f, GA_GOLD);
+                render_internal_annulus(c, x + 38, y + 7, 5, 3.5f, 0xb8862e, 255);
+                ga_ell(c, x + 35, y + 4, 2, 1.6f, 0xfff4cf);
+            }
         }
-        render_internal_rect_fill(c, 45 + g_game.lane * 80, 278, 32, 12, MSP_TEAL);
-        render_internal_text(c, 48, 308, 2, MSP_TEAL, "TAP A LANE - GOLD IS 3 POINTS");
+        ga_sub(c, 61 + g_game.lane * 80, 283, 1.0f);
+        ga_hud(c, 48, 308, 2, MSP_TEAL, "TAP A LANE - GOLD IS 3 POINTS");
     } else if (g_game.page == GAME_BREAKER) {
         render_internal_button(c, 280, 54, 144, 32, 0x1c2f36, MSP_TEAL, "BANK SCORE", 1);
         snprintf(text, sizeof text, "BALLS %d  SCORE %d", g_game.hp, g_game.score);
-        render_internal_text(c, 24, 88, 2, MSP_TEAL, text);
-        for (int i = 0; i < 24; i++) if (g_game.board[i])
-            render_internal_rect_fill(c, 30 + i % 6 * 65, 108 + i / 6 * 24, 58, 18, g_game.board[i] == 2 ? 0xffdc73 : 0x73e5ff);
-        render_internal_rect_fill(c, (int)g_game.px - 44, 284, 88, 8, MSP_TEAL);
-        render_internal_ring(c, (int)g_game.bx, (int)g_game.by, 5, 0xffffff);
-        render_internal_text(c, 40, 310, 2, MSP_TEAL, g_game.launched ? "TAP BELOW BRICKS TO MOVE PADDLE" : "TAP BELOW BRICKS TO LAUNCH");
+        ga_hud(c, 24, 88, 2, MSP_TEAL, text);
+        for (int i = 0; i < 24; i++) if (g_game.board[i]) {
+            int x = 30 + i % 6 * 65, y = 108 + i / 6 * 24;
+            bool tough = g_game.board[i] == 2;
+            uint32_t base = tough ? 0xe0895a : i / 6 % 2 ? 0x5fbccc : 0x6fd0c4;
+            ga_block(c, x, y, 58, 18, base);
+            if (tough) { ga_fill(c, x + 8, y + 8, 22, 2, GA_GOLD); ga_fill(c, x + 30, y + 10, 16, 2, GA_GOLD); }
+            else ga_fill(c, x + 30, y + 7, 18, 2, ga_lite(base, 70));
+        }
+        int px = (int)g_game.px;
+        ga_ell(c, px - 40, 288, 6, 5, 0x5e3c1e);
+        ga_ell(c, px + 40, 288, 6, 5, 0x5e3c1e);
+        ga_fill(c, px - 40, 284, 80, 9, 0x8a5e36);
+        ga_fill(c, px - 36, 285, 62, 2, 0xb8885a);
+        ga_fill(c, px - 18, 289, 48, 1, 0x5e3c1e);
+        ga_pearl(c, g_game.bx, g_game.by, 6, GA_PEARL);
+        ga_hud(c, 40, 310, 2, MSP_TEAL, g_game.launched ? "TAP BELOW BRICKS TO MOVE PADDLE" : "TAP BELOW BRICKS TO LAUNCH");
     } else if (g_game.page == GAME_TACTICS || g_game.page == GAME_ARCHITECT) {
-        if (g_game.page == GAME_TACTICS) snprintf(text, sizeof text, "HP %d  TURN %d/22  FLAGS %d/3", g_game.hp, g_game.moves, g_game.pairs);
+        bool tactics = g_game.page == GAME_TACTICS;
+        if (tactics) snprintf(text, sizeof text, "HP %d  TURN %d/22  FLAGS %d/3", g_game.hp, g_game.moves, g_game.pairs);
         else snprintf(text, sizeof text, "PLACED %d/12  HABITAT SCORE %d", g_game.moves, g_game.score);
-        render_internal_text(c, 24, 66, 2, MSP_TEAL, text);
+        ga_hud(c, 24, 66, 2, MSP_TEAL, text);
+        ga_block(c, 93, 86, 260, 210, 0x16323b);
         for (int i = 0; i < 25; i++) {
             int x = 99 + i % 5 * 50, y = 92 + i / 5 * 40, tile = g_game.board[i];
-            uint32_t color = tile == 3 ? 0x785b6a : tile == 4 ? 0xffdc73 :
-                tile == 2 ? (g_game.page == GAME_TACTICS ? 0xff8173 : 0x89ffb1) : tile == 1 ? 0xffa3cf : 0x102831;
-            render_internal_rect_fill(c, x, y, 46, 36, color);
-            if (g_game.page == GAME_TACTICS && tile == 2 && game_distance(i, g_game.selected) == 1)
+            ga_board_cell(c, x, y, tile, tactics);
+            if (tactics && tile == 2 && game_distance(i, g_game.selected) == 1) {
                 render_internal_rect_edge(c, x, y, 46, 36, 0xffdc73);
-            if (g_game.page == GAME_TACTICS && i == g_game.selected) {
-                render_internal_ring(c, x + 23, y + 18, 12, MSP_TEAL); render_internal_text(c, x + 18, y + 10, 2, 0xffffff, "Y");
+                render_internal_rect_edge(c, x + 1, y + 1, 44, 34, 0xffdc73);
+            }
+            if (tactics && i == g_game.selected) {
+                render_internal_annulus(c, x + 23, y + 18, 18, 16, MSP_TEAL, 200);
+                ga_sub(c, x + 24, y + 22, 0.85f);
             }
         }
-        if (g_game.page == GAME_TACTICS) render_internal_button(c, 24, 298, 400, 30, 0x1c2f36, MSP_TEAL, "GUARD: BLOCK ATTACKS / HEAL 1", 2);
+        if (tactics) render_internal_button(c, 24, 298, 400, 30, 0x1c2f36, MSP_TEAL, "GUARD: BLOCK ATTACKS / HEAL 1", 2);
         else {
             render_internal_button(c, 24, 298, 126, 30, 0x1c2f36, g_game.selected == 1 ? 0xffdc73 : MSP_TEAL, "CORAL", 2);
             render_internal_button(c, 160, 298, 126, 30, 0x1c2f36, g_game.selected == 2 ? 0xffdc73 : MSP_TEAL, "GRASS", 2);
@@ -716,157 +1085,165 @@ static void game_extra_render(render_ctx_t *c) {
         }
     } else {
         static const char *const routes[] = {"SUPPLIES", "KEY CACHE", "DARK TUNNEL", "LOCKED RUIN", "REST REEF"};
-        static const char *const costs[] = {"O2 -2", "O2 -2", "O2 -4 HP -2", "O2 -2 KEY -1", "FOOD -1 O2 +3"};
-        static const char *const loot[] = {"+FOOD / 2PT", "+KEY / 2PT", "+9 POINTS", "+8 POINTS", "+1 HP"};
+        static const char *const costs[] = {"O2 -2", "O2 -2", "O2 -4", "O2 -2", "FOOD -1"};
+        static const char *const costs2[] = {"", "", "HP -2", "KEY -1", "O2 +3"};
+        static const char *const loot[] = {"+FOOD 2PT", "+KEY 2PT", "+9 POINTS", "+8 POINTS", "+1 HP"};
         snprintf(text, sizeof text, "DEPTH %d/8  O2 %d  HP %d", g_game.depth, g_game.oxygen, g_game.hp);
-        render_internal_text(c, 24, 88, 2, MSP_TEAL, text);
+        ga_hud(c, 24, 84, 2, MSP_TEAL, text);
         snprintf(text, sizeof text, "KEYS %d  FOOD %d  LOOT %d", g_game.keys, g_game.supplies, g_game.score);
-        render_internal_text(c, 24, 110, 2, MSP_TEAL, text);
+        ga_hud(c, 24, 110, 2, MSP_TEAL, text);
         for (int i = 0; i < 3; i++) {
             int route = g_game.choices[i], x = 24 + i * 136;
             bool locked = (route == 3 && !g_game.keys) || (route == 4 && !g_game.supplies);
-            render_internal_rect_fill(c, x, 138, 128, 140, 0x1c2f36);
-            render_internal_text(c, x + 5, 158, 1, locked ? 0x8b6570 : 0xffdc73, routes[route]);
-            render_internal_text(c, x + 5, 196, 1, MSP_TEAL, costs[route]);
-            render_internal_text(c, x + 5, 230, 1, MSP_TEAL, locked ? "NEEDS ITEM" : loot[route]);
+            float cx = x + 64;
+            ga_block(c, x, 138, 128, 140, locked ? 0x29343a : 0x1d3d47);
+            ga_socket(c, x + 6, 144, 114, 56, 0x0b2a35);
+            ga_ell(c, cx, 197, 50, 5, ga_dark(GA_SAND, 90));
+            if (route == 0) {
+                ga_crate(c, cx - 8, 184, 1.1f);
+                ga_crate(c, cx + 20, 189, 0.7f);
+            } else if (route == 1) {
+                ga_shell(c, cx - 22, 186, 0.6f, 0xd9a0c8);
+                ga_key(c, cx + 8, 178, 1.4f);
+            } else if (route == 2) {
+                ga_ell(c, cx, 180, 42, 18, 0x3b4a4e);
+                ga_ell(c, cx - 14, 170, 14, 6, 0x56676b);
+                ga_ell(c, cx, 188, 23, 11, 0x020a0d);
+                ga_ell(c, cx - 6, 186, 2.2f, 1.5f, 0xffdc73);
+                ga_ell(c, cx + 6, 186, 2.2f, 1.5f, 0xffdc73);
+            } else if (route == 3) {
+                ga_block(c, (int)cx - 30, 154, 60, 8, 0x8a9a96);
+                ga_block(c, (int)cx - 26, 162, 12, 34, 0x7a8a86);
+                ga_block(c, (int)cx + 14, 162, 12, 34, 0x7a8a86);
+                ga_fill(c, (int)cx - 14, 166, 28, 30, 0x07181e);
+                render_internal_annulus(c, cx, 177, 6, 3.5f, 0xb7c3c6, 255);
+                ga_block(c, (int)cx - 8, 179, 16, 13, locked ? 0x8a8070 : GA_GOLD);
+            } else {
+                ga_coral(c, cx - 26, 196, 1.0f, 0xe2786a);
+                ga_grass(c, cx + 28, 196, 1.0f);
+                for (int k = 0; k < 7; k++) ga_ell(c, cx - 9 + k * 3, 182 + (k & 1) * 2, 2, 7, 0xf2a2c4);
+                ga_ell(c, cx, 192, 12, 5, 0xc0607e);
+            }
+            render_internal_text(c, x + 6, 208, 1, locked ? 0x8b6570 : 0xffdc73, routes[route]);
+            render_internal_text(c, x + 6, 224, 1, MSP_TEAL, costs[route]);
+            render_internal_text(c, x + 6, 242, 1, MSP_TEAL, costs2[route]);
+            render_internal_text(c, x + 6, 260, 1, locked ? 0x8b6570 : 0xffffff, locked ? "NEEDS ITEM" : loot[route]);
         }
         render_internal_button(c, 24, 298, 400, 30, 0x1c2f36, MSP_TEAL, "RETURN: BANK LOOT SAFELY", 2);
     }
 }
-/* Fixed 40x32 previews deliberately share the games' board colors and shapes. */
-static void game_thumb_tile(render_ctx_t *c, int x, int y, int w, int h, uint32_t color) {
-    render_internal_rect_fill(c, x, y, w, h, 0x102a34);
-    render_internal_rect_fill(c, x, y, w - 1, h - 1, color);
-    render_internal_rect_fill(c, x + 1, y, w - 2, 1, 0xd9edf0);
-    render_internal_rect_fill(c, x, y + h - 2, w - 1, 1, 0x3c6370);
-}
+/* Fixed 40x32 previews: miniatures of each playfield's own props. */
 GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
-    const uint32_t blue = 0x78cddd, gold = 0xefc66c, pink = 0xe59bb3;
-    render_internal_rect_fill(c, x, y, 40, 32, 0x102a34);
-    render_internal_rect_fill(c, x + 1, y + 1, 38, 10, 0x163641);
-    render_internal_rect_fill(c, x + 1, y + 11, 38, 10, 0x102d37);
-    render_internal_rect_fill(c, x + 1, y + 21, 38, 10, 0x0b222b);
-    if (game == 12) {
-        for (int i = 0; i < 16; i++)
-            game_thumb_tile(c, x + 3 + i % 4 * 9, y + 2 + i / 4 * 7, 6, 5,
-                      i == 2 || i == 5 || i == 6 || i == 7 || i == 10 ? gold : 0x24404b);
-    } else if (game == 13) {
-        for (int i = 0; i < 8; i++) {
-            int xx = x + 4 + i % 3 * 11, yy = y + 1 + i / 3 * 10;
-            game_thumb_tile(c, xx, yy, 9, 8, blue);
-            render_internal_rect_fill(c, xx + 3, yy + 2, 2, 4, MSP_INK);
-        }
-    } else if (game == 14) {
-        render_internal_ring(c, x + 20, y + 17, 12, blue);
-        render_internal_ring(c, x + 20, y + 17, 6, MSP_TEAL);
-        render_internal_rect_fill(c, x + 19, y + 4, 2, 14, gold);
-        render_internal_ring(c, x + 27, y + 23, 3, gold);
-        render_internal_rect_fill(c, x + 11, y + 11, 2, 2, 0xe7f3ee);
-        render_internal_rect_fill(c, x + 19, y + 17, 2, 2, 0xe7f3ee);
-    } else if (game == 15) {
-        game_thumb_tile(c, x + 2, y + 9, 11, 15, blue);
-        game_thumb_tile(c, x + 16, y + 9, 11, 15, blue);
-        game_thumb_tile(c, x + 29, y + 6, 9, 21, pink);
-        render_internal_text(c, x + 5, y + 12, 1, MSP_INK, "2");
-        render_internal_text(c, x + 19, y + 12, 1, MSP_INK, "2");
-        render_internal_text(c, x + 31, y + 12, 1, MSP_INK, "4");
-    } else if (game == 16) {
-        for (int i = 0; i < 4; i++)
-            game_thumb_tile(c, x + 3 + i * 4, y + 25 - i * 7, 29 - i * 5, 5, i == 3 ? gold : blue);
-    } else if (game == 17) {
-        for (int i = 0; i < 4; i++) {
-            int xx = x + 3 + i % 2 * 19, yy = y + 2 + i / 2 * 15;
-            game_thumb_tile(c, xx, yy, 16, 12, i == 1 ? gold : 0x426575);
-            render_internal_rect_fill(c, xx + 3, yy + 3, 9, 5, i == 1 ? 0xffe4a5 : pink);
-            if (i != 1) render_internal_rect_fill(c, xx + 4, yy + 4, 7, 3, 0x254450);
-        }
-    } else if (game == 0) {
-        render_internal_ring(c, x + 12, y + 19, 8, blue);
-        render_internal_ring(c, x + 29, y + 9, 6, gold);
-        render_internal_ring(c, x + 12, y + 19, 6, 0x325e6b);
-        render_internal_ring(c, x + 29, y + 9, 4, 0x776b4a);
-        render_internal_rect_fill(c, x + 8, y + 14, 3, 2, 0xffffff);
-        render_internal_rect_fill(c, x + 26, y + 6, 2, 2, 0xffffff);
+    ga_fill(c, x, y, 40, 32, 0x0a2a34);
+    ga_fill(c, x + 1, y + 1, 38, 9, 0x1a5565);
+    ga_fill(c, x + 1, y + 10, 38, 9, 0x134654);
+    ga_fill(c, x + 1, y + 19, 38, 8, 0x0e3846);
+    ga_fill(c, x + 1, y + 27, 38, 4, ga_dark(GA_SAND, 60));
+    ga_fill(c, x + 1, y + 27, 38, 1, GA_SAND);
+    float X = (float)x, Y = (float)y;
+    if (game == 0) {
+        ga_bubble(c, X + 13, Y + 17, 8, 0x73e5ff);
+        ga_bubble(c, X + 29, Y + 9, 6, GA_GOLD);
     } else if (game == 1) {
-        for (int i = 0; i < 4; i++) {
-            int xx = x + 4 + i % 2 * 18, yy = y + 2 + i / 2 * 15;
-            game_thumb_tile(c, xx, yy, 13, 12, i % 3 ? 0x426575 : gold);
-            if (i % 3 == 0) render_internal_ring(c, xx + 6, yy + 6, 3, gold);
-            else {
-                render_internal_rect_edge(c, xx + 2, yy + 2, 8, 7, 0x87b2bd);
-                render_internal_rect_fill(c, xx + 5, yy + 4, 2, 3, blue);
-            }
-        }
-    } else if (game == 2 || game == 7) {
-        for (int i = 0; i < 3; i++) {
-            render_internal_rect_fill(c, x + 5 + i * 12, y + 2, 2, 27, 0x24505a);
-            if (i != 1) game_thumb_tile(c, x + 2 + i * 12, y + 10, 8, 5, 0x9a7982);
-        }
-        if (game == 2) render_internal_page_stamp(c, x + 8, y + 10, STAMP_FISH, MSP_TEAL);
-        else {
-            render_internal_ring(c, x + 18, y + 11, 4, gold);
-            render_internal_rect_fill(c, x + 13, y + 24, 11, 5, MSP_TEAL);
-        }
-    } else if (game == 3 || game == 11) {
-        game_thumb_tile(c, x + 5, y + 19, 29, 11, 0xb7855e);
-        render_internal_rect_fill(c, x + 6, y + 22, 27, 2, gold);
-        render_internal_rect_fill(c, x + 9, y + 20, 2, 8, gold);
-        render_internal_rect_fill(c, x + 28, y + 20, 2, 8, gold);
-        game_thumb_tile(c, x + 17, y + 22, 6, 6, gold);
-        if (game == 3) {
-            render_internal_rect_fill(c, x + 23, y + 1, 2, 13, blue);
-            render_internal_rect_fill(c, x + 18, y + 12, 7, 3, blue);
-            render_internal_rect_fill(c, x + 18, y + 9, 2, 4, blue);
-        } else {
-            render_internal_ring(c, x + 9, y + 8, 5, blue);
-            render_internal_rect_fill(c, x + 13, y + 6, 17, 4, blue);
-            render_internal_rect_fill(c, x + 25, y + 8, 3, 5, blue);
-        }
+        ga_block(c, x + 3, y + 3, 15, 22, 0x2a6070);
+        ga_shell(c, X + 10, Y + 13, 0.3f, GA_GOLD);
+        ga_socket(c, x + 21, y + 3, 15, 22, 0x14333d);
+        ga_pearl(c, X + 28, Y + 14, 4, 0xffa3cf);
+    } else if (game == 2) {
+        ga_ell(c, X + 6, Y + 8, 3, 3, GA_GOLD);
+        ga_ell(c, X + 34, Y + 8, 3, 3, GA_GOLD);
+        ga_fill(c, x + 9, y + 8, 22, 1, 0xd5e6e8);
+        render_internal_page_stamp(c, x + 8, y + 12, STAMP_FISH, MSP_TEAL);
+    } else if (game == 3) {
+        ga_chest(c, X + 18, Y + 23, 0.32f);
+        ga_fill(c, x + 30, y + 1, 1, 14, 0xd5e6e8);
+        ga_ell(c, X + 27, Y + 16, 2, 2, 0xb7c3c6);
     } else if (game == 4) {
         render_internal_page_stamp(c, x + 1, y + 1, STAMP_FISH, MSP_TEAL);
-        for (int i = 0; i < 3; i++) game_thumb_tile(c, x + 28 + i % 2 * 5, y + 7 + i * 7, 4, 4, gold);
+        ga_food(c, X + 28, Y + 21, 0);
     } else if (game == 5) {
-        render_internal_rect_fill(c, x + 2, y + 4, 17, 5, blue);
-        render_internal_rect_fill(c, x + 14, y + 4, 5, 21, blue);
-        render_internal_rect_fill(c, x + 14, y + 20, 24, 5, gold);
-        render_internal_rect_fill(c, x + 3, y + 4, 15, 1, 0xd9edf0);
-        render_internal_rect_fill(c, x + 15, y + 9, 1, 10, 0xd9edf0);
-        render_internal_rect_fill(c, x + 20, y + 20, 14, 1, 0xffe4a5);
-        render_internal_ring(c, x + 6, y + 6, 5, MSP_TEAL);
-        render_internal_ring(c, x + 34, y + 22, 5, MSP_TEAL);
+        ga_pipe(c, x + 2, y + 5, 20, 9, true);
+        ga_pipe(c, x + 15, y + 5, 9, 20, true);
+        ga_pipe(c, x + 15, y + 17, 23, 9, true);
     } else if (game == 6) {
-        for (int i = 0; i < 3; i++) {
-            game_thumb_tile(c, x + 4 + i * 12, y + 3, 7, 7, i == 1 ? gold : pink);
-            render_internal_rect_fill(c, x + 6 + i * 12, y + 10, 3, 3, pink);
-        }
-        render_internal_rect_fill(c, x + 19, y + 17, 2, 3, blue);
-        render_internal_rect_fill(c, x + 15, y + 26, 11, 4, MSP_TEAL);
-        render_internal_rect_fill(c, x + 19, y + 22, 3, 5, MSP_TEAL);
+        ga_ell(c, X + 12, Y + 9, 7, 4.5f, 0xe4654f);
+        ga_ell(c, X + 11, Y + 8, 3, 1.5f, 0xf6a090);
+        ga_ell(c, X + 30, Y + 7, 6, 4, 0x9a62b8);
+        ga_pearl(c, X + 21, Y + 16, 2.5f, 0xc8f3ff);
+        ga_ell(c, X + 20, Y + 25, 8, 3.5f, 0xb08cc0);
+        ga_pearl(c, X + 20, Y + 22, 2.5f, GA_PEARL);
+    } else if (game == 7) {
+        ga_rock(c, X + 8, Y + 9, 14, 8, 0x56676b);
+        ga_rock(c, X + 32, Y + 9, 14, 8, 0x56676b);
+        ga_ell(c, X + 20, Y + 9, 3.5f, 3.5f, GA_GOLD);
+        ga_sub(c, X + 19, Y + 22, 0.5f);
     } else if (game == 8) {
         for (int i = 0; i < 8; i++)
-            game_thumb_tile(c, x + 2 + i % 4 * 9, y + 3 + i / 4 * 7, 7, 5, i % 3 ? blue : gold);
-        render_internal_ring(c, x + 23, y + 20, 3, 0xffffff);
-        render_internal_rect_fill(c, x + 9, y + 28, 20, 3, MSP_TEAL);
+            ga_block(c, x + 2 + i % 4 * 9, y + 3 + i / 4 * 7, 8, 6, i < 4 ? 0xe0895a : 0x5fbccc);
+        ga_pearl(c, X + 23, Y + 20, 2.5f, GA_PEARL);
+        ga_fill(c, x + 11, y + 25, 18, 3, 0x8a5e36);
+    } else if (game == 11) {
+        ga_ell(c, X + 20, Y + 19, 16, 10, 0x3b4a4e);
+        ga_ell(c, X + 20, Y + 22, 9, 6, 0x020a0d);
+        ga_ell(c, X + 17, Y + 21, 1.2f, 1, 0xffdc73);
+        ga_ell(c, X + 23, Y + 21, 1.2f, 1, 0xffdc73);
+        ga_key(c, X + 21, Y + 6, 0.55f);
+    } else if (game == 12) {
+        for (int i = 0; i < 9; i++) {
+            float lx = X + 8 + i % 3 * 12, ly = Y + 6 + i / 3 * 9;
+            bool lit = i == 1 || i == 3 || i == 4 || i == 8;
+            if (lit) render_internal_ellipse(c, lx, ly, 6, 5, 0xffd77a, 80);
+            ga_ell(c, lx, ly, 2.6f, 3, lit ? 0xffcf56 : 0x2c4852);
+        }
+    } else if (game == 13) {
+        for (int i = 0; i < 8; i++) {
+            int xx = x + 4 + i % 3 * 11, yy = y + 1 + i / 3 * 9;
+            ga_block(c, xx, yy, 10, 8, 0xd8c094);
+            ga_fill(c, xx + 4, yy + 2, 2, 3, 0x5a4a30);
+        }
+    } else if (game == 14) {
+        render_internal_annulus(c, X + 20, Y + 15, 13, 11.5f, 0x73e5ff, 150);
+        render_internal_annulus(c, X + 20, Y + 15, 7, 5.5f, 0x73e5ff, 200);
+        ga_pearl(c, X + 28, Y + 21, 3, GA_PEARL);
+        ga_ell(c, X + 20, Y + 15, 1.6f, 1.6f, 0xe7f3ee);
+    } else if (game == 15) {
+        ga_block(c, x + 2, y + 6, 11, 17, g_ga_glass[1]);
+        ga_block(c, x + 15, y + 6, 11, 17, g_ga_glass[1]);
+        ga_block(c, x + 28, y + 4, 10, 21, g_ga_glass[2]);
+        render_internal_text(c, x + 5, y + 11, 1, MSP_INK, "2");
+        render_internal_text(c, x + 18, y + 11, 1, MSP_INK, "2");
+        render_internal_text(c, x + 31, y + 11, 1, MSP_INK, "4");
+    } else if (game == 16) {
+        for (int i = 0; i < 4; i++)
+            ga_block(c, x + 3 + i * 4, y + 21 - i * 6, 30 - i * 5, 6, i == 3 ? GA_GOLD : i % 2 ? 0x7fc6cf : 0xd9b98a);
+    } else if (game == 17) {
+        static const uint32_t colors[] = {0xffdc73, 0x73e5ff, 0xffa3cf, 0x89ffb1};
+        for (int i = 0; i < 4; i++) ga_shell(c, X + 11 + i % 2 * 18, Y + 9 + i / 2 * 12, 0.32f, colors[i]);
     } else {
         for (int i = 0; i < 9; i++) {
-            int xx = x + 5 + i % 3 * 10, yy = y + 2 + i / 3 * 10;
-            game_thumb_tile(c, xx, yy, 8, 8, 0x315460);
-            if (game == 9 && (i == 0 || i == 8))
-                render_internal_rect_fill(c, xx + 2, yy + 2, 4, 4, i ? 0xff8173 : MSP_TEAL);
-            if (game == 9 && i == 2) {
-                render_internal_rect_fill(c, xx + 2, yy + 1, 2, 6, gold);
-                render_internal_rect_fill(c, xx + 4, yy + 1, 3, 3, gold);
-            }
-            if (game == 10 && i % 3 != 1) {
-                render_internal_rect_fill(c, xx + 3, yy + 1, 2, 6, i % 2 ? pink : 0x89ffb1);
-                render_internal_rect_fill(c, xx + 1, yy + 3, 6, 2, i % 2 ? pink : 0x89ffb1);
-            }
+            int xx = x + 5 + i % 3 * 10, yy = y + 1 + i / 3 * 9;
+            ga_socket(c, xx, yy, 9, 8, game == 9 ? 0x1f4954 : 0x2c5148);
+        }
+        if (game == 9) {
+            ga_flag(c, X + 28, Y + 6, 0.35f);
+            ga_ell(c, X + 30, Y + 23, 3.5f, 2.5f, 0xe4654f);
+            ga_sub(c, X + 10, Y + 14, 0.32f);
+        } else {
+            ga_coral(c, X + 10, Y + 9, 0.38f, 0xe2786a);
+            ga_grass(c, X + 30, Y + 18, 0.4f);
+            ga_coral(c, X + 20, Y + 27, 0.38f, 0xd8608e);
         }
     }
 }
 void render_games(const tank_t *t, uint16_t *fb, int stride) {
     render_ctx_t c = render_internal_page_ctx(fb, stride);
-    render_internal_rect_fill(&c, 0, 0, PAGE_W, PAGE_H, MSP_INK);
+    if (g_game.page != GAME_RESULT && g_game.page != GAME_MENU && g_game.page != GAME_RECORDS &&
+        (g_game.help || g_game.paused)) {
+        render_internal_rect_fill(&c, 0, 0, PAGE_W, PAGE_H, MSP_INK);  /* help hides the playfield */
+    } else {
+        int deep = g_game.page == GAME_EXPEDITION ? g_game.depth * 26 : 0;
+        ga_backdrop(&c, ga_mix(0x15596b, 0x0a1c2a, deep), ga_mix(0x072431, 0x02080c, deep));
+    }
     const char *title = g_game.page == GAME_RECORDS ? "GAME RECORDS" : g_game.page == GAME_MENU ? "MINI GAMES" :
         g_game.page == GAME_RESULT ? game_names[game_index(g_game.kind)] : game_titles[game_index(g_game.kind)];
     render_internal_text(&c, 24, 14, g_game.page == GAME_MENU || g_game.page == GAME_RECORDS ? 2 : 1, 0xffffff, title);
@@ -928,87 +1305,136 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
     } else if (g_game.page == GAME_BUBBLES) {
         if (g_game_relaxed) snprintf(text, sizeof text, "SCORE %d", g_game.score);
         else snprintf(text, sizeof text, "TIME %02d   SCORE %d", (int)ceilf(g_game.left), g_game.score);
-        render_internal_text(&c, 32, 62, 2, MSP_TEAL, text);
+        ga_hud(&c, 32, 62, 2, MSP_TEAL, text);
         for (int i = 0; i < 6; i++) if (g_game.bubbles[i].live) {
             int x = (int)g_game.bubbles[i].x, y = (int)g_game.bubbles[i].y;
-            uint32_t color = g_game.bubbles[i].gold ? 0xffdc73 : 0x73e5ff;
-            render_internal_ring(&c, x, y, 24, color); render_internal_ring(&c, x, y, 23, color);
-            render_internal_rect_fill(&c, x - 10, y - 13, 8, 4, 0xffffff);
-            if (g_game.bubbles[i].gold) render_internal_text(&c, x - 5, y - 7, 2, color, "3");
+            bool gold = g_game.bubbles[i].gold;
+            ga_bubble(&c, x, y, 24, gold ? GA_GOLD : 0x73e5ff);
+            if (gold) render_internal_text(&c, x - 5, y - 7, 2, 0xffdc73, "3");
         }
     } else if (g_game.page == GAME_SLALOM || g_game.page == GAME_CAST || g_game.page == GAME_FRENZY) {
         if (g_game_relaxed && g_game.page == GAME_FRENZY) snprintf(text, sizeof text, "SCORE %d", g_game.score);
         else snprintf(text, sizeof text, "SCORE %d   %s %d", g_game.score, g_game.page == GAME_FRENZY ? "TIME" : "ROUND",
                       g_game.page == GAME_FRENZY ? (int)ceilf(g_game.left) : g_game.rounds + 1);
-        render_internal_text(&c, 24, 58, 2, MSP_TEAL, text);
+        ga_hud(&c, 24, 58, 2, MSP_TEAL, text);
         if (g_game.page == GAME_SLALOM) {
-            render_internal_text(&c, 24, 82, 2, MSP_TEAL, "SWIM THROUGH THE OPEN GATE");
-            for (int lane = 0; lane < 3; lane++) {
-                int x = 74 + lane * 140;
-                render_internal_rect_fill(&c, x - 46, 112, 92, 148, 0x102831);
-                if (lane == g_game.target) {
-                    render_internal_rect_edge(&c, x - 36, 112 + (int)(g_game.travel * 0.55f), 72, 12, 0xffdc73);
-                    render_internal_rect_fill(&c, x - 3, 115 + (int)(g_game.travel * 0.55f), 6, 6, 0xffdc73);
+            int dy = (int)(g_game.travel * 0.55f);
+            for (int lane = 0; lane < 3; lane++) ga_wash(&c, 28 + lane * 140, 112, 92, 148, 0x041820, 90);
+            for (int k = 0; k < 2; k++) {                     /* kelp between the lanes */
+                float kx = 144 + k * 140;
+                for (int i = 0; i < 3; i++) {
+                    float y = 260 - i * 50, sway = i & 1 ? 4 : -3;
+                    ga_quad(&c, kx - 3, y, kx + 3, y, kx + 3 + sway, y - 52, kx - 3 + sway, y - 52, 0x2f6b44, 255);
+                    ga_ell(&c, kx + sway + (i & 1 ? 9 : -9), y - 26, 9, 4, 0x3f8552);
                 }
-                else render_internal_rect_fill(&c, x - 44, 112 + (int)(g_game.travel * 0.55f), 88, 12, 0x8b6570);
             }
+            for (int lane = 0; lane < 3; lane++) {
+                int x = 74 + lane * 140, y = 112 + dy;
+                if (lane == g_game.target) {
+                    for (int i = 0; i < 6; i++) ga_fill(&c, x - 28 + i * 10, y + 5, 6, 2, 0xd5e6e8);
+                    ga_buoy(&c, x - 36, y + 4);
+                    ga_buoy(&c, x + 36, y + 4);
+                } else {
+                    ga_rock(&c, x - 22, y + 6, 48, 18, 0x56676b);
+                    ga_rock(&c, x + 22, y + 7, 46, 16, 0x4c5c60);
+                    ga_coral(&c, x + 6, y + 2, 0.55f, lane ? 0xe2786a : 0xd8608e);
+                }
+            }
+            ga_hud(&c, 24, 82, 2, MSP_TEAL, "SWIM THROUGH THE OPEN GATE");
             if (t->n_fish) render_fish_portrait(fb, stride, 74 + g_game.lane * 140, 235, 1.3f, &t->fish[g_game.fish % t->n_fish], g_game.travel * 0.03f);
             render_internal_button(&c, 32, 276, 182, 52, 0x1c2f36, MSP_TEAL, "< LEFT", 2);
             render_internal_button(&c, 234, 276, 182, 52, 0x1c2f36, MSP_TEAL, "RIGHT >", 2);
         } else if (g_game.page == GAME_CAST) {
-            render_internal_text(&c, 24, 86, 2, MSP_TEAL, "STOP THE HOOK OVER THE TREASURE");
+            ga_hud(&c, 24, 80, 2, MSP_TEAL, "STOP THE HOOK OVER THE TREASURE");
             int tx = 32 + (int)((g_game.target + 0.5f) * 384 / 3);
-            render_internal_rect_fill(&c, tx - 42, 218, 84, 38, 0xa97532); render_internal_rect_edge(&c, tx - 42, 218, 84, 38, 0xffdc73);
-            render_internal_text(&c, tx - 12, 226, 2, 0xffdc73, "$");
             float pos = g_game.travel <= 1 ? g_game.travel : 2 - g_game.travel;
             int hx = 32 + (int)(pos * 384);
-            render_internal_rect_fill(&c, hx, 116, 2, 84, MSP_TEAL); render_internal_ring(&c, hx - 5, 201, 6, 0xffffff);
+            render_internal_rect_blend(&c, 24, 110, 400, 3, 0xd8f4f2, 110);
+            ga_quad(&c, hx - 30, 104, hx + 24, 104, hx + 16, 114, hx - 22, 114, 0x6e4122, 255);
+            ga_fill(&c, hx - 26, 104, 46, 2, 0xa8743e);
+            ga_fill(&c, hx - 12, 97, 14, 7, 0xd8c094);
+            ga_hook(&c, hx, 114, 201);
             for (int lane = 0; lane < 3; lane++) if (lane != g_game.target) {
                 if (t->n_fish && lane == (g_game.target + 1) % 3)
                     render_fish_portrait(fb, stride, 96 + lane * 128, 234, 0.7f,
                                          &t->fish[g_game.fish % t->n_fish], g_game.travel);
-                else render_internal_rect_fill(&c, 64 + lane * 128, 224, 62, 26, 0x785b6a);
+                else {
+                    ga_rock(&c, 95 + lane * 128, 240, 62, 26, 0x56676b);
+                    ga_grass(&c, 125 + lane * 128, 254, 0.9f);
+                }
             }
+            ga_chest(&c, tx, 238, 1.0f);
             render_internal_button(&c, 32, 276, 384, 52, 0x1c2f36, MSP_TEAL, "CAST!", 3);
         } else {
             static const char *const snacks[] = {"FLAKES", "WORMS", "GREENS"};
             snprintf(text, sizeof text, "WANTS: %s", snacks[g_game.target]);
-            render_internal_text(&c, 80, 98, 3, 0xffdc73, text);
-            render_internal_rect_fill(&c, 84 + g_game.target * 136, 252, 8, 8, 0xffdc73);
+            ga_hud(&c, 80, 98, 3, 0xffdc73, text);
+            float ax = 88 + g_game.target * 136;
+            ga_tri(&c, ax - 9, 250, ax + 9, 250, ax, 262, GA_GOLD);
             if (t->n_fish) {
                 const fish_t *f = &t->fish[g_game.fish % t->n_fish];
+                ga_bubble(&c, 340, 170, 28, 0x9fd8e2);
+                ga_food(&c, 340, 170, g_game.target);
+                ga_bubble(&c, 304, 196, 6, 0x9fd8e2);
+                ga_bubble(&c, 292, 208, 4, 0x9fd8e2);
                 render_fish_portrait(fb, stride, 224, 182, 2, f, g_game.left);
-                render_internal_text(&c, 32, 232, 2, MSP_TEAL, f->name);
+                ga_hud(&c, 32, 232, 2, MSP_TEAL, f->name);
             }
-            for (int i = 0; i < 3; i++) render_internal_button(&c, 24 + i * 136, 268, 128, 58, 0x1c2f36, MSP_TEAL, snacks[i], 2);
+            for (int i = 0; i < 3; i++) {
+                int x = 24 + i * 136;
+                render_internal_button(&c, x, 268, 128, 58, 0x1c2f36, MSP_TEAL, "", 2);
+                ga_food(&c, x + 24, 297, i);
+                render_internal_text(&c, x + 46, 290, 2, 0xffffff, snacks[i]);
+            }
         }
     } else if (g_game.page == GAME_REEF) {
-        render_internal_text(&c, 24, 58, 2, MSP_TEAL, "TAP PIPES TO CONNECT IN TO OUT");
-        render_internal_text(&c, 32, 191, 2, 0x73e5ff, "IN >"); render_internal_text(&c, 344, 191, 2, 0xffdc73, "> OUT");
+        ga_hud(&c, 24, 58, 2, MSP_TEAL, "TAP PIPES TO CONNECT IN TO OUT");
+        bool wet[9], out = game_reef_flow(wet);
+        ga_hud(&c, 32, 191, 2, 0x73e5ff, "IN >"); ga_hud(&c, 350, 191, 2, 0xffdc73, "> OUT");
+        ga_block(&c, 104, 90, 230, 230, 0x16323b);
+        ga_pipe(&c, 84, 196, 28, 14, true);
+        ga_pipe(&c, 334, 196, 10, 14, out);
         for (int i = 0; i < 9; i++) {
             int x = 112 + i % 3 * 72, y = 98 + i / 3 * 72, mask = g_game.pipes[i];
-            render_internal_rect_fill(&c, x, y, 66, 66, 0x1c2f36); render_internal_rect_edge(&c, x, y, 66, 66, MSP_TEAL);
-            if (mask & 1) render_internal_rect_fill(&c, x + 27, y + 1, 12, 38, 0x73e5ff);
-            if (mask & 2) render_internal_rect_fill(&c, x + 27, y + 27, 38, 12, 0x73e5ff);
-            if (mask & 4) render_internal_rect_fill(&c, x + 27, y + 27, 12, 38, 0x73e5ff);
-            if (mask & 8) render_internal_rect_fill(&c, x + 1, y + 27, 38, 12, 0x73e5ff);
+            ga_block(&c, x, y, 66, 66, 0x2c4a52);
+            ga_speckle(&c, x, y, 66, 66, (unsigned)i * 31u + 3u, 0x3a5c66);
+            if (mask & 1) ga_pipe(&c, x + 26, y + 1, 14, 38, wet[i]);
+            if (mask & 2) ga_pipe(&c, x + 26, y + 26, 39, 14, wet[i]);
+            if (mask & 4) ga_pipe(&c, x + 26, y + 26, 14, 39, wet[i]);
+            if (mask & 8) ga_pipe(&c, x + 1, y + 26, 39, 14, wet[i]);
+            if (mask & 1) ga_fill(&c, x + 23, y + 1, 20, 4, 0x8a5a2e);
+            if (mask & 2) ga_fill(&c, x + 61, y + 23, 4, 20, 0x8a5a2e);
+            if (mask & 4) ga_fill(&c, x + 23, y + 61, 20, 4, 0x8a5a2e);
+            if (mask & 8) ga_fill(&c, x + 1, y + 23, 4, 20, 0x8a5a2e);
+            ga_ell(&c, x + 33, y + 33, 10, 10, 0x5a3c22);
+            ga_ell(&c, x + 33, y + 33, 8, 8, 0xb07a40);
+            ga_ell(&c, x + 31, y + 31, 3, 2, 0xe2b06c);
+            ga_ell(&c, x + 33, y + 34, 3.5f, 3.5f, wet[i] ? 0x73e5ff : 0x3a2818);
         }
     } else if (g_game.page == GAME_MATCH) {
         snprintf(text, sizeof text, "PAIRS %d/6   MOVES %d", g_game.pairs, g_game.moves);
-        render_internal_text(&c, 32, 62, 2, MSP_TEAL, text);
+        ga_hud(&c, 32, 62, 2, MSP_TEAL, text);
         static const uint32_t colors[] = {0xffdc73, 0x73e5ff, 0xffa3cf, 0x89ffb1, 0xc5adff, 0xff8173};
         for (int i = 0; i < 12; i++) {
             int x = 32 + i % 4 * 96, y = 94 + i / 4 * 72;
             bool shown = g_game.matched[i] || i == g_game.first || i == g_game.second;
-            render_internal_button(&c, x, y, 88, 64, g_game.matched[i] ? 0x124236 : 0x1c2f36, MSP_TEAL, shown ? "" : "?", 3);
-            if (shown) {
-                uint32_t color = colors[g_game.cards[i]];
-                render_internal_ring(&c, x + 22, y + 32, 12, color);
-                snprintf(text, sizeof text, "%d", g_game.cards[i] + 1);
-                render_internal_text(&c, x + 46, y + 21, 3, color, text);
+            if (!shown) {
+                ga_block(&c, x, y, 88, 64, 0x2a6070);
+                render_internal_rect_edge(&c, x + 5, y + 4, 76, 54, 0x4f8e9c);
+                ga_shell(&c, x + 43, y + 30, 1.0f, GA_GOLD);
+                continue;
             }
+            uint32_t color = colors[g_game.cards[i]];
+            ga_socket(&c, x, y, 88, 64, g_game.matched[i] ? 0x124236 : 0x14333d);
+            if (g_game.matched[i]) render_internal_rect_edge(&c, x, y, 88, 64, 0x89ffb1);
+            ga_ell(&c, x + 28, y + 44, 20, 9, 0x6b5a7a);
+            ga_ell(&c, x + 28, y + 42, 16, 6, 0x2a1e30);
+            ga_pearl(&c, x + 28, y + 32, 11, color);
+            snprintf(text, sizeof text, "%d", g_game.cards[i] + 1);
+            render_internal_text(&c, x + 56, y + 21, 3, color, text);
         }
     } else {
+        ga_wash(&c, 22, 62, 412, 260, 0x04141a, 200);
         game_thumb(&c, 32, 72, game_index(g_game.kind));
         render_internal_text(&c, 84, 80, 2, 0xffffff, "ROUND COMPLETE");
         bool puzzle = g_game.kind == GAME_LIGHTHOUSE || g_game.kind == GAME_SLIDE;

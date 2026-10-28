@@ -162,6 +162,12 @@ static void check_menu_layout(const char *gallery) {
         game_start(game_kinds[game]);
         snprintf(name, sizeof name, "game-help-%d", game); menu_begin(name);
         render_games(&t, full_frame, TANK_W); menu_end(gallery);
+        g_game.help = false;
+        for (int i = 0; i < 30; i++) render_games_tick(0.05f);
+        if (g_game.page != GAME_RESULT) {
+            snprintf(name, sizeof name, "game-play-%d", game); menu_begin(name);
+            render_games(&t, full_frame, TANK_W); menu_end(gallery);
+        }
         game_finish();
         snprintf(name, sizeof name, "game-result-%d", game); menu_begin(name);
         render_games(&t, full_frame, TANK_W); menu_end(gallery);

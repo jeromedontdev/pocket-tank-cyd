@@ -22,10 +22,10 @@ or deployment is published. Update this file when its contracts change.
 
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
-  edit-mode/mirror/save-speed and menu-performance follow-ups, unified build,
-  app 1,772,160 bytes, slot headroom 193,920, SHA256
-  `bee7600d0e8392238ab6f3655e2eb56f838e5cf5e7532d00e9f17213c37c4a51`
-  (see [menu performance](firmware/CYD.md#menu-performance-and-the-placement-button-row)).
+  edit-mode/mirror/save-speed, menu-performance and minigame-art follow-ups,
+  unified build, app 1,786,016 bytes, slot headroom 180,064, SHA256
+  `761d7e175a2a5e6a72504da525eac6c2b050bc82e955af4fea78bd2ee1e3698a`
+  (see [minigame art](firmware/CYD.md#minigame-art-kit)).
   Fresh full recovery backup, app readback/profile and saves passed. Residents/settings remain intact; the wallet
   changes only from normal passive income. Tracing is off. These follow-ups
   are not published; the website and immutable 2.3.18 tag remain unchanged.
@@ -423,6 +423,17 @@ or deployment is published. Update this file when its contracts change.
   New decorations must match the detailed harbor/garden set, not regress to
   simplistic flat shapes. Keep holes transparent and previews consistent with
   placed art; inspect actual-renderer captures at both scales.
+- Minigames share the `ga_*` art kit in `common/games.c` (water backdrop,
+  bevelled blocks/sockets, pearls, rocks, coral, crabs, sub, pipes, shells,
+  lanterns, chests, `ga_hud` text plates). Game pages redraw every frame, so
+  props must stay cheap: use the row-deduped `render_internal_ellipse`,
+  `annulus`, `rect_blend` and `poly` bridge primitives, never per-pixel rings
+  or full-screen blends beyond the backdrop. Help/pause keep the plain ink
+  fill that hides the playfield. Keep hit boxes and art aligned; check
+  `game-play-N` gallery captures at 240 and 320 and device games FPS
+  (`render` must stay well under the ~33 ms frame). Prefer opaque fills
+  pre-mixed against the known water band (`ga_wash`, the stepped shafts)
+  over translucent blends; opaque page spans use `fill565_span`.
 - Fit every wearable to each species and life stage, including turns and dive
   poses. When a fit genuinely cannot work, exclude it consistently from purchase,
   equip and rendering rather than showing broken gear. Jellyfish exclude only
@@ -509,7 +520,7 @@ or deployment is published. Update this file when its contracts change.
 | Companion UI | `common/companion_ui.c`: Home and its subpages, shared page coordinates and navigation |
 | Home routing | `common/home_navigation.h`: common page initialization; platform ports retain overlay/BACK state |
 | Rendering/input | `common/render.c`, `.h`: aquarium, clock, menus, hit testing, retained damage |
-| Games | `common/games.c`: eighteen games, pages, help/pause/results and reward dispatch; `render_internal.h` is the narrow private page-drawing bridge |
+| Games | `common/games.c`: eighteen games, pages, help/pause/results, reward dispatch and the shared `ga_*` minigame art kit; `render_internal.h` is the narrow private page-drawing bridge |
 | Settings/services | `common/setup.c`, `update.c`, `weather.c`, `notice.c`, `advisor.c` and their headers |
 | Firmware loop | `firmware/main/main.c`: boot, frame lifecycle, sleep/wake, display/service coordination |
 | CYD hardware | `firmware/main/board_pins.h`, `display_port_cyd.c`, `touch_port_xpt2046.c`, `ambient.c`, `brightness.c`, `memory_plan.h` |

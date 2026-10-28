@@ -673,6 +673,49 @@ COM4 runs this unified image (with the readable placement text): app
 `bee7600d0e8392238ab6f3655e2eb56f838e5cf5e7532d00e9f17213c37c4a51`, flashed
 after a fresh full backup (`place-mirror-com4-backup.bin`). Not released.
 
+### Minigame art kit
+
+The eighteen minigames and their menu thumbnails replaced flat rectangles on
+black with a shared `ga_*` art kit in `common/games.c`:
+
+- **Backdrop.** A 12-band water gradient (darkening with Expedition depth),
+  stepped light shafts, kelp at the glass edges, a sand floor and a dark
+  status footer. Help/pause keep the plain ink fill that hides the playfield.
+- **Props.** Bevelled blocks and recessed sockets, pearls, bubbles, rocks,
+  coral, grass, buoys, a treasure chest, hook and boat, crabs, a submarine,
+  lanterns, shells, food, copper pipes, flags, keys and crates. Each game
+  uses its own props (pipes and bronze hubs in Reef Puzzle, shell-backed
+  cards in Pearl Match, lanterns in Lighthouse, sand tiles in Shell Slide,
+  sea glass in Tide 2048, illustrated route cards in Expedition). Status and
+  instruction text sit on dark `ga_hud` plates; results get a glass panel.
+- **Primitives.** `render_internal_ellipse`, `annulus`, `rect_blend` and
+  `poly` visit each frame row once, so translucent shapes never double-blend.
+  Hit boxes are unchanged. Expedition costs now use two lines, fixing a
+  240 px text overlap; `test_page_art` captures `game-play-N` pages.
+- **Cost.** Large translucent areas (Slalom/Runner lanes, result panel, light
+  shafts) are drawn as opaque fills pre-mixed against the water band
+  (`ga_wash`). Opaque scaled page spans now use the word-wide
+  `fill565_span` (about 3.5x faster opaque fills natively), which also
+  speeds every menu page.
+
+COM4 games FPS / render time (12 s windows, controlled taps):
+
+| Screen | Before (flat art) | After |
+|---|---|---|
+| Games menu | 28 FPS, 26 ms | 30 FPS, 18 ms |
+| Bubbles / Stack | 27-30, 11-20 ms | 30, 12-14 ms |
+| Slalom / Cast / Frenzy | 27-30, 17-20 ms | 27-30, 19-20 ms |
+| Lighthouse / Slide | 27-30, 12-25 ms | 27-30, 15-17 ms |
+| Other games | 27-30, 13-17 ms | 27-30, 14-18 ms |
+
+An intermediate build using translucent blends measured 26-30 FPS at 20-27 ms;
+the opaque pre-mix and span fast path recovered it.
+
+COM4 runs this unified image: app 1,786,016 bytes, 180,064 bytes of OTA
+headroom, SHA256
+`761d7e175a2a5e6a72504da525eac6c2b050bc82e955af4fea78bd2ee1e3698a`, flashed
+after a fresh full backup (`games-art3-com4-backup.bin`). Not released.
+
 ### 2.3.18 frame-pacing and snapshot follow-up
 
 The renderer can bracket an immutable frame with `render_frame_begin` and

@@ -384,9 +384,8 @@ static inline void span(ctx_t *c, int x0, int x1, int y, const src_t *s, int alp
         if (!CTX_IN(c, x0, y)) return;
         uint16_t *p = &CTX_PX(c, x0, y);
         int n = x1 * TANK_W / PAGE_W - x0 * TANK_W / PAGE_W + 1;
-        for (int i = 0; i < n; i++, p++) {
-            if (alpha >= 255) *p = s->v; else blend565(p, s, alpha);
-        }
+        if (alpha >= 255) fill565_span(p, n, s->v);
+        else for (int i = 0; i < n; i++, p++) blend565(p, s, alpha);
         return;
     }
     bb_add(x0, x1, y);
@@ -9203,6 +9202,84 @@ void render_internal_page_stamp(render_ctx_t *c, int x, int y, int kind, uint32_
 }
 void render_internal_page_medal(render_ctx_t *c, int x, int y, unsigned medal) {
     page_medal(c, x, y, medal);
+}
+/* Game art (2026-10): page rows fold ~3:2 onto frame rows, so these visit each
+   frame row once - a translucent shape is never blended twice and an opaque one
+   skips the duplicate spans - sampling the shape at the frame row's centre. */
+static bool page_row_walk(const ctx_t *c, int *y0, int *y1) {
+    if (*y0 < c->oy) *y0 = c->oy;
+    if (*y1 >= c->oy + c->h) *y1 = c->oy + c->h - 1;
+    page_clamp_rows(c, y0, y1);
+    return *y0 <= *y1;
+}
+static inline bool page_row_next(const ctx_t *c, int y, int *last) {
+    if (!c->scaled || g_recording) return true;
+    int ty = y * TANK_H / PAGE_H;
+    if (ty == *last) return false;
+    *last = ty;
+    return true;
+}
+static inline float page_row_mid(const ctx_t *c, int y) {
+    if (!c->scaled || g_recording) return (float)y;
+    return ((y * TANK_H / PAGE_H) + 0.5f) * PAGE_H / TANK_H;
+}
+void render_internal_ellipse(render_ctx_t *c, float cx, float cy, float rx, float ry, uint32_t rgb, int alpha) {
+    if (rx <= 0 || ry <= 0 || alpha <= 0) return;
+    if (cx + rx + 1 < c->ox || cx - rx - 1 >= c->ox + c->w) return;
+    int y0 = (int)(cy - ry), y1 = (int)(cy + ry), last = -1;
+    if (!page_row_walk(c, &y0, &y1)) return;
+    src_t s = src_color(rgb, c->dim);
+    for (int y = y0; y <= y1; y++) {
+        if (!page_row_next(c, y, &last)) continue;
+        float half = rx * ell_half((page_row_mid(c, y) - cy) / ry);
+        if (half > 0.35f) span(c, (int)(cx - half + 0.5f), (int)(cx + half - 0.5f), y, &s, alpha);
+    }
+}
+/* a filled ring between radii r_in and r: one or two spans per frame row */
+void render_internal_annulus(render_ctx_t *c, float cx, float cy, float r, float r_in, uint32_t rgb, int alpha) {
+    if (r <= 0 || alpha <= 0) return;
+    if (cx + r + 1 < c->ox || cx - r - 1 >= c->ox + c->w) return;
+    int y0 = (int)(cy - r), y1 = (int)(cy + r), last = -1;
+    if (!page_row_walk(c, &y0, &y1)) return;
+    src_t s = src_color(rgb, c->dim);
+    for (int y = y0; y <= y1; y++) {
+        if (!page_row_next(c, y, &last)) continue;
+        float dy = page_row_mid(c, y) - cy;
+        float out = r * ell_half(dy / r), in = r_in > 0 ? r_in * ell_half(dy / r_in) : 0;
+        if (out <= 0.35f) continue;
+        if (in <= 0.35f) { span(c, (int)(cx - out + 0.5f), (int)(cx + out - 0.5f), y, &s, alpha); continue; }
+        span(c, (int)(cx - out + 0.5f), (int)(cx - in - 0.5f), y, &s, alpha);
+        span(c, (int)(cx + in + 0.5f), (int)(cx + out - 0.5f), y, &s, alpha);
+    }
+}
+void render_internal_rect_blend(render_ctx_t *c, int x, int y, int w, int h, uint32_t rgb, int alpha) {
+    if (w <= 0 || h <= 0 || alpha <= 0) return;
+    int y0 = y, y1 = y + h - 1, last = -1;
+    if (!page_row_walk(c, &y0, &y1)) return;
+    src_t s = src_color(rgb, c->dim);
+    for (int yy = y0; yy <= y1; yy++) if (page_row_next(c, yy, &last)) span(c, x, x + w - 1, yy, &s, alpha);
+}
+void render_internal_poly(render_ctx_t *c, const float *xs, const float *ys, int n, uint32_t rgb, int alpha) {
+    if (n < 3 || alpha <= 0) return;
+    float miny = ys[0], maxy = ys[0];
+    for (int i = 1; i < n; i++) { if (ys[i] < miny) miny = ys[i]; if (ys[i] > maxy) maxy = ys[i]; }
+    int y0 = (int)miny, y1 = (int)maxy, last = -1;
+    if (!page_row_walk(c, &y0, &y1)) return;
+    src_t s = src_color(rgb, c->dim);
+    for (int y = y0; y <= y1; y++) {
+        if (!page_row_next(c, y, &last)) continue;
+        float fy = page_row_mid(c, y), x0 = 1e9f, x1 = -1e9f;
+        for (int i = 0; i < n; i++) {
+            int j = i + 1 == n ? 0 : i + 1;
+            float ay = ys[i], by = ys[j];
+            if ((ay <= fy && by > fy) || (by <= fy && ay > fy)) {
+                float x = xs[i] + (xs[j] - xs[i]) * (fy - ay) / (by - ay);
+                if (x < x0) x0 = x;
+                if (x > x1) x1 = x;
+            }
+        }
+        if (x1 >= x0) span(c, (int)(x0 + 0.5f), (int)(x1 - 0.5f), y, &s, alpha);
+    }
 }
 static void page_theme_thumb(ctx_t *c, int x, int y, int theme, bool unlocked) {
     static const uint32_t water[] = {0x14586a, 0x184638, 0x255d79, 0x142849,

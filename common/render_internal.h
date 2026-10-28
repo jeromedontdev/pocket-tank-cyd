@@ -31,6 +31,11 @@ void render_internal_text(render_ctx_t *c, int x, int y, int scale, uint32_t rgb
 int render_internal_text_wrap(render_ctx_t *c, int x, int y, int width, uint32_t rgb, const char *s);
 void render_internal_page_stamp(render_ctx_t *c, int x, int y, int kind, uint32_t color);
 void render_internal_page_medal(render_ctx_t *c, int x, int y, unsigned medal);
+/* game art primitives: each frame row is drawn once (alpha 255 = opaque) */
+void render_internal_ellipse(render_ctx_t *c, float cx, float cy, float rx, float ry, uint32_t rgb, int alpha);
+void render_internal_annulus(render_ctx_t *c, float cx, float cy, float r, float r_in, uint32_t rgb, int alpha);
+void render_internal_rect_blend(render_ctx_t *c, int x, int y, int w, int h, uint32_t rgb, int alpha);
+void render_internal_poly(render_ctx_t *c, const float *xs, const float *ys, int n, uint32_t rgb, int alpha);
 
 #ifdef RENDER_GAMES_TESTING
 #include "games_internal.h"
