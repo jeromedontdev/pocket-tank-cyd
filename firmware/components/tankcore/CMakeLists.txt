@@ -7,7 +7,7 @@ idf_component_register(
          "${COMMON}/companion.c" "${COMMON}/companion_ui.c" "${COMMON}/weather.c"
          "persist_port_esp.c" "clock_port_esp.c"
     INCLUDE_DIRS "${COMMON}" "."
-    PRIV_REQUIRES nvs_flash cjson spiffs spi_flash
+    PRIV_REQUIRES nvs_flash cjson spiffs spi_flash esp_timer
 )
 add_custom_command(
     OUTPUT "${CYD_ASSETS}/icons_sd.c" "${CYD_ASSETS}/icons_sd_bank.h" "${CYD_ASSETS}/icons.bin"

@@ -20,7 +20,11 @@
 #define STARVE_TRUST_PER_S (1.0f / 1200.0f)   /* a point of trust per 20 min */
 #define STARVE_TRUST_FLOOR 2.0f
 #define SAVE_HEARTBEAT_S 600.0f
-#define SAVE_MIN_GAP_S   30.0f
+/* Routine event saves coalesce for 2 min: each one is a ~140-280 ms SPIFFS
+ * write+sync on the render loop (measured on COM4), and buddy minutes, care
+ * and journal changes dirty the save nearly every 30 s. Explicit keeper
+ * actions (purchases, names, rewards) still save at once. */
+#define SAVE_MIN_GAP_S   120.0f
 
 const char *const MS_NAMES[MS_FISH_COUNT] = {
     "arrived", "first meal from you", "first hold-approach", "first dart", "first bubbles",

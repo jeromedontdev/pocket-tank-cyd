@@ -248,7 +248,8 @@ static void check_motion_cache(void) {
         f.color = 0x123456u * i; f.accent = 0xff9800; f.fin = 0x456789;
         f.traits = i % 2 ? TRAIT_PAINTED_FINS : 0;
         float clock = i * .31f;
-        fish_motion_t m = fish_motion(&f, clock);
+        f.swim_phase = clock * 1.7f;
+        fish_motion_t m = fish_motion(&f);
         float p = tank_fish_pitch(&f);
         assert(m.cp == cosf(p) && m.sp == sinf(p));
         assert(m.yh == yaw_ease(f.yaw) && m.yt == yaw_ease(f.yaw_tail));
@@ -256,7 +257,7 @@ static void check_motion_cache(void) {
         assert(m.body_rgb == mix(mix(f.color, 0xf25b65, f.stress / 10.0f * .22f), 0x7a8a8e, pale));
         assert(m.fin_rgb == mix(mix(f.traits & TRAIT_PAINTED_FINS ? f.accent : f.fin,
                                   0xf25b65, f.stress / 10.0f * .18f), 0x5a6a6e, pale));
-        assert(m.tail == sinf(clock * (8 + f.speed * .055f) + f.wander) * (.32f + f.speed * .007f));
+        assert(m.tail == sinf(f.swim_phase + f.wander) * (.32f + f.speed * .007f));
         const float *offsets = jelly_strands(clock);
         for (int s = 0; s < 5; s++) for (int seg = 1; seg <= 6; seg++)
             assert(offsets[s * 6 + seg - 1] == sinf(clock * 3 + seg * .65f + s) * seg * .55f);
@@ -278,11 +279,11 @@ static void check_motion_cache(void) {
         sh_fin_t fin = sh_fin_geometry(x, y);
         assert(fin.radius == radius && fin.angle == angle);
     }
-    for (int field = 0; field < 11; field++) {
+    for (int field = 0; field < 12; field++) {
         f = (fish_t){.color = 0x123456, .fin = 0xabcdef, .accent = 0x654321,
-                     .hunger = 9, .stress = 1, .yaw = .2f, .yaw_tail = -.5f};
+                     .hunger = 9, .stress = 1, .yaw = .2f, .yaw_tail = -.5f, .swim_phase = 1};
         if (field == 7) f.traits = TRAIT_PAINTED_FINS;
-        (void)fish_motion(&f, 1);
+        (void)fish_motion(&f);
         switch (field) {
         case 0: f.yaw = -.9f; break;
         case 1: f.yaw_tail = .8f; break;
@@ -294,13 +295,14 @@ static void check_motion_cache(void) {
         case 7: f.accent = 0xffffff; break;
         case 8: f.heading = 1; break;
         case 9: f.speed = 23; break;
+        case 10: f.swim_phase = 2.5f; break;
         default: f.wander = 1; break;
         }
-        fish_motion_t m = fish_motion(&f, 1);
+        fish_motion_t m = fish_motion(&f);
         float pale = (f.hunger - 7) / 3.0f * .35f;
         assert(m.yh == yaw_ease(f.yaw) && m.yt == yaw_ease(f.yaw_tail));
         assert(m.cp == cosf(tank_fish_pitch(&f)) && m.sp == sinf(tank_fish_pitch(&f)));
-        assert(m.tail == sinf((8 + f.speed * .055f) + f.wander) * (.32f + f.speed * .007f));
+        assert(m.tail == sinf(f.swim_phase + f.wander) * (.32f + f.speed * .007f));
         assert(m.body_rgb == mix(mix(f.color, 0xf25b65, f.stress / 10.0f * .22f), 0x7a8a8e, pale));
         assert(m.fin_rgb == mix(mix(f.traits & TRAIT_PAINTED_FINS ? f.accent : f.fin,
                                   0xf25b65, f.stress / 10.0f * .18f), 0x5a6a6e, pale));
@@ -586,7 +588,10 @@ static void check_scenery_cadence(void) {
             changed += initial[b] != veg_clock(&t, 1 / grass_rate * .4f, VEG_SEED[b]);
         assert(changed > 0 && changed < VEG_BEDS_MAX);
         fish_t f = {0}; f.speed = 35; f.yaw = f.yaw_tail = 1;
-        fish_motion_t a = fish_motion(&f, .01f), b = fish_motion(&f, .04f);
+        f.swim_phase = .01f * (8 + 35 * .055f);
+        fish_motion_t a = fish_motion(&f);
+        f.swim_phase = .04f * (8 + 35 * .055f);
+        fish_motion_t b = fish_motion(&f);
         assert(a.tail != b.tail);
     }
     assert(g_veg_poses);

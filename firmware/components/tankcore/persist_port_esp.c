@@ -5,6 +5,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_spiffs.h"
 #include "esp_partition.h"
 #include <time.h>
@@ -180,6 +181,7 @@ bool persist_port_load(void *buf, size_t max, size_t *got) {
 }
 bool persist_port_save(const void *buf, size_t len) {
     if (!mount_store()) return false;
+    int64_t started = esp_timer_get_time();
     uint32_t initialized = 1, state = 0;
     int marker = exists(1);
     if (marker < 0 || (marker && !aquarium_store_read(directory, store_id, 1, &state, sizeof state))) return false;
@@ -191,6 +193,8 @@ bool persist_port_save(const void *buf, size_t len) {
     }
     if (state != 1 && !aquarium_store_write(directory, store_id, 1, &initialized, sizeof initialized)) return false;
     if (!aquarium_store_write(directory, store_id, 0, buf, len)) return false;
+    /* Each save stalls the render loop; this line shows its cost and cadence. */
+    ESP_LOGI(TAG, "saved in %lld ms", (long long)((esp_timer_get_time() - started) / 1000));
     /* Active is the sole commit point. Its absence from now on is an error. */
     return true;
 }

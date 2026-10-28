@@ -198,7 +198,15 @@ typedef struct {
                              * fish head-on) and the swim follows it. Not saved. */
     float yaw_tail;         /* the tail's yaw, a beat behind the head's: mid-turn
                              * the body bends (render.c draws both) */
-    int8_t facing;          /* the side it swims on, +1 right / -1 left: changes only
+    float swim_phase;       /* tail-beat phase, advanced by the beat's own frequency
+                             * each tick so a speed change bends the beat instead
+                             * of jumping it. Not saved. */
+    float turn_vel;         /* heading's angular velocity, rad/s: a turn eases in
+                             * and out instead of snapping to full rate. Not saved. */
+    float speed_vel;        /* the speed's own rate of change, px/s^2: the speed is
+                             * sprung toward target_speed, so a change of pace is
+                             * an S-curve rather than a kick. Not saved. */
+    int8_t facing;           /* the side it swims on, +1 right / -1 left: changes only
                              * by a committed turn (or the glass). Not saved. */
     float behind;           /* seconds its way has lain behind it (a turn commits
                              * past a threshold); below 0 = just turned, settling */

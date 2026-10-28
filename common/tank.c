@@ -439,7 +439,7 @@ void tank_set_look(tank_t *t, int slot, uint32_t body, uint32_t accent) {
 
 void tank_fish_face(fish_t *f) {
     f->facing = cosf(f->heading) < 0 ? -1 : 1;
-    f->yaw = f->yaw_tail = f->facing; f->behind = 0;
+    f->yaw = f->yaw_tail = f->facing; f->behind = 0; f->turn_vel = 0;
 }
 
 void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold, stage_t stage) {
@@ -453,7 +453,7 @@ void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold,
     f->model_name = TRAINED_NAMES[slot % N_TRAINED_NAMES];   /* names carry no signal */
     f->x = tank_randf(t, TANK_FX0 + 90, TANK_FX1 - 90); f->y = tank_randf(t, 80, TANK_BOT - 90);
     f->heading = tank_randf(t, 0, TAU); tank_fish_face(f);
-    f->speed = 0; f->target_speed = 0; f->wander = f->x * 0.05f;
+    f->speed = 0; f->target_speed = 0; f->speed_vel = 0; f->wander = f->x * 0.05f; f->swim_phase = f->wander;
     f->base_size = p->size; f->size = p->size; f->turn_rate = p->turn_rate;
     f->hunger = tank_randf(t, 3, 6); f->energy = tank_randf(t, 5, 8);
     f->stress = tank_randf(t, 0, 2); f->curiosity = p->curiosity;
@@ -2597,7 +2597,7 @@ void tank_tick_sleep(tank_t *t, float seconds) {
         f->hunger = clampf(f->hunger + SLEEP_HUNGER_PER_H * h, 0, t->companion.cozy ? 6 : 10);
         f->energy = clampf(f->energy + SLEEP_ENERGY_PER_H * h * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1), 0, 10);
         f->stress = clampf(f->stress - SLEEP_STRESS_PER_H * h * ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1), 0, 10);
-        f->speed = 0; f->target_speed = 0; f->bored = 0; f->breather = 0;  /* a night's sleep is a fresh start */
+        f->speed = 0; f->target_speed = 0; f->speed_vel = 0; f->turn_vel = 0; f->bored = 0; f->breather = 0;  /* a night's sleep is a fresh start */
         f->goal_age += seconds; f->ask_age += seconds;  /* wake re-asks the advisor at once */
     }
     t->idle_s = 0;                                      /* the wake press is handling: lights up */
@@ -2841,7 +2841,7 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
     return tg;
 }
 
-static float wall_avoidance(const fish_t *f, bool *hit) {
+static float wall_avoidance(const fish_t *f, float *weight) {
     const float m = 34;
     float vx = 0, vy = 0;
     float side = 15 * f->size + 6;
@@ -2850,8 +2850,11 @@ static float wall_avoidance(const fish_t *f, bool *hit) {
     if (f->y < m + 6)      vy += 1 - (f->y - 6) / m;
     float bottom = TANK_SAND_TOP - tank_fish_clearance(f);
     if (f->y > bottom - 4) vy -= (f->y - (bottom - 4)) / m;
-    *hit = (vx != 0 || vy != 0);
-    return *hit ? atan2f(vy, vx) : 0;
+    /* A normalized angle alone made a subpixel boundary crossing apply the
+     * full steer, then remove it next frame: the fish seesawed along the edge. */
+    float blend = clampf(fmaxf(fabsf(vx) * side, fabsf(vy) * m) / 4, 0, 1);
+    *weight = 0.62f * blend * blend * (3 - 2 * blend);
+    return blend > 0 ? atan2f(vy, vx) : 0;
 }
 
 static void eat_nearby_food(tank_t *t, fish_t *f) {
@@ -3011,9 +3014,10 @@ static void update_fish(tank_t *t, int idx, float dt) {
         float hover = 1.2f + f->bold * 2.4f + (1 - f->lazy) * 0.5f;
         tg.speed = lerpf(hover, tg.speed, arrival);
     }
-    bool hit; float push = wall_avoidance(f, &hit);
-    if (hit && !final_approach)
-        desired = norm_ang(desired + norm_ang(push - desired) * 0.62f);
+    float wall_weight;
+    float push = wall_avoidance(f, &wall_weight);
+    if (wall_weight > 0 && !final_approach)
+        desired = norm_ang(desired + norm_ang(push - desired) * wall_weight);
 
     /* touch: spooked fish bolt from the tap site; trusting fish drift to a
      * resting finger (reflex-layer, independent of the advisor's goal) */
@@ -3153,12 +3157,23 @@ static void update_fish(tank_t *t, int idx, float dt) {
     if (!settling && behind && f->behind >= commit) {
         f->facing = (int8_t)-f->facing;
         f->heading = norm_ang(3.14159f - f->heading);   /* the climb or dive kept */
+        f->turn_vel = -f->turn_vel;
         f->behind = -(urgent ? 0.65f : TURN_SETTLE);
     }
     bool glancing = behind && f->behind > 0;
     if (desired_cos * f->facing < 0)   /* on its own side until it turns */
         desired = atan2f(sinf(desired), f->facing * fabsf(desired_cos));
-    float turn = clampf(norm_ang(desired - f->heading), -f->turn_rate * dt, f->turn_rate * dt);
+    /* the turn eases in and out (2026-11): the heading's angular velocity
+     * ramps toward the fastest rate that can still stop on the way, so a
+     * fish rolls into a curve and straightens out of it instead of snapping
+     * between full lock and none. Urgent swims ramp ~2.5x harder */
+    float err = norm_ang(desired - f->heading);
+    float turn_accel = f->turn_rate * (urgent ? 24.0f : 9.0f), brake_q = turn_accel * dt * 0.5f;
+    /* the fastest rate that still brakes onto the way in whole ticks */
+    float reach = fminf(f->turn_rate, sqrtf(2 * turn_accel * fabsf(err) + brake_q * brake_q) - brake_q);
+    f->turn_vel += clampf(copysignf(reach, err) - f->turn_vel, -turn_accel * dt, turn_accel * dt);
+    float turn = f->turn_vel * dt;
+    if (turn * err > 0 && fabsf(turn) > fabsf(err)) { turn = err; f->turn_vel = dt > 0 ? err / dt : 0; }
     f->heading = norm_ang(f->heading + turn);
     /* the yaw follows the side: a full turn in ~0.5 s at mira's turn rate
      * (bolt 0.4, nori 0.7), quicker with urgency; a glance is 40% of one.
@@ -3174,7 +3189,19 @@ static void update_fish(tank_t *t, int idx, float dt) {
     if (f->goal.id != GOAL_FLEE_SHADOW)
         for (int b = 0; b < tank_veg_beds(t); b++)
             if (veg_inside(t, b, f->x, f->y)) { f->target_speed *= VEG_SLOW; break; }
-    f->speed = lerpf(f->speed, f->target_speed, clampf(dt * 2.6f, 0, 1));
+    /* the pace is sprung, critically damped (implicit, stable at any dt): a
+     * glance, a canopy or a recovery eases in and out of its new speed
+     * instead of kicking the fish's acceleration. Never past the target */
+    {
+        float omega = urgent ? 10.0f : 5.5f, before = f->speed;
+        f->speed_vel = (f->speed_vel + dt * omega * omega * (f->target_speed - f->speed)) /
+                       (1 + 2 * omega * dt + omega * omega * dt * dt);
+        f->speed += f->speed_vel * dt;
+        if ((f->speed - f->target_speed) * (before - f->target_speed) < 0) { f->speed = f->target_speed; f->speed_vel = 0; }
+        if (f->speed < 0) { f->speed = 0; f->speed_vel = 0; }
+    }
+    f->swim_phase += dt * (8 + f->speed * 0.055f);
+    if (f->swim_phase >= 6.2831853f) f->swim_phase = fmodf(f->swim_phase, 6.2831853f);
     /* the swim follows the facing: side-on it is the heading's own, and as
      * the fish turns head-on its level travel crosses zero and it brakes to
      * 40%. Only a LEVEL turn: steep, the heading steers as it always did (a
@@ -3191,16 +3218,16 @@ static void update_fish(tank_t *t, int idx, float dt) {
 /* the bowl's glass: back onto the circle m inside it, the heading mirrored
                                                               in the glass while it points out, the body turned to swim back in */
     if (f->x < m)          { f->x = m; f->behind = -TURN_SETTLE;
-                                                if (cosf(f->heading) < 0) f->heading = norm_ang(3.14159f - f->heading);
+                                                if (cosf(f->heading) < 0) { f->heading = norm_ang(3.14159f - f->heading); f->turn_vel = -f->turn_vel; }
                                                 if (f->facing < 0) { f->facing = 1; f->behind = -TURN_SETTLE; } }
     if (f->x > TANK_W - m) { f->x = TANK_W - m; f->behind = -TURN_SETTLE;
-                                                if (cosf(f->heading) > 0) f->heading = norm_ang(3.14159f - f->heading);
+                                                if (cosf(f->heading) > 0) { f->heading = norm_ang(3.14159f - f->heading); f->turn_vel = -f->turn_vel; }
                                                 if (f->facing > 0) { f->facing = -1; f->behind = -TURN_SETTLE; } }
     float top = fmaxf(m, tank_fish_top_clearance(f));
-    if (f->y < top)        { f->y = top; if (sinf(f->heading) < 0) f->heading = -f->heading;
+    if (f->y < top)        { f->y = top; if (sinf(f->heading) < 0) { f->heading = -f->heading; f->turn_vel = -f->turn_vel; }
                             f->y = fmaxf(f->y, tank_fish_top_clearance(f)); }
     float bottom = TANK_SAND_TOP - tank_fish_clearance(f);
-    if (f->y > bottom)     { f->y = bottom; if (sinf(f->heading) > 0) f->heading = -f->heading;
+    if (f->y > bottom)     { f->y = bottom; if (sinf(f->heading) > 0) { f->heading = -f->heading; f->turn_vel = -f->turn_vel; }
                             f->y = fminf(f->y, TANK_SAND_TOP - tank_fish_clearance(f)); }
 /* the watch's corners: back onto the arc m inside it, the heading mirrored
                                                               in the glass while it points out (the bowl's rule, a corner at a time) */

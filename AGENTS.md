@@ -20,8 +20,17 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- COM4's current local image supersedes the release acceptance image below:
+  the post-2.3.18 edge-steering plus fluid-motion/save-pacing follow-up, unified
+  build from 50b2a14 plus local changes, app 1,769,280 bytes, slot headroom
+  196,800, SHA256
+  `44a7b57a3f4f0016fd3dadac109cd11a8c906565cfcdc36debbfab8dfa660c31`.
+  Fresh full recovery backup, app readback/profile, verified HTTPS, live soak
+  and save/reboot/reload passed. Residents/settings remain intact; the wallet
+  changes only from normal passive income. Tracing is off. These follow-ups
+  are not published; the website and immutable 2.3.18 tag remain unchanged.
 - The verified 2.3.18 source is `92a2a41d3ee9edbe662d62c3c24c63fe2852a608`.
-  COM4 now runs that clean unified build with the saved `cyd2432s028` profile:
+  At release acceptance COM4 ran that clean unified build with the saved `cyd2432s028` profile:
   app1,769,568 bytes, slot headroom196,512, static DRAM79,731 bytes, SHA256
   `14a55ed66359dca5bdc016b82e85c4287ae8217171aa46f0af6268184d8cc3bb`.
   A fresh full recovery dump, app-only flash/full readback, verified HTTPS,
@@ -430,7 +439,21 @@ or deployment is published. Update this file when its contracts change.
 - Keep behavior polish on the existing bold/lazy traits and steering: rest
   arrival eases toward a trait-scaled hover; laziness moderates food pursuit,
   close food dives steer more directly, and bold fish startle less from taps.
+  Edge avoidance must fade in continuously over its first4 logical pixels,
+  retaining the full0.62 blend beyond that band. Do not normalize a tiny edge
+  penetration into full-strength steering: it causes frame-to-frame nose
+  seesawing. Keep final food approaches exempt and hard clearance bounds intact.
   Do not add a new personality record, save tail or cosmetic animation bank.
+- Fish motion must stay continuous. `fish_t.swim_phase`, `turn_vel` and
+  `speed_vel` are runtime-only, never serialized, and zeroed/reseeded on
+  spawn, facing commits and sleep/wake. Mirror reflections negate `turn_vel`.
+  The tail beat advances `swim_phase` by `dt*(8 + speed*0.055)`; never derive
+  it from wall-clock time, or frame hitches and speed changes jump the tail.
+  Turns accelerate at 9x (urgent 24x) `turn_rate` and brake to land exactly
+  on the target; speed follows an implicit critically-damped spring (omega
+  5.5, urgent 10) that never overshoots or goes negative. `test_fluid_motion`
+  requires turn jerk <0.7 and speed jerk <0.35; the old bang-bang/lerp logic fails.
+  Measured on COM4, this is FPS-neutral; keep any change to it FPS-neutral too.
   `tools/test_fish_behavior.py --cc gcc` checks continuity, all ten varieties,
   tank edges, reactions and frame-step stability. Intentional behavior changes
   alter trajectories: compare old/new renderer pixels using the same updated
@@ -534,7 +557,11 @@ or further split modules without a concrete maintenance benefit.
   `<17` care.
 - Update every relevant import/export, active/Bank/away/tank-switch path,
   rollback snapshot, simulator fixture, viewer, and documentation together.
-- Active-save writes are event-driven/coalesced (30 seconds; 10-minute heartbeat).
+- Active-save writes are event-driven/coalesced (2 minutes; 10-minute heartbeat).
+  Each SPIFFS save stalls the render loop for ~140-280 ms (one visible hitch),
+  and routine buddy/care/journal changes dirty the save almost every 30 s, so
+  do not shorten `SAVE_MIN_GAP_S`. Explicit keeper actions, sleep, restarts and
+  updates still save at once. The port logs `persist: saved in N ms`.
   Do not add per-frame flash writes. Failed loads must not overwrite saves.
 - Rendering uses internal RAM, cached/tiled backgrounds and DMA stripe buffers.
   Check `memory_plan.h`, heap and application-slot headroom after changes.

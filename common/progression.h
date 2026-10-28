@@ -21,7 +21,8 @@
  *    Hard starvation deaths accrue only while running, never offline or from
  *    old age. Normal and Creative do not kill fish.
  *  - Saves: on events (arrival, stage, milestone, light change), coalesced to
- *    >= 30 s apart, plus a 10-minute heartbeat - NVS-friendly. */
+ *    >= 2 min apart, plus a 10-minute heartbeat; explicit keeper actions save
+ *    at once. Each routine save is a visible SPIFFS stall, so keep them rare. */
 #ifndef PROGRESSION_H
 #define PROGRESSION_H
 #include "tank.h"

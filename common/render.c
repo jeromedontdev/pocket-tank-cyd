@@ -537,23 +537,24 @@ static const float *jelly_strands(float clock) {
     return offsets;
 }
 typedef struct {
-    float clock, speed, heading, wander, tail, cp, sp;
+    float phase, speed, heading, wander, tail, cp, sp;
     float yaw, yaw_tail, hunger, stress, yh, yt;
     uint32_t color, accent, fin, body_rgb, fin_rgb;
     unsigned traits;
     bool valid;
 } fish_motion_t;
-static fish_motion_t fish_motion(const fish_t *f, float clock) {
+static fish_motion_t fish_motion(const fish_t *f) {
     static fish_motion_t cache[N_FISH_MAX];
     fish_motion_t *m = &cache[(unsigned)f->preset % N_FISH_MAX];
-    if (!m->valid || m->clock != clock || m->speed != f->speed ||
+    if (!m->valid || m->phase != f->swim_phase || m->speed != f->speed ||
         m->heading != f->heading || m->wander != f->wander ||
         m->yaw != f->yaw || m->yaw_tail != f->yaw_tail ||
         m->hunger != f->hunger || m->stress != f->stress ||
         m->color != f->color || m->accent != f->accent || m->fin != f->fin || m->traits != f->traits) {
         float pitch = tank_fish_pitch(f);
-        m->tail = sinf(clock * (8 + f->speed * 0.055f) + f->wander) *
-            (0.32f + f->speed * 0.007f);
+        /* the beat's phase is the fish's own (tank.c advances it at the beat's
+         * frequency), so a speed change bends the beat instead of jumping it */
+        m->tail = sinf(f->swim_phase + f->wander) * (0.32f + f->speed * 0.007f);
         m->cp = cosf(pitch); m->sp = sinf(pitch);
         m->yh = yaw_ease(f->yaw); m->yt = yaw_ease(f->yaw_tail);
         float stress = f->stress / 10.0f;
@@ -564,13 +565,13 @@ static fish_motion_t fish_motion(const fish_t *f, float clock) {
         m->yaw = f->yaw; m->yaw_tail = f->yaw_tail;
         m->hunger = f->hunger; m->stress = f->stress;
         m->color = f->color; m->accent = f->accent; m->fin = f->fin; m->traits = f->traits;
-        m->clock = clock; m->speed = f->speed; m->heading = f->heading; m->wander = f->wander;
+        m->phase = f->swim_phase; m->speed = f->speed; m->heading = f->heading; m->wander = f->wander;
         m->valid = true;
     }
     return *m;
 }
 static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, float mark) {
-    fish_motion_t motion = fish_motion(f, clock);
+    fish_motion_t motion = fish_motion(f);
     float tail = motion.tail;
     /* pitch: the heading folded to face right (the climb or dive), then the
      * yaw scales x: X = s(lx) * (lx cos p - ly sin p), Y = lx sin p + ly cos p.
@@ -6764,6 +6765,7 @@ void render_fish_preview(uint16_t *fb, int stride, float x, float y, float size,
     f.stage = STAGE_ADULT;                       /* grown: the crest shows the fin colour */
     f.hunger = 4; f.stress = 0; f.goal.id = GOAL_EXPLORE;
     f.color = body; f.fin = fin; f.accent = accent;
+    f.swim_phase = fmodf(clock * (8 + 40 * 0.055f), 6.2831853f);   /* a steady cruise's beat */
     tank_fish_face(&f);                          /* side-on, facing right */
     draw_fish_core(&c, &f, clock, false, size);
 }
@@ -6818,6 +6820,7 @@ void render_fish_portrait(uint16_t *fb, int stride, float x, float y, float size
     f.color = who->color; f.fin = who->fin; f.accent = who->accent;
     f.variety = who->variety; f.pattern = who->pattern; f.wearable = who->wearable; f.wear_colors = who->wear_colors;
     f.traits = who->traits;
+    f.swim_phase = fmodf(clock * (8 + 40 * 0.055f), 6.2831853f);
     tank_fish_face(&f);
     draw_fish_core(&c, &f, clock, false, size);
 }

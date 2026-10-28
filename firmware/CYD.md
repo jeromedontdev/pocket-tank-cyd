@@ -528,6 +528,81 @@ successful HTTPS, the same residents/wallet/settings and another successful
 save. The cause of the earlier alternate-copy warning was not established.
 No save reset or old-snapshot restoration was performed. Verbose tracing is off.
 
+### Edge-steering follow-up after 2.3.18
+
+A cruising fixture reproduced nose-up/nose-down seesawing at the surface
+avoidance margin: moving across y40 by hundredths of a logical pixel switched
+the entire0.62 steering blend on or off. One measured sequence alternated
+roughly7.5-degree pitch steps on consecutive40ms frames. This was an edge-force
+discontinuity, not a fin-animation problem or a reason to remove normal swimming
+bends. The same on/off logic also governed the sides and sand margin.
+
+Avoidance now uses a smoothstep ramp over the first4 logical pixels of
+penetration, retaining the existing direction and full0.62 blend beyond that
+band. Final close food approaches still bypass avoidance; hard body/wearable
+clearance bounds, normal bob/fin animation, traits and save layouts are unchanged.
+No new per-fish state, allocation or renderer smoothing is added.
+
+The behavior harness tests both scales, all ten varieties and all four margin
+entries at33/67/100ms steps: crossing a margin by0.002 pixels changes body pitch
+by less than0.001 radians. Ten-second surface-cruising fixtures for all six
+behavior presets reject sustained alternating nose reversals; ordinary turns
+remain allowed. The new continuity regression rejects the released2.3.18
+simulation and passes the follow-up. Feeding, save/inventory and actual-renderer
+full/tile/retained regressions also passed. This follow-up is not included in
+the published2.3.18 tag.
+
+COM4 now runs this local follow-up as2.3.18/50b2a14-dirty, unified image with
+the saved `cyd2432s028` profile. The app is1,769,696 bytes with196,384 bytes of
+OTA headroom; SHA256 is
+`031d050e51ee85b16bac62c86c2dc6e9157bf3b54fc8cdeb0d43937a473ad732`.
+A fresh4-MiB recovery backup, active-slot app-only flash, complete readback,
+profile reboot verification,110-second boot/live soak, verified HTTPS and a
+separate save/reboot/reload passed without snapshot CRC warnings. Original
+residents and settings remain intact; wallet7741/earned11381 reflects three
+normal passive-income coins since the earlier7738/11378 observation, not a save
+reset. Tracing is off. This verifies installation, persistence and simulation
+regressions; it is not a camera confirmation of the user's specific fish.
+No new release or website deployment was performed for this follow-up.
+
+### Fluid fish motion and save pacing after 2.3.18
+
+Three motion changes remove visible steps from swimming without changing art,
+saves or render cost:
+
+- **Continuous tail beat.** Each fish advances a runtime `swim_phase` by
+  `dt*(8 + speed*0.055)`. The tail no longer multiplies wall-clock time by the
+  current speed, which made the fin jump whenever speed changed or a frame was late.
+- **Eased turns.** A runtime `turn_vel` accelerates at 9x (urgent 24x)
+  `turn_rate` and brakes so the heading lands on its target instead of
+  snapping between full turn speed and zero. Edge mirrors negate it.
+- **Sprung pace.** Speed follows an implicit critically-damped spring
+  (omega 5.5, urgent 10) via a runtime `speed_vel`, never overshooting the
+  target or going negative.
+
+The three fields are not serialized, so schema 19 is unchanged. In
+`test_fluid_motion`, turn jerk drops from about 1.0 to 0.45 and speed jerk from
+about 0.60 to 0.19; the thresholds are 0.7 and 0.35, so the old logic fails.
+
+The remaining periodic hitch was the autosave. On COM4 each SPIFFS save took
+137-283 ms (marker read ~12, inspect ~10, write+sync 110-255, readback ~5),
+producing a 270-370 ms frame. Buddy minutes, care, journal and award updates
+dirtied the save almost every 30 seconds. Routine saves now coalesce to at least
+2 minutes (10-minute heartbeat unchanged). Purchases, renames, rewards, sleep,
+restarts and updates still save at once, so only routine progress from the last
+2 minutes is at risk on sudden power loss. The port logs `persist: saved in N ms`.
+
+COM4 measurements (same fixtures, before -> after): FPS 20.01 -> 19.90,
+19.28 -> 19.16, 15.48 -> 15.66 and 17.08 -> 17.03, with p95/p99 unchanged, so
+all changes are within noise. Quiet-soak windows with a >=250 ms frame fell
+from 4 of 12 to 1 of 12, and routine saves were measured exactly 120 s apart.
+
+COM4 runs this as a unified image with the saved `cyd2432s028` profile: app
+1,769,280 bytes, 196,800 bytes of OTA headroom, SHA256
+`44a7b57a3f4f0016fd3dadac109cd11a8c906565cfcdc36debbfab8dfa660c31`. A fresh
+full recovery backup, readback, HTTPS, live soak and save/reboot/reload passed
+with residents intact. Not released.
+
 ### 2.3.18 frame-pacing and snapshot follow-up
 
 The renderer can bracket an immutable frame with `render_frame_begin` and

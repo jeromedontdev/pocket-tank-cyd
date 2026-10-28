@@ -110,6 +110,73 @@ static void test_rest_step_sizes(void) {
     assert(fabsf(fine.fish[0].speed - coarse.fish[0].speed) < 0.75f);
 }
 
+static void test_edge_steering_continuity(void) {
+    const float steps[] = {0.033f, 0.067f, 0.1f};
+    for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++)
+        for (int edge = 0; edge < 4; edge++)
+            for (unsigned step = 0; step < sizeof steps / sizeof steps[0]; step++) {
+                tank_t outside, inside;
+                one_fish(&outside, 712, 1, 0.55f, 0.45f);
+                fish_t *f = &outside.fish[0];
+                f->variety = (uint8_t)variety;
+                f->x = TANK_W * 0.5f;
+                f->y = TANK_H * 0.5f;
+                f->heading = edge == 0 ? 3.14159265f : 0;
+                tank_fish_face(f);
+                f->speed = f->target_speed = 0;
+                f->wander = 0;
+                f->goal.id = GOAL_EXPLORE;
+                f->explore_set = true;
+                float side = 15 * f->size + 6;
+                if (edge == 0) f->x = side - 0.001f;
+                if (edge == 1) f->x = TANK_W - side + 0.001f;
+                if (edge == 2) f->y = 40 - 0.001f;
+                if (edge == 3) f->y = TANK_SAND_TOP - tank_fish_clearance(f) - 4 + 0.001f;
+                f->explore_x = edge == 0 ? 0 : TANK_W;
+                f->explore_y = edge == 2 ? 0 : edge == 3 ? TANK_H : f->y - 12;
+                inside = outside;
+                if (edge == 0) inside.fish[0].x += 0.002f;
+                if (edge == 1) inside.fish[0].x -= 0.002f;
+                if (edge == 2) inside.fish[0].y += 0.002f;
+                if (edge == 3) inside.fish[0].y -= 0.002f;
+                tank_tick(&outside, steps[step], hold_goal);
+                tank_tick(&inside, steps[step], hold_goal);
+                assert(fabsf(tank_fish_pitch(f) - tank_fish_pitch(&inside.fish[0])) < 0.001f);
+                assert(fabsf(f->y - inside.fish[0].y) < 0.01f);
+            }
+}
+
+static void test_surface_cruising_without_seesaw(void) {
+    for (int preset = 0; preset < tank_roster_count(); preset++) {
+        tank_t t;
+        one_fish(&t, 712, preset, 0.55f, 0.45f);
+        fish_t *f = &t.fish[0];
+        f->x = TANK_W * 0.35f;
+        f->y = 40;
+        f->heading = 0;
+        tank_fish_face(f);
+        f->speed = f->target_speed = 18;
+        f->goal.id = GOAL_EXPLORE;
+        f->explore_set = true;
+        f->explore_x = TANK_W * 0.8f;
+        f->explore_y = f->y;
+        float previous = tank_fish_pitch(f), delta = 0;
+        int rapid_reversals = 0;
+        for (int i = 0; i < 250; i++) {
+            tank_tick(&t, 0.04f, hold_goal);
+            float pitch = tank_fish_pitch(f), next_delta = pitch - previous;
+            /* A normal bend may reverse once; a seesaw reverses repeatedly
+             * on consecutive frames by more than ~0.6 degrees. */
+            if (next_delta * delta < 0 && fabsf(next_delta) > 0.01f && fabsf(delta) > 0.01f)
+                rapid_reversals++;
+            else rapid_reversals = 0;
+            assert(rapid_reversals < 3);
+            previous = pitch;
+            delta = next_delta;
+        }
+    }
+}
+
 static void test_food_dive_and_personality(void) {
     tank_t near, bold, gentle;
     one_fish(&near, 19, 1, 0.5f, 0.4f);
@@ -205,6 +272,8 @@ static void test_close_dive_threshold(void) {
         if (dy > 0.5f)
             vertical += (1 - 0.72f) * (1 - hypotf(20, dy) / 80);
         float expected = atan2f(dy * vertical, 20);
+        /* already turning hard its way: the eased turn lands exactly on the target */
+        f->turn_vel = expected > 0 ? 1000.0f : expected < 0 ? -1000.0f : 0;
         tank_tick(&t, 0.01f, NULL);
         /* The glass can reflect a small dive after a pose-clearance change. */
         if (fabsf(fabsf(f->heading) - fabsf(expected)) >= 0.000001f)
@@ -227,6 +296,7 @@ static void test_close_dive_threshold(void) {
     t.food[0].alive = true;
     t.food[0].x = f->x + 20;
     t.food[0].y = f->y + 40;
+    f->turn_vel = 1000;
     tank_tick(&t, 0.01f, NULL);
     assert(f->heading > 0.9f && t.food[0].y < TANK_SAND_TOP);
 }
@@ -282,6 +352,61 @@ static void test_species_edges_and_render_purity(void) {
     assert(memcmp(&before, &t, sizeof t) == 0);
 }
 
+/* Fluid motion (2026-11): the tail beat's phase advances at its own frequency
+ * (no jump when the speed changes), the heading's turn rate ramps instead of
+ * snapping between full lock and none, and a change of pace is sprung. */
+static void test_fluid_motion(void) {
+    const float dt = 0.04f;
+    for (int preset = 0; preset < tank_roster_count(); preset++) {
+        tank_t t;
+        one_fish(&t, 900 + preset, preset, 0.55f, 0.45f);
+        fish_t *f = &t.fish[0];
+        f->x = TANK_W * 0.5f;
+        f->y = TANK_H * 0.4f;
+        f->heading = 0;
+        tank_fish_face(f);
+        f->speed = f->target_speed = 18;
+        f->goal.id = GOAL_EXPLORE;
+        f->explore_set = true;
+        float prev_step = 0, prev_dv = 0, max_turn_jerk = 0, max_speed_jerk = 0, top_speed = 0, top_target = 18;
+        bool have_step = false;
+        for (int i = 0; i < 750; i++) {
+            if (i % 75 == 0) {
+                /* a fresh destination every 3 s: up, down, across and back */
+                f->explore_set = true;
+                f->explore_x = (i / 75) % 2 ? TANK_W * 0.15f : TANK_W * 0.85f;
+                f->explore_y = TANK_H * ((i / 75) % 3 == 0 ? 0.25f : (i / 75) % 3 == 1 ? 0.55f : 0.4f);
+                f->goal.id = GOAL_EXPLORE;
+            }
+            float heading = f->heading, phase = f->swim_phase, speed = f->speed;
+            int8_t facing = f->facing;
+            tank_tick(&t, dt, hold_goal);
+            float dphase = f->swim_phase - phase;
+            if (dphase < 0) dphase += 6.2831853f;
+            assert(f->swim_phase >= 0 && f->swim_phase < 6.2831853f);
+            assert(fabsf(dphase - dt * (8 + f->speed * 0.055f)) < 0.001f);
+            assert(isfinite(f->speed) && f->speed >= 0 && isfinite(f->turn_vel));
+            top_speed = fmaxf(top_speed, f->speed);
+            top_target = fmaxf(top_target, f->target_speed);
+            float step = atan2f(sinf(f->heading - heading), cosf(f->heading - heading));
+            bool mirrored = f->facing != facing || fabsf(step) > f->turn_rate * dt * 1.01f;
+            if (!mirrored && have_step) {
+                float jerk = fabsf(step - prev_step) / (f->turn_rate * dt);
+                if (jerk > max_turn_jerk) max_turn_jerk = jerk;
+            }
+            have_step = !mirrored;
+            prev_step = step;
+            float dv = f->speed - speed;
+            if (i > 0 && fabsf(dv - prev_dv) > max_speed_jerk) max_speed_jerk = fabsf(dv - prev_dv);
+            prev_dv = dv;
+        }
+        /* the old bang-bang turn and first-order pace measured ~1.0 and ~0.6
+         * here; the eased ones ~0.45 and ~0.2 */
+        assert(max_turn_jerk < 0.7f);
+        assert(max_speed_jerk < 0.35f);
+        assert(top_speed <= top_target + 0.001f);
+    }
+}
 int main(int argc, char **argv) {
     assert(argc == 2);
     FILE *icons = fopen(argv[1], "rb");
@@ -292,12 +417,15 @@ int main(int argc, char **argv) {
         tank_resolution(enlarged != 0);
         test_rest_arrival_and_turn_continuity();
         test_rest_step_sizes();
+        test_edge_steering_continuity();
+        test_surface_cruising_without_seesaw();
+        test_fluid_motion();
         test_food_dive_and_personality();
         test_sand_target_offsets();
         test_close_dive_threshold();
         test_tap_and_enrichment_reactions();
         test_species_edges_and_render_purity();
     }
-    puts("PASS: normal/enlarged resolutions, rest arrival/step sizes, smooth committed turns, food dives/personality, sand target offsets/dive threshold, tap sensitivity, enrichment, ten-variety edges, render purity");
+    puts("PASS: normal/enlarged resolutions, rest arrival/step sizes, smooth committed turns, continuous four-edge steering and surface cruising without seesaw, continuous tail beat with eased turns and sprung pace, food dives/personality, sand target offsets/dive threshold, tap sensitivity, enrichment, ten-variety edges, render purity");
     return 0;
 }
