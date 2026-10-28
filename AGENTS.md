@@ -20,6 +20,22 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- The verified 2.3.18 source is `92a2a41d3ee9edbe662d62c3c24c63fe2852a608`.
+  COM4 now runs that clean unified build with the saved `cyd2432s028` profile:
+  app1,769,568 bytes, slot headroom196,512, static DRAM79,731 bytes, SHA256
+  `14a55ed66359dca5bdc016b82e85c4287ae8217171aa46f0af6268184d8cc3bb`.
+  A fresh full recovery dump, app-only flash/full readback, verified HTTPS,
+  all16 controlled fixtures, live soak and explicit save/reboot/reload passed;
+  original residents/wallet/settings remain intact and tracing is off.
+  Linux/native/browser CI passed on that source; all three board bundles and
+  actual installer/migration handlers passed locally. Recheck release/tag/Pages
+  status before claiming publication. Default adaptive fixtures improved only
+  1.7-2.0% over the already-optimized prior hardware image; clock p95 fell
+  76->72ms. Live quiet windows still had a331ms maximum: do not promise
+  hitch-free animation. A natural daily backup verified successfully, but its
+  104ms snapshot and199ms completion are separate remaining rare service stalls.
+  Do not prioritize another daily-backup rewrite over regular rendering.
+  See [final COM4 acceptance](firmware/CYD.md#final-2318-com4-acceptance).
 - Release 2.3.17 contains the rendering/weather/backup follow-up. The 2.3.15/16
   attempts failed before publication on strict-C POSIX and lazy image-decode
   test gates; preserve their tags. Require the Linux native backup harness
@@ -47,7 +63,7 @@ or deployment is published. Update this file when its contracts change.
   Actual backup pause remains about105ms (108.9ms before), not the larger
   native-only validator speedup. Frame metadata is optional leased RAM; the
   first permanent-key/extra-histogram trial broke HTTPS PSA memory allocation.
-  Current app1,767,264 bytes, slot headroom198,816, static DRAM79,731 bytes.
+  That prior app was1,767,264 bytes, slot headroom198,816, static DRAM79,731 bytes.
   See [measurements and limitations](firmware/CYD.md#com4-beforeafter-measurements).
   Those are pre-polish measurements, not the final 2.3.18 image identity.
 - Release 2.3.14 content expansion: exactly six new wearables (IDs7–12) and twenty

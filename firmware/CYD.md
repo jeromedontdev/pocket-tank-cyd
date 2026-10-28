@@ -465,13 +465,68 @@ The 518-screen menu audit and actual-renderer screenshots check the layout.
 Final source acceptance also compares the 2.3.17 renderer against the updated
 simulation: all 12 scene hashes and 48 sampled frame hashes match, separating
 intentional steering changes from pixel changes. Flat/rounded 30-second soaks
-checked 17,486/16,443 full/tile/retained frame sets. The embedded icon bank,
+checked 8,533/8,274 full/tile/retained frame sets on the final guarded source.
+These variable soak counts are correctness coverage, not FPS benchmarks. The embedded icon bank,
 delayed-DMA LCD ownership/scaling/inversion, absolute deadlines, scoped clocks,
 complete backup/inventory, profiles, Creative, RPG, wardrobe, hourly weather,
 SD worker and native simulator checks passed. There were 41 Python contract
 tests with one expected skip. The final Emscripten 4.0.18/Playwright 1.56.1
 browser build passed all 63 shop entries, touch/mobile/fullscreen, durable
 save/import, exclusive-tab and corruption/quota recovery checks.
+
+### Final 2.3.18 COM4 acceptance
+
+The clean hardware-tested source is
+`92a2a41d3ee9edbe662d62c3c24c63fe2852a608`. The unified app is1,769,568 bytes,
+leaving196,512 bytes in each OTA slot; static DRAM is79,731 bytes. Its local
+SHA256 is `14a55ed66359dca5bdc016b82e85c4287ae8217171aa46f0af6268184d8cc3bb`.
+A new4-MiB recovery dump, active-slot app-only COM4 flash, complete app readback
+and saved `cyd2432s028` profile verification passed. Build metadata means CI's
+release binaries need not share the local hash. The full Linux/native/browser
+[CI run](https://github.com/jeromedontdev/pocket-tank-cyd/actions/runs/40603949665)
+passed, as did local all-three-board packaging and actual desktop/mobile
+installer and unified/legacy migration handler tests.
+
+The fresh comparison baseline is the already-optimized2.3.17/44dee70-dirty
+hardware image described below, not the original published2.3.17. Both runs
+use Normal240x180, Balanced, five fixed-seed fish,40-row tiles and240 measured
+frames after10 warmups with the same service reserve. Steering changes affect
+trajectories: these are whole-build comparisons, not isolated renderer timings.
+Default adaptive mode3 measured:
+
+| Fixture | FPS before / after | p95 ms | p99 ms | Maximum ms |
+|---|---|---|---|---|
+| First fish group |19.92 /20.25|56 /56|62 /60|61.9 /60.9|
+| Second fish group |19.15 /19.50|58 /58|62 /62|64.9 /63.9|
+| Clock and decor |15.45 /15.76|76 /72|80 /78|79.9 /79.9|
+| Repeated decor |16.93 /17.26|66 /64|72 /70|72.9 /71.9|
+
+All16 mean-FPS comparisons across the four damage modes improved; the default
+gains are1.66/1.83/2.01/1.95%. Clock/decor render time fell49.47->48.37ms and
+tick time3.63->3.44ms. LCD fill changed by only about0.03-0.04ms: do not claim a
+substantial measured conversion gain. Explicit partial rendering remains slower
+than default adaptive/full; damage-policy constants are unchanged.
+
+A separate125-second quiet live sample (not controlled A/B) showed15.0-17.5FPS,
+p95 bounds66-82ms and a331ms maximum. Occasional long service frames remain;
+this is not hitch-free animation. A genuine once-daily backup occurred naturally
+in that sample and verified `/sdcard/pocket-tank/auto-0006.json` (12,613 bytes).
+Export/validation took36.486/63.219ms, the snapshot service104.187ms, worker
+storage/readback561.516ms, and later completion/status persistence blocked the
+tank task for199.272ms. The associated window peaked284ms; the331ms window was
+not the backup. The earlier approximately105ms figure describes capture only,
+not the entire event. This rare daily event does not justify another backup
+rewrite or explain every live hitch.
+
+Verified HTTPS succeeded at boot (4,494ms request; radio and cache lease then
+released). Original Bolt/Pip remain elders and Kelp/Odie adults; wallet7738,
+earned11378, ownership`c000fee3`, upgrades`0f`, enrichment settings, clock and
+hardware profile were preserved. One alternate aquarium-copy CRC warning
+appeared after the fixture run; later saves succeeded. A separate explicit
+save/reboot/reload test verified both copy inspections without warnings,
+successful HTTPS, the same residents/wallet/settings and another successful
+save. The cause of the earlier alternate-copy warning was not established.
+No save reset or old-snapshot restoration was performed. Verbose tracing is off.
 
 ### 2.3.18 frame-pacing and snapshot follow-up
 
