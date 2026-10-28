@@ -726,8 +726,11 @@ after a fresh full backup (`games-art3-com4-backup.bin`). Not released.
   decor slots 36-49 and can be moved like other decorations. Buying any piece
   opens its placement page straight away. The shop modal shows MOVE beside
   SELL (`REFUND n - LEAVES TANK`; free pieces read REMOVE). Floor pieces get
-  MIRROR and depth. Floats (lilies, duck, log) stay on the surface, with no
-  depth bar or order arrows. Saves are schema 20 / 6424 bytes: the 88-byte
+  MIRROR and depth. Floats (lilies, duck, log) stay on the surface with no
+  order arrows, but have a BEHIND / IN FRONT depth bar: BEHIND (the stored
+  default, today's look) draws them before the fish, IN FRONT after the fish
+  (the live pass and the simple scene alike; z is in the scene hash). Same
+  draw, a different place in the order, so it costs no FPS. Saves are schema 20 / 6424 bytes: the 88-byte
   `decor_fixed_t` at 6336 holds version, x, z and ranks. `x == 0` keeps the
   historical spot, and 6336-byte saves load unchanged.
 - **Snapshot fix.** `setup_begin_place` keeps the raw fixed z in its
@@ -782,6 +785,32 @@ COM4 runs this unified image: app 1,788,768 bytes, 177,312 bytes of OTA
 headroom, SHA256
 `1893fed670be1168f4462d00ca5590c366cf8ba6c188c337af80932c0b125318`, flashed
 after a fresh full backup (`lazy-restore-com4-backup.bin`). Not released.
+
+#### Internal RAM: buying and weather
+
+The static 6424-byte `s_save_scratch` in DRAM .bss took that much heap. In the
+shop, free heap fell from 29 KB (10 KB largest block) to 23 KB (3 KB), so
+`progression_buy`'s `tank_t` copy failed with NOT ENOUGH MEMORY. The weather
+HTTPS connect also failed (`ESP_ERR_HTTP_CONNECT` at 24.5 KB free).
+
+- The scratch moved to RTC slow memory (`RTC_NOINIT_ATTR`; `.rtc_noinit` is
+  now 0x1b38 of ~0x1fe8). Every user memsets it first.
+- `DECOR_SLOTS` grew by 14, so `PIECES_MAX` went from 35 to 49. `piece_t`
+  fields are now `int16_t` (`g_pc` 1764 -> 980 bytes). `scene_sig_t` packs
+  item/z/q to `uint8_t` and cx to `int16_t` (1004 -> 468 bytes, three copies).
+
+COM4 after the fix:
+
+- Boot weather: `https start` free 27,144 B, largest 24,576 B, request OK in
+  1.8 s (it failed before the fix).
+- Heap 33 KB, largest block 19 KB, both live and in the shop.
+- Tank stack: 7232 B free minimum.
+- Live view 16.8 FPS.
+- `save` takes 206 ms; `bank verify` passes.
+
+Image: app 1,785,376 bytes, 180,704 bytes of headroom, SHA256
+`c79c705788fbe1955c894638f7dd1b026a13cf5827bedc3450de97aa633db799`.
+Backup: `packed-pieces-com4-backup.bin`.
 
 ### 2.3.18 frame-pacing and snapshot follow-up
 

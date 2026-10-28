@@ -4430,19 +4430,21 @@ void render_ornament_preview(uint16_t *fb, int stride, int item, int cx, int bot
 }
 #define PIECES_MAX (DECOR_SLOTS - 1)
 _Static_assert(PIECES_MAX <= 64, "vegetation piece-index masks use uint64_t");
+/* packed (2026-10-28): 49 pieces since the scenery moves, and the CYD's internal
+   RAM is what the weather's TLS handshake needs - every field fits 16 bits */
 typedef struct {
-    int  item;                            /* castle, coral, cluster, pumpkin, or chest */
-    int  cx, z;                           /* its centre on the floor, its depth */
+    int16_t item;                         /* castle, coral, cluster, pumpkin, or chest */
+    int16_t cx, z;                        /* its centre on the floor, its depth */
     bool placing;                         /* dragged on its page this frame */
     bool mirror;                          /* a sprite piece facing the other way (tank_decor_mirrored) */
     bool baked;                           /* in the scene this frame (its mask is this frame's) */
-    int  x0, y0, w, rows;                 /* its box: the mask's frame */
-    int  mask;                           /* only procedural corals/pumpkin need scratch masks */
+    int16_t x0, y0, w, rows;              /* its box: the mask's frame */
+    int16_t mask;                         /* only procedural corals/pumpkin need scratch masks */
 } piece_t;
 static piece_t g_pc[PIECES_MAX];
 static bool g_scene_front;                /* the baked scene holds the pieces IN FRONT */
 /* the scene's signature: what the bake depends on (render_tank rebakes on a change) */
-typedef struct { int n, item[PIECES_MAX], cx[PIECES_MAX], z[PIECES_MAX], q[PIECES_MAX]; uint32_t col[PIECES_MAX], scenery, vegetation; float dim; bool front, simple; uint8_t extra_scenery, season; int lx; } scene_sig_t;
+typedef struct { int n; uint32_t col[PIECES_MAX]; int16_t cx[PIECES_MAX]; uint8_t item[PIECES_MAX], z[PIECES_MAX], q[PIECES_MAX]; uint32_t scenery, vegetation; float dim; bool front, simple; uint8_t extra_scenery, season; int lx; } scene_sig_t;
 static scene_sig_t g_sig; static bool g_sig_ok;
 static bool g_pk_hidden;                  /* director `pumpkin off`: the frame-rate A/B */
 void render_set_pumpkin_hidden(bool hidden) { g_pk_hidden = hidden; }
@@ -4820,8 +4822,9 @@ static void draw_floor_scenery(ctx_t *c, const tank_t *t, bool final) {
 }
 /* the floats (log, lilies, duck): on the surface at the keeper's x (render_tank sways them live) */
 static const int SURFACE_FLOATS[3] = {28, 24, 29};
-static void draw_surface_floats(ctx_t *c, const tank_t *t) {
-    for (int i = 0; i < 3; i++) if (tank_decor_owned(t, SURFACE_FLOATS[i]))
+/* a float BEHIND (the default) is under the fish, IN FRONT over them: the same draw, its place in the order */
+static void draw_surface_floats(ctx_t *c, const tank_t *t, int z) {
+    for (int i = 0; i < 3; i++) if (tank_decor_owned(t, SURFACE_FLOATS[i]) && tank_decor_z(t, SURFACE_FLOATS[i]) == z)
         draw_ornament_flip(c, SURFACE_FLOATS[i], (int)tank_decor_x(t, SURFACE_FLOATS[i]) - 20, 2, 1, false, true, 0,
                            tank_decor_mirrored(t, SURFACE_FLOATS[i]));
 }
@@ -4848,7 +4851,7 @@ static void draw_simple_static(ctx_t *c, const tank_t *t) {
             draw_veg(c, t, b, VEG_SEED[b], -1, false);
         }
     }
-    draw_surface_floats(c, t);
+    draw_surface_floats(c, t, DECOR_Z_BACK);
     g_veg_skip = 0;
 }
 static uint16_t *g_backdrop;
@@ -4938,6 +4941,7 @@ static void backdrop_prepare(const tank_t *t, float dim) {
         for (int i = 0; i < 3; i++) {                     /* the floats bake into the simple scene where they stand */
             hash = (hash ^ (unsigned)(int)tank_decor_x(t, SURFACE_FLOATS[i])) * 16777619u;
             hash = (hash ^ (unsigned)tank_decor_mirrored(t, SURFACE_FLOATS[i])) * 16777619u;
+        hash = (hash ^ (unsigned)tank_decor_z(t, SURFACE_FLOATS[i])) * 16777619u;
         }
         sig.vegetation = hash;
     }
@@ -5599,6 +5603,7 @@ static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float d
         draw_food_pellet(&c, t->food[i].x, t->food[i].y);
     PROF_ADD(3, p0);
     for (int i = 0; i < t->n_fish; i++) draw_fish(&c, t, &t->fish[i]);
+    draw_surface_floats(&c, t, DECOR_Z_FRONT);
     draw_inventory_extras(&c, t, DECOR_Z_FRONT);
     draw_tank_mussel(&c, t);
     PROF_ADD(4, p0);
@@ -5684,14 +5689,14 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
         theme_detail_draw(&c, &details[i]);
         DYN_RECT(details[i].x, details[i].y, details[i].x + details[i].w - 1, details[i].y + details[i].h - 1);
     }
-    {
-        for (int i = 0; i < 3; i++) if (tank_decor_owned(t, SURFACE_FLOATS[i])) {
-            int x = (int)tank_decor_x(t, SURFACE_FLOATS[i]) - 20;
-            int y = 2 + (int)(sinf(secondary_clock(t) * 0.9f + i * 2) * 2);
-            draw_ornament_flip(&c, SURFACE_FLOATS[i], x, y, 1, false, true, 0, tank_decor_mirrored(t, SURFACE_FLOATS[i]));
-            DYN_RECT(x, y, x + 39, y + 39);
+#define LIVE_FLOATS(Z) \
+        for (int i = 0; i < 3; i++) if (tank_decor_owned(t, SURFACE_FLOATS[i]) && tank_decor_z(t, SURFACE_FLOATS[i]) == (Z)) { \
+            int x = (int)tank_decor_x(t, SURFACE_FLOATS[i]) - 20; \
+            int y = 2 + (int)(sinf(secondary_clock(t) * 0.9f + i * 2) * 2); \
+            draw_ornament_flip(&c, SURFACE_FLOATS[i], x, y, 1, false, true, 0, tank_decor_mirrored(t, SURFACE_FLOATS[i])); \
+            DYN_RECT(x, y, x + 39, y + 39); \
         }
-    }
+    LIVE_FLOATS(DECOR_Z_BACK)
     /* the overlays of the pieces BEHIND: a crown over its baked fan, the
        candle's face over the lantern's body - under the grass */
     for (int k = 0; k < g_npc; k++) {
@@ -5838,6 +5843,8 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     if ((t->sd_unlocks & SD_ITEM_SEAHORSE) && t->sh_x >= 0 && t->sh_front) draw_seahorse(&c, t);   /* the seahorse's front lane (its rect is marked above) */
     { int kc = pc_index(2); if (kc >= 0 && g_pc[kc].z == DECOR_Z_FRONT) arch_shade(&c, kc, g_pc[kc].cx, t->night, true); }   /* the tunnel through a castle IN FRONT: shaded, whatever passes it */
     draw_inventory_extras(&c, t, DECOR_Z_FRONT);
+    LIVE_FLOATS(DECOR_Z_FRONT)
+#undef LIVE_FLOATS
     if (render_clock_us) {
         int64_t now = render_clock_us();
         render_front_us[1] += now - front_start;

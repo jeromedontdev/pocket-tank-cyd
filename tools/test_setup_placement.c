@@ -278,6 +278,11 @@ static void test_every_item_buys_and_moves(void) {
             bool mirrored = tank_decor_mirrored(&t, item);
             if (tank_decor_mirrorable(item)) { setup_activate(&t, SETUP_HIT_MIRROR); mirrored = !mirrored; }
             assert(tank_decor_mirrored(&t, item) == mirrored);
+            if (surface) {                               /* a float: BEHIND the fish by default, IN FRONT on a tap */
+                assert(tank_decor_z(&t, item) == DECOR_Z_BACK);
+                setup_activate(&t, SETUP_HIT_Z0 + DECOR_Z_FRONT);
+                assert(tank_decor_z(&t, item) == DECOR_Z_FRONT);
+            }
             int z = tank_decor_z(&t, item);
             setup_activate(&t, SETUP_HIT_NEXT);
             assert(!setup_active());

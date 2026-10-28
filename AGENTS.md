@@ -23,9 +23,9 @@ or deployment is published. Update this file when its contracts change.
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
   edit-mode/mirror/save-speed, menu-performance, minigame-art, menu-art,
-  movable-scenery and save-memory follow-ups, unified build, app 1,788,768
-  bytes, slot headroom 177,312, SHA256
-  `1893fed670be1168f4462d00ca5590c366cf8ba6c188c337af80932c0b125318`
+  movable-scenery, save-memory, RTC-scratch/packed-pieces and float-depth
+  follow-ups, unified build, app 1,785,376 bytes, slot headroom 180,704, SHA256
+  `c79c705788fbe1955c894638f7dd1b026a13cf5827bedc3450de97aa633db799`
   (see [menu art and movable scenery](firmware/CYD.md#menu-art-and-movable-scenery)).
   Fresh full recovery backup, app readback/profile and saves passed. Residents/settings remain intact; the wallet
   changes only from normal passive income. Tracing is off. These follow-ups
@@ -710,7 +710,14 @@ or further split modules without a concrete maintenance benefit.
 - Never put a `save_t` on a stack or heap-copy it for save/load/backup/restore:
   `progression_save`, `load_save`, `progression_backup_json` and
   `progression_restore_json` share the static `s_save_scratch` (tank task only,
-  never nested). At 6424 bytes a stack copy overflowed the 12-KiB tank stack on
+  never nested). It is `RTC_NOINIT_ATTR` (RTC slow memory, ~6.9 of 8 KB used):
+  in DRAM .bss it cut the shop's heap from 29/10 KB to 23/3 KB, so buying
+  (`progression_buy` mallocs a `tank_t`) failed with NOT ENOUGH MEMORY and the
+  weather TLS handshake (needs ~24 KB contiguous) went offline. Every
+  internal-RAM static costs heap one-for-one on the CYD (no PSRAM): check the
+  map's largest `.bss` symbols and the boot `weather: https start ... largest`
+  line after growing any array (`DECOR_SLOTS` sizes `piece_t`/`scene_sig_t`,
+  which are packed to 16/8-bit fields for this reason). At 6424 bytes a stack copy overflowed the 12-KiB tank stack on
   the console `save`; a heap copy left restore's cJSON too little room. Restore
   validation holds one top-level JSON value at a time (`json_snapshot` records
   slices, `json_expand`/`json_collapse`/`json_read_lazy`); the whole tree peaked

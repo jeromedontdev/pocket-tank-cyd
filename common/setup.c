@@ -199,7 +199,7 @@ uint32_t setup_place_signature(const tank_t *t) {
     return h ? h : 1;
 }
 bool setup_place_animated_rect(int *x0, int *y0, int *x1, int *y1) {
-    if (!s_active || s_page != SETUP_PG_PLACE || tank_decor_surface(s_item)) return false;
+    if (!s_active || s_page != SETUP_PG_PLACE) return false;
     int bw = tank_decor_z_count(s_item) * SETUP_DEPTH_SEG_W;   /* the depth tiles' fish swim; their words stay still */
     *x0 = (PAGE_W - bw) / 2; *x1 = *x0 + bw;
     *y0 = SETUP_DEPTH_Y; *y1 = SETUP_DEPTH_Y + 4 + SETUP_DEPTH_TILE_H + 4;
@@ -470,7 +470,7 @@ int setup_hit(float x, float y) {
         /* the DEPTH bar: a band 8 px around it, the segment under the finger
            (the item's own depths: the plant's three, the castle's two) */
         int n = tank_decor_z_count(s_item), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;
-        if (n < 2 || !in_box(x, y, bx, SETUP_DEPTH_Y, bw, SETUP_DEPTH_H, 8)) return 0;   /* a float has no depth to pick */
+        if (n < 2 || !in_box(x, y, bx, SETUP_DEPTH_Y, bw, SETUP_DEPTH_H, 8)) return 0;
         int i = (int)((x - bx) / SETUP_DEPTH_SEG_W);
         if (i < 0) i = 0;
         if (i >= n) i = n - 1;
@@ -927,7 +927,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         static const char *const castle_hint[DECOR_Z_N] = { "THE PLANTS GROW IN FRONT OF IT", "", "IT STANDS IN FRONT OF THE PLANTS" };
         static const char *const coral_hint[DECOR_Z_N] = { "BEHIND THE GRASS AND THE FISH", "", "IN FRONT OF EVERYTHING" };
         int z = placed_z(t), zi = tank_decor_z_index(s_item, z);
-        int n = surface ? 0 : tank_decor_z_count(s_item), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;   /* the item's own depths; a float has none */
+        int n = tank_decor_z_count(s_item), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;   /* the item's own depths */
         if (n) render_rect(fb, stride, bx, SETUP_DEPTH_Y, bw, SETUP_DEPTH_H, C_KEY);
         for (int i = 0; i < n; i++) {
             int sx = bx + i * SETUP_DEPTH_SEG_W, zi_ = tank_decor_z_at(s_item, i);
@@ -973,7 +973,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                 render_rect_edge(fb, stride, x, SETUP_COL_Y, SETUP_COL_W, SETUP_COL_H, on ? C_TEXT : C_DIM);
                 if (on) render_rect_edge(fb, stride, x + 1, SETUP_COL_Y + 1, SETUP_COL_W - 2, SETUP_COL_H - 2, C_TEXT);
             }
-        } else text_plate(fb, stride, CX, SETUP_DEPTH_HINT_Y, 2, surface ? "IT FLOATS ON THE SURFACE" : rel[0] ? rel : s_item == 2 || s_item >= 8 ? castle_hint[z] : hint[z]);
+        } else text_plate(fb, stride, CX, SETUP_DEPTH_HINT_Y, 2, surface ? hint[z] : rel[0] ? rel : s_item == 2 || s_item >= 8 ? castle_hint[z] : hint[z]);
         float x0 = placed_x(t) - tank_decor_half_w(s_item) - 10, x1 = placed_x(t) + tank_decor_half_w(s_item) + 10, top = TANK_BOT - 16 - 40;
         if (s_item == 0) tank_veg_bed(t, 3, NULL, NULL, &top, NULL);   /* the leaves' reach */
         if (s_item == 2) top = TANK_BOT - 16 - 146;                    /* the tallest spire */

@@ -1912,8 +1912,14 @@ static bool extra_games_valid(const game_records_t *s) {
     return companion_games_valid(s);
 }
 /* The one full save image for load, save, backup and restore: all run on the tank
- * task and none nests another. At 6424 bytes a stack copy overflowed the tank stack
- * under the director, and a heap copy starved restore's cJSON tree (8 KB largest block). */
+ * task and none nests another, and each clears it before use. At 6424 bytes a stack
+ * copy overflowed the tank stack under the director. On the ESP32 it lives in the
+ * otherwise idle 8 KB of RTC slow memory: a DRAM copy cut the heap's largest block
+ * from 10 KB to 3 KB, failing purchases (tank_t copies) and weather TLS. */
+#ifdef ESP_PLATFORM
+#include "esp_attr.h"
+RTC_NOINIT_ATTR
+#endif
 static save_t s_save_scratch;
 static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     save_t *sv = &s_save_scratch; memset(sv, 0, sizeof *sv);

@@ -427,7 +427,7 @@ The headline additions:
 - **Game records and medals**, permanent challenges and relaxed play without
   countdowns in Bubble Pop or Feed Frenzy.
 - **Optional real weather** beside the idle clock, with on-device city setup.
-- **Twenty-five added decorations**, including three simultaneous surface floats.
+- **Twenty-five added decorations**, including three simultaneous surface floats; each float can sit behind the fish (default) or in front of them.
 - **Two upkeep and four fish-care upgrades**, with purchases shared across tanks.
 - **A price-sorted shop:** gray icons before purchase, full color afterward.
 - **Readable menus**, reorganized Settings, SD backups and offline updates.

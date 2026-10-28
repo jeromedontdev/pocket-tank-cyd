@@ -2201,13 +2201,12 @@ float tank_decor_half_w(int item) { return item == 0 ? PLANT_HALF_W : item == 2 
 /* only the plant weaves AMONG the fish; the castle and both corals are
  * BEHIND or IN FRONT (Strato, 2026-09-24: "remove the among option for
  * corals, it doesn't really make as much sense") */
-int   tank_decor_z_count(int item) { return item == 0 ? DECOR_Z_N : tank_decor_surface(item) ? 1 : 2; }
+int   tank_decor_z_count(int item) { return item == 0 ? DECOR_Z_N : 2; }   /* a float too (2026-10-28): under or over the fish */
 int   tank_decor_z_at(int item, int i) {
-    if (tank_decor_surface(item)) return DECOR_Z_FRONT;
     if (item != 0) return i <= 0 ? DECOR_Z_BACK : DECOR_Z_FRONT;
     return i < 0 ? 0 : i >= DECOR_Z_N ? DECOR_Z_N - 1 : i;
 }
-int   tank_decor_z_index(int item, int z) { return tank_decor_surface(item) ? 0 : item != 0 ? (z == DECOR_Z_BACK ? 0 : 1) : z; }
+int   tank_decor_z_index(int item, int z) { return item != 0 ? (z == DECOR_Z_BACK ? 0 : 1) : z; }
 float tank_decor_x(const tank_t *t, int item) {
     int fi = tank_fixed_index(item);
     if (fi >= 0) return t->fixed.x[fi] > 0 ? t->fixed.x[fi] : fixed_default_x(item);
@@ -2227,7 +2226,7 @@ float tank_decor_x(const tank_t *t, int item) {
 }
 int tank_decor_z(const tank_t *t, int item) {
     int oi = tank_ornament_index(item), fi = tank_fixed_index(item);
-    if (fi >= 0) return tank_decor_surface(item) ? DECOR_Z_FRONT : t->fixed.z[fi] == DECOR_Z_FRONT ? DECOR_Z_FRONT : DECOR_Z_BACK;
+    if (fi >= 0) return t->fixed.z[fi] == DECOR_Z_FRONT ? DECOR_Z_FRONT : DECOR_Z_BACK;
     return SD_IS_NEW_DECOR(item) ? t->content.z[item - SD_DECOR_FIRST] : item == 0 ? t->plant_z : item == 2 ? t->castle_z : item == 3 ? t->coral_z : item == 4 ? t->cluster_z : item == 8 ? t->pumpkin_z : item == 9 ? t->chest_z : oi >= 0 ? t->ornament_z[oi] : DECOR_Z_MIDDLE;
 }
 static float decor_top(const tank_t *t, int item) {         /* the piece's highest pixel */
@@ -2354,7 +2353,7 @@ void tank_decor_set(tank_t *t, int item, float x, int z) {
     if (z < 0) z = 0;
     if (z >= DECOR_Z_N) z = DECOR_Z_N - 1;
     uint8_t z2 = (uint8_t)(z == DECOR_Z_BACK ? DECOR_Z_BACK : DECOR_Z_FRONT);   /* no AMONG for these */
-    { int fi = tank_fixed_index(item); if (fi >= 0) { t->fixed.x[fi] = x; t->fixed.z[fi] = tank_decor_surface(item) ? DECOR_Z_BACK : z2; return; } }   /* a float's stored z stays 0: it is always on top */
+    { int fi = tank_fixed_index(item); if (fi >= 0) { t->fixed.x[fi] = x; t->fixed.z[fi] = z2; return; } }   /* a float BEHIND (0, the default) lets the fish swim over it */
     if (SD_IS_NEW_DECOR(item)) { t->content.x[item - SD_DECOR_FIRST] = x; t->content.z[item - SD_DECOR_FIRST] = z2; return; }
     if (item == 2) { t->castle_x = x; t->castle_z = z2; return; }
     if (item == 3) { t->coral_x = x; t->coral_z = z2; return; }
