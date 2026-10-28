@@ -470,7 +470,7 @@ while adding its own modes, shared progression, genetics, stories and games.
 ### New in 1.1.0
 - Fish get acquainted during calm nearby swimming, form short spaced paired swims and favor stable decoration spots. Care names their buddy and favorite spot; session familiarity reforms after restart.
 - Tap every helper creature for food/activity/progress, actual versus drawn shrimp counts and a direct free color-editor shortcut.
-- Reversible decoration previews: DONE commits, CANCEL restores position/depth/stack/color, save failures stay open for retry, and autosaves/backups exclude drafts.
+- Reversible decoration previews: DONE commits (no on-screen CANCEL; the serial `setup off` restores position/depth/stack/color/mirror), save failures stay open for retry, and autosaves/backups exclude drafts.
 - Aquarium summaries show residents, Bank/traveler, helpers, stat upgrades, theme and clock-aware last visit. Backup scope is explicit.
 - Sparse Deep Glow silhouettes, Moonlit shooting stars and treasure/crystal glints use localized 4 Hz dirty regions and preserve clock occlusion.
 - Save-preserving browser USB updater: verified CYD identity/layout, app checksum/marker and detected active-slot writes, with separate acknowledged factory installation.

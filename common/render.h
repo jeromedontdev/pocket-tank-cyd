@@ -385,6 +385,7 @@ uint32_t render_glow_rgb(const tank_t *t);   /* the water's surface colour, for 
 void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct);
 int  render_settings_tap(float x, float y, int *value);
 int  render_settings_touch(tank_t *t, float x, float y, bool down, int *value);
+bool render_settings_animated(void);   /* clock/weather sub-page with live previews is up */
 
 /* UI primitives (2026-09-13) for panels built outside this file (the first-
  * run setup in common/setup.c): the confirm prompt's pixel font, flat rects

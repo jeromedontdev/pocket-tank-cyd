@@ -424,9 +424,8 @@ int setup_hit(float x, float y) {
     if (page_one_button())
         return in_box(x, y, SETUP_MID_X, SETUP_BTN_Y, SETUP_BTN_W, SETUP_BTN_H, m) ? SETUP_HIT_NEXT : 0;
     if (nav_on_top()) {
-        if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, 0)) return SETUP_HIT_BACK;
         if (s_place && tank_decor_mirrorable(s_item) &&
-            in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, 0)) return SETUP_HIT_MIRROR;
+            in_box(x, y, SETUP_TOP_NEXT_X, SETUP_MIRROR_Y, SETUP_TOP_BTN_W, SETUP_MIRROR_H, 0)) return SETUP_HIT_MIRROR;
         if (in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_NEXT;
         if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_REMOVE;
         if (s_place && in_box(x, y, SETUP_ORD_X0, SETUP_TOP_BTN_Y, SETUP_ORD_W, SETUP_BTN_H, 6)) return SETUP_HIT_BCK;
@@ -879,9 +878,8 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, "DONE", 2);
         render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H,
                       C_INNER, s_remove_armed ? C_GO_E : C_DIM, s_remove_armed ? "REMOVE?" : "REMOVE", 2);
-        render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, C_INNER, C_DIM, "CANCEL", 1);
         if (tank_decor_mirrorable(s_item))
-            render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26,
+            render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_MIRROR_Y, SETUP_TOP_BTN_W, SETUP_MIRROR_H,
                           C_INNER, placed_mirrored(t) ? C_EDGE : C_DIM, "MIRROR", 1);
         /* the ORDER arrows (2026-10-17): a step back / forward in the stack of
            pieces at this depth, lit when there is a piece to pass; the relation
@@ -989,8 +987,8 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
                               progression_item_owned(t, s_item);
         char copy_status[64];
         if (!selected_owned) snprintf(copy_status, sizeof copy_status, "PREVIEW - NOT AN OWNED COPY");
-        else snprintf(copy_status, sizeof copy_status, "PLACED %d OF %d - REMOVE KEEPS IT IN STORAGE", number, total);
-        text_c(fb, stride, CX, 281, 1, C_TEXT, copy_status);
+        else snprintf(copy_status, sizeof copy_status, "COPY %d OF %d - REMOVE STORES IT", number, total);
+        text_c(fb, stride, CX, 276, 1, C_TEXT, copy_status);
         text_c(fb, stride, CX, 296, 2, C_CAPT, memo.overlap ? "TAP COPY TO SELECT - DRAG TO MOVE" : "DRAG IT LEFT OR RIGHT");
     } else if (page_is_name()) {
         /* straight on the tank: the fish being named wears a ring in its own

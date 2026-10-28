@@ -234,6 +234,17 @@ static inline bool page_rows_in_tile(const ctx_t *c, int y0, int y1) {
     if (!c->scaled || g_recording) return true;
     return y1 * TANK_H / PAGE_H >= g_tile_y && y0 * TANK_H / PAGE_H < render_tile_bottom();
 }
+/* Narrow a page primitive's row loop to the page rows that can land in this
+   tile (one row of slack each side; span/CTX_IN still do the exact test). */
+static inline void page_clamp_rows(const ctx_t *c, int *y0, int *y1) {
+#ifdef RENDER_MENU_TESTING
+    if (c) return;
+#endif
+    if (!c->scaled || g_recording) return;
+    int lo = g_tile_y * PAGE_H / TANK_H - 1, hi = render_tile_bottom() * PAGE_H / TANK_H + 1;
+    if (g_tile_y > 0 && *y0 < lo) *y0 = lo;
+    if (*y1 > hi) *y1 = hi;
+}
 static inline int ctx_offset(const ctx_t *c, int x, int y) {
     if (c->scaled) return (y * TANK_H / PAGE_H - g_tile_y) * c->stride + x * TANK_W / PAGE_W;
     return (y - c->oy) * c->stride + x - c->ox;
@@ -410,6 +421,7 @@ static void fill_ellipse(ctx_t *c, float cx, float cy, float rx, float ry,
     int y0 = (int)(cy - ry), y1 = (int)(cy + ry);
     if (y0 < c->oy) y0 = c->oy;
     if (y1 >= c->oy + c->h) y1 = c->oy + c->h - 1;
+    page_clamp_rows(c, &y0, &y1);
     for (int y = y0; y <= y1; y++) {
         float w = ell_half((y - cy) / ry);
         if (w <= 0) continue;
@@ -435,6 +447,7 @@ static void fill_poly_palette(ctx_t *c, const float *xs, const float *ys, int n,
     int y0 = (int)miny, y1 = (int)maxy;
     if (y0 < c->oy) y0 = c->oy;
     if (y1 >= c->oy + c->h) y1 = c->oy + c->h - 1;
+    page_clamp_rows(c, &y0, &y1);
     if (y0 > y1) return;
     src_t palette[5];
     for (int i = 0; i < tones; i++) palette[i] = src_color(colors[i], c->dim);
@@ -6007,13 +6020,16 @@ static void px565_blend(ctx_t *c, int x, int y, uint16_t v, int a) {
  * (unrevealed traits, torn thought bubbles). */
 static void blit_icon(ctx_t *c, int x, int y, const icon_t *ic, int alpha) {
     ic = icons_resolve(ic);
+    if (!page_rows_in_tile(c, y, y + ic->h - 1)) return;
     icon_alpha_t cursor = {ic->a, 0, 0};
-    for (int j = 0; j < ic->h; j++)
+    for (int j = 0; j < ic->h; j++) {
+        if (!page_rows_in_tile(c, y + j, y + j)) continue;   /* the cursor catches up on its own */
         for (int i = 0; i < ic->w; i++) {
             int a = icon_alpha_at(ic, &cursor, j * ic->w + i);
             if (!a) continue;
             px565_blend(c, x + i, y + j, icon_rgb_at(ic, j * ic->w + i), a * alpha >> 8);
         }
+    }
 }
 
 /* a segmented meter: value 0..1 over `segs` segments of `sw` x 10 px. The
@@ -6861,6 +6877,8 @@ void render_glyph(uint16_t *fb, int stride, int x, int y, int scale, uint32_t rg
 void render_fish_preview(uint16_t *fb, int stride, float x, float y, float size,
                          uint32_t body, uint32_t fin, uint32_t accent, float clock) {
     ctx_t c = ctx_page(fb, stride);
+    int reach = (int)(80 * size) + 16;
+    if (!page_rows_in_tile(&c, (int)y - reach, (int)y + reach)) return;
     fish_t f; memset(&f, 0, sizeof f);
     f.x = x; f.y = y; f.heading = 0; f.size = size; f.speed = 40;
     f.stage = STAGE_ADULT;                       /* grown: the crest shows the fin colour */
@@ -7101,18 +7119,23 @@ static uint32_t locked_rgb(uint16_t v) {
 }
 static void blit_icon_locked(ctx_t *c, int x, int y, const icon_t *ic) {
     ic = icons_resolve(ic);
+    if (!page_rows_in_tile(c, y, y + ic->h - 1)) return;
     icon_alpha_t cursor = {ic->a, 0, 0};
-    for (int j = 0; j < ic->h; j++)
+    for (int j = 0; j < ic->h; j++) {
+        if (!page_rows_in_tile(c, y + j, y + j)) continue;
         for (int i = 0; i < ic->w; i++) {
             int a = icon_alpha_at(ic, &cursor, j * ic->w + i);
             if (a) px_blend(c, x + i, y + j, locked_rgb(icon_rgb_at(ic, j * ic->w + i)), a * 180 >> 8);
         }
+    }
 }
 /* the same art at an integer scale (the detail modal), lit or as the silhouette */
 static void blit_icon_scaled(ctx_t *c, int x, int y, const icon_t *ic, int s, bool lit) {
     ic = icons_resolve(ic);
+    if (!page_rows_in_tile(c, y, y + ic->h * s - 1)) return;
     icon_alpha_t cursor = {ic->a, 0, 0};
-    for (int j = 0; j < ic->h; j++)
+    for (int j = 0; j < ic->h; j++) {
+        if (!page_rows_in_tile(c, y + j * s, y + j * s + s - 1)) continue;
         for (int i = 0; i < ic->w; i++) {
             int a = icon_alpha_at(ic, &cursor, j * ic->w + i);
             if (!a) continue;
@@ -7123,6 +7146,7 @@ static void blit_icon_scaled(ctx_t *c, int x, int y, const icon_t *ic, int s, bo
                     else     px_blend(c, x + i * s + xx, y + j * s + yy, locked_rgb(v), a * 180 >> 8);
                 }
         }
+    }
 }
 /* a tiny fish glyph facing right (the growth and population strips) */
 static void fish_glyph(ctx_t *c, float cx, float cy, float r, uint32_t rgb) {
@@ -8552,6 +8576,7 @@ static bool g_clock_settings, g_clock_weather;
 enum { CLOCK_MENU, CLOCK_FACE, CLOCK_COLORS, CLOCK_TEXT, CLOCK_TIME };
 static int g_clock_page;
 static int g_settings_section;
+bool render_settings_animated(void) { return g_clock_settings || g_clock_weather; }
 static render_device_t g_device = {0, 1, 1, -1, SCENE_BALANCED};
 void render_set_device(const render_device_t *d) { g_device = *d; }
 bool render_simple_scene(void) { return g_device.scene_detail == SCENE_SIMPLE; }

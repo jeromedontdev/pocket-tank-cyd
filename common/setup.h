@@ -51,8 +51,8 @@
  * footprint is outlined, and a marker stays at its starting position while
  * it is dragged. The page identifies the placed original or extra copy;
  * REMOVE returns the selected decoration to storage without a refund,
- * DONE saves, and CANCEL restores the
- * original layout. */
+ * DONE saves; there is no on-screen CANCEL (the serial `setup off` still
+ * restores the original layout). MIRROR, under DONE, flips sprite pieces. */
 #ifndef POCKET_TANK_SETUP_H
 #define POCKET_TANK_SETUP_H
 #include "tank.h"
@@ -221,7 +221,9 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
                                                              * sizes the bar from tank_decor_z_count */
 #define SETUP_DEPTH_W      (DECOR_Z_N * SETUP_DEPTH_SEG_W)
 #define SETUP_DEPTH_X      ((PAGE_W - SETUP_DEPTH_W) / 2)
-#define SETUP_DEPTH_Y      (SETUP_TOP_BTN_Y + SETUP_BTN_H + 24)
+#define SETUP_MIRROR_Y     (SETUP_TOP_BTN_Y + SETUP_BTN_H + 2)   /* MIRROR, under DONE; the bar clears it */
+#define SETUP_MIRROR_H     24
+#define SETUP_DEPTH_Y      (SETUP_MIRROR_Y + SETUP_MIRROR_H + 6)
 #define SETUP_DEPTH_H      70
 #define SETUP_DEPTH_TILE_H 40
 #define SETUP_DEPTH_HINT_Y (SETUP_DEPTH_Y + SETUP_DEPTH_H + 8)

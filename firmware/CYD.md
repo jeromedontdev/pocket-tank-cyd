@@ -26,7 +26,8 @@ reuse between tiles and skips unused partial-region LCD checksums. Visual detail
 SPI speed, save schema and partitions are unchanged; desktop timings do not
 establish a hardware FPS gain. Placement marks the selected copy and its starting
 position: tap overlaps to cycle placed items/copies, drag horizontally to move,
-DONE to save, or CANCEL to restore. Switching selections discards draft edits.
+DONE to save (the on-screen CANCEL was later removed; the serial `setup off`
+still restores). Switching selections discards draft edits.
 Calm fish occasionally investigate the mussel or rest beside familiar companions.
 Successful saved mussel income produces a brief gold glint, never a permanent
 icon; failed payouts, Creative mode and loading a save do not trigger it.
@@ -610,8 +611,9 @@ with residents intact. Not released.
   nearest overlapping neighbor, so distant pieces never prompt a layer choice.
 - **MIRROR.** Sprite pieces (items 9-13, 16-21, 43-62) can face the other way.
   The flag is bit 7 of the existing rank byte (`DECOR_RANK_MIRROR`), so the
-  save layout is unchanged; CANCEL restores it from the snapshot. DONE and
-  CANCEL are unchanged.
+  save layout is unchanged; the serial `setup off` restores it from the
+  snapshot. MIRROR has its own row under DONE (`SETUP_MIRROR_Y`), above the
+  depth bar, and the on-screen CANCEL is gone: DONE is the only way out.
 - **Correct layering while dragging.** The placed piece is drawn in painter
   order (`pc_scene_live`), not over pieces ranked above it. Place-page and live
   renders differ by 0 pixels for every owned item.
@@ -632,6 +634,40 @@ COM4 runs this unified image: app 1,771,568 bytes, 194,512 bytes of OTA
 headroom, SHA256
 `fc5a369aa44a3c448b4971bd2f6497860f621a8cfc417d064f6611b84d32275c`, flashed
 after a fresh full backup (`edit-text-com4-backup.bin`). Not released.
+
+### Menu performance and the placement button row
+
+- **Placement buttons.** MIRROR moved to its own row under DONE
+  (`SETUP_MIRROR_Y`, 24 px); the depth bar and everything below moved down 8 px
+  so MIRROR no longer covers the IN FRONT segment. The on-screen CANCEL is
+  gone (DONE saves; serial `setup off` still reverts). The copy line is shorter
+  ("COPY n OF m - REMOVE STORES IT") so it fits on the screen.
+- **Tile culling for page art.** `fill_ellipse`, `fill_poly_palette`, the icon
+  blitters and `render_fish_preview` clamp their loops to the page rows inside
+  the current 40-row tile (`page_clamp_rows`) instead of walking the whole page
+  on every tile. A host golden check matched all eight page dumps byte for byte.
+  On the host, Milestones went from 2.06 to 0.55 ms and Shop from 0.28 to 0.17 ms.
+- **Still pages are not redrawn.** Milestones, life, bank, journal, settings,
+  shop and aquariums do not change from frame to frame, and the LCD keeps the
+  last image. `main.c` therefore skips render and flush while the page is
+  unchanged. It redraws when the page changes, while a finger is down and for
+  400 ms after, and at least every 500 ms (serial commands, status lines that
+  time out). Games, updates, the clock/weather settings previews
+  (`render_settings_animated`), setup, the reset prompt and calibration are
+  never skipped. The perf log reports `still page: N frames skipped, loop Hz`.
+
+COM4 measurements (frames/s are loop iterations, so touch is sampled this often):
+
+| Screen | Before | After |
+|---|---|---|
+| Shop | 15 Hz, 48 ms/frame | ~28 Hz, 34-44 ms per redraw (~2 redraws/s) |
+| Settings | 28 Hz, 15 ms/frame | ~29 Hz, 15 ms per redraw |
+| Milestones | 6.4 Hz, 138 ms/frame | ~28 Hz, 54 ms per redraw |
+| Place / live | 8.3 / 13-16 FPS | 8.2-8.5 / 14-16 FPS (unchanged) |
+
+COM4 runs this unified image: app 1,772,608 bytes, SHA256
+`ef7cd077911273b5887d557fbec9a86ee4d0aae32aa4e2494da96abd03c1f3a2`, flashed
+after a fresh full backup (`menu-skip-com4-backup.bin`). Not released.
 
 ### 2.3.18 frame-pacing and snapshot follow-up
 

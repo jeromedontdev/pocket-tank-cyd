@@ -504,7 +504,7 @@ static void tank_task(void *arg) {
     int64_t last = esp_timer_get_time(); int cur = 0;
     int64_t last_log = last;
     int64_t render_us = 0, flush_us = 0, card_us = 0; uint32_t frames = 0, card_frames = 0;
-    uint32_t drawn_rows = 0;
+    uint32_t drawn_rows = 0, page_skips = 0;
     /* Time the whole frame, not only rendering: keys/touch/console, simulation,
      * scene prefetch wait, post-flush work and the frame limiter. */
     int64_t polls_us = 0, tick_us = 0, wait_us = 0, tail_us = 0, sleep_us = 0, slept_from = 0;
@@ -521,7 +521,7 @@ static void tank_task(void *arg) {
             render_benchmark(fb[cur]);
             last = last_log = esp_timer_get_time();
             render_us = flush_us = card_us = polls_us = tick_us = wait_us = tail_us = sleep_us = slept_from = 0;
-            frames = card_frames = drawn_rows = 0;
+            frames = card_frames = drawn_rows = page_skips = 0;
             memset(render_prof_us, 0, sizeof render_prof_us);
             memset(render_helper_us, 0, sizeof render_helper_us);
             memset(render_front_us, 0, sizeof render_front_us);
@@ -685,7 +685,31 @@ static void tank_task(void *arg) {
         }
         int64_t pf_wait = esp_timer_get_time(); tick_us += pf_wait - pf_tick;
         int64_t pf_tail = pf_wait;
-        if (fb[cur]) {
+        /* A full page (keeper, shop, settings, journal...) is a still picture: redrawing it every
+           frame only kept the loop busy (milestones 138 ms a frame = touch sampled ~7 times a second).
+           The LCD holds what it was sent, so while nothing could have changed the frame is skipped.
+           It redraws when the page changes, while a finger is down and shortly after, and every
+           PAGE_REFRESH_US anyway (serial commands, status lines that time out). Pages that animate
+           (games, the clock/weather previews, updates) are never skipped. */
+        bool skip_page = false;
+        {
+            static uint32_t drawn_key; static int64_t drawn_at, touched_at;
+            enum { PAGE_REFRESH_US = 500000, PAGE_TOUCH_US = 400000 };
+            if (touch_port_pressed_since(0)) touched_at = pf_wait;
+            uint32_t key = (uint32_t)touch_port_milestones() | (uint32_t)touch_port_life() << 1 |
+                (uint32_t)touch_port_bank() << 2 | (uint32_t)touch_port_journal() << 3 |
+                (uint32_t)touch_port_settings() << 4 | (uint32_t)touch_port_shop() << 5 |
+                (uint32_t)touch_port_aquariums() << 6;
+            bool still = (touch_port_milestones() || touch_port_settings() || touch_port_shop()) &&
+                !touch_port_games() && !touch_port_updates() && !render_settings_animated() &&
+                !setup_active() && !touch_port_confirm_up() && !touch_port_calibrating() &&
+                s_photo_delay < 0 && !s_benchmark_requested;
+            skip_page = still && key == drawn_key && pf_wait - touched_at > PAGE_TOUCH_US &&
+                pf_wait - drawn_at < PAGE_REFRESH_US;
+            if (!skip_page) { drawn_key = still ? key : 0; drawn_at = pf_wait; }
+            else page_skips++;
+        }
+        if (fb[cur] && !skip_page) {
             int64_t t0 = esp_timer_get_time();
             wait_us += t0 - pf_wait;
             tank_touch_poll();
@@ -814,8 +838,9 @@ static void tank_task(void *arg) {
                          (float)(now - last_log) / 1e3f / frames, polls_us / 1e3f / frames, tick_us / 1e3f / frames, wait_us / 1e3f / frames,
                          render_us / 1e3f / frames, flush_us / 1e3f / frames, tail_us / 1e3f / frames, sleep_us / 1e3f / frames,
                          ff / 1e3f / frames, fw / 1e3f / frames, fs / 1e3f / frames);
-                ESP_LOGI("display", "CPU rows %.1f/%d per frame | artwork/clock cache %u bytes",
-                         (float)drawn_rows / frames, TANK_H, (unsigned)render_work_cache_bytes());
+                ESP_LOGI("display", "CPU rows %.1f/%d per frame | artwork/clock cache %u bytes | still page: %lu frames skipped, loop %.1f Hz",
+                         (float)drawn_rows / frames, TANK_H, (unsigned)render_work_cache_bytes(),
+                         (unsigned long)page_skips, (frames + page_skips) * 1e6f / (float)(now - last_log));
                 unsigned cached_rows; size_t backdrop_bytes;
                 render_backdrop_stats(&cached_rows, &backdrop_bytes);
                 ESP_LOGI("display", "backdrop %u/%d cached rows, %u bytes",
@@ -853,7 +878,7 @@ static void tank_task(void *arg) {
                 memset(render_front_us, 0, sizeof render_front_us);
                 memset(tank_profile_us, 0, sizeof tank_profile_us);
             }
-            render_us = flush_us = 0; frames = 0; drawn_rows = 0;
+            render_us = flush_us = 0; frames = 0; drawn_rows = 0; page_skips = 0;
             polls_us = tick_us = wait_us = tail_us = sleep_us = 0;
             memset(&pacing, 0, sizeof pacing);
             presentation_total_us = presentation_frames = presentation_max_us = 0;

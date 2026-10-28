@@ -22,10 +22,10 @@ or deployment is published. Update this file when its contracts change.
 
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
-  edit-mode/mirror/save-speed follow-ups, unified build, app 1,771,568 bytes,
-  slot headroom 194,512, SHA256
-  `fc5a369aa44a3c448b4971bd2f6497860f621a8cfc417d064f6611b84d32275c`
-  (see [edit mode](firmware/CYD.md#decoration-edit-mode-mirroring-and-faster-saves)).
+  edit-mode/mirror/save-speed and menu-performance follow-ups, unified build,
+  app 1,772,608 bytes, slot headroom 193,472, SHA256
+  `ef7cd077911273b5887d557fbec9a86ee4d0aae32aa4e2494da96abd03c1f3a2`
+  (see [menu performance](firmware/CYD.md#menu-performance-and-the-placement-button-row)).
   Fresh full recovery backup, app readback/profile and saves passed. Residents/settings remain intact; the wallet
   changes only from normal passive income. Tracing is off. These follow-ups
   are not published; the website and immutable 2.3.18 tag remain unchanged.
@@ -461,6 +461,15 @@ or deployment is published. Update this file when its contracts change.
   The place page uses adaptive damage (its animated band), not forced full
   frames; page primitives must cull to the tile rows. It runs ~8.7 FPS vs
   13-16 live because no clock face occludes damage; measure before claiming more.
+  The place page has no on-screen CANCEL (DONE only; serial `setup off`
+  reverts); MIRROR has its own row (`SETUP_MIRROR_Y`) above the depth bar.
+- Still pages: `main.c` skips render+flush while a static full page
+  (milestones/life/bank/journal, settings, shop/aquariums) is unchanged. It
+  redraws on page change, while touched and 400 ms after, and every 500 ms. If
+  a page gains animation, or state that changes without touch or a serial
+  command, exclude it from the skip (as games, updates and
+  `render_settings_animated()` are), or it will look frozen. Page
+  primitives must stay tile-culled (`page_clamp_rows`).
   `tools/test_fish_behavior.py --cc gcc` checks continuity, all ten varieties,
   tank edges, reactions and frame-step stability. Intentional behavior changes
   alter trajectories: compare old/new renderer pixels using the same updated
