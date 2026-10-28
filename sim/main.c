@@ -247,7 +247,7 @@ static void shop_action(int result) {
         setup_begin_place(&tank, result - SHOP_TAP_MOVE); page = 0;
     } else if (result >= SHOP_TAP_BUY) {
         int item = result - SHOP_TAP_BUY;
-        if (progression_buy(&tank, item) && tank_decor_placeable(item)) {
+        if (progression_buy(&tank, item) && tank_decor_movable(item)) {
             setup_begin_place(&tank, item); page = 0;
         }
     }

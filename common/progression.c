@@ -226,6 +226,7 @@ typedef struct {
     game_income_state_t game_income;
     uint32_t pad_content; /* the schema-18 struct's frozen final alignment */
     decor_content_t content;
+    decor_fixed_t fixed;   /* schema 20 (2.4): the fixed scenery's x / depth / rank / mirror; zero = the historical spots */
 } save_t;
 /* the smallest PTK2 save (pre-upkeep, 2026-08-30): anything shorter is not
  * ours. Every later build wrote sizeof(save_t) of its day - 448, 1112, 1304,
@@ -348,7 +349,8 @@ _Static_assert(offsetof(inventory_state_t, stored) == 0 &&
 SAVE_AT(mussel, 6132);
 SAVE_AT(game_income, 6140);
 SAVE_AT(content, 6168);
-_Static_assert(sizeof(save_t) == 6336, "schema-19 static decoration tail");
+SAVE_AT(fixed, 6336);
+_Static_assert(sizeof(save_t) == 6424, "schema-20 movable scenery tail");
 _Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: companion tail");
 /* Historical NVS budget: older saves were one blob in nvs (0x9000, 0x6000 =
  * 6 pages of 4096 B; tools/make_installer.py pins the row). A page is 126
@@ -757,14 +759,14 @@ const sd_item_t SD_ITEMS[SD_ITEM_COUNT] = {
     { SD_ITEM_FAN, "SEA FAN", "A TALL DECORATIVE SEA FAN", "FILLS THE OPEN WATER", 80 },
     { SD_ITEM_RUINS, "SUNKEN RUINS", "AN ARCH FROM A LOST CITY", "FISH SWIM PAST THE STONES", 160 },
     { SD_ITEM_JELLY, "JELLY LANTERN", "A FLOATING JELLY ORNAMENT", "TETHERED AND GENTLY BOBBING", 120 },
-    { SD_ITEM_PEBBLES, "ZEN PEBBLES", "A STACK OF SMOOTH STONES", "FIXED SCENERY ON THE SAND", 40 },
-    { SD_ITEM_PEARL, "PEARL CLAM", "AN OPEN SHELL WITH A PEARL", "FIXED SCENERY ON THE SAND", 70 },
-    { SD_ITEM_FLOAT_LOG, "FLOATING LOG", "BOBS ALONG THE SURFACE", "FIXED SPOT, NO EXTRA CARE", 90 },
-    { SD_ITEM_SPONGES, "TUBE SPONGES", "A BRIGHT GOLD SPONGE PATCH", "FIXED SCENERY ON THE SAND", 100 },
-    { SD_ITEM_BARREL, "LOST BARREL", "AN OLD OAK HARBOR BARREL", "FIXED SCENERY ON THE SAND", 110 },
-    { SD_ITEM_HELMET, "DIVE HELMET", "A BRASS DEEP-SEA SOUVENIR", "FIXED SCENERY ON THE SAND", 140 },
-    { SD_ITEM_LILIES, "LILY PADS", "PADS AND A PINK WATER LILY", "FIXED SPOT AT THE SURFACE", 80 },
-    { SD_ITEM_DUCK, "DUCK FLOAT", "A LITTLE YELLOW BOBBING DUCK", "FIXED SPOT AT THE SURFACE", 60 },
+    { SD_ITEM_PEBBLES, "ZEN PEBBLES", "A STACK OF SMOOTH STONES", "SCENERY YOU CAN MOVE", 40 },
+    { SD_ITEM_PEARL, "PEARL CLAM", "AN OPEN SHELL WITH A PEARL", "SCENERY YOU CAN MOVE", 70 },
+    { SD_ITEM_FLOAT_LOG, "FLOATING LOG", "BOBS ALONG THE SURFACE", "SLIDES ALONG, NO CARE", 90 },
+    { SD_ITEM_SPONGES, "TUBE SPONGES", "A BRIGHT GOLD SPONGE PATCH", "SCENERY YOU CAN MOVE", 100 },
+    { SD_ITEM_BARREL, "LOST BARREL", "AN OLD OAK HARBOR BARREL", "SCENERY YOU CAN MOVE", 110 },
+    { SD_ITEM_HELMET, "DIVE HELMET", "A BRASS DEEP-SEA SOUVENIR", "SCENERY YOU CAN MOVE", 140 },
+    { SD_ITEM_LILIES, "LILY PADS", "PADS AND A PINK WATER LILY", "SLIDES ALONG THE SURFACE", 80 },
+    { SD_ITEM_DUCK, "DUCK FLOAT", "A LITTLE YELLOW BOBBING DUCK", "SLIDES ALONG THE SURFACE", 60 },
     { SD_ITEM_FILTER, "BIO FILTER", "HALVES NEW ALGAE GROWTH", "WORKS AWAKE AND ASLEEP", 180 },
     { SD_ITEM_GARDEN, "SLOW GARDEN", "HALVES GRASS GROWTH ONLY", "WORKS AWAKE AND ASLEEP", 160 },
     { 0, "CALM CURRENT", "25% FASTER REST RECOVERY", "ENERGY ONLY, ALSO IN SLEEP", 160 },
@@ -772,12 +774,12 @@ const sd_item_t SD_ITEMS[SD_ITEM_COUNT] = {
     { 0, "PLAY KIT", "25% MORE EXPLORE CURIOSITY", "NO CHANGE TO CURIOSITY USE", 200 },
     { 0, "TRAINING RING", "25% MORE TRUST FROM HOLDS", "ADDS TO SEAHORSE BONUS", 240 },
     /* fixed sand scenery (1.2): owned in polish.scenery_unlocks, baked into the backdrop */
-    { 0, "SEA GLASS", "TUMBLED GLASS IN 3 COLORS", "FIXED SPOT ON THE SAND", 50 },
-    { 0, "BRAIN CORAL", "A ROUND, WINDING REEF DOME", "FIXED SPOT ON THE SAND", 110 },
-    { 0, "TIKI STATUE", "A CARVED ISLAND GUARDIAN", "FIXED SPOT ON THE SAND", 130 },
-    { 0, "BOTTLE NOTE", "A CORKED NOTE FROM AFAR", "FIXED SPOT ON THE SAND", 70 },
-    { 0, "ANEMONE", "SOFT PINK TENTACLE BLOOM", "FIXED SPOT ON THE SAND", 90 },
-    { 0, "OLD TEAPOT", "A LOST PORCELAIN TEAPOT", "FIXED SPOT ON THE SAND", 80 },
+    { 0, "SEA GLASS", "TUMBLED GLASS IN 3 COLORS", "SCENERY YOU CAN MOVE", 50 },
+    { 0, "BRAIN CORAL", "A ROUND, WINDING REEF DOME", "SCENERY YOU CAN MOVE", 110 },
+    { 0, "TIKI STATUE", "A CARVED ISLAND GUARDIAN", "SCENERY YOU CAN MOVE", 130 },
+    { 0, "BOTTLE NOTE", "A CORKED NOTE FROM AFAR", "SCENERY YOU CAN MOVE", 70 },
+    { 0, "ANEMONE", "SOFT PINK TENTACLE BLOOM", "SCENERY YOU CAN MOVE", 90 },
+    { 0, "OLD TEAPOT", "A LOST PORCELAIN TEAPOT", "SCENERY YOU CAN MOVE", 80 },
     { 0, "PEARL MUSSEL", "PASSIVE INCOME: 1 COIN/10M", "HEALTHY LIVE TANK. 15/DAY.", SD_PRICE_MUSSEL },
     { 0, "LIGHTHOUSE", "A STRIPED HARBOR BEACON", "STATIC MODEL, PLACE ANYWHERE", 95 },
     { 0, "SAILBOAT", "A TINY BOAT ON A SAND SEA", "NO BOBBING OR EXTRA CARE", 65 },
@@ -1229,6 +1231,7 @@ static bool buy_item(tank_t *t, int item) {
         companion_polish_observe(next);     /* first: migrating an uninitialised polish clears it */
         next->sd_balance -= price;
         next->polish.scenery_unlocks = (uint8_t)(next->polish.scenery_unlocks | (1u << (item - SD_SCENERY_FIRST)));
+        tank_decor_reset(next, item); tank_decor_raise(next, item);   /* movable since 2.4: fresh at its old spot, on top */
         size_t since = 32 + (size_t)(item - SD_SCENERY_FIRST);
         if (since < sizeof next->polish.decor_since / sizeof next->polish.decor_since[0]) {
             uint32_t powered = next->companion.powered_s;
@@ -1251,6 +1254,7 @@ static bool buy_item(tank_t *t, int item) {
     if (it->bit == SD_ITEM_PUMPKIN && !progression_pumpkin_offered(t)) return false;   /* out of season */
     t->sd_balance -= price; t->sd_unlocks |= it->bit;
     if (item >= 22) {
+        tank_decor_reset(t, item); tank_decor_raise(t, item);
         if (progression_save(t)) return true;
         t->sd_balance += price; t->sd_unlocks &= ~it->bit;
         shop_save_failed("SAVE FAILED - NOT BOUGHT", it->name);
@@ -1350,6 +1354,17 @@ static bool content_valid(const decor_content_t *c, const inventory_state_t *v) 
     }
     return total <= DECOR_INVENTORY_CAP;
 }
+static bool fixed_valid(const decor_fixed_t *f) {
+    if (f->version > 1 || f->reserved[0] || f->reserved[1] || f->reserved[2]) return false;
+    for (int i = 0; i < DECOR_FIXED_COUNT; i++)
+        if (!isfinite(f->x[i]) || f->x[i] < 0 || f->x[i] > TANK_MAX_W ||
+            (f->z[i] != DECOR_Z_BACK && f->z[i] != DECOR_Z_FRONT)) return false;
+    if (!f->version) {
+        decor_fixed_t zero = {0};
+        if (memcmp(f, &zero, sizeof zero)) return false;
+    }
+    return true;
+}
 static bool inventory_restore_safe(const save_t *to, const save_t *current) {
     if (to->creative.enabled && current->creative.enabled &&
         to->profile.mode == GAME_MODE_CREATIVE && current->profile.mode == GAME_MODE_CREATIVE) return true;
@@ -1360,7 +1375,7 @@ static bool inventory_restore_safe(const save_t *to, const save_t *current) {
         memcmp(to->inventory.paid, current->inventory.paid, DECOR_LEGACY_SLOTS) ||
         memcmp(to->content.stored, current->content.stored, DECOR_NEW_COUNT) ||
         memcmp(to->content.paid, current->content.paid, DECOR_NEW_COUNT)) return false;
-    for (int s = 0; s < DECOR_SLOTS; s++) {
+    for (int s = 0; s < DECOR_FIXED_SLOT0; s++) {           /* the fixed scenery is no inventory */
         int item = tank_decor_slot_item(s), count[2] = {0}, paid[2] = {0};
         const save_t *v[2] = {to, current};
         for (int j = 0; j < 2; j++) {
@@ -1896,166 +1911,172 @@ static bool migrate_profile(save_t *sv) {
 static bool extra_games_valid(const game_records_t *s) {
     return companion_games_valid(s);
 }
+/* The one full save image for load, save, backup and restore: all run on the tank
+ * task and none nests another. At 6424 bytes a stack copy overflowed the tank stack
+ * under the director, and a heap copy starved restore's cJSON tree (8 KB largest block). */
+static save_t s_save_scratch;
 static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
-    save_t sv; memset(&sv, 0, sizeof sv);
+    save_t *sv = &s_save_scratch; memset(sv, 0, sizeof *sv);
     *saved_unix = 0; s_loaded_release = 0; s_loaded_unix = 0;
     /* an older build's shorter save fills a prefix; the zeroed rest reads as
      * every later tail's defaults (see the tail comments in save_t) */
     size_t got = 0;
     bool loaded;
-    if (record) { sv = *record; got = sizeof sv; loaded = true; }
-    else loaded = persist_port_load(&sv, sizeof sv, &got) && got >= SAVE_CORE_SIZE && got <= sizeof sv;
+    if (record) { *sv = *record; got = sizeof *sv; loaded = true; }
+    else loaded = persist_port_load(sv, sizeof *sv, &got) && got >= SAVE_CORE_SIZE && got <= sizeof *sv;
     if (!loaded || (got > offsetof(save_t, care) && got < offsetof(save_t, inventory)) ||
-        (got > offsetof(save_t, inventory) && got != offsetof(save_t, content) && got != sizeof sv) ||
-        sv.magic != SAVE_MAGIC || !migrate_profile(&sv) || !care_valid(&sv.care) ||
-        !inventory_valid(&sv.inventory) || !content_valid(&sv.content, &sv.inventory) || sv.n_fish > N_FISH_MAX ||
-        !mussel_valid(&sv.mussel) ||
-        !game_income_valid(&sv.game_income, sv.care.game_paid) ||
-        (sv.profile.mode != GAME_MODE_HARD && sv.n_fish < 2 && !sv.companion.away) ||
-        sv.n_fish + sv.companion.away > N_FISH_MAX) return false;
-    if (!sv.aquariums.count) sv.aquariums.count = 1;
-    if (sv.aquariums.count > AQUARIUM_CAP || sv.aquariums.active >= sv.aquariums.count ||
-        (sv.aquariums.stat_upgrades & ~STAT_MASK) ||
-        (sv.aquariums.count > 1 && !(sv.aquariums.id[0] | sv.aquariums.id[1]))) return false;
-    if (sv.bank_count > FISH_BANK_CAP) return false;
+        (got > offsetof(save_t, inventory) && got != offsetof(save_t, content) && got != offsetof(save_t, fixed) && got != sizeof *sv) ||
+        sv->magic != SAVE_MAGIC || !migrate_profile(sv) || !care_valid(&sv->care) ||
+        !inventory_valid(&sv->inventory) || !content_valid(&sv->content, &sv->inventory) || !fixed_valid(&sv->fixed) || sv->n_fish > N_FISH_MAX ||
+        !mussel_valid(&sv->mussel) ||
+        !game_income_valid(&sv->game_income, sv->care.game_paid) ||
+        (sv->profile.mode != GAME_MODE_HARD && sv->n_fish < 2 && !sv->companion.away) ||
+        sv->n_fish + sv->companion.away > N_FISH_MAX) return false;
+    if (!sv->aquariums.count) sv->aquariums.count = 1;
+    if (sv->aquariums.count > AQUARIUM_CAP || sv->aquariums.active >= sv->aquariums.count ||
+        (sv->aquariums.stat_upgrades & ~STAT_MASK) ||
+        (sv->aquariums.count > 1 && !(sv->aquariums.id[0] | sv->aquariums.id[1]))) return false;
+    if (sv->bank_count > FISH_BANK_CAP) return false;
     if (got > offsetof(save_t, companion) && got != offsetof(save_t, companion) + 392 &&
         got != offsetof(save_t, companion) + 512 &&
-        got < offsetof(save_t, companion) + sizeof sv.companion) return false;
-    if (!companion_valid_mode(&sv.companion, sv.creative.enabled != 0)) return false;
+        got < offsetof(save_t, companion) + sizeof sv->companion) return false;
+    if (!companion_valid_mode(&sv->companion, sv->creative.enabled != 0)) return false;
     if ((got > offsetof(save_t, polish) && got < offsetof(save_t, story)) ||
         (got > offsetof(save_t, story) && got < offsetof(save_t, games)) ||
         (got > offsetof(save_t, games) && got < offsetof(save_t, rpg)) ||
         (got > offsetof(save_t, rpg) && got < offsetof(save_t, creative)) ||
         (got > offsetof(save_t, creative) && got < offsetof(save_t, games_extra)) ||
         (got > offsetof(save_t, games_extra) && got < offsetof(save_t, care)) ||
-        !creative_valid(&sv.creative) ||
-        (sv.creative.enabled && sv.n_fish + sv.companion.away > CREATIVE_FISH_CAP) ||
-        !companion_rpg_valid(&sv.rpg, sv.polish.next_id) ||
-        !companion_games_valid(&sv.games) || !extra_games_valid(&sv.games_extra) ||
-        !companion_polish_valid(&sv.polish, sv.n_fish, sv.bank_count, sv.companion.away) ||
-        !companion_story_valid(&sv.story, sv.n_fish, sv.bank_count, sv.companion.away, sv.polish.next_id)) {
+        !creative_valid(&sv->creative) ||
+        (sv->creative.enabled && sv->n_fish + sv->companion.away > CREATIVE_FISH_CAP) ||
+        !companion_rpg_valid(&sv->rpg, sv->polish.next_id) ||
+        !companion_games_valid(&sv->games) || !extra_games_valid(&sv->games_extra) ||
+        !companion_polish_valid(&sv->polish, sv->n_fish, sv->bank_count, sv->companion.away) ||
+        !companion_story_valid(&sv->story, sv->n_fish, sv->bank_count, sv->companion.away, sv->polish.next_id)) {
         fprintf(stderr, "Saved aquarium memories invalid or incomplete (%u bytes)\n", (unsigned)got);
         return false;
     }
-    if (sv.companion.away && !bank_valid(&sv.companion.traveler)) return false;
-    for (int i = 0; i < sv.bank_count; i++) if (!bank_valid(&sv.bank[i])) return false;
-    tank_reframe(t, sv.companion.display_compact != 0);
+    if (sv->companion.away && !bank_valid(&sv->companion.traveler)) return false;
+    for (int i = 0; i < sv->bank_count; i++) if (!bank_valid(&sv->bank[i])) return false;
+    tank_reframe(t, sv->companion.display_compact != 0);
     if (got == SAVE_PRE_BUBBLE_SIZE) {         /* the first public installer's layout: see SAVE_PRE_BUBBLE_SIZE */
-        memmove(&sv.ms_seen, &sv.bubble_x, sizeof sv.ms_seen + sizeof sv.tank_ms_seen);
-        sv.bubble_x = 0;                       /* = the default column */
+        memmove(&sv->ms_seen, &sv->bubble_x, sizeof sv->ms_seen + sizeof sv->tank_ms_seen);
+        sv->bubble_x = 0;                       /* = the default column */
     }
-    *saved_unix = sv.saved_unix; s_loaded_unix = sv.saved_unix;
-    s_loaded_release = sv.saved_release;
+    *saved_unix = sv->saved_unix; s_loaded_unix = sv->saved_unix;
+    s_loaded_release = sv->saved_release;
     t->n_fish = 0;
-    for (int i = 0; i < sv.n_fish; i++) {
-        const fish_save_t *s = &sv.fish[i];
+    for (int i = 0; i < sv->n_fish; i++) {
+        const fish_save_t *s = &sv->fish[i];
         tank_make_fish(t, i, s->preset % tank_roster_count(), s->sociable, s->bold, (stage_t)(s->stage & 3));
         fish_t *f = &t->fish[i];
         restore_fish_state(f, s);
-        f->ms_seen = sv.ms_seen[i] & f->ms_bits;
+        f->ms_seen = sv->ms_seen[i] & f->ms_bits;
         f->rest_dx = s->rest_dx; f->rest_dy = s->rest_dy;
-        f->drift_acc = sv.drift_acc[i];
+        f->drift_acc = sv->drift_acc[i];
         s_age[i] = s->age_s;
         t->n_fish = i + 1;
-        if (sv.names[i][0]) { sv.names[i][FISH_NAME_MAX] = 0; tank_set_name(t, i, sv.names[i]); }
-        tank_set_look(t, i, sv.body[i], sv.accent[i]);        /* zeros keep the preset's */
-        f->parent_a = (int8_t)(sv.parent_p1[i][0] - 1); f->parent_b = (int8_t)(sv.parent_p1[i][1] - 1);   /* 0 = none = -1 */
-        if (f->parent_a >= sv.n_fish) f->parent_a = -1;
-        if (f->parent_b >= sv.n_fish) f->parent_b = -1;
+        if (sv->names[i][0]) { sv->names[i][FISH_NAME_MAX] = 0; tank_set_name(t, i, sv->names[i]); }
+        tank_set_look(t, i, sv->body[i], sv->accent[i]);        /* zeros keep the preset's */
+        f->parent_a = (int8_t)(sv->parent_p1[i][0] - 1); f->parent_b = (int8_t)(sv->parent_p1[i][1] - 1);   /* 0 = none = -1 */
+        if (f->parent_a >= sv->n_fish) f->parent_a = -1;
+        if (f->parent_b >= sv->n_fish) f->parent_b = -1;
     }
-    s_setup_pending = sv.setup_pending != 0;
-    s_newborn = sv.newborn_p1 && sv.newborn_p1 <= sv.n_fish ? sv.newborn_p1 - 1 : -1;
+    s_setup_pending = sv->setup_pending != 0;
+    s_newborn = sv->newborn_p1 && sv->newborn_p1 <= sv->n_fish ? sv->newborn_p1 - 1 : -1;
     if (s_newborn >= 0 && t->fish[s_newborn].stage != STAGE_FRY) {
         fprintf(stderr, "Clearing obsolete fry welcome for an established fish\n");
         s_newborn = -1;
         mark_dirty();
     }
-    if (sv.bubble_x > 0) tank_set_bubble_x(t, sv.bubble_x);
-    t->light_idle_s = sv.light_idle_s ? sv.light_idle_s : LIGHT_IDLE_S;
-    t->light_auto = sv.light_auto != 0;
-    t->light_manual_off = !t->light_auto && sv.light_manual_off != 0;
-    t->light_tip_seen = sv.light_tip_seen != 0;
-    t->tools_locked = sv.tools_locked != 0;
+    if (sv->bubble_x > 0) tank_set_bubble_x(t, sv->bubble_x);
+    t->light_idle_s = sv->light_idle_s ? sv->light_idle_s : LIGHT_IDLE_S;
+    t->light_auto = sv->light_auto != 0;
+    t->light_manual_off = !t->light_auto && sv->light_manual_off != 0;
+    t->light_tip_seen = sv->light_tip_seen != 0;
+    t->tools_locked = sv->tools_locked != 0;
     t->screen_turned = false;
-    t->orient_lock = (sv.orient & 1) != 0; if (t->orient_lock) t->orient_inv = (sv.orient & 2) != 0;
-    t->autofeed_off = sv.autofeed_off != 0;
+    t->orient_lock = (sv->orient & 1) != 0; if (t->orient_lock) t->orient_inv = (sv->orient & 2) != 0;
+    t->autofeed_off = sv->autofeed_off != 0;
     t->light_override = false; t->light_on = true;   /* never restored (2026-09-15): a saved
                                                       * override once froze a tank in permanent day */
-    t->feed_spot_x = sv.feed_spot_x; t->player_feedings = sv.player_feedings;
-    t->hold_approaches = sv.hold_approaches; t->tank_ms_bits = sv.tank_ms_bits;
-    t->tank_ms_seen = sv.tank_ms_seen & t->tank_ms_bits;
+    t->feed_spot_x = sv->feed_spot_x; t->player_feedings = sv->player_feedings;
+    t->hold_approaches = sv->hold_approaches; t->tank_ms_bits = sv->tank_ms_bits;
+    t->tank_ms_seen = sv->tank_ms_seen & t->tank_ms_bits;
     for (int b = 0; b < VEG_BEDS; b++) {
-        if (sv.veg_h[b][0] > 0)
-            for (int i = 0; i < VEG_FRONDS_MAX; i++) t->veg_h[b][i] = sv.veg_h[b][i];
-        else if (sv.veg_growth[b] > 0) tank_veg_set(t, b, sv.veg_growth[b]);
+        if (sv->veg_h[b][0] > 0)
+            for (int i = 0; i < VEG_FRONDS_MAX; i++) t->veg_h[b][i] = sv->veg_h[b][i];
+        else if (sv->veg_growth[b] > 0) tank_veg_set(t, b, sv->veg_growth[b]);
     }
     tank_veg_sync(t);
-    memcpy(t->algae, sv.algae, ALGAE_CELLS);
-    t->trims = sv.trims; t->cells_cleaned = sv.cells_cleaned;
+    memcpy(t->algae, sv->algae, ALGAE_CELLS);
+    t->trims = sv->trims; t->cells_cleaned = sv->cells_cleaned;
     /* the sand dollar tail (zeros for an older save: the ledger back-pays) */
-    t->sd_balance = sv.sd_balance; t->sd_earned = sv.sd_earned; t->sd_unlocks = sv.sd_unlocks & SD_ITEM_MASK;
-    for (int i = 0; i < N_FISH_MAX; i++) t->sd_paid_fish[i] = i < t->n_fish ? sv.sd_paid_fish[i] : 0;
-    t->sd_colonies_paid = sv.sd_colonies_paid; t->sd_inches_paid = sv.sd_inches_paid;
-    t->algae_colonies = sv.algae_colonies; t->trim_px = sv.trim_px;
-    if (sv.snail_x > 0) { t->snail_x = sv.snail_x; t->snail_y = sv.snail_y; }
-    t->snail_grazed = sv.snail_grazed;
-    if ((t->sd_unlocks & SD_ITEM_PLANT) || sv.inventory.stored[tank_decor_slot(0)]) {
-        if (sv.veg_h3[0] > 0) for (int i = 0; i < VEG_FRONDS_MAX; i++) t->veg_h[3][i] = sv.veg_h3[i];
+    t->sd_balance = sv->sd_balance; t->sd_earned = sv->sd_earned; t->sd_unlocks = sv->sd_unlocks & SD_ITEM_MASK;
+    for (int i = 0; i < N_FISH_MAX; i++) t->sd_paid_fish[i] = i < t->n_fish ? sv->sd_paid_fish[i] : 0;
+    t->sd_colonies_paid = sv->sd_colonies_paid; t->sd_inches_paid = sv->sd_inches_paid;
+    t->algae_colonies = sv->algae_colonies; t->trim_px = sv->trim_px;
+    if (sv->snail_x > 0) { t->snail_x = sv->snail_x; t->snail_y = sv->snail_y; }
+    t->snail_grazed = sv->snail_grazed;
+    if ((t->sd_unlocks & SD_ITEM_PLANT) || sv->inventory.stored[tank_decor_slot(0)]) {
+        if (sv->veg_h3[0] > 0) for (int i = 0; i < VEG_FRONDS_MAX; i++) t->veg_h[3][i] = sv->veg_h3[i];
         else tank_plant_place(t);
         tank_veg_sync(t);
     }
-    if (sv.plant_x > 0) tank_decor_set(t, 0, sv.plant_x, sv.plant_z1 ? sv.plant_z1 - 1 : DECOR_Z_MIDDLE);
-    if (sv.castle_x > 0) tank_decor_set(t, 2, sv.castle_x, sv.castle_z1 ? sv.castle_z1 - 1 : DECOR_Z_FRONT);
-    if (sv.coral_x > 0) tank_decor_set(t, 3, sv.coral_x, sv.coral_z1 ? sv.coral_z1 - 1 : DECOR_Z_FRONT);   /* (an AMONG save reads as FRONT) */
-    if (sv.coral_rgb) tank_coral_set_rgb(t, sv.coral_rgb);
-    t->coral_growth = sv.coral_growth > 0 ? sv.coral_growth : 0;   /* 0 = full (tank_coral_growth) */
-    if (sv.cluster_x > 0) tank_decor_set(t, 4, sv.cluster_x, sv.cluster_z1 ? sv.cluster_z1 - 1 : DECOR_Z_FRONT);
-    tank_cluster_set_scheme(t, sv.cluster_scheme);
-    t->cluster_growth = sv.cluster_growth > 0 ? sv.cluster_growth : 0;
+    if (sv->plant_x > 0) tank_decor_set(t, 0, sv->plant_x, sv->plant_z1 ? sv->plant_z1 - 1 : DECOR_Z_MIDDLE);
+    if (sv->castle_x > 0) tank_decor_set(t, 2, sv->castle_x, sv->castle_z1 ? sv->castle_z1 - 1 : DECOR_Z_FRONT);
+    if (sv->coral_x > 0) tank_decor_set(t, 3, sv->coral_x, sv->coral_z1 ? sv->coral_z1 - 1 : DECOR_Z_FRONT);   /* (an AMONG save reads as FRONT) */
+    if (sv->coral_rgb) tank_coral_set_rgb(t, sv->coral_rgb);
+    t->coral_growth = sv->coral_growth > 0 ? sv->coral_growth : 0;   /* 0 = full (tank_coral_growth) */
+    if (sv->cluster_x > 0) tank_decor_set(t, 4, sv->cluster_x, sv->cluster_z1 ? sv->cluster_z1 - 1 : DECOR_Z_FRONT);
+    tank_cluster_set_scheme(t, sv->cluster_scheme);
+    t->cluster_growth = sv->cluster_growth > 0 ? sv->cluster_growth : 0;
     tank_pumpkin_place(t);                            /* the lantern's spot and depth (0.3.6) */
-    if (sv.pumpkin_z1 == DECOR_Z_FRONT + 1) t->pumpkin_z = DECOR_Z_FRONT;
-    if (sv.pumpkin_x > 0) tank_decor_set(t, 8, sv.pumpkin_x, t->pumpkin_z);
-    memcpy(t->decor_rank, sv.decor_rank, sizeof sv.decor_rank);
-    t->decor_rank[5] = sv.chest_rank;
+    if (sv->pumpkin_z1 == DECOR_Z_FRONT + 1) t->pumpkin_z = DECOR_Z_FRONT;
+    if (sv->pumpkin_x > 0) tank_decor_set(t, 8, sv->pumpkin_x, t->pumpkin_z);
+    memcpy(t->decor_rank, sv->decor_rank, sizeof sv->decor_rank);
+    t->decor_rank[5] = sv->chest_rank;
     t->chest_x = 0; t->chest_z = DECOR_Z_BACK;
-    if (sv.chest_x > 0) tank_decor_set(t, 9, sv.chest_x, sv.chest_z1 ? sv.chest_z1 - 1 : DECOR_Z_BACK);
+    if (sv->chest_x > 0) tank_decor_set(t, 9, sv->chest_x, sv->chest_z1 ? sv->chest_z1 - 1 : DECOR_Z_BACK);
     for (int i = 0; i < 4; i++) {
-        t->decor_rank[6 + i] = sv.ornament_rank[i];
+        t->decor_rank[6 + i] = sv->ornament_rank[i];
         t->ornament_x[i] = 0; t->ornament_z[i] = DECOR_Z_BACK;
-        if (sv.ornament_x[i] > 0) tank_decor_set(t, 10 + i, sv.ornament_x[i], sv.ornament_z1[i] ? sv.ornament_z1[i] - 1 : DECOR_Z_BACK);
+        if (sv->ornament_x[i] > 0) tank_decor_set(t, 10 + i, sv->ornament_x[i], sv->ornament_z1[i] ? sv->ornament_z1[i] - 1 : DECOR_Z_BACK);
     }
-    t->sand_style = (t->sd_unlocks & SD_ITEM_SAND) && sv.sand_style < SAND_STYLE_COUNT ? sv.sand_style : 0;
-    t->water_style = (t->sd_unlocks & SD_ITEM_LIGHTS) && sv.water_style < WATER_STYLE_COUNT ? sv.water_style : 0;
+    t->sand_style = (t->sd_unlocks & SD_ITEM_SAND) && sv->sand_style < SAND_STYLE_COUNT ? sv->sand_style : 0;
+    t->water_style = (t->sd_unlocks & SD_ITEM_LIGHTS) && sv->water_style < WATER_STYLE_COUNT ? sv->water_style : 0;
     for (int i = 0; i < 6; i++) {
-        t->decor_rank[10 + i] = sv.extra_rank[i];
+        t->decor_rank[10 + i] = sv->extra_rank[i];
         t->ornament_x[4 + i] = 0; t->ornament_z[4 + i] = DECOR_Z_BACK;
-        if (sv.extra_x[i] > 0) tank_decor_set(t, 16 + i, sv.extra_x[i], sv.extra_z1[i] ? sv.extra_z1[i] - 1 : DECOR_Z_BACK);
+        if (sv->extra_x[i] > 0) tank_decor_set(t, 16 + i, sv->extra_x[i], sv->extra_z1[i] ? sv->extra_z1[i] - 1 : DECOR_Z_BACK);
     }
     for (int i = 0; i < N_FISH_MAX; i++) {
-        t->fish[i].variety = sv.fish_variety[i] < FISH_VARIETY_COUNT ? sv.fish_variety[i] : 0;
-        t->fish[i].pattern = sv.fish_pattern[i] < FISH_PATTERN_COUNT ? sv.fish_pattern[i] : 0;
+        t->fish[i].variety = sv->fish_variety[i] < FISH_VARIETY_COUNT ? sv->fish_variety[i] : 0;
+        t->fish[i].pattern = sv->fish_pattern[i] < FISH_PATTERN_COUNT ? sv->fish_pattern[i] : 0;
     }
-    t->aquariums = sv.aquariums;
-    t->companion = sv.companion;
-    t->polish = sv.polish;
-    t->story = sv.story;
-    t->games = sv.games;
-    t->rpg = sv.rpg;
-    t->creative = sv.creative;
-    t->games_extra = sv.games_extra;
-    t->profile = sv.profile;
-    t->inventory = sv.inventory;
-    t->content = sv.content; t->content.version = 1;
-    memcpy(t->decor_rank + DECOR_LEGACY_SLOTS, sv.content.rank, DECOR_NEW_COUNT);
+    t->aquariums = sv->aquariums;
+    t->companion = sv->companion;
+    t->polish = sv->polish;
+    t->story = sv->story;
+    t->games = sv->games;
+    t->rpg = sv->rpg;
+    t->creative = sv->creative;
+    t->games_extra = sv->games_extra;
+    t->profile = sv->profile;
+    t->inventory = sv->inventory;
+    t->content = sv->content; t->content.version = 1;
+    memcpy(t->decor_rank + DECOR_LEGACY_SLOTS, sv->content.rank, DECOR_NEW_COUNT);
     for (int i = 0; i < DECOR_NEW_COUNT; i++)
-        if (sv.content.x[i] > 0) tank_decor_set(t, SD_DECOR_FIRST + i, sv.content.x[i], sv.content.z[i]);
-    t->mussel = sv.mussel; t->mussel_fraction = 0; t->mussel_glint = 0;
+        if (sv->content.x[i] > 0) tank_decor_set(t, SD_DECOR_FIRST + i, sv->content.x[i], sv->content.z[i]);
+    t->fixed = sv->fixed; t->fixed.version = 1;
+    memcpy(t->decor_rank + DECOR_FIXED_SLOT0, sv->fixed.rank, DECOR_FIXED_COUNT);
+    t->mussel = sv->mussel; t->mussel_fraction = 0; t->mussel_glint = 0;
     if (t->mussel.version == 1 && t->mussel.owned) {
         t->mussel.version = 2;
         t->mussel.owned = (uint8_t)(1u << t->aquariums.active);
     }
-    t->game_income = sv.game_income;
-    t->care = sv.care; t->care_fraction = 0;
+    t->game_income = sv->game_income;
+    t->care = sv->care; t->care_fraction = 0;
     s_hard_save_failed = s_hard_departed = false;
     t->visitor_left = 0;
     for (int i = 0; i < t->n_fish; i++) {
@@ -2073,9 +2094,9 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     }
     if (!memchr(t->aquariums.name, 0, sizeof t->aquariums.name) || !t->aquariums.name[0])
         snprintf(t->aquariums.name, sizeof t->aquariums.name, "TANK %u", t->aquariums.active + 1);
-    t->journal = sv.journal;
-    t->bank_count = sv.bank_count;
-    memcpy(t->bank, sv.bank, sizeof t->bank);
+    t->journal = sv->journal;
+    t->bank_count = sv->bank_count;
+    memcpy(t->bank, sv->bank, sizeof t->bank);
     if (t->journal.xp > JOURNAL_XP_MAX) t->journal.xp = JOURNAL_XP_MAX;
     t->journal.claimed &= (1u << JOURNAL_GOAL_N) - 1;
     t->journal.seen &= (1u << FISH_VARIETY_COUNT) - 1;
@@ -2085,30 +2106,30 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     if (t->journal.population > N_FISH_MAX) t->journal.population = N_FISH_MAX;
     if (!journal_theme_unlocked(t, t->journal.theme)) t->journal.theme = 0;
     if (t->sd_unlocks & SD_ITEM_SHRIMP) {             /* the school back in the grass, its count and its progress */
-        tank_shrimp_place(t, sv.shrimp_n >= SHRIMP_START ? sv.shrimp_n : SHRIMP_START);
-        t->shrimp_food = sv.shrimp_food <= SHRIMP_PER_JOIN ? sv.shrimp_food : SHRIMP_PER_JOIN;
-        t->shrimp_cool = sv.shrimp_cool > 0 && sv.shrimp_cool <= SHRIMP_COOLDOWN_S ? sv.shrimp_cool : 0;
-        t->shrimp_eaten = sv.shrimp_eaten > 0 ? sv.shrimp_eaten : 0;
+        tank_shrimp_place(t, sv->shrimp_n >= SHRIMP_START ? sv->shrimp_n : SHRIMP_START);
+        t->shrimp_food = sv->shrimp_food <= SHRIMP_PER_JOIN ? sv->shrimp_food : SHRIMP_PER_JOIN;
+        t->shrimp_cool = sv->shrimp_cool > 0 && sv->shrimp_cool <= SHRIMP_COOLDOWN_S ? sv->shrimp_cool : 0;
+        t->shrimp_eaten = sv->shrimp_eaten > 0 ? sv->shrimp_eaten : 0;
     } else { t->shrimp_n = 0; t->shrimp_eaten = 0; }
     if (t->sd_unlocks & SD_ITEM_URCHIN) {             /* back where it was on the floor, its tally */
         tank_urchin_place(t);
-        if (sv.urchin_x > 0) t->urchin_x = sv.urchin_x;
-        t->urchin_grazed_px = sv.urchin_grazed_px > 0 ? sv.urchin_grazed_px : 0;
+        if (sv->urchin_x > 0) t->urchin_x = sv->urchin_x;
+        t->urchin_grazed_px = sv->urchin_grazed_px > 0 ? sv->urchin_grazed_px : 0;
     } else { t->urchin_x = -1; t->urchin_grazed_px = 0; }
     if (t->sd_unlocks & SD_ITEM_SEAHORSE) {           /* back on a blade, its tally */
         tank_seahorse_place(t);
-        t->sh_s = sv.sh_s > 0 ? sv.sh_s : 0;
-        t->sh_hitches = sv.sh_hitches > 0 ? sv.sh_hitches : 0;
-        t->sh_trust_passed = sv.sh_trust_passed > 0 ? sv.sh_trust_passed : 0;
-        t->sh_eaten = sv.sh_eaten > 0 ? sv.sh_eaten : 0;
-        t->sh_snack_pay = sv.sh_snack_pay > 0 ? sv.sh_snack_pay : 0;
-        t->sd_snacks_paid = sv.sd_snacks_paid > 0 ? sv.sd_snacks_paid : 0;
-        t->sh_snack_cool = sv.sh_snack_cool > 0 && sv.sh_snack_cool <= SH_SNACK_COOL_S ? sv.sh_snack_cool : 0;
+        t->sh_s = sv->sh_s > 0 ? sv->sh_s : 0;
+        t->sh_hitches = sv->sh_hitches > 0 ? sv->sh_hitches : 0;
+        t->sh_trust_passed = sv->sh_trust_passed > 0 ? sv->sh_trust_passed : 0;
+        t->sh_eaten = sv->sh_eaten > 0 ? sv->sh_eaten : 0;
+        t->sh_snack_pay = sv->sh_snack_pay > 0 ? sv->sh_snack_pay : 0;
+        t->sd_snacks_paid = sv->sd_snacks_paid > 0 ? sv->sd_snacks_paid : 0;
+        t->sh_snack_cool = sv->sh_snack_cool > 0 && sv->sh_snack_cool <= SH_SNACK_COOL_S ? sv->sh_snack_cool : 0;
     } else { t->sh_x = -1; t->sh_s = 0; t->sh_hitches = 0; t->sh_trust_passed = 0; t->sh_eaten = 0; t->sh_snack_pay = 0; t->sd_snacks_paid = 0; t->sh_snack_cool = 0; }
     s_sd_pending = 0;
-    s_arrival_pending = sv.arrival_pending; s_spawn_in = -1;
-    s_sale_need = sv.sale_meals_need > 0 ? sv.sale_meals_need : 0;
-    s_fry_seed = sv.fry_seed; s_fry_age = sv.fry_age_min * 60.0f; s_fry_sold = sv.fry_sold & ((1u << FRY_OFFER_N) - 1);
+    s_arrival_pending = sv->arrival_pending; s_spawn_in = -1;
+    s_sale_need = sv->sale_meals_need > 0 ? sv->sale_meals_need : 0;
+    s_fry_seed = sv->fry_seed; s_fry_age = sv->fry_age_min * 60.0f; s_fry_sold = sv->fry_sold & ((1u << FRY_OFFER_N) - 1);
     s_prev_night = t->night;
     companion_polish_init(t, false);
     return true;
@@ -2379,6 +2400,8 @@ static void capture_save(const tank_t *t, save_t *sv) {
     sv->inventory = t->inventory;
     sv->content = t->content; sv->content.version = 1;
     memcpy(sv->content.rank, t->decor_rank + DECOR_LEGACY_SLOTS, DECOR_NEW_COUNT);
+    sv->fixed = t->fixed; sv->fixed.version = 1;
+    memcpy(sv->fixed.rank, t->decor_rank + DECOR_FIXED_SLOT0, DECOR_FIXED_COUNT);
     sv->mussel = t->mussel;
     sv->game_income = t->game_income;
     sv->care = t->care;
@@ -2436,6 +2459,11 @@ static void capture_save(const tank_t *t, save_t *sv) {
             int i = layout->item - SD_DECOR_FIRST;
             sv->content.x[i] = layout->x; sv->content.z[i] = layout->z;
         }
+        memcpy(sv->fixed.rank, layout->rank + DECOR_FIXED_SLOT0, DECOR_FIXED_COUNT);
+        if (tank_fixed_index(layout->item) >= 0) {
+            int i = tank_fixed_index(layout->item);
+            sv->fixed.x[i] = layout->x; sv->fixed.z[i] = layout->z;
+        }
         /* Autosaves and JSON backups see the committed layout, never the live preview. */
         memcpy(sv->decor_rank, layout->rank, sizeof sv->decor_rank);
         sv->chest_rank = layout->rank[5];
@@ -2489,8 +2517,8 @@ static void capture_save(const tank_t *t, save_t *sv) {
 }
 bool progression_save(tank_t *t) {
     if (!s_booted || persist_port_blocked()) return false;
-    save_t sv; capture_save(t, &sv);
-    if (!persist_port_save(&sv, sizeof sv)) {
+    save_t *sv = &s_save_scratch; capture_save(t, sv);
+    if (!persist_port_save(sv, sizeof *sv)) {
         if (!s_dirty) { s_dirty = true; s_dirty_since = 0; }
         s_since_save = 0;                         /* retry after SAVE_MIN_GAP_S */
         return false;
@@ -2694,6 +2722,12 @@ static const json_field_t CONTENT_FIELDS[] = {
     CONTENT(stored, J_HEX, DECOR_NEW_COUNT, 255), CONTENT(paid, J_HEX, DECOR_NEW_COUNT, 255)
 };
 #undef CONTENT
+#define FIXED(f, k, n, hi) { #f, offsetof(decor_fixed_t, f), n, k, 0, hi }
+static const json_field_t FIXED_FIELDS[] = {
+    FIXED(version, J_U8, 1, 1), FIXED(x, J_FLOAT, DECOR_FIXED_COUNT, TANK_MAX_W),
+    FIXED(z, J_HEX, DECOR_FIXED_COUNT, 255), FIXED(rank, J_HEX, DECOR_FIXED_COUNT, 255)
+};
+#undef FIXED
 #define MUS(f, k, hi) { #f, offsetof(mussel_state_t, f), 1, k, 0, hi }
 static const json_field_t MUSSEL_FIELDS[] = {
     MUS(seconds, J_U16, MUSSEL_SECONDS - 1), MUS(owned, J_U8, 255),
@@ -2804,66 +2838,68 @@ static bool json_append_value(char **text, size_t *used, cJSON *value) {
     return ok;
 }
 char *progression_backup_json(const tank_t *t) {
-    save_t sv; capture_save(t, &sv);
+    save_t *sv = &s_save_scratch; capture_save(t, sv);
     char header[128], *text = NULL;
     size_t used = 0;
-    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":19,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
+    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":20,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
     if (!json_append(&text, &used, header)) goto fail;
-    cJSON *tank = json_fields(&sv, SAVE_FIELDS, FIELD_COUNT(SAVE_FIELDS));
+    cJSON *tank = json_fields(sv, SAVE_FIELDS, FIELD_COUNT(SAVE_FIELDS));
     if (!tank) goto fail;
-    if (!cJSON_AddNumberToObject(tank, "stat_upgrades", sv.aquariums.stat_upgrades) ||
-        !cJSON_AddNumberToObject(tank, "clock_theme", sv.aquariums.clock_theme) ||
-        !cJSON_AddNumberToObject(tank, "clock_flags", sv.aquariums.clock_flags) ||
-        !cJSON_AddNumberToObject(tank, "clock_utc_quarters", sv.aquariums.clock_utc_quarters) ||
-        !cJSON_AddNumberToObject(tank, "clock_layout", sv.aquariums.clock_layout) ||
-        !cJSON_AddNumberToObject(tank, "clock_delay", sv.aquariums.clock_delay & ~CLOCK_SECONDARY_MASK) ||
-        !cJSON_AddNumberToObject(tank, "clock_secondary", sv.aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT)) {
+    if (!cJSON_AddNumberToObject(tank, "stat_upgrades", sv->aquariums.stat_upgrades) ||
+        !cJSON_AddNumberToObject(tank, "clock_theme", sv->aquariums.clock_theme) ||
+        !cJSON_AddNumberToObject(tank, "clock_flags", sv->aquariums.clock_flags) ||
+        !cJSON_AddNumberToObject(tank, "clock_utc_quarters", sv->aquariums.clock_utc_quarters) ||
+        !cJSON_AddNumberToObject(tank, "clock_layout", sv->aquariums.clock_layout) ||
+        !cJSON_AddNumberToObject(tank, "clock_delay", sv->aquariums.clock_delay & ~CLOCK_SECONDARY_MASK) ||
+        !cJSON_AddNumberToObject(tank, "clock_secondary", sv->aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT)) {
         cJSON_Delete(tank); goto fail;
     }
     /* Serialize one section at a time so SD backup fits beside weather's Wi-Fi buffers. */
-    cJSON *companion = json_fields(&sv.companion, COMPANION_FIELDS, FIELD_COUNT(COMPANION_FIELDS));
-    if (!companion || (sv.companion.version >= 6 &&
-        !cJSON_AddNumberToObject(companion, "mussel_colors", sv.companion.mussel_colors))) {
+    cJSON *companion = json_fields(&sv->companion, COMPANION_FIELDS, FIELD_COUNT(COMPANION_FIELDS));
+    if (!companion || (sv->companion.version >= 6 &&
+        !cJSON_AddNumberToObject(companion, "mussel_colors", sv->companion.mussel_colors))) {
         cJSON_Delete(companion); cJSON_Delete(tank); goto fail;
     }
     if (!json_append_value(&text, &used, tank)) { cJSON_Delete(companion); goto fail; }
     if (!json_append(&text, &used, ",\"companion\":")) { cJSON_Delete(companion); goto fail; }
     if (!json_append_value(&text, &used, companion) ||
         !json_append(&text, &used, ",\"polish\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.polish, POLISH_FIELDS, FIELD_COUNT(POLISH_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->polish, POLISH_FIELDS, FIELD_COUNT(POLISH_FIELDS))) ||
         !json_append(&text, &used, ",\"story\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.story, STORY_FIELDS, FIELD_COUNT(STORY_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->story, STORY_FIELDS, FIELD_COUNT(STORY_FIELDS))) ||
         !json_append(&text, &used, ",\"games\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.games, GAME_FIELDS, FIELD_COUNT(GAME_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->games, GAME_FIELDS, FIELD_COUNT(GAME_FIELDS))) ||
         !json_append(&text, &used, ",\"rpg\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.rpg, RPG_FIELDS, FIELD_COUNT(RPG_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->rpg, RPG_FIELDS, FIELD_COUNT(RPG_FIELDS))) ||
         !json_append(&text, &used, ",\"creative\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.creative, CREATIVE_FIELDS, FIELD_COUNT(CREATIVE_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->creative, CREATIVE_FIELDS, FIELD_COUNT(CREATIVE_FIELDS))) ||
         !json_append(&text, &used, ",\"games_extra\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.games_extra, GAME_FIELDS, FIELD_COUNT(GAME_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->games_extra, GAME_FIELDS, FIELD_COUNT(GAME_FIELDS))) ||
         !json_append(&text, &used, ",\"profile\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.profile, PROFILE_FIELDS, FIELD_COUNT(PROFILE_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->profile, PROFILE_FIELDS, FIELD_COUNT(PROFILE_FIELDS))) ||
         !json_append(&text, &used, ",\"care\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.care, CARE_FIELDS, FIELD_COUNT(CARE_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->care, CARE_FIELDS, FIELD_COUNT(CARE_FIELDS))) ||
         !json_append(&text, &used, ",\"inventory\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.inventory, INVENTORY_FIELDS, FIELD_COUNT(INVENTORY_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->inventory, INVENTORY_FIELDS, FIELD_COUNT(INVENTORY_FIELDS))) ||
         !json_append(&text, &used, ",\"content\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.content, CONTENT_FIELDS, FIELD_COUNT(CONTENT_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->content, CONTENT_FIELDS, FIELD_COUNT(CONTENT_FIELDS))) ||
+        !json_append(&text, &used, ",\"fixed\":") ||
+        !json_append_value(&text, &used, json_fields(&sv->fixed, FIXED_FIELDS, FIELD_COUNT(FIXED_FIELDS))) ||
         !json_append(&text, &used, ",\"mussel\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.mussel, MUSSEL_FIELDS, FIELD_COUNT(MUSSEL_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->mussel, MUSSEL_FIELDS, FIELD_COUNT(MUSSEL_FIELDS))) ||
         !json_append(&text, &used, ",\"game_income\":") ||
-        !json_append_value(&text, &used, json_fields(&sv.game_income, GAME_INCOME_FIELDS, FIELD_COUNT(GAME_INCOME_FIELDS))) ||
+        !json_append_value(&text, &used, json_fields(&sv->game_income, GAME_INCOME_FIELDS, FIELD_COUNT(GAME_INCOME_FIELDS))) ||
         !json_append(&text, &used, ",\"fish\":[")) goto fail;
     for (int i = 0; i < N_FISH_MAX; i++) {
         if ((i && !json_append(&text, &used, ",")) ||
-            !json_append_value(&text, &used, json_fields(&sv.fish[i], FISH_FIELDS, FIELD_COUNT(FISH_FIELDS)))) goto fail;
+            !json_append_value(&text, &used, json_fields(&sv->fish[i], FISH_FIELDS, FIELD_COUNT(FISH_FIELDS)))) goto fail;
     }
     if (!json_append(&text, &used, "],\"bank\":[")) goto fail;
-    for (int i = 0; i < sv.bank_count; i++) {
+    for (int i = 0; i < sv->bank_count; i++) {
         if (i && !json_append(&text, &used, ",")) goto fail;
-        cJSON *b = json_fields(&sv.bank[i], BANK_FIELDS, FIELD_COUNT(BANK_FIELDS));
+        cJSON *b = json_fields(&sv->bank[i], BANK_FIELDS, FIELD_COUNT(BANK_FIELDS));
         if (!b) goto fail;
-        cJSON *f = json_fields(&sv.bank[i].fish, FISH_FIELDS, FIELD_COUNT(FISH_FIELDS));
+        cJSON *f = json_fields(&sv->bank[i].fish, FISH_FIELDS, FIELD_COUNT(FISH_FIELDS));
         if (!f || !cJSON_AddItemToObject(b, "fish", f)) { cJSON_Delete(f); cJSON_Delete(b); goto fail; }
         if (!json_append_value(&text, &used, b)) goto fail;
     }
@@ -2945,8 +2981,40 @@ static bool json_bank_record(bank_fish_t *b, const cJSON *entry, char *error, si
     if (!bank_valid(b)) { snprintf(error, size, "Invalid stored fish"); return false; }
     return true;
 }
-static cJSON *json_snapshot(const char *json, size_t len, save_t *sv, char *error, size_t size) {
+/* The whole cJSON tree of a schema-20 snapshot (~40 KB on the ESP32) no longer fits
+ * beside the CYD's tank heap, so validation holds one top-level value at a time:
+ * every value is parsed once here (syntax), objects and arrays are recorded as
+ * slices behind empty placeholders, and restore re-parses each slice only while
+ * it reads it. The bank still streams record by record. */
+typedef struct { char key[16]; uint32_t off, len; } json_slice_t;
+typedef struct { const char *json; int n; json_slice_t slice[24]; } json_lazy_t;
+static cJSON *json_expand(cJSON *root, const json_lazy_t *lazy, const char *key) {
+    for (int i = 0; i < lazy->n; i++) {
+        if (strcmp(lazy->slice[i].key, key)) continue;
+        cJSON *value = cJSON_ParseWithLengthOpts(lazy->json + lazy->slice[i].off, lazy->slice[i].len, NULL, false);
+        if (!value) return NULL;
+        if (!cJSON_ReplaceItemInObjectCaseSensitive(root, key, value)) { cJSON_Delete(value); return NULL; }
+        return value;
+    }
+    return cJSON_GetObjectItemCaseSensitive(root, key);
+}
+static void json_collapse(cJSON *root, const json_lazy_t *lazy, const char *key) {
+    for (int i = 0; i < lazy->n; i++) {
+        if (strcmp(lazy->slice[i].key, key)) continue;
+        cJSON *empty = cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(root, key)) ? cJSON_CreateArray() : cJSON_CreateObject();
+        if (empty && !cJSON_ReplaceItemInObjectCaseSensitive(root, key, empty)) cJSON_Delete(empty);
+        return;
+    }
+}
+static bool json_read_lazy(cJSON *root, const json_lazy_t *lazy, const char *key, void *data,
+                           const json_field_t *fields, size_t count, char *error, size_t size) {
+    bool ok = json_read_fields(data, json_expand(root, lazy, key), fields, count, error, size);
+    json_collapse(root, lazy, key);
+    return ok;
+}
+static cJSON *json_snapshot(const char *json, size_t len, save_t *sv, json_lazy_t *lazy, char *error, size_t size) {
     const char *limit = json + len, *p = json_space(json, limit);
+    lazy->json = json; lazy->n = 0;
     cJSON *root = NULL, *key = NULL, *value = NULL;
     if (p == limit || *p++ != '{' || !(root = cJSON_CreateObject())) goto fail;
     for (;;) {
@@ -2980,6 +3048,15 @@ static cJSON *json_snapshot(const char *json, size_t len, save_t *sv, char *erro
             end = NULL;
             value = cJSON_ParseWithLengthOpts(p, (size_t)(limit - p), &end, false);
             if (!value || !end) goto fail;
+            if ((cJSON_IsObject(value) || cJSON_IsArray(value)) && strlen(key->valuestring) < sizeof lazy->slice[0].key) {
+                if (lazy->n >= (int)(sizeof lazy->slice / sizeof lazy->slice[0])) goto fail;
+                json_slice_t *slice = &lazy->slice[lazy->n++];
+                snprintf(slice->key, sizeof slice->key, "%s", key->valuestring);
+                slice->off = (uint32_t)(p - json); slice->len = (uint32_t)(end - p);
+                cJSON *empty = cJSON_IsArray(value) ? cJSON_CreateArray() : cJSON_CreateObject();
+                cJSON_Delete(value); value = empty;
+                if (!value) goto fail;
+            }
             p = end;
         }
         if (!cJSON_AddItemToObject(root, key->valuestring, value)) goto fail;
@@ -3001,15 +3078,17 @@ bool progression_backup_preview(const char *json, size_t len, char name[16], uin
     }
     save_t *sv = calloc(1, sizeof *sv);
     if (!sv) { fprintf(stderr, "Not enough memory for backup preview\n"); return false; }
-    cJSON *root = json_snapshot(json, len, sv, error, sizeof error);
+    json_lazy_t lazy;
+    cJSON *root = json_snapshot(json, len, sv, &lazy, error, sizeof error);
     if (!root) { free(sv); fprintf(stderr, "Backup preview parse failed: %s\n", error); return false; }
-    const cJSON *tank = cJSON_GetObjectItemCaseSensitive(root, "tank");
-    const cJSON *version = cJSON_GetObjectItemCaseSensitive(tank, "saved_release");
-    const cJSON *polish = cJSON_GetObjectItemCaseSensitive(root, "polish");
+    const cJSON *version = cJSON_GetObjectItemCaseSensitive(json_expand(root, &lazy, "tank"), "saved_release");
+    uint32_t saved_release = version ? (uint32_t)version->valuedouble : 0;
+    json_collapse(root, &lazy, "tank");
+    const cJSON *polish = json_expand(root, &lazy, "polish");
     bool ok = !polish || json_read_fields(&sv->polish, polish, POLISH_FIELDS, FIELD_COUNT(POLISH_FIELDS), error, sizeof error);
     if (ok) {
         snprintf(name, 16, "%s", sv->polish.tank_name[0] ? sv->polish.tank_name : "OLDER BACKUP");
-        *release = version ? (uint32_t)version->valuedouble : 0;
+        *release = saved_release;
     } else fprintf(stderr, "Backup preview metadata rejected: %s\n", error);
     cJSON_Delete(root); free(sv); return ok;
 }
@@ -3026,10 +3105,12 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         else if (c == '}' || c == ']') depth--;
     }
     bool ok = false;
-    save_t sv; memset(&sv, 0, sizeof sv); sv.magic = SAVE_MAGIC;
-    snprintf(error, error_size, "Invalid JSON or incompatible schema/board");
-    cJSON *root = json_snapshot(json, len, &sv, error, error_size);
+    save_t *sv = &s_save_scratch; memset(sv, 0, sizeof *sv); sv->magic = SAVE_MAGIC;
+    snprintf(error, error_size, "Invalid JSON or not enough memory to parse it");
+    json_lazy_t lazy;
+    cJSON *root = json_snapshot(json, len, sv, &lazy, error, error_size);
     if (!root) goto done;
+    snprintf(error, error_size, "Incompatible format, schema, board or size");
     const cJSON *format = cJSON_GetObjectItemCaseSensitive(root, "format");
     const cJSON *schema = cJSON_GetObjectItemCaseSensitive(root, "schema");
     const cJSON *board = cJSON_GetObjectItemCaseSensitive(root, "board");
@@ -3037,15 +3118,15 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     const cJSON *height = cJSON_GetObjectItemCaseSensitive(root, "height");
     const cJSON *fish = cJSON_GetObjectItemCaseSensitive(root, "fish");
     if (!cJSON_IsString(format) || strcmp(format->valuestring, "pocket-tank")
-        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 19 ||
+        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 20 ||
            schema->valuedouble != floor(schema->valuedouble)
-        || cJSON_GetArraySize(root) != (schema->valuedouble >= 19 ? 21 : schema->valuedouble >= 18 ? 20 : schema->valuedouble >= 17 ? 17 : schema->valuedouble >= 16 ? 16 : schema->valuedouble >= 15 ? 14 : schema->valuedouble >= 14 ? 13 : schema->valuedouble >= 13 ? 12 : schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
+        || cJSON_GetArraySize(root) != (schema->valuedouble >= 20 ? 22 : schema->valuedouble >= 19 ? 21 : schema->valuedouble >= 18 ? 20 : schema->valuedouble >= 17 ? 17 : schema->valuedouble >= 16 ? 16 : schema->valuedouble >= 15 ? 14 : schema->valuedouble >= 14 ? 13 : schema->valuedouble >= 13 ? 12 : schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
         || !cJSON_IsString(board) || strcmp(board->valuestring, "cyd2432s028")
         || !cJSON_IsNumber(width) || (width->valuedouble != 240 && width->valuedouble != 320)
         || !cJSON_IsNumber(height) || height->valuedouble * 4 != width->valuedouble * 3
-        || !cJSON_IsArray(fish) || cJSON_GetArraySize(fish) != N_FISH_MAX) goto done;
+        || !cJSON_IsArray(fish)) goto done;
     size_t fields = FIELD_COUNT(SAVE_FIELDS) - (schema->valuedouble < 4 ? 9 : 0) - (schema->valuedouble < 3 ? 5 : 0) - (schema->valuedouble == 1 ? 5 : 0);
-    cJSON *tank_fields = cJSON_GetObjectItemCaseSensitive(root, "tank");
+    cJSON *tank_fields = json_expand(root, &lazy, "tank");
     cJSON *stat = cJSON_GetObjectItemCaseSensitive(tank_fields, "stat_upgrades");
     if (stat && (!cJSON_IsNumber(stat) || !isfinite(stat->valuedouble) ||
                  stat->valuedouble < 0 || stat->valuedouble > STAT_MASK || floor(stat->valuedouble) != stat->valuedouble)) {
@@ -3070,72 +3151,83 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         snprintf(error, error_size, "Invalid clock size or text layout"); goto done;
     }
     if (schema->valuedouble >= 15 &&
-        (!json_read_fields(&sv.creative, cJSON_GetObjectItemCaseSensitive(root, "creative"),
+        (!json_read_lazy(root, &lazy, "creative", &sv->creative,
                            CREATIVE_FIELDS, FIELD_COUNT(CREATIVE_FIELDS), error, error_size) ||
-         !creative_valid(&sv.creative))) {
+         !creative_valid(&sv->creative))) {
         snprintf(error, error_size, "Invalid Creative mode state"); goto done;
     }
-    if (!json_read_fields(&sv, tank_fields, SAVE_FIELDS, fields, error, error_size)) goto done;
+    if (!json_read_fields(sv, tank_fields, SAVE_FIELDS, fields, error, error_size)) goto done;
+    json_collapse(root, &lazy, "tank"); tank_fields = NULL;
     if (schema->valuedouble >= 16 &&
-        (!json_read_fields(&sv.profile, cJSON_GetObjectItemCaseSensitive(root, "profile"),
+        (!json_read_lazy(root, &lazy, "profile", &sv->profile,
                           PROFILE_FIELDS, FIELD_COUNT(PROFILE_FIELDS), error, error_size) ||
-         !json_read_fields(&sv.games_extra, cJSON_GetObjectItemCaseSensitive(root, "games_extra"),
+         !json_read_lazy(root, &lazy, "games_extra", &sv->games_extra,
                           GAME_FIELDS, FIELD_COUNT(GAME_FIELDS), error, error_size) ||
-         !extra_games_valid(&sv.games_extra))) {
+         !extra_games_valid(&sv->games_extra))) {
         snprintf(error, error_size, "Invalid game mode or extra game records"); goto done;
     }
-    if (!migrate_profile(&sv)) {
+    if (!migrate_profile(sv)) {
         snprintf(error, error_size, "Invalid profile; legacy Creative backups cannot migrate"); goto done;
     }
     if (schema->valuedouble >= 19 &&
-        (!json_read_fields(&sv.content, cJSON_GetObjectItemCaseSensitive(root, "content"),
+        (!json_read_lazy(root, &lazy, "content", &sv->content,
                           CONTENT_FIELDS, FIELD_COUNT(CONTENT_FIELDS), error, error_size) ||
-         !content_valid(&sv.content, &sv.inventory))) {
+         !content_valid(&sv->content, &sv->inventory))) {
         snprintf(error, error_size, "Invalid decoration content"); goto done;
     }
+    if (schema->valuedouble >= 20 &&
+        (!json_read_lazy(root, &lazy, "fixed", &sv->fixed,
+                           FIXED_FIELDS, FIELD_COUNT(FIXED_FIELDS), error, error_size) ||
+         !fixed_valid(&sv->fixed))) {
+        snprintf(error, error_size, "Invalid scenery layout"); goto done;
+    }
     if (schema->valuedouble >= 18 &&
-        (!json_read_fields(&sv.inventory, cJSON_GetObjectItemCaseSensitive(root, "inventory"),
+        (!json_read_lazy(root, &lazy, "inventory", &sv->inventory,
                            INVENTORY_FIELDS, FIELD_COUNT(INVENTORY_FIELDS), error, error_size) ||
-         !inventory_valid(&sv.inventory))) {
+         !inventory_valid(&sv->inventory))) {
         snprintf(error, error_size, "Invalid decoration inventory"); goto done;
     }
     if (schema->valuedouble >= 18 &&
-        (!json_read_fields(&sv.mussel, cJSON_GetObjectItemCaseSensitive(root, "mussel"),
+        (!json_read_lazy(root, &lazy, "mussel", &sv->mussel,
                            MUSSEL_FIELDS, FIELD_COUNT(MUSSEL_FIELDS), error, error_size) ||
-         !mussel_valid(&sv.mussel))) {
+         !mussel_valid(&sv->mussel))) {
         snprintf(error, error_size, "Invalid pearl mussel"); goto done;
     }
     if (schema->valuedouble >= 17 &&
-        (!json_read_fields(&sv.care, cJSON_GetObjectItemCaseSensitive(root, "care"),
+        (!json_read_lazy(root, &lazy, "care", &sv->care,
                            CARE_FIELDS, FIELD_COUNT(CARE_FIELDS), error, error_size) ||
-         !care_valid(&sv.care))) {
+         !care_valid(&sv->care))) {
         snprintf(error, error_size, "Invalid daily care state"); goto done;
     }
     if ((schema->valuedouble >= 18 &&
-         !json_read_fields(&sv.game_income, cJSON_GetObjectItemCaseSensitive(root, "game_income"),
+         !json_read_lazy(root, &lazy, "game_income", &sv->game_income,
                            GAME_INCOME_FIELDS, FIELD_COUNT(GAME_INCOME_FIELDS), error, error_size)) ||
-        !game_income_valid(&sv.game_income, sv.care.game_paid)) {
+        !game_income_valid(&sv->game_income, sv->care.game_paid)) {
         snprintf(error, error_size, "Invalid game income"); goto done;
     }
-    if (schema->valuedouble == 1 && sv.sd_unlocks >= (1u << 10)) {
+    if (schema->valuedouble == 1 && sv->sd_unlocks >= (1u << 10)) {
         snprintf(error, error_size, "Unknown items in schema 1 backup"); goto done;
     }
-    if (schema->valuedouble == 2 && sv.sd_unlocks >= (1u << 16)) {
+    if (schema->valuedouble == 2 && sv->sd_unlocks >= (1u << 16)) {
         snprintf(error, error_size, "Unknown items in schema 2 backup"); goto done;
     }
-    if ((sv.sand_style && !(sv.sd_unlocks & SD_ITEM_SAND)) || (sv.water_style && !(sv.sd_unlocks & SD_ITEM_LIGHTS))) {
+    if ((sv->sand_style && !(sv->sd_unlocks & SD_ITEM_SAND)) || (sv->water_style && !(sv->sd_unlocks & SD_ITEM_LIGHTS))) {
         snprintf(error, error_size, "Palette selected without its upgrade"); goto done;
     }
-    if ((sv.journal.grown & ~sv.journal.seen) ||
-        (!sv.creative.enabled && sv.journal.xp < journal_level_xp(JOURNAL_THEME_LEVELS[sv.journal.theme]))) {
+    if ((sv->journal.grown & ~sv->journal.seen) ||
+        (!sv->creative.enabled && sv->journal.xp < journal_level_xp(JOURNAL_THEME_LEVELS[sv->journal.theme]))) {
         snprintf(error, error_size, "Invalid journal album/theme"); goto done;
     }
+    fish = json_expand(root, &lazy, "fish");
+    if (cJSON_GetArraySize(fish) != N_FISH_MAX) { snprintf(error, error_size, "Incompatible format, schema, board or size"); goto done; }
     for (int i = 0; i < N_FISH_MAX; i++) {
-        if (!json_read_fields(&sv.fish[i], cJSON_GetArrayItem(fish, i), FISH_FIELDS, FIELD_COUNT(FISH_FIELDS), error, error_size)) goto done;
-        if (i < sv.n_fish && sv.fish[i].preset >= tank_roster_count()) { snprintf(error, error_size, "Invalid fish preset"); goto done; }
+        if (!json_read_fields(&sv->fish[i], cJSON_GetArrayItem(fish, i), FISH_FIELDS, FIELD_COUNT(FISH_FIELDS), error, error_size)) goto done;
+        if (i < sv->n_fish && sv->fish[i].preset >= tank_roster_count()) { snprintf(error, error_size, "Invalid fish preset"); goto done; }
     }
+    json_collapse(root, &lazy, "fish"); fish = NULL;
     if (schema->valuedouble >= 6) {
-        memset(&sv.companion, 0, sizeof sv.companion);
+        memset(&sv->companion, 0, sizeof sv->companion);
+        json_expand(root, &lazy, "companion");
         const cJSON *colors = cJSON_GetObjectItemCaseSensitive(
             cJSON_GetObjectItemCaseSensitive(root, "companion"), "mussel_colors");
         if (colors && (!cJSON_IsNumber(colors) || !isfinite(colors->valuedouble) ||
@@ -3143,52 +3235,53 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
             floor(colors->valuedouble) != colors->valuedouble)) {
             snprintf(error, error_size, "Invalid mussel colors"); goto done;
         }
-        if (colors) sv.companion.mussel_colors = (uint8_t)colors->valuedouble;
-        if (!json_read_fields(&sv.companion, cJSON_GetObjectItemCaseSensitive(root, "companion"),
+        if (colors) sv->companion.mussel_colors = (uint8_t)colors->valuedouble;
+        if (!json_read_fields(&sv->companion, cJSON_GetObjectItemCaseSensitive(root, "companion"),
                               COMPANION_FIELDS, FIELD_COUNT(COMPANION_FIELDS) - (schema->valuedouble == 6 ? 8 : schema->valuedouble == 7 ? 4 : schema->valuedouble == 8 ? 3 : schema->valuedouble == 9 ? 1 : 0), error, error_size) ||
-            (schema->valuedouble == 6 && sv.companion.version > 1) ||
-            (schema->valuedouble == 7 && sv.companion.version > 2) || !companion_valid_mode(&sv.companion, sv.creative.enabled != 0) ||
-            (schema->valuedouble == 8 && sv.companion.version > 3) ||
-            (schema->valuedouble == 9 && sv.companion.version > 4) ||
-            (sv.companion.away && !bank_valid(&sv.companion.traveler))) {
+            (schema->valuedouble == 6 && sv->companion.version > 1) ||
+            (schema->valuedouble == 7 && sv->companion.version > 2) || !companion_valid_mode(&sv->companion, sv->creative.enabled != 0) ||
+            (schema->valuedouble == 8 && sv->companion.version > 3) ||
+            (schema->valuedouble == 9 && sv->companion.version > 4) ||
+            (sv->companion.away && !bank_valid(&sv->companion.traveler))) {
             snprintf(error, error_size, "Invalid companion state"); goto done;
         }
-        if (sv.companion.version >= 6 && !colors) {
+        if (sv->companion.version >= 6 && !colors) {
             snprintf(error, error_size, "Missing mussel colors"); goto done;
         }
+        json_collapse(root, &lazy, "companion");
     }
-    if ((sv.profile.mode != GAME_MODE_HARD && sv.n_fish < 2 && !sv.companion.away) ||
-        sv.n_fish + sv.companion.away > N_FISH_MAX) {
+    if ((sv->profile.mode != GAME_MODE_HARD && sv->n_fish < 2 && !sv->companion.away) ||
+        sv->n_fish + sv->companion.away > N_FISH_MAX) {
         snprintf(error, error_size, "Invalid aquarium population / adventure reservation"); goto done;
     }
-    if (sv.creative.enabled && sv.n_fish + sv.companion.away > CREATIVE_FISH_CAP) {
+    if (sv->creative.enabled && sv->n_fish + sv->companion.away > CREATIVE_FISH_CAP) {
         snprintf(error, error_size, "Creative aquariums allow at most 5 fish including travelers"); goto done;
     }
     if (schema->valuedouble >= 11 &&
-        (!json_read_fields(&sv.polish, cJSON_GetObjectItemCaseSensitive(root, "polish"),
+        (!json_read_lazy(root, &lazy, "polish", &sv->polish,
                            POLISH_FIELDS, FIELD_COUNT(POLISH_FIELDS), error, error_size) ||
-         !companion_polish_valid(&sv.polish, sv.n_fish, sv.bank_count, sv.companion.away))) {
+         !companion_polish_valid(&sv->polish, sv->n_fish, sv->bank_count, sv->companion.away))) {
         snprintf(error, error_size, "Invalid aquarium memories"); goto done;
     }
     if (schema->valuedouble >= 12 &&
-        (!json_read_fields(&sv.story, cJSON_GetObjectItemCaseSensitive(root, "story"),
+        (!json_read_lazy(root, &lazy, "story", &sv->story,
                            STORY_FIELDS, FIELD_COUNT(STORY_FIELDS), error, error_size) ||
-         !companion_story_valid(&sv.story, sv.n_fish, sv.bank_count, sv.companion.away, sv.polish.next_id))) {
+         !companion_story_valid(&sv->story, sv->n_fish, sv->bank_count, sv->companion.away, sv->polish.next_id))) {
         snprintf(error, error_size, "Invalid aquarium story"); goto done;
     }
     if (schema->valuedouble >= 13 &&
-        (!json_read_fields(&sv.games, cJSON_GetObjectItemCaseSensitive(root, "games"),
+        (!json_read_lazy(root, &lazy, "games", &sv->games,
                            GAME_FIELDS, FIELD_COUNT(GAME_FIELDS), error, error_size) ||
-         !companion_games_valid(&sv.games))) {
+         !companion_games_valid(&sv->games))) {
         snprintf(error, error_size, "Invalid game records"); goto done;
     }
     if (schema->valuedouble >= 14 &&
-        (!json_read_fields(&sv.rpg, cJSON_GetObjectItemCaseSensitive(root, "rpg"),
+        (!json_read_lazy(root, &lazy, "rpg", &sv->rpg,
                           RPG_FIELDS, FIELD_COUNT(RPG_FIELDS), error, error_size) ||
-         !companion_rpg_valid(&sv.rpg, sv.polish.next_id))) {
+         !companion_rpg_valid(&sv->rpg, sv->polish.next_id))) {
         snprintf(error, error_size, "Invalid Lost Current story"); goto done;
     }
-    if (width->valuedouble != (sv.companion.display_compact ? 320 : 240)) {
+    if (width->valuedouble != (sv->companion.display_compact ? 320 : 240)) {
         snprintf(error, error_size, "Display size does not match saved scale"); goto done;
     }
     for (size_t i = 0; i < FIELD_COUNT(SAVE_FIELDS); i++) {
@@ -3197,7 +3290,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         double bound = field->max == TANK_MAX_W ? width->valuedouble :
                        field->max == TANK_MAX_H ? height->valuedouble : -1;
         if (bound < 0) continue;
-        const float *values = (const float *)((const char *)&sv + field->offset);
+        const float *values = (const float *)((const char *)sv + field->offset);
         for (size_t j = 0; j < field->count; j++) if (values[j] > bound) {
             snprintf(error, error_size, "Position outside saved display"); goto done;
         }
@@ -3209,7 +3302,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         }
     }
     /* A restore resumes the snapshot, not years of offline simulation. */
-    sv.saved_unix = clock_port_now_unix();
+    sv->saved_unix = clock_port_now_unix();
     cJSON_Delete(root); root = NULL;
     if (!commit) {
         save_t *current = calloc(1, sizeof *current);
@@ -3219,10 +3312,10 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         bool mismatch = loaded && got >= offsetof(save_t, companion) && current->magic == SAVE_MAGIC &&
             (!migrate_profile(current) ||
              !game_income_valid(&current->game_income, current->care.game_paid) ||
-             (current->profile.chosen && current->profile.mode != sv.profile.mode));
-        bool inventory_mismatch = loaded && current->magic == SAVE_MAGIC && !inventory_restore_safe(&sv, current);
+             (current->profile.chosen && current->profile.mode != sv->profile.mode));
+        bool inventory_mismatch = loaded && current->magic == SAVE_MAGIC && !inventory_restore_safe(sv, current);
         const char *identity_error = !mismatch && loaded && current->magic == SAVE_MAGIC ?
-            restore_fish_identities(&sv, current) : NULL;
+            restore_fish_identities(sv, current) : NULL;
         free(current);
         if (mismatch || persist_port_blocked()) {
             snprintf(error, error_size, "Backup mode differs or current save is unavailable"); goto done;
@@ -3238,51 +3331,51 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
         if (!current) { snprintf(error, error_size, "Not enough memory for restore identity"); goto done; }
         size_t got = 0;
         if (persist_port_load(current, sizeof *current, &got) && got >= offsetof(save_t, companion) && current->magic == SAVE_MAGIC) {
-            if (!migrate_profile(current) || !current->profile.chosen || !sv.profile.chosen ||
-                current->profile.mode != sv.profile.mode) {
+            if (!migrate_profile(current) || !current->profile.chosen || !sv->profile.chosen ||
+                current->profile.mode != sv->profile.mode) {
                 free(current);
                 snprintf(error, error_size, "Backup mode differs; wipe and choose that mode first");
                 goto done;
             }
-            if (!inventory_restore_safe(&sv, current)) {
+            if (!inventory_restore_safe(sv, current)) {
                 free(current);
                 snprintf(error, error_size, "Decoration inventory changed; cannot reclaim transferred copies"); goto done;
             }
-            const char *identity_error = restore_fish_identities(&sv, current);
+            const char *identity_error = restore_fish_identities(sv, current);
             if (identity_error) {
                 free(current); snprintf(error, error_size, "%s", identity_error); goto done;
             }
-            sv.aquariums = current->aquariums;
+            sv->aquariums = current->aquariums;
             if (!game_income_valid(&current->game_income, current->care.game_paid)) {
                 free(current); snprintf(error, error_size, "Invalid current game income"); goto done;
             }
-            sv.game_income = current->game_income;
-            sv.care = current->care;
+            sv->game_income = current->game_income;
+            sv->care = current->care;
             /* A portable snapshot cannot rewind the shared creature or its
              * care-day allowance, including a snapshot from before unlock. */
             if (current->mussel.owned) {
-                sv.mussel = current->mussel;
-                sv.care = current->care;
+                sv->mussel = current->mussel;
+                sv->care = current->care;
             }
             if (current->creative.enabled) {
-                sv.sd_balance = current->sd_balance;
-                sv.sd_earned = current->sd_earned;
+                sv->sd_balance = current->sd_balance;
+                sv->sd_earned = current->sd_earned;
             }
-        } else if (sv.creative.enabled) {
+        } else if (sv->creative.enabled) {
             free(current);
             snprintf(error, error_size, "Enter Creative mode before restoring this backup");
             goto done;
         }
         free(current);
-        sv.aquariums.stat_upgrades = restored_stats;
-        sv.aquariums.clock_theme = (uint8_t)clock_values[0];
-        sv.aquariums.clock_flags = (uint8_t)clock_values[1];
-        sv.aquariums.clock_utc_quarters = (int8_t)clock_values[2];
-        sv.aquariums.clock_layout = (uint8_t)clock_values[3];
-        sv.aquariums.clock_delay = (uint8_t)(clock_values[4] | (clock_values[5] << CLOCK_SECONDARY_SHIFT));
-        if (!sv.aquariums.count) sv.aquariums.count = 1;
+        sv->aquariums.stat_upgrades = restored_stats;
+        sv->aquariums.clock_theme = (uint8_t)clock_values[0];
+        sv->aquariums.clock_flags = (uint8_t)clock_values[1];
+        sv->aquariums.clock_utc_quarters = (int8_t)clock_values[2];
+        sv->aquariums.clock_layout = (uint8_t)clock_values[3];
+        sv->aquariums.clock_delay = (uint8_t)(clock_values[4] | (clock_values[5] << CLOCK_SECONDARY_SHIFT));
+        if (!sv->aquariums.count) sv->aquariums.count = 1;
     }
-    ok = !commit || persist_port_save(&sv, sizeof sv);
+    ok = !commit || persist_port_save(sv, sizeof *sv);
     if (!ok) snprintf(error, error_size, "Internal save write failed; restore not completed");
     else error[0] = 0;
 done:
@@ -3545,7 +3638,7 @@ static const char *aquarium_move(tank_t *t, int target) {
             !companion_story_valid(&v->story, v->n_fish, v->bank_count, v->companion.away, v->polish.next_id) ||
             !companion_rpg_valid(&v->rpg, v->polish.next_id) ||
             !companion_games_valid(&v->games) || !extra_games_valid(&v->games_extra) || !creative_valid(&v->creative) ||
-            !inventory_valid(&v->inventory) || !content_valid(&v->content, &v->inventory) ||
+            !inventory_valid(&v->inventory) || !content_valid(&v->content, &v->inventory) || !fixed_valid(&v->fixed) ||
             !mussel_valid(&v->mussel) ||
             !game_income_valid(&v->game_income, v->care.game_paid) ||
             (v->creative.enabled && v->n_fish + v->companion.away > CREATIVE_FISH_CAP) ||

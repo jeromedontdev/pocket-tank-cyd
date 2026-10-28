@@ -220,6 +220,22 @@ static void check_menu_layout(const char *gallery) {
     render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery); setup_cancel(&t);
     setup_begin_place(&t, 9); render_tank(&t, full_frame, TANK_W); menu_begin("decor-place");
     render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery); setup_cancel(&t);
+    {   /* scenery and floats move too (2.4): sea glass on the sand, the duck on the surface, and the owned modal's MOVE */
+        tank_t owned = t;
+        owned.polish.scenery_unlocks |= 1u << (SD_SCENERY_GLASS - SD_SCENERY_FIRST);
+        owned.sd_unlocks |= SD_ITEM_DUCK;
+        tank_decor_reset(&owned, SD_SCENERY_GLASS); tank_decor_reset(&owned, 29);
+        const int pieces[] = {SD_SCENERY_GLASS, 29};   /* 29: the duck float */
+        for (int i = 0; i < 2; i++) {
+            setup_begin_place(&owned, pieces[i]); assert(setup_is_place());
+            render_tank(&owned, full_frame, TANK_W);
+            snprintf(name, sizeof name, "scenery-place-%d", i); menu_begin(name);
+            render_setup(&owned, full_frame, TANK_W, 0); menu_end(gallery); setup_cancel(&owned);
+        }
+        g_shp_modal = SD_SCENERY_GLASS; menu_begin("scenery-modal");
+        render_shop(&owned, full_frame, TANK_W); menu_end(gallery);
+        render_shop_leave();
+    }
     render_settings_open(); g_settings_section = 6;
     render_backup_status("PHOTO SAVED: photos/photo-9999.bmp", false);
     menu_begin("screenshot-status"); render_settings(&t, full_frame, TANK_W, 50); menu_end(gallery);
@@ -606,6 +622,13 @@ static void check_ornament_spans(void) {
     puts("PASS: ornament row spans preserve per-pixel reference artwork, dim/locked colors, final lighting and clipped/scaled geometry");
 }
 
+/* companion_ui.c's bevelled key: face, lit lip, shadowed foot */
+static void companion_key_face(uint16_t *fb, int x, int y, int w) {
+    render_rect(fb, TANK_W, x, y, w, 30, 0x264d55);
+    render_rect(fb, TANK_W, x, y, w, 2, 0x4f8a93);
+    render_rect(fb, TANK_W, x, y + 28, w, 2, 0x163238);
+}
+
 static void check_companion_navigation(void) {
     tank_t tank;
     tank_init(&tank, 77);
@@ -615,7 +638,7 @@ static void check_companion_navigation(void) {
         companion_open_section(section);
         companion_render(&tank, full_frame, TANK_W);
         memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * 2);
-        render_rect(repeated, TANK_W, 346, 8, 90, 30, 0x264d55);
+        companion_key_face(repeated, 346, 8, 90);
         render_text(repeated, TANK_W, 354, 15, 2, 0xe7f4dc, "BACK");
         assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
     }
@@ -628,7 +651,7 @@ static void check_companion_navigation(void) {
     companion_open_section(COMPANION_SECTION_CREATURE_COLORS);
     companion_render(&tank, full_frame, TANK_W);
     memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * 2);
-    render_rect(repeated, TANK_W, 304, 86, 132, 30, 0x264d55);
+    companion_key_face(repeated, 304, 86, 132);
     render_text(repeated, TANK_W, 312, 93, 2, 0xe7f4dc, "NEXT TYPE");
     assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
 }

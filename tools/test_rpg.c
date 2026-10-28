@@ -76,7 +76,7 @@ int main(void) {
     rpg_reload(&t);
     assert(companion_rpg_contributor(&t, id) && companion_rpg_legacy(&t, 0));
     char *json = progression_backup_json(&t);
-    assert(json && strstr(json, "\"schema\":19") && strstr(json, "\"rpg\":"));
+    assert(json && strstr(json, "\"schema\":20") && strstr(json, "\"rpg\":"));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     free(json);
     rpg_reload(&t);
@@ -129,6 +129,7 @@ int main(void) {
     cJSON_DeleteItemFromObjectCaseSensitive(root, "game_income");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "games_extra");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "content");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "fixed");
     assert(cJSON_ReplaceItemInObjectCaseSensitive(root, "schema", cJSON_CreateNumber(13)));
     json = cJSON_PrintUnformatted(root); cJSON_Delete(root);
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));

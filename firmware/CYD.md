@@ -716,6 +716,73 @@ headroom, SHA256
 `761d7e175a2a5e6a72504da525eac6c2b050bc82e955af4fea78bd2ee1e3698a`, flashed
 after a fresh full backup (`games-art3-com4-backup.bin`). Not released.
 
+### Menu art and movable scenery
+
+- **Menu art kit.** Every page shares `page_backdrop` (water gradient,
+  edge vignette), bevelled `button` faces and `key_face` keys. Shop rows are
+  cards with a recessed `SHP_WELL` preview, and row previews are full colour.
+  The item modal stays grey until purchase.
+- **Movable scenery.** The 14 fixed sand pieces and the surface floats take
+  decor slots 36-49 and can be moved like other decorations. Buying any piece
+  opens its placement page straight away. The shop modal shows MOVE beside
+  SELL (`REFUND n - LEAVES TANK`; free pieces read REMOVE). Floor pieces get
+  MIRROR and depth. Floats (lilies, duck, log) stay on the surface, with no
+  depth bar or order arrows. Saves are schema 20 / 6424 bytes: the 88-byte
+  `decor_fixed_t` at 6336 holds version, x, z and ranks. `x == 0` keeps the
+  historical spot, and 6336-byte saves load unchanged.
+- **Snapshot fix.** `setup_begin_place` keeps the raw fixed z in its
+  rollback snapshot. Before, a float read FRONT but was stored BACK, so a
+  backup taken mid-placement leaked the preview.
+- **Tests.** `test_every_item_buys_and_moves` buys every one of the 50
+  movable pieces at 320x480 and 240x320. It checks the page's buttons (REMOVE,
+  MIRROR, order arrow, depth), drags, mirrors and presses DONE, then reloads
+  binary and JSON.
+
+#### Save and restore memory
+
+The console `save` overflowed the 12-KiB tank stack. A stack `save_t`
+(6336 bytes, already about 80 bytes from the limit under director dispatch)
+grew to 6424. The fix:
+
+- Save, load, backup and restore now share one static `s_save_scratch`. They
+  all run on the tank task and none nests another.
+- Moving the image to the heap was tried first. It left `bank verify` and
+  the SD auto backup failing: the whole restore cJSON tree peaks near 40 KB
+  on the ESP32, but only 39 KB of heap is free (8 KB largest block).
+- Restore now holds one top-level value at a time. `json_snapshot` parses
+  each value once for syntax, keeps objects and arrays as empty placeholders
+  plus slices, and `json_expand` / `json_collapse` re-parse each slice only
+  while restore reads it. The bank still streams.
+- The host peak fell from 66 KB to 25.6 KB (64-bit pointers).
+  `test_tank_backup` asserts it stays under 32 KiB.
+- Validation now reports `Invalid JSON or not enough memory to parse it`
+  separately from `Incompatible format, schema, board or size`.
+- `bank verify` logs the heap when validation fails.
+- Trace logs (`perf on`) include the tank stack high-water mark.
+
+COM4 after the fix:
+
+- Console `save` takes 118-246 ms with no crash.
+- `bank verify` passes (12765 bytes).
+- `sd auto-verify` wrote and read back 12771 bytes. Snapshot took 39 ms and
+  validation 80 ms.
+- The tank stack's minimum was 5204 bytes free after save, SD backup, shop and
+  placement.
+
+FPS (14 s windows):
+
+| Screen | Before | After |
+|---|---|---|
+| Live (settled) | 14-16 FPS | 15.2-16.9 FPS |
+| Shop | 34-44 ms per redraw | loop 29 Hz, 29.7 ms per redraw |
+| Settings | - | loop 29.3 Hz |
+| Place (shell / sea glass) | 8.2-8.5 FPS | 8.2 / 7.8-8.4 FPS |
+
+COM4 runs this unified image: app 1,788,768 bytes, 177,312 bytes of OTA
+headroom, SHA256
+`1893fed670be1168f4462d00ca5590c366cf8ba6c188c337af80932c0b125318`, flashed
+after a fresh full backup (`lazy-restore-com4-backup.bin`). Not released.
+
 ### 2.3.18 frame-pacing and snapshot follow-up
 
 The renderer can bracket an immutable frame with `render_frame_begin` and
@@ -1958,7 +2025,8 @@ fish identities/life records, a bounded recap, tank identity, visitor/backup
 records and six fixed-scenery ownership bits. The 24 KiB NVS partition remains
 unchanged; the practical 5920-byte NVS ceiling budgets three copies and 64
 settings entries within the 630 usable entries, retaining the GC page.
-Current saves are 6336 bytes/schema 19: the existing 128 KiB SPIFFS partition
+Current saves are 6424 bytes/schema 20 (the 88-byte movable-scenery tail at
+6336; see [Menu art and movable scenery](#menu-art-and-movable-scenery)): the existing 128 KiB SPIFFS partition
 holds alternating CRC/readback-verified active copies and a durable wipe
 marker. NVS is migration input only; never put the expanded blob back there.
 Only a byte-for-byte erased filesystem may be formatted automatically.
@@ -2129,8 +2197,10 @@ off ownership bits it does not recognize.
 New fixed scenery: Zen Pebbles (40), Duck Float (60), Pearl Clam
 (70), Lily Pads (80), Floating Log (90), Tube Sponges (100), Lost Barrel (110)
 and Dive Helmet (140), all in sand dollars. The log, lily pads and duck occupy
-separate bobbing surface positions and can coexist. Fixed scenery is behind
-fish, with floor scenery behind movable pieces. There is no MOVE control;
+separate bobbing surface positions and can coexist. Originally fixed scenery sat
+behind fish and floor scenery behind movable pieces; since the
+[movable-scenery follow-up](#menu-art-and-movable-scenery) every one of these
+pieces has MOVE (drag, mirror; floor pieces also pick a depth).
 SELL requires two taps and refunds 20 percent for an eligible paid copy only.
 Permanent unlocks follow all tanks; free replacement/removal never earns coins.
 Failed saves roll

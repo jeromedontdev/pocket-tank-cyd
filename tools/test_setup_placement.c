@@ -74,10 +74,11 @@ static void test_all_placeable_cancel_roundtrip(void) {
         boot_enlarged(&t);
         tank_new_population(&t);
         t.sd_unlocks = UINT32_MAX;
+        t.polish.scenery_unlocks = SD_SCENERY_MASK;
         tank_set_name(&t, 0, "renamed");
         t.fish[0].color ^= 0xffffff;
         for (int item = 0; item < SD_ITEM_COUNT; item++) {
-            if (!tank_decor_placeable(item)) continue;
+            if (!tank_decor_movable(item)) continue;
             char *original = progression_backup_json(&t);
             assert(original);
             setup_begin_place(&t, item);
@@ -235,11 +236,84 @@ static void test_layers_and_mirror(void) {
     puts("PASS: layer arrows only reach overlapping pieces; mirror survives save, JSON backup and cancel");
 }
 
-int main(void) {
-    test_overlapping_copy_selection_and_rollback();
+static bool place_hit_at(int id, int px, int py) {
+    return setup_hit(render_frame_x(px), render_frame_y(py)) == id;
+}
+
+/* every piece the shop sells for the tank - sand ornaments, plants, sea glass, the floats - buys,
+ * opens its placement page, drags, mirrors, saves with DONE and comes back from a reboot where it was put */
+static void test_every_item_buys_and_moves(void) {
+    for (int compact = 0; compact < 2; compact++) {
+        tank_resolution(compact != 0);
+        tank_t t, loaded;
+        saved_size = 0;
+        tank_init(&t, 77);
+        boot_enlarged(&t);
+        progression_setup_done(&t);
+        t.polish.scenery_unlocks = 0;
+        int moved = 0;
+        for (int item = 0; item < SD_ITEM_COUNT; item++) {
+            if (!tank_decor_movable(item)) continue;
+            if (!progression_item_owned(&t, item)) {
+                t.sd_balance = 1000000;
+                if (!progression_buy(&t, item)) fprintf(stderr, "Item %d (%s) could not be bought\n", item, SD_ITEMS[item].name);
+                assert(progression_item_owned(&t, item));
+            }
+            assert(tank_decor_owned(&t, item));
+            setup_begin_place(&t, item);
+            if (!setup_is_place() || setup_item() != item) fprintf(stderr, "Item %d (%s) has no placement page\n", item, SD_ITEMS[item].name);
+            assert(setup_active() && setup_is_place() && setup_item() == item);
+            bool surface = tank_decor_surface(item);
+            assert(place_hit_at(SETUP_HIT_REMOVE, SETUP_TOP_BACK_X + 20, SETUP_TOP_BTN_Y + 20) == tank_decor_placeable(item));
+            assert(place_hit_at(SETUP_HIT_MIRROR, PAGE_W / 2, SETUP_MIRROR_Y + 12) == tank_decor_mirrorable(item));
+            assert(place_hit_at(SETUP_HIT_BCK, SETUP_ORD_X0 + 18, SETUP_TOP_BTN_Y + 20) == !surface);
+            int depth = setup_hit(render_frame_x(PAGE_W / 2), render_frame_y(SETUP_DEPTH_Y + SETUP_DEPTH_H / 2));
+            assert((depth >= SETUP_HIT_Z0 && depth < SETUP_HIT_Z0 + DECOR_Z_N) == (tank_decor_z_count(item) >= 2));
+            float from = tank_decor_x(&t, item);
+            float to = from < TANK_W / 2 ? TANK_W * 0.72f : TANK_W * 0.28f;
+            place_drag(&t, from, to, TANK_H - 6);
+            float x = tank_decor_x(&t, item);
+            if (fabsf(x - from) < 12) fprintf(stderr, "Item %d (%s) did not move: %.1f -> %.1f\n", item, SD_ITEMS[item].name, from, x);
+            assert(fabsf(x - from) >= 12);
+            bool mirrored = tank_decor_mirrored(&t, item);
+            if (tank_decor_mirrorable(item)) { setup_activate(&t, SETUP_HIT_MIRROR); mirrored = !mirrored; }
+            assert(tank_decor_mirrored(&t, item) == mirrored);
+            int z = tank_decor_z(&t, item);
+            setup_activate(&t, SETUP_HIT_NEXT);
+            assert(!setup_active());
+            tank_init(&loaded, 3);
+            boot_enlarged(&loaded);
+            if (fabsf(tank_decor_x(&loaded, item) - x) > 1 || tank_decor_mirrored(&loaded, item) != mirrored || tank_decor_z(&loaded, item) != z)
+                fprintf(stderr, "Item %d (%s) did not reload: x %.1f/%.1f mirror %d/%d z %d/%d\n", item, SD_ITEMS[item].name,
+                        x, tank_decor_x(&loaded, item), mirrored, tank_decor_mirrored(&loaded, item), z, tank_decor_z(&loaded, item));
+            assert(fabsf(tank_decor_x(&loaded, item) - x) <= 1);
+            assert(tank_decor_mirrored(&loaded, item) == mirrored && tank_decor_z(&loaded, item) == z);
+            moved++;
+        }
+        assert(moved >= 40);
+        char *json = progression_backup_json(&t); assert(json);
+        char error[96];
+        tank_t before = t;
+        assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+        free(json);
+        tank_init(&loaded, 4);
+        boot_enlarged(&loaded);
+        for (int item = 0; item < SD_ITEM_COUNT; item++)
+            if (tank_decor_movable(item))
+                assert(fabsf(tank_decor_x(&loaded, item) - tank_decor_x(&before, item)) <= 1 &&
+                       tank_decor_mirrored(&loaded, item) == tank_decor_mirrored(&before, item));
+        printf("PASS: all %d movable shop pieces (sand, plants, sea glass, floats) buy, drag, mirror, DONE and reload (%s)\n",
+               moved, compact ? "240x320" : "320x480");
+    }
+    saved_size = 0;
+    tank_resolution(false);
+}
+
+int main(void) {    test_overlapping_copy_selection_and_rollback();
     test_all_placeable_cancel_roundtrip();
     test_remove_to_storage();
     test_layers_and_mirror();
+    test_every_item_buys_and_moves();
     puts("PASS: all placeable decor previews and saves roll back to the original layout on cancel");
     return 0;
 }

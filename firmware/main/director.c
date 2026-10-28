@@ -10,6 +10,7 @@
 #include <math.h>
 #include "sdkconfig.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "progression.h"
 #include "companion.h"
 #include "setup.h"
@@ -372,9 +373,12 @@ static void run(tank_t *t, char *line) {
             char error[96]; char *json = progression_backup_json(t);
             if (!json) { ESP_LOGE(TAG, "bank backup allocation failed"); return; }
             size_t len = strlen(json);
+            unsigned heap_kb = (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+            unsigned block_kb = (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;
             bool ok = progression_restore_json(json, len, false, error, sizeof error);
             free(json);
-            if (!ok) { ESP_LOGE(TAG, "bank JSON validation failed: %s", error); return; }
+            if (!ok) { ESP_LOGE(TAG, "bank JSON validation failed: %s (%u bytes, heap %u KB, block %u KB)",
+                                error, (unsigned)len, heap_kb, block_kb); return; }
             ESP_LOGI(TAG, "bank JSON round-trip verified (%u bytes, %u stored)", (unsigned)len, t->bank_count);
         }
         else if (argc == 4 && !strcmp(argv[1], "tap")) {
@@ -468,12 +472,12 @@ static void run(tank_t *t, char *line) {
         int item = shop_item(argv[1]);
         if (item < 0) ESP_LOGW(TAG, "buy plant|snail|castle|coral|cluster|shrimp|urchin|seahorse|pumpkin|chest|shell|starfish|anchor|buoy|sand|lights|wreck|urn|crystal|fan|ruins|jelly|pebbles|pearl|log|sponges|barrel|helmet|lilies|duck|filter|garden|current|shelter|play|training|mussel");
         else if (progression_buy(t, item)) ESP_LOGI(TAG, "%s unlocked, %d sand dollars left%s", SD_ITEMS[item].name, (int)t->sd_balance,
-                                                    tank_decor_placeable(item) ? " (`place` opens the placement page)" : "");
+                                                    tank_decor_movable(item) ? " (`place` opens the placement page)" : "");
         else ESP_LOGW(TAG, "%s refused: already owned, unavailable, insufficient funds or save failed (%d / %d)", SD_ITEMS[item].name, (int)t->sd_balance, SD_ITEMS[item].price);
     } else if (!strcmp(c, "order")) {                 /* order [plant|castle|coral|cluster|pumpkin forward|back]: the pieces' stack, back to front; a step moves one */
         if (argc > 2) {
             int item = shop_item(argv[1]);
-            if (item < 0 || !tank_decor_placeable(item)) { ESP_LOGW(TAG, "order <decoration name> forward|back"); return; }
+            if (item < 0 || !tank_decor_movable(item)) { ESP_LOGW(TAG, "order <decoration name> forward|back"); return; }
             if (tank_decor_shift(t, item, !strcmp(argv[2], "back") ? -1 : 1)) progression_save(t);
             else ESP_LOGW(TAG, "%s: nothing to pass that way at its depth", SD_ITEMS[item].name);
         }
@@ -536,7 +540,7 @@ static void run(tank_t *t, char *line) {
         }
     } else if (!strcmp(c, "sell") && argc > 1) {     /* sell plant|castle|coral|cluster: the sale back at 20% (never the snail) */
         int item = shop_item(argv[1]);
-        if (item < 0 || !tank_decor_placeable(item)) ESP_LOGW(TAG, "sell <decoration name> (residents and palette upgrades stay)");
+        if (item < 0 || (!tank_decor_placeable(item) && !SD_IS_FIXED_SCENERY(item))) ESP_LOGW(TAG, "sell <decoration name> (residents and palette upgrades stay)");
         else if (progression_sell(t, item)) ESP_LOGI(TAG, "%s sold back for %d, balance %d", SD_ITEMS[item].name, progression_sell_value(item), (int)t->sd_balance);
         else ESP_LOGW(TAG, "%s: not in the tank", SD_ITEMS[item].name);
     } else if (!strcmp(c, "cluster") && argc > 1) {  /* cluster look <0-2> | cluster grow <0..2> (1 = full size, 2 = every tentacle) */
@@ -550,7 +554,7 @@ static void run(tank_t *t, char *line) {
         int item = 0, a = 1;
         int named = argc > 1 ? shop_item(argv[1]) : -1;
         if (named >= 0) {
-            if (!tank_decor_placeable(named)) { ESP_LOGW(TAG, "place <decoration name> [x [behind|front]]"); return; }
+            if (!tank_decor_movable(named)) { ESP_LOGW(TAG, "place <decoration name> [x [behind|front]]"); return; }
             item = named; a = 2;
         }
         const char *what = SD_ITEMS[item].name;

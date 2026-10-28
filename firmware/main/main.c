@@ -627,7 +627,7 @@ static void tank_task(void *arg) {
               int item = r - SHOP_TAP_BUY;
               if (progression_buy(&tank, item)) { 
                   ESP_LOGI(TAG, "shop: %s unlocked, %d sand dollars left", SD_ITEMS[item].name, (int)tank.sd_balance);
-                  if (tank_decor_placeable(item)) {                     /* a placeable piece: the page opens over the live tank */
+                  if (tank_decor_movable(item)) {                       /* a piece for the tank: the page opens over the live tank */
                       touch_port_show_shop(false); setup_begin_place(&tank, item);
                       ESP_LOGI(TAG, "shop: placement page up for the %s", SD_ITEMS[item].name); } }
               else ESP_LOGI(TAG, "shop: %s refused (balance %d, price %d)", SD_ITEMS[item].name, (int)tank.sd_balance, SD_ITEMS[item].price); } }
@@ -887,11 +887,11 @@ static void tank_task(void *arg) {
             char goals[N_FISH_MAX * 16] = ""; size_t gl = 0;
             for (int i = 0; i < tank.n_fish && gl + 16 < sizeof goals; i++)
                 gl += snprintf(goals + gl, sizeof goals - gl, "%s%s", i ? " " : "", GOAL_NAMES[tank.fish[i].goal.id]);
-            ESP_LOGI(TAG, "t=%.0fs %d fish goals: %s | rules advisor asks %lu | starve-ignored %d | heap int %u KB largest %u KB bright %d",
+            ESP_LOGI(TAG, "t=%.0fs %d fish goals: %s | rules advisor asks %lu | starve-ignored %d | heap int %u KB largest %u KB stack free %u bright %d",
                      tank.clock, tank.n_fish, goals, (unsigned long)tank.advisor_asks,
                      tank_reflex_overrides,
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024,
-                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024,
+                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024, (unsigned)uxTaskGetStackHighWaterMark(NULL),
                      display_port_brightness());
             }
             last_log = now;

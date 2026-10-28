@@ -1317,15 +1317,18 @@ The shop now sorts unlocks **cheapest first**, keeping equal-price choices
 in a stable order. The optional nursery FRY row remains a separate first row.
 There are **42 stable unlock IDs** in the catalog (the seasonal pumpkin can
 be unavailable), plus the separate nursery offers. All original and added
-item icons follow the same ownership rule in both the list and detail dialog:
-**muted gray before purchase, full color after purchase**. Gray does not mean
-you cannot afford an item; the price/button indicates affordability.
+the shop list shows every item's preview **in full color** on its own card;
+the detail dialog shows an item muted gray before purchase and full color
+after. Gray does not mean you cannot afford an item; the price/button
+indicates affordability.
 
 ### More scenery, including the surface
 
-The eight original scenic unlocks and six new sand ornaments have **fixed
-positions** and stay in their tank;
-they have no MOVE control, but an eligible paid copy refunds 20 percent once
+The eight original scenic unlocks and six new sand ornaments stay in their
+tank (they are never stored), but **every piece can be moved**: buying one opens
+the placement page, and the shop's **MOVE** button reopens it. Drag it left or
+right and use MIRROR; floor pieces also choose BEHIND or IN FRONT, while the
+floats stay on the surface. An eligible paid copy refunds 20 percent once
 after two taps. The unlock follows all tanks, allowing free replacements
 with zero refund; their button says REMOVE. The shop describes
 this before purchase. The **lily pads, floating log and duck float** gently
@@ -1672,7 +1675,7 @@ palettes, Journal and bank.
 Backups are written and read back for validation. A restore first creates
 a safety snapshot of the current aquarium.
 
-New backups use **schema 19**, including twenty additional static decoration
+New backups use **schema 20**, including where each movable scenery piece stands, twenty additional static decoration
 placements/ownership/storage and twelve fish wearables, shared decoration inventory,
 extra placed ornaments, pearl-mussel income, per-game daily allowances,
 shared daily care/bonus limits, fixed game mode, starvation timers,
@@ -1680,8 +1683,8 @@ global shop unlocks/local refundable purchases, eighteen-game records,
 Lost Current progress, family lineage, genes, visitor sightings, fish identities/stories, remembered buddies,
 recaps, tank identity, fixed scenery, backup status, display scale, traveling fish, creature colors, per-fish wearables/colors,
 companion progression and the optional `tank.stat_upgrades` field for the four
-fish-care purchases. Schemas 1 through 18 remain importable when valid for the
-chosen mode; earlier firmware cannot restore schema 19 files. Restores must
+fish-care purchases. Schemas 1 through 19 remain importable when valid for the
+chosen mode; earlier firmware cannot restore schema 20 files. Restores must
 match the chosen Normal/Creative/Hard mode; changing it requires a full wipe.
 Keep a matching backup
 when deliberately downgrading.

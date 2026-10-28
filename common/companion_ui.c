@@ -18,8 +18,13 @@ static const uint32_t frame_colors[] = {0x83b8ac, 0x8ed9a5, 0xf0aeca, 0xc0b1ff};
 static void text(uint16_t *fb, int stride, int x, int y, uint32_t rgb, const char *s) {
     render_text(fb, stride, x, y, render_text_w(s, 2) <= PAGE_W - x - 12 ? 2 : 1, rgb, s);
 }
-static void button(uint16_t *fb, int stride, int x, int y, int w, const char *s) {
+static void key_face(uint16_t *fb, int stride, int x, int y, int w) {   /* a bevelled key: lit lip, shadowed foot */
     render_rect(fb, stride, x, y, w, 30, 0x264d55);
+    render_rect(fb, stride, x, y, w, 2, 0x4f8a93);
+    render_rect(fb, stride, x, y + 28, w, 2, 0x163238);
+}
+static void button(uint16_t *fb, int stride, int x, int y, int w, const char *s) {
+    key_face(fb, stride, x, y, w);
     int scale = render_text_w(s, 2) <= w - 16 ? 2 : 1;
 #ifdef RENDER_MENU_TESTING
     extern void menu_test_button(int x, int y, int w, int h, const char *label, int scale);
@@ -30,7 +35,7 @@ static void button(uint16_t *fb, int stride, int x, int y, int w, const char *s)
 static void stamp(uint16_t *fb, int stride, int x, int y, int kind, bool found);
 static void illustrated_button(uint16_t *fb, int stride, int x, int y, int w,
                                const char *label, int icon, bool found) {
-    render_rect(fb, stride, x, y, w, 30, 0x264d55);
+    key_face(fb, stride, x, y, w);
     stamp(fb, stride, x + 8, y + 7, icon, found);
     int scale = render_text_w(label, 2) <= w - 42 ? 2 : 1;
 #ifdef RENDER_MENU_TESTING

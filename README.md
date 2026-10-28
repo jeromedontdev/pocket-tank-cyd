@@ -1499,9 +1499,10 @@ Normal/Hard purchases retain their listed level/coin requirements; Creative
 uses the same designs free. Ownership and colors follow each fish through
 Bank swaps and adventures.
 
-New exports use **schema 19**; older schemas 1–18 and binary saves remain
+New exports use **schema 20** (schema 19 plus where each movable scenery piece
+stands); older schemas 1–19 and binary saves remain
 importable. The offline viewer displays the new placed/stored decorations and
-per-fish wardrobe. Older firmware cannot read schema-19 exports or the expanded
+per-fish wardrobe. Older firmware cannot read schema-20 exports or the expanded
 binary save; retain an older matching backup before deliberate downgrades.
 
 ## Fork maintenance
@@ -1509,11 +1510,11 @@ binary save; retain an older matching backup before deliberate downgrades.
 This is intentionally no longer a multi-board tree. Upstream gameplay changes
 can still be ported manually, but merges and release compatibility are not
 automatic. Preserve existing binary offsets and append new fields; the save
-is now 6336 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
+is now 6424 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
 progress, an 8-byte compatibility Creative marker, 40 more game-record bytes
 and 48 bytes of mode/starvation/unlock/refund state, plus 24 bytes of shared daily care,
 100 bytes of inventory, eight bytes of mussel state, 24 bytes of per-game income
-and four alignment bytes, then a 168-byte static-decoration tail), with the previous 6168-byte prefix, 4520-byte layout and the
+and four alignment bytes, then a 168-byte static-decoration tail and an 88-byte movable-scenery tail), with the previous 6336-byte prefix, 6168-byte prefix, 4520-byte layout and the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
 aquarium metadata identifies the purchased collection, active slot, its name and
@@ -1564,13 +1565,14 @@ instead use the existing 128 KiB SPIFFS partition, with alternating CRC-checked,
 readback-verified copies and a durable wipe marker. Legacy NVS is migration
 input only; corrupt storage never silently falls back to stale NVS or formats
 nonblank data. No partition-table change or SD card is needed for the active save.
-The current binary save is 6,336 bytes: the previous 6,168-byte prefix
-is unchanged, with a 168-byte static-decoration tail appended.
-JSON exports use schema 19 for an individual aquarium, including shared inventory,
+The current binary save is 6,424 bytes: the previous 6,336-byte prefix
+is unchanged, with an 88-byte movable-scenery tail (position, depth and mirror
+of the fourteen scenery pieces) appended after the 168-byte static-decoration tail.
+JSON exports use schema 20 for an individual aquarium, including shared inventory,
 pearl-mussel income, daily care, its fixed mode, individual game-income allowances,
 Lost Current progress and eighteen-game records,
 the polish and story tails and saved Enlarged/Normal scale; schema
-1 through 18 backups remain importable when valid for the selected mode.
+1 through 19 backups remain importable when valid for the selected mode.
 Cross-mode restores cannot bypass a
 chosen game mode: changing modes requires a confirmed full wipe.
 Older firmware cannot restore newer-schema backups; keep a matching

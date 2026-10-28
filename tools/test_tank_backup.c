@@ -29,12 +29,19 @@ static bool reject_erase;
 static bool require_json_released_before_load;
 static size_t json_allocations;
 static unsigned checked_identity_loads;
+/* Bytes as the ESP32 heap charges them: payload rounded to 4 plus an 8-byte block header. */
+static size_t json_heap_bytes, json_heap_peak;
 static void *tracked_json_malloc(size_t size) {
-    void *result = malloc(size);
-    if (result) json_allocations++;
-    return result;
+    size_t *block = malloc(sizeof(size_t) * 2 + size);
+    if (!block) return NULL;
+    block[0] = ((size + 3) & ~(size_t)3) + 8;
+    json_heap_bytes += block[0];
+    if (json_heap_bytes > json_heap_peak) json_heap_peak = json_heap_bytes;
+    json_allocations++;
+    return block + 2;
 }
 static void tracked_json_free(void *memory) {
+    if (memory) { size_t *block = (size_t *)memory - 2; json_heap_bytes -= block[0]; memory = block; }
     if (memory) { assert(json_allocations); json_allocations--; }
     free(memory);
 }
@@ -179,6 +186,7 @@ static void invalid_object(cJSON *root) {
 }
 static void replace_number(cJSON *object, const char *key, double value) {
     assert(cJSON_ReplaceItemInObjectCaseSensitive(object, key, cJSON_CreateNumber(value)));
+    if (!strcmp(key, "schema") && value < 20) cJSON_DeleteItemFromObjectCaseSensitive(object, "fixed");
     if (!strcmp(key, "schema") && value < 19) cJSON_DeleteItemFromObjectCaseSensitive(object, "content");
     if (!strcmp(key, "schema") && value < 18) cJSON_DeleteItemFromObjectCaseSensitive(object, "inventory");
     if (!strcmp(key, "schema") && value < 18) cJSON_DeleteItemFromObjectCaseSensitive(object, "mussel");
@@ -272,6 +280,10 @@ static void test_bank(void) {
     int before_validation = writes;
     assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
     assert(writes == before_validation && !json_allocations && checked_identity_loads);
+    /* One top-level value at a time (2026-10-28): the whole tree peaked at 66 KB here, ~40 KB on
+     * the ESP32, and failed beside the CYD's 39 KB heap. 64-bit pointers make this conservative. */
+    printf("restore validation of %zu JSON bytes: cJSON peak %zu heap bytes (host pointers)\n", strlen(json), json_heap_peak);
+    assert(json_heap_peak < 32 * 1024);
     checked_identity_loads = 0;
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     assert(!json_allocations && checked_identity_loads);
@@ -494,6 +506,18 @@ static void assert_shop_icon_colors(const uint16_t *locked, const uint16_t *owne
     if (!changed) fprintf(stderr, "Shop icon %d unchanged in region %d,%d..%d,%d\n", item, x0, y0, x1, y1);
     assert(changed > 0);
 }
+/* the shop rows show their wares in full colour, owned or not (2.4 menu art) */
+static void assert_shop_row_colorful(const uint16_t *fb, int item, int x0, int y0, int x1, int y1) {
+    int colorful = 0;
+    for (int y = (int)render_frame_y(y0); y < (int)render_frame_y(y1); y++)
+        for (int x = (int)render_frame_x(x0); x < (int)render_frame_x(x1); x++) {
+            uint16_t v = fb[y * TANK_W + x];
+            int r = (v >> 11) * 8, g = ((v >> 5) & 63) * 4, b = (v & 31) * 8;
+            colorful += abs(r - g) > 40 || abs(r - b) > 40 || abs(g - b) > 40;
+        }
+    if (!colorful) fprintf(stderr, "Shop row preview %d has no colour\n", item);
+    assert(colorful > 0);
+}
 static void test_shop_expansion(void) {
     tank_t t, loaded;
     saved_size = 0; tank_init(&t, 17); boot_enlarged(&t); progression_setup_done(&t);
@@ -616,7 +640,7 @@ static void test_shop_expansion(void) {
             render_shop_tap(&shop, render_frame_x(SHP_ARROW_X1 + 12), render_frame_y(SHP_ARROW_Y + 8));
         int top = SHP_ROW_Y0 + display_row % SHP_PER_PAGE * SHP_ROW_DY;
         render_shop(&shop, base, TANK_W); render_shop(&owned, art, TANK_W);
-        assert_shop_icon_colors(base, art, item, 24, top, 66, top + 40);
+        assert_shop_row_colorful(base, item, 24, top, 66, top + 40);
         render_shop_tap(&shop, render_frame_x(150), render_frame_y(top + 16));
         render_shop(&shop, base, TANK_W); render_shop(&owned, art, TANK_W);
         assert_shop_icon_colors(base, art, item, PAGE_W / 2 - 40, SHP_MODAL_Y + 8,
@@ -1026,7 +1050,7 @@ static void test_fish_card_next(void) {
     const size_t pixels = TANK_W * TANK_H;
     uint16_t *fb = calloc(pixels, sizeof *fb); assert(fb);
     render_stats_card(&t, 0, fb, TANK_W);
-    int px = RENDER_CARD_NEXT_X * TANK_W / PAGE_W, py = RENDER_CARD_NEXT_Y * TANK_H / PAGE_H;
+    int px = (RENDER_CARD_NEXT_X + 4) * TANK_W / PAGE_W, py = (RENDER_CARD_NEXT_Y + 4) * TANK_H / PAGE_H;   /* inside the bevelled corner */
     assert(fb[py * TANK_W + px]);
     t.n_fish = 1;
     assert(!render_stats_next_hit(&t, 0, render_frame_x(x), render_frame_y(y)));
@@ -1365,7 +1389,7 @@ static void test_daily_care(void) {
     assert(progression_storage_ready() && loaded.sd_balance == t.sd_balance && loaded.journal.xp == t.journal.xp);
     assert(loaded.care.version == 1 && !loaded.care.claimed && !loaded.care.game_paid);
     for (size_t partial = 6009; partial < AQUARIUM_SAVE_BYTES; partial++) {
-        if (partial == 6032 || partial == 6168) continue; /* complete frozen prefixes remain loadable */
+        if (partial == 6032 || partial == 6168 || partial == 6336) continue; /* complete frozen prefixes remain loadable */
         saved_size = partial;
         tank_init(&loaded, 43); boot_enlarged(&loaded);
         assert(!progression_storage_ready() && saved_size == partial);
@@ -2971,7 +2995,7 @@ static void test_story(void) {
     assert(progression_save(&t));
     tank_init(&loaded, 5); progression_boot(&loaded);
     assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
-    char *json = progression_backup_json(&t);     assert(json && strstr(json, "\"schema\":19") && strstr(json, "\"story\":{") && strstr(json, "\"games\":{") && strstr(json, "\"rpg\":{") && strstr(json, "\"creative\":{") && strstr(json, "\"profile\":{") && strstr(json, "\"games_extra\":{") && strstr(json, "\"care\":{") && strstr(json, "\"inventory\":{"));
+    char *json = progression_backup_json(&t);     assert(json && strstr(json, "\"schema\":20") && strstr(json, "\"story\":{") && strstr(json, "\"games\":{") && strstr(json, "\"rpg\":{") && strstr(json, "\"creative\":{") && strstr(json, "\"profile\":{") && strstr(json, "\"games_extra\":{") && strstr(json, "\"care\":{") && strstr(json, "\"inventory\":{"));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     tank_init(&loaded, 6); progression_boot(&loaded);
     assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
@@ -3370,7 +3394,7 @@ static void test_inventory(void) {
     tank_init(&t, 710); boot_enlarged(&t); progression_setup_done(&t);
     t.sd_balance = 10000; assert(progression_save(&t));
     int slot = tank_decor_slot(9), earned = t.sd_earned;
-    assert(AQUARIUM_SAVE_BYTES == 6336);
+    assert(AQUARIUM_SAVE_BYTES == 6424);
     before = t;
     assert(!progression_inventory_buy(&t, 9) && !memcmp(&before, &t, sizeof t));
     assert(progression_buy(&t, 9));
@@ -3476,7 +3500,7 @@ static void test_inventory(void) {
     before = t;
     assert(!progression_inventory_buy(&t, 9) && !memcmp(&before, &t, sizeof t));
     assert(!progression_inventory_store(&t, 9, -1) && !memcmp(&before, &t, sizeof t));
-    char *json = progression_backup_json(&t); assert(json && strstr(json, "\"schema\":19"));
+    char *json = progression_backup_json(&t); assert(json && strstr(json, "\"schema\":20"));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     inventory_reload(&loaded); assert(!memcmp(&t.inventory, &loaded.inventory, sizeof t.inventory));
     /* Reject aggregate overcapacity and paid provenance exceeding ownership. */
@@ -3831,7 +3855,7 @@ static void test_backup_validation(void) {
     assert(progression_restore_json(reordered, strlen(reordered), false, error, sizeof error));
     static const char *const sections[] = {
         "tank", "companion", "polish", "story", "games", "rpg", "creative",
-        "games_extra", "profile", "care", "inventory", "content", "mussel", "game_income"
+        "games_extra", "profile", "care", "inventory", "content", "fixed", "mussel", "game_income"
     };
     cJSON *canonical = cJSON_Parse(json); assert(canonical);
     for (int order = 0; order < 2; order++) {
@@ -3914,6 +3938,7 @@ int main(int argc, char **argv) {
                (migrated.sd_unlocks & SD_ITEM_CHEST));
         assert(progression_save(&migrated));
         for (size_t partial = 6169; partial < AQUARIUM_SAVE_BYTES; partial++) {
+            if (partial == 6336) continue;   /* the complete schema-19 prefix, before the movable-scenery tail */
             saved_size = partial;
             tank_init(&old, 894); boot_enlarged(&old);
             assert(!progression_storage_ready() && saved_size == partial);
@@ -3921,7 +3946,7 @@ int main(int argc, char **argv) {
         saved_size = AQUARIUM_SAVE_BYTES;
         tank_init(&migrated, 895); boot_enlarged(&migrated);
         assert(progression_storage_ready() && !migrated.content.owned);
-        puts("PASS: schema-18 binary prefix migrates empty content; every partial schema-19 tail is refused without writes");
+        puts("PASS: schema-18 binary prefix migrates empty content; every partial schema-19/20 tail is refused without writes");
         return 0;
     }
     if (argc >= 2 && !strcmp(argv[1], "--inventory-only")) {

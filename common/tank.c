@@ -834,7 +834,7 @@ void tank_init(tank_t *t, uint32_t seed) {
     memset(t->ornament_z, DECOR_Z_BACK, sizeof t->ornament_z);
     t->sand_style = t->water_style = 0;
     memset(t->decor_rank, 0, sizeof t->decor_rank);
-    memset(&t->content, 0, sizeof t->content); t->content.version = 1;
+    memset(&t->content, 0, sizeof t->content); t->content.version = 1; memset(&t->fixed, 0, sizeof t->fixed); t->fixed.version = 1;
     t->tank_ms_bits = 0; t->tank_ms_seen = 0; t->ask_rr = 0; t->advisor_asks = 0;
     tank_scatter_food(t, 2);
 }
@@ -2184,17 +2184,33 @@ int tank_ornament_h(int item) {
     return item >= 22 && item < SD_ITEM_COUNT ? 40 : item >= 16 && item < 22 ? heights[item - 16] : item == 9 ? CHEST_H : item == 10 ? 24 : item == 11 ? 32 : item == 12 ? 40 : item == 13 ? 104 : 0;
 }
 bool  tank_decor_placeable(int item) { return SD_IS_NEW_DECOR(item) || item == 0 || item == 2 || item == 3 || item == 4 || item == 8 || item == 9 || tank_ornament_index(item) >= 0; }
+int   tank_fixed_index(int item) { return SD_IS_SCENERY(item) ? item - SD_SCENERY_FIRST : item >= 22 && item <= 29 ? 6 + item - 22 : -1; }
+bool  tank_decor_movable(int item) { return tank_decor_placeable(item) || tank_fixed_index(item) >= 0; }
+bool  tank_decor_surface(int item) { return item == 24 || item == 28 || item == 29; }
+/* the fixed scenery's historical spots: the sand set in two staggered rows, the floats in quarters */
+static float fixed_default_x(int item) {
+    if (SD_IS_SCENERY(item)) return (float)((2 * (item - SD_SCENERY_FIRST) + 1) * TANK_W / 12);
+    if (item == 28) return (float)(TANK_W / 4);
+    if (item == 24) return (float)(2 * TANK_W / 4);
+    if (item == 29) return (float)(3 * TANK_W / 4);
+    static const int floor_items[5] = {22, 23, 25, 26, 27};
+    for (int k = 0; k < 5; k++) if (floor_items[k] == item) return (float)((k + 1) * TANK_W / 6);
+    return TANK_W * 0.5f;
+}
 float tank_decor_half_w(int item) { return item == 0 ? PLANT_HALF_W : item == 2 ? CASTLE_HALF_W : item == 3 ? CORAL_HALF_W : item == 4 ? CLUSTER_HALF_W : item == 8 ? PUMPKIN_HALF_W : tank_ornament_w(item) / 2; }
 /* only the plant weaves AMONG the fish; the castle and both corals are
  * BEHIND or IN FRONT (Strato, 2026-09-24: "remove the among option for
  * corals, it doesn't really make as much sense") */
-int   tank_decor_z_count(int item) { return item == 0 ? DECOR_Z_N : 2; }
+int   tank_decor_z_count(int item) { return item == 0 ? DECOR_Z_N : tank_decor_surface(item) ? 1 : 2; }
 int   tank_decor_z_at(int item, int i) {
+    if (tank_decor_surface(item)) return DECOR_Z_FRONT;
     if (item != 0) return i <= 0 ? DECOR_Z_BACK : DECOR_Z_FRONT;
     return i < 0 ? 0 : i >= DECOR_Z_N ? DECOR_Z_N - 1 : i;
 }
-int   tank_decor_z_index(int item, int z) { return item != 0 ? (z == DECOR_Z_BACK ? 0 : 1) : z; }
+int   tank_decor_z_index(int item, int z) { return tank_decor_surface(item) ? 0 : item != 0 ? (z == DECOR_Z_BACK ? 0 : 1) : z; }
 float tank_decor_x(const tank_t *t, int item) {
+    int fi = tank_fixed_index(item);
+    if (fi >= 0) return t->fixed.x[fi] > 0 ? t->fixed.x[fi] : fixed_default_x(item);
     if (SD_IS_NEW_DECOR(item)) {
         float x = t->content.x[item - SD_DECOR_FIRST];
         return x > 0 ? x : TANK_FLOOR_X(80 + ((item - SD_DECOR_FIRST) % 4) * 85);
@@ -2209,8 +2225,14 @@ float tank_decor_x(const tank_t *t, int item) {
     if (item != 0) return 0;
     return t->plant_x > 0 ? t->plant_x : PLANT_X_DEFAULT;
 }
-int tank_decor_z(const tank_t *t, int item) { int oi = tank_ornament_index(item); return SD_IS_NEW_DECOR(item) ? t->content.z[item - SD_DECOR_FIRST] : item == 0 ? t->plant_z : item == 2 ? t->castle_z : item == 3 ? t->coral_z : item == 4 ? t->cluster_z : item == 8 ? t->pumpkin_z : item == 9 ? t->chest_z : oi >= 0 ? t->ornament_z[oi] : DECOR_Z_MIDDLE; }
+int tank_decor_z(const tank_t *t, int item) {
+    int oi = tank_ornament_index(item), fi = tank_fixed_index(item);
+    if (fi >= 0) return tank_decor_surface(item) ? DECOR_Z_FRONT : t->fixed.z[fi] == DECOR_Z_FRONT ? DECOR_Z_FRONT : DECOR_Z_BACK;
+    return SD_IS_NEW_DECOR(item) ? t->content.z[item - SD_DECOR_FIRST] : item == 0 ? t->plant_z : item == 2 ? t->castle_z : item == 3 ? t->coral_z : item == 4 ? t->cluster_z : item == 8 ? t->pumpkin_z : item == 9 ? t->chest_z : oi >= 0 ? t->ornament_z[oi] : DECOR_Z_MIDDLE;
+}
 static float decor_top(const tank_t *t, int item) {         /* the piece's highest pixel */
+    if (tank_decor_surface(item)) return 0;
+    if (tank_fixed_index(item) >= 0) return TANK_BOT - (SD_IS_SCENERY(item) ? 52 : 48);
     if (item == 0) { float top; tank_veg_bed(t, 3, NULL, NULL, &top, NULL); return top; }
     if (item == 2) return TANK_BOT - 16 - 146;
     if (item == 3) return TANK_BOT - 14 + DECOR_SINK - 92;
@@ -2224,29 +2246,34 @@ int tank_decor_hit(const tank_t *t, float x, float y) {
         int item = order[k];
         if (!tank_decor_owned(t, item)) continue;
         float cx = tank_decor_x(t, item), half = tank_decor_half_w(item) + 8;
-        if (x >= cx - half && x <= cx + half && y >= decor_top(t, item) - 8 && y <= TANK_BOT) return item;
+        float bottom = tank_decor_surface(item) ? 48 : TANK_BOT;
+        if (x >= cx - half && x <= cx + half && y >= decor_top(t, item) - 8 && y <= bottom) return item;
     }
     return -1;
 }
 /* ---- the order of the pieces (2026-10-17; tank.h) ---- */
 static const int DECOR_SLOT_ITEM[DECOR_SLOTS] = { 2, 3, 4, 8, 0, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21,
-    43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62 };
+    43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,
+    36,37,38,39,40,41,22,23,24,25,26,27,28,29 };   /* fixed scenery: slot DECOR_FIXED_SLOT0 + tank_fixed_index */
 int  tank_decor_slot(int item) { for (int s = 0; s < DECOR_SLOTS; s++) if (DECOR_SLOT_ITEM[s] == item) return s; return -1; }
 int  tank_decor_slot_item(int slot) { return slot >= 0 && slot < DECOR_SLOTS ? DECOR_SLOT_ITEM[slot] : -1; }
 bool tank_decor_owned(const tank_t *t, int item) {
+    if (SD_IS_SCENERY(item)) return (t->polish.scenery_unlocks & (1u << (item - SD_SCENERY_FIRST))) != 0;
     return SD_IS_NEW_DECOR(item) ? (t->content.owned & (1u << (item - SD_DECOR_FIRST))) != 0 :
         tank_decor_slot(item) >= 0 && (t->sd_unlocks & (1u << item));
 }
 static bool decor_before(const tank_t *t, int ia, int ib) {       /* a is painted before (under) b at one depth */
     int sa = tank_decor_slot(ia), sb = tank_decor_slot(ib);
     int ra = t->decor_rank[sa] & DECOR_RANK_MASK, rb = t->decor_rank[sb] & DECOR_RANK_MASK;
-    return ra != rb ? ra < rb : sa < sb;
+    /* on a tie the fixed scenery stays under the rest, where its old bake had it */
+    int ka = sa >= DECOR_FIXED_SLOT0 ? sa - DECOR_SLOTS : sa, kb = sb >= DECOR_FIXED_SLOT0 ? sb - DECOR_SLOTS : sb;
+    return ra != rb ? ra < rb : ka < kb;
 }
 int  tank_decor_rank(const tank_t *t, int item) { int s = tank_decor_slot(item); return s < 0 ? 0 : t->decor_rank[s] & DECOR_RANK_MASK; }
 static void decor_rank_set(tank_t *t, int slot, int rank) {
     t->decor_rank[slot] = (uint8_t)((t->decor_rank[slot] & DECOR_RANK_MIRROR) | (rank & DECOR_RANK_MASK));
 }
-bool tank_decor_mirrorable(int item) { return item >= 9 && tank_decor_placeable(item); }
+bool tank_decor_mirrorable(int item) { return item >= 9 && tank_decor_movable(item); }
 bool tank_decor_mirrored(const tank_t *t, int item) {
     int s = tank_decor_slot(item);
     return s >= 0 && tank_decor_mirrorable(item) && (t->decor_rank[s] & DECOR_RANK_MIRROR);
@@ -2281,13 +2308,13 @@ void tank_decor_raise(tank_t *t, int item) {
     decor_rank_set(t, s, top + 1);
 }
 int  tank_decor_neighbor(const tank_t *t, int item, int dir) {
-    if (!tank_decor_owned(t, item) || tank_decor_z(t, item) == DECOR_Z_MIDDLE) return -1;   /* the woven plant has no stack */
+    if (!tank_decor_owned(t, item) || tank_decor_z(t, item) == DECOR_Z_MIDDLE || tank_decor_surface(item)) return -1;   /* the woven plant and the floats have no stack */
     int items[DECOR_SLOTS], n = tank_decor_order(t, items), at = -1;
     for (int i = 0; i < n; i++) if (items[i] == item) at = i;
     float cx = tank_decor_x(t, item), half = tank_decor_half_w(item);
     /* Only a piece whose footprint overlaps this one can visibly change places with it. */
     for (int i = at + dir; i >= 0 && i < n; i += dir) {
-        if (tank_decor_z(t, items[i]) != tank_decor_z(t, item)) continue;
+        if (tank_decor_z(t, items[i]) != tank_decor_z(t, item) || tank_decor_surface(items[i])) continue;
         if (fabsf(tank_decor_x(t, items[i]) - cx) < half + tank_decor_half_w(items[i])) return items[i];
     }
     return -1;
@@ -2308,6 +2335,7 @@ bool tank_decor_shift(tank_t *t, int item, int dir) {
 }
 void tank_decor_reset(tank_t *t, int item) {
     { int s = tank_decor_slot(item); if (s >= 0) t->decor_rank[s] = 0; }
+    { int fi = tank_fixed_index(item); if (fi >= 0) { t->fixed.x[fi] = 0; t->fixed.z[fi] = DECOR_Z_BACK; return; } }
     if (SD_IS_NEW_DECOR(item)) { t->content.x[item - SD_DECOR_FIRST] = 0; t->content.z[item - SD_DECOR_FIRST] = DECOR_Z_BACK; return; }
     if (item == 0) { t->plant_x = 0; t->plant_z = DECOR_Z_MIDDLE; tank_veg_set(t, 3, VEG_START); }
     if (item == 2) { t->castle_x = 0; t->castle_z = DECOR_Z_FRONT; }
@@ -2319,13 +2347,14 @@ void tank_decor_reset(tank_t *t, int item) {
     if (oi >= 0) { t->ornament_x[oi] = 0; t->ornament_z[oi] = DECOR_Z_BACK; }
 }
 void tank_decor_set(tank_t *t, int item, float x, int z) {
-    if (!tank_decor_placeable(item)) return;
+    if (!tank_decor_movable(item)) return;
     float half = tank_decor_half_w(item), lo = TANK_FX0 + DECOR_MARGIN + half, hi = TANK_FX1 - DECOR_MARGIN - half;
     if (x < lo) x = lo;
     if (x > hi) x = hi;
     if (z < 0) z = 0;
     if (z >= DECOR_Z_N) z = DECOR_Z_N - 1;
     uint8_t z2 = (uint8_t)(z == DECOR_Z_BACK ? DECOR_Z_BACK : DECOR_Z_FRONT);   /* no AMONG for these */
+    { int fi = tank_fixed_index(item); if (fi >= 0) { t->fixed.x[fi] = x; t->fixed.z[fi] = tank_decor_surface(item) ? DECOR_Z_BACK : z2; return; } }   /* a float's stored z stays 0: it is always on top */
     if (SD_IS_NEW_DECOR(item)) { t->content.x[item - SD_DECOR_FIRST] = x; t->content.z[item - SD_DECOR_FIRST] = z2; return; }
     if (item == 2) { t->castle_x = x; t->castle_z = z2; return; }
     if (item == 3) { t->coral_x = x; t->coral_z = z2; return; }

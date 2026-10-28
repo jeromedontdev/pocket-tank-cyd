@@ -486,7 +486,10 @@ typedef struct { float x, y, vy, wobble; bool column; } bubble_t;
 
 #define DECOR_LEGACY_SLOTS 16
 #define DECOR_NEW_COUNT 20
-#define DECOR_SLOTS (DECOR_LEGACY_SLOTS + DECOR_NEW_COUNT)
+/* fixed scenery made movable (2.4): items 36..41, then 22..29 (tank_fixed_index) */
+#define DECOR_FIXED_COUNT 14
+#define DECOR_FIXED_SLOT0 (DECOR_LEGACY_SLOTS + DECOR_NEW_COUNT)
+#define DECOR_SLOTS (DECOR_FIXED_SLOT0 + DECOR_FIXED_COUNT)
 #define DECOR_INVENTORY_CAP 64
 #define DECOR_EXTRA_CAP 8
 typedef struct {
@@ -508,6 +511,14 @@ typedef struct {
     uint8_t version, reserved[3];
 } decor_content_t;
 _Static_assert(sizeof(decor_content_t) == 168, "schema-19 decoration tail");
+/* schema 20: where the fixed scenery stands. x <= 0 = its historical spot;
+ * rank carries DECOR_RANK_MIRROR like decor_rank. */
+typedef struct {
+    float x[DECOR_FIXED_COUNT];
+    uint8_t z[DECOR_FIXED_COUNT], rank[DECOR_FIXED_COUNT];
+    uint8_t version, reserved[3];
+} decor_fixed_t;
+_Static_assert(sizeof(decor_fixed_t) == 88, "schema-20 fixed scenery tail");
 typedef struct {
     uint16_t seconds;
     uint8_t owned, bank, generated, version, reserved[2]; /* v2 owned: one bit per aquarium */
@@ -876,6 +887,7 @@ typedef struct tank {
     care_state_t care;
     inventory_state_t inventory;
     decor_content_t content;
+    decor_fixed_t fixed;
     mussel_state_t mussel;
     game_income_state_t game_income;
     double mussel_fraction;
@@ -1143,8 +1155,9 @@ enum { SD_ITEM_PLANT = 1u << 0, SD_ITEM_SNAIL = 1u << 1, SD_ITEM_CASTLE = 1u << 
 #define SD_IS_NEW_DECOR(item) ((item) >= SD_DECOR_FIRST && (item) < SD_ITEM_COUNT)
 #define SD_ITEM_MASK UINT32_MAX
 /* fixed sand scenery (1.2): IDs 36..41 own one bit each in
- * tank_polish_t.scenery_unlocks. Not placeable, so no decor slot or rank;
- * they bake into the cached backdrop beside the 0.3.8 floor pieces. */
+ * tank_polish_t.scenery_unlocks. Together with the 0.3.8 pieces 22..29 they
+ * are MOVABLE (2.4: decor slots, x, depth, rank and mirror in
+ * tank_t.fixed) but not storable: no inventory copies or duplicates. */
 enum { SD_SCENERY_GLASS = 36, SD_SCENERY_BRAIN, SD_SCENERY_TIKI, SD_SCENERY_BOTTLE,
        SD_SCENERY_ANEMONE, SD_SCENERY_TEAPOT, SD_SCENERY_END };
 #define SD_SCENERY_FIRST SD_SCENERY_GLASS
@@ -1273,7 +1286,10 @@ void     tank_cluster_set_scheme(tank_t *t, int i);
 extern const uint32_t CORAL_PAL[CORAL_N];
 uint32_t tank_coral_rgb(const tank_t *t);          /* the colour, the default when unset */
 void     tank_coral_set_rgb(tank_t *t, uint32_t rgb);
-bool  tank_decor_placeable(int item);      /* SD item index: has an x and a layer */
+bool  tank_decor_placeable(int item);      /* SD item index: has an x and a layer, and inventory copies */
+bool  tank_decor_movable(int item);        /* placeable, or fixed scenery: the placement page moves it */
+bool  tank_decor_surface(int item);        /* floats at the surface (log, lilies, duck): x only */
+int   tank_fixed_index(int item);          /* 0..DECOR_FIXED_COUNT-1 for fixed scenery, else -1 */
 int   tank_decor_z_count(int item);        /* depths the item offers: 3 (BACK/MIDDLE/FRONT) or 2 (BACK/FRONT) */
 int   tank_decor_z_at(int item, int i);    /* the i-th offered depth (the placement bar's segment i) */
 int   tank_decor_z_index(int item, int z); /* the inverse: which segment shows depth z */

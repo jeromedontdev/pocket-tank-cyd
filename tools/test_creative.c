@@ -96,7 +96,7 @@ int main(void) {
     assert(progression_aquarium_summary(&t, 0, &summary) && summary.creative);
     wallet(&t, 37, 59, 0);
     char *creative_json = progression_backup_json(&t); assert(creative_json);
-    assert(strstr(creative_json, "\"schema\":19") && strstr(creative_json, "\"creative\":"));
+    assert(strstr(creative_json, "\"schema\":20") && strstr(creative_json, "\"creative\":"));
     reload(&t); assert(progression_creative(&t)); wallet(&t, 37, 59, 0);
     assert(!t.companion.collections && !t.companion.active[0].bond);
     assert(companion_cosmetic(&t, 3));
@@ -212,6 +212,7 @@ int main(void) {
     cJSON_DeleteItemFromObjectCaseSensitive(root, "game_income");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "games_extra");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "content");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "fixed");
     cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(root, "schema"), 14);
     json = cJSON_PrintUnformatted(root); cJSON_Delete(root);
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);

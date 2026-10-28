@@ -22,10 +22,11 @@ or deployment is published. Update this file when its contracts change.
 
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
-  edit-mode/mirror/save-speed, menu-performance and minigame-art follow-ups,
-  unified build, app 1,786,016 bytes, slot headroom 180,064, SHA256
-  `761d7e175a2a5e6a72504da525eac6c2b050bc82e955af4fea78bd2ee1e3698a`
-  (see [minigame art](firmware/CYD.md#minigame-art-kit)).
+  edit-mode/mirror/save-speed, menu-performance, minigame-art, menu-art,
+  movable-scenery and save-memory follow-ups, unified build, app 1,788,768
+  bytes, slot headroom 177,312, SHA256
+  `1893fed670be1168f4462d00ca5590c366cf8ba6c188c337af80932c0b125318`
+  (see [menu art and movable scenery](firmware/CYD.md#menu-art-and-movable-scenery)).
   Fresh full recovery backup, app readback/profile and saves passed. Residents/settings remain intact; the wallet
   changes only from normal passive income. Tracing is off. These follow-ups
   are not published; the website and immutable 2.3.18 tag remain unchanged.
@@ -434,6 +435,14 @@ or deployment is published. Update this file when its contracts change.
   (`render` must stay well under the ~33 ms frame). Prefer opaque fills
   pre-mixed against the known water band (`ga_wash`, the stepped shafts)
   over translucent blends; opaque page spans use `fill565_span`.
+- Menu pages share the same look (`common/render.c`): `page_backdrop` (a
+  water gradient with stepped light rays and a sandy foot, opaque spans only,
+  tile-culled), the bevelled round-cornered `button()` key (edge rim, lit lip,
+  darker foot) and, in the companion, `key_face`. Shop rows sit on raised
+  `shop_row_card` slates with the preview in a sunk `SHP_WELL`; row previews
+  are full colour whether owned or not (the modal still greys locked items).
+  Keep new pages on these helpers, not flat ink fills or flat rectangles, and
+  keep them opaque so still-page skipping and tile culling stay cheap.
 - Fit every wearable to each species and life stage, including turns and dive
   poses. When a fit genuinely cannot work, exclude it consistently from purchase,
   equip and rendering rather than showing broken gear. Jellyfish exclude only
@@ -476,6 +485,18 @@ or deployment is published. Update this file when its contracts change.
   reverts); MIRROR replaces the DEPTH caption, centred above the depth bar
   (`SETUP_MIRROR_X/Y`). Text over the live tank uses `text_plate` (white on a
   dark plate); there is no copy counter, tap-to-select or drag hint.
+- Every tank piece the shop sells is movable (`tank_decor_movable`):
+  placeable ornaments/plants plus the 14 "fixed" pieces (scenery 36-41 and
+  items 22-29). Fixed pieces stay non-placeable for inventory, copies and
+  pricing (no REMOVE, never stored); they use decor slots 36-49
+  (`DECOR_FIXED_SLOT0`, `tank_fixed_index`: 36..41 then 22..29) with x/z in
+  `tank_t.fixed` (`x == 0` = the historical default spot). Floats 24/28/29
+  (`tank_decor_surface`) ride the surface: no depth bar or order arrows, only
+  drag and MIRROR; their z is stored BACK but reads FRONT, so the placement
+  snapshot keeps the raw stored byte. Buying any movable piece opens its
+  placement page (`main.c`/`sim/main.c`); the owned shop modal shows MOVE +
+  SELL/REMOVE. `test_setup_placement` buys, drags, mirrors, saves and reloads
+  all 50 movable pieces at both scales; keep it passing when adding items.
 - Still pages: `main.c` skips render+flush while a static full page
   (milestones/life/bank/journal, settings, shop/aquariums) is unchanged. It
   redraws on page change, while touched and 400 ms after, and every 500 ms. If
@@ -540,7 +561,10 @@ or further split modules without a concrete maintenance benefit.
 
 ## Persistence and memory: hard constraints
 
-- Current source binary save **6336 bytes**, JSON **schema 19**; imports schemas 1-18.
+- Current source binary save **6424 bytes**, JSON **schema 20**; imports schemas 1-19.
+  Schema 20 appends the 88-byte `decor_fixed_t` (`fixed`: version, x, z and
+  ranks of the 14 movable fixed pieces) at 6336; 6336-byte saves load with
+  default spots. JSON exports a `"fixed"` object after `"content"`.
   The 24-byte `care_state_t` appends at offset 6008; quotas and care progress
   follow shared progression, never stale parked snapshots. Validate JSON and
   binary tails; retain zero-tail migration without changing existing XP.
@@ -683,6 +707,16 @@ or further split modules without a concrete maintenance benefit.
   and only if that day's success marker is absent. Failed attempts retry after
   an hour; minute eligibility polls are not minute backups. Do not prioritize
   this rare hitch over rendering/LCD costs paid every moving frame.
+- Never put a `save_t` on a stack or heap-copy it for save/load/backup/restore:
+  `progression_save`, `load_save`, `progression_backup_json` and
+  `progression_restore_json` share the static `s_save_scratch` (tank task only,
+  never nested). At 6424 bytes a stack copy overflowed the 12-KiB tank stack on
+  the console `save`; a heap copy left restore's cJSON too little room. Restore
+  validation holds one top-level JSON value at a time (`json_snapshot` records
+  slices, `json_expand`/`json_collapse`/`json_read_lazy`); the whole tree peaked
+  near 40 KB on the ESP32 against 39 KB free. `test_tank_backup` asserts the
+  host peak stays under 32 KiB. See
+  [save memory](firmware/CYD.md#save-and-restore-memory).
 - Fish stay full-rate; scenery clocks are independent (Balanced effects5Hz/
   grass2Hz, Enhanced10Hz/4Hz, staggered grass beds). Damage planning compares
   merged rectangle costs, not the old fixed40% promotion threshold. Serial

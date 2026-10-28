@@ -170,7 +170,7 @@ static void test_aquariums(tank_t *t) {
     reject_slot_read = false;
     char *json = progression_backup_json(t); assert(json);
     char error[160];
-    assert(strstr(json, "\"schema\":19") && strstr(json, "\"games_extra\":") && strstr(json, "\"profile\":"));
+    assert(strstr(json, "\"schema\":20") && strstr(json, "\"games_extra\":") && strstr(json, "\"profile\":"));
     assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     free(json); reload(t);

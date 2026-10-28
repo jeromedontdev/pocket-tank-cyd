@@ -1,5 +1,5 @@
-/* Fixed sand scenery (items 36..41): ownership lives in polish.scenery_unlocks, the pieces
- * are never placeable (no decor slot) and bake into the cached backdrop. */
+/* Scenery (items 36..41): ownership lives in polish.scenery_unlocks; since 2.4 the pieces
+ * are movable (decor slots 36.., x/depth/mirror in the schema-20 fixed tail) but never stored. */
 #include "progression.h"
 #include "render.h"
 #include "companion.h"
@@ -23,13 +23,14 @@ static int test_decor_scenery_changed(const uint16_t *a, const uint16_t *b) {
 
 static void test_decor_scenery_catalog(void) {
     assert(SD_ITEM_COUNT == 63 && SD_SHOP_MUSSEL == 42 && SD_SCENERY_FIRST == 36 && SD_SCENERY_N == 6 && SD_SCENERY_MASK == 0x3f);
-    assert(DECOR_SLOTS == 36 && DECOR_LEGACY_SLOTS == 16 && WEAR_COUNT == 13);
+    assert(DECOR_SLOTS == 50 && DECOR_FIXED_SLOT0 == 36 && DECOR_LEGACY_SLOTS == 16 && WEAR_COUNT == 13);
     int prices = 0;
     for (int item = SD_SCENERY_FIRST; item < SD_SCENERY_END; item++) {
         assert(SD_IS_SCENERY(item) && SD_IS_FIXED_SCENERY(item));
         assert(SD_ITEMS[item].bit == 0 && SD_ITEMS[item].price > 0);
-        assert(!tank_decor_placeable(item) && tank_ornament_index(item) == -1);
-        assert(!strcmp(SD_ITEMS[item].words2, "FIXED SPOT ON THE SAND"));
+        assert(!tank_decor_placeable(item) && tank_decor_movable(item) && tank_ornament_index(item) == -1);
+        assert(tank_decor_slot(item) == DECOR_FIXED_SLOT0 + tank_fixed_index(item) && tank_decor_slot_item(tank_decor_slot(item)) == item);
+        assert(!strcmp(SD_ITEMS[item].words2, "SCENERY YOU CAN MOVE"));
         prices += SD_ITEMS[item].price;
     }
     assert(prices == 530);
@@ -72,7 +73,7 @@ static void test_decor_scenery_buy_sell(void) {
     }
     /* Only the new byte changes: no decor slot, sd_unlocks bit or stat upgrade is consumed. */
     assert(t.polish.scenery_unlocks == SD_SCENERY_MASK && t.sd_unlocks == sd && t.aquariums.stat_upgrades == stat);
-    for (int item = SD_SCENERY_FIRST; item < SD_SCENERY_END; item++) assert(!tank_decor_owned(&t, item));
+    for (int item = SD_SCENERY_FIRST; item < SD_SCENERY_END; item++) assert(tank_decor_owned(&t, item));
     t.sd_balance = INT32_MAX;
     assert(!progression_sell_value_for(&t, SD_SCENERY_FIRST));
     assert(progression_sell(&t, SD_SCENERY_FIRST) && t.sd_balance == INT32_MAX);
