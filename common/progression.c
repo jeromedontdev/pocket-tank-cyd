@@ -1,4 +1,7 @@
 #include "progression.h"
+#ifdef ESP_PLATFORM
+#include "esp_heap_caps.h"   /* undo_take: IRAM, word-only heap */
+#endif
 #include "companion.h"
 #include "tank_events.h"
 #include "version.h"
@@ -907,6 +910,29 @@ int progression_sell_value_for(const tank_t *t, int item) {
         !progression_item_owned(t, item) || !(t->profile.paid_items & (UINT64_C(1) << item))) return 0;
     return progression_sell_value(item);
 }
+/* A shop transaction's undo (2026-10-28): the tank changes in place and a
+   failed save copies it back. The 8.5 KB copy goes to IRAM first - the ESP32
+   heap's word-only memory, which nothing else here uses - so a purchase does
+   not need that much of the byte heap the weather's TLS and the shop share.
+   Word-only: it is copied with 32-bit loads and stores, never touched otherwise. */
+_Static_assert(sizeof(tank_t) % 4 == 0, "the undo copies whole words");
+static uint32_t *undo_take(const tank_t *t) {
+    uint32_t *u = NULL;
+#ifdef ESP_PLATFORM
+    u = heap_caps_malloc(sizeof *t, MALLOC_CAP_EXEC | MALLOC_CAP_32BIT);
+#endif
+    if (!u) u = malloc(sizeof *t);
+    if (!u) return NULL;
+    volatile uint32_t *d = u; const uint32_t *src = (const uint32_t *)t;
+    for (size_t i = 0; i < sizeof *t / 4; i++) d[i] = src[i];
+    return u;
+}
+static void undo_put(tank_t *t, const uint32_t *u) {
+    const volatile uint32_t *src = u; uint32_t *d = (uint32_t *)t;
+    for (size_t i = 0; i < sizeof *t / 4; i++) d[i] = src[i];
+}
+static void undo_drop(uint32_t *u) { free(u); }
+
 bool progression_sell(tank_t *t, int item) {
     if (item < 0 || item >= SD_ITEM_COUNT || (!tank_decor_placeable(item) && !SD_IS_FIXED_SCENERY(item))) return false;   /* residents and functional upgrades stay */
     const sd_item_t *it = &SD_ITEMS[item];
@@ -936,27 +962,26 @@ bool progression_sell(tank_t *t, int item) {
         shop_save_failed("SAVE FAILED - NOT SOLD", it->name);
         return false;
     }
-    tank_t *before = NULL;
+    uint32_t *before = NULL;
     if (tank_decor_placeable(item)) {
-        before = malloc(sizeof *before);
+        before = undo_take(t);
         if (!before) { fprintf(stderr, "Shop sale needs more memory; no change\n"); return false; }
-        *before = *t;
     }
     t->sd_unlocks &= ~it->bit;
     uint64_t paid_before = t->profile.paid_items;
     t->profile.paid_items &= ~(uint64_t)it->bit;
     t->sd_balance += back; s_sd_pending += back;
     if (item >= 22) {
-        if (progression_save(t)) { free(before); return true; }
+        if (progression_save(t)) { undo_drop(before); return true; }
         t->sd_unlocks |= it->bit; t->sd_balance -= back; s_sd_pending -= back;
         t->profile.paid_items = paid_before;
-        free(before);
+        undo_drop(before);
         shop_save_failed("SAVE FAILED - NOT SOLD", it->name);
         return false;
     }
     tank_decor_reset(t, item);
-    if (progression_save(t)) { free(before); return true; }
-    *t = *before; free(before); s_sd_pending -= back;
+    if (progression_save(t)) { undo_drop(before); return true; }
+    undo_put(t, before); undo_drop(before); s_sd_pending -= back;
     shop_save_failed("SAVE FAILED - NOT SOLD", it->name);
     return false;
 }
@@ -1224,10 +1249,9 @@ static bool buy_item(tank_t *t, int item) {
         return progression_save(t);
     }
     if (SD_IS_SCENERY(item)) {
-        /* Observing may seed polish/RNG/familiarity; stage on a copy so a failed save changes nothing. */
-        tank_t *next = malloc(sizeof *next);
-        if (!next) { shop_save_failed("NOT ENOUGH MEMORY - NOT BOUGHT", it->name); return false; }
-        *next = *t;
+        /* Observing may seed polish/RNG/familiarity; progression_buy's undo
+           takes it back if the save fails. */
+        tank_t *next = t;
         companion_polish_observe(next);     /* first: migrating an uninitialised polish clears it */
         next->sd_balance -= price;
         next->polish.scenery_unlocks = (uint8_t)(next->polish.scenery_unlocks | (1u << (item - SD_SCENERY_FIRST)));
@@ -1238,8 +1262,6 @@ static bool buy_item(tank_t *t, int item) {
             next->polish.decor_since[since] = powered == UINT32_MAX ? UINT32_MAX : powered + 1;
         }
         bool saved = progression_save(next);
-        if (saved) *t = *next;
-        free(next);
         if (!saved) shop_save_failed("SAVE FAILED - NOT BOUGHT", it->name);
         return saved;
     }
@@ -1286,13 +1308,14 @@ bool progression_buy(tank_t *t, int item) {
     if (t->sd_balance < progression_item_price_for(t, item)) {
         s_shop_notice = "NOT ENOUGH SAND DOLLARS"; return false;
     }
-    tank_t *next = malloc(sizeof *next);
-    if (!next) { shop_save_failed("NOT ENOUGH MEMORY - NOT BOUGHT", SD_ITEMS[item].name); return false; }
-    *next = *t;
-    bool ok = buy_item(next, item);
-    if (ok) *t = *next;
-    else if (!s_shop_notice) shop_save_failed("SAVE FAILED - NOT BOUGHT", SD_ITEMS[item].name);
-    free(next);
+    uint32_t *undo = undo_take(t);
+    if (!undo) { shop_save_failed("NOT ENOUGH MEMORY - NOT BOUGHT", SD_ITEMS[item].name); return false; }
+    bool ok = buy_item(t, item);
+    if (!ok) {
+        undo_put(t, undo);
+        if (!s_shop_notice) shop_save_failed("SAVE FAILED - NOT BOUGHT", SD_ITEMS[item].name);
+    }
+    undo_drop(undo);
     return ok;
 }
 bool progression_inventory_duplicate(int item) {
@@ -1393,6 +1416,7 @@ static bool inventory_restore_safe(const save_t *to, const save_t *current) {
     return true;
 }
 static bool inventory_fail(const char *notice) { s_shop_notice = notice; return false; }
+static uint32_t *s_inventory_undo;              /* inventory_begin's, until commit or abort */
 static tank_t *inventory_begin(tank_t *t, int item) {
     s_shop_notice = NULL;
     if (!t || inventory_slot(item) < 0) {
@@ -1401,16 +1425,18 @@ static tank_t *inventory_begin(tank_t *t, int item) {
     if (!inventory_valid(&t->inventory) || !content_valid(&t->content, &t->inventory)) {
         inventory_fail("INVALID DECORATION INVENTORY"); return NULL;
     }
-    tank_t *next = malloc(sizeof *next);
-    if (!next) { inventory_fail("NOT ENOUGH MEMORY - NO CHANGE"); return NULL; }
-    *next = *t; next->inventory.version = 1; next->content.version = 1;
-    return next;
+    s_inventory_undo = undo_take(t);
+    if (!s_inventory_undo) { inventory_fail("NOT ENOUGH MEMORY - NO CHANGE"); return NULL; }
+    t->inventory.version = 1; t->content.version = 1;
+    return t;                                   /* in place: inventory_commit / inventory_abort settle it */
 }
+static void inventory_abort(tank_t *t) { undo_put(t, s_inventory_undo); undo_drop(s_inventory_undo); s_inventory_undo = NULL; }
 static bool inventory_commit(tank_t *t, tank_t *next) {
-    bool ok = progression_save(next);
-    if (ok) *t = *next;
-    else inventory_fail("SAVE FAILED - NO CHANGE");
-    free(next); return ok;
+    (void)next;
+    bool ok = progression_save(t);
+    if (!ok) { undo_put(t, s_inventory_undo); inventory_fail("SAVE FAILED - NO CHANGE"); }
+    undo_drop(s_inventory_undo); s_inventory_undo = NULL;
+    return ok;
 }
 static bool inventory_room(const tank_t *t) {
     unsigned n = 0;
@@ -1422,11 +1448,11 @@ bool progression_inventory_buy(tank_t *t, int item) {
     if (!next) return false;
     if (!(t->profile.owned_items & (UINT64_C(1) << item)) &&
         !progression_inventory_placed(t, item) && !progression_inventory_stored(t, item)) {
-        free(next); return inventory_fail("BUY YOUR FIRST ONE IN THE SHOP");
+        inventory_abort(t); return inventory_fail("BUY YOUR FIRST ONE IN THE SHOP");
     }
     int price = progression_creative(t) ? 0 : SD_ITEMS[item].price;
     if (!inventory_room(t) || t->sd_balance < price || (item == 8 && !progression_pumpkin_offered(t))) {
-        free(next);
+        inventory_abort(t);
         return inventory_fail(!inventory_room(t) ? "DECORATION STORAGE FULL" :
                               t->sd_balance < price ? "NOT ENOUGH SAND DOLLARS" : "ITEM NOT AVAILABLE");
     }
@@ -1440,7 +1466,7 @@ bool progression_inventory_buy(tank_t *t, int item) {
 bool progression_inventory_store(tank_t *t, int item, int copy) {
     tank_t *next = inventory_begin(t, item);
     if (!next) return false;
-    if (!inventory_room(t)) { free(next); return inventory_fail("DECORATION STORAGE FULL"); }
+    if (!inventory_room(t)) { inventory_abort(t); return inventory_fail("DECORATION STORAGE FULL"); }
     bool paid;
     uint64_t bit = UINT64_C(1) << item;
     if (copy == -1 && progression_item_owned(t, item)) {
@@ -1452,7 +1478,7 @@ bool progression_inventory_store(tank_t *t, int item, int copy) {
     } else if (copy >= 0 && copy < DECOR_EXTRA_CAP && next->inventory.extra[copy].item == item + 1) {
         paid = next->inventory.extra[copy].paid != 0;
         memset(&next->inventory.extra[copy], 0, sizeof next->inventory.extra[copy]);
-    } else { free(next); return inventory_fail("PLACED COPY NOT FOUND"); }
+    } else { inventory_abort(t); return inventory_fail("PLACED COPY NOT FOUND"); }
     int slot = inventory_slot(item);
     (*inventory_stored(next, slot))++;
     *inventory_paid(next, slot) += paid;
@@ -1462,7 +1488,7 @@ bool progression_inventory_place(tank_t *t, int item) {
     tank_t *next = inventory_begin(t, item);
     if (!next) return false;
     int slot = inventory_slot(item);
-    if (!*inventory_stored(next, slot)) { free(next); return inventory_fail("NO STORED COPY"); }
+    if (!*inventory_stored(next, slot)) { inventory_abort(t); return inventory_fail("NO STORED COPY"); }
     bool paid = *inventory_paid(next, slot) == *inventory_stored(next, slot);
     if (!progression_item_owned(t, item)) {
         next->sd_unlocks |= SD_ITEMS[item].bit;
@@ -1474,11 +1500,11 @@ bool progression_inventory_place(tank_t *t, int item) {
         tank_decor_raise(next, item);
     } else {
         if (!progression_inventory_duplicate(item)) {
-            free(next); return inventory_fail("ONE LIVING/LARGE PIECE PER TYPE");
+            inventory_abort(t); return inventory_fail("ONE LIVING/LARGE PIECE PER TYPE");
         }
         int i = 0;
         while (i < DECOR_EXTRA_CAP && next->inventory.extra[i].item) i++;
-        if (i == DECOR_EXTRA_CAP) { free(next); return inventory_fail("EXTRA DECORATION SLOTS FULL"); }
+        if (i == DECOR_EXTRA_CAP) { inventory_abort(t); return inventory_fail("EXTRA DECORATION SLOTS FULL"); }
         next->inventory.extra[i] = (inventory_extra_t){
             .item = (uint8_t)(item + 1), .z = DECOR_Z_BACK, .paid = paid,
             .rank = (uint8_t)(DECOR_SLOTS + i), .x = TANK_W * 0.5f
@@ -1492,10 +1518,10 @@ bool progression_inventory_sell(tank_t *t, int item) {
     tank_t *next = inventory_begin(t, item);
     if (!next) return false;
     int slot = inventory_slot(item);
-    if (!*inventory_stored(next, slot)) { free(next); return inventory_fail("NO STORED COPY"); }
+    if (!*inventory_stored(next, slot)) { inventory_abort(t); return inventory_fail("NO STORED COPY"); }
     bool paid = *inventory_paid(next, slot) == *inventory_stored(next, slot);
     int value = paid && !progression_creative(t) ? progression_sell_value(item) : 0;
-    if (t->sd_balance > INT_MAX - value) { free(next); return inventory_fail("WALLET FULL - NOT SOLD"); }
+    if (t->sd_balance > INT_MAX - value) { inventory_abort(t); return inventory_fail("WALLET FULL - NOT SOLD"); }
     (*inventory_stored(next, slot))--; *inventory_paid(next, slot) -= paid;
     next->sd_balance += value;
     /* Resale is not an earned reward and cannot create milestone dollars. */

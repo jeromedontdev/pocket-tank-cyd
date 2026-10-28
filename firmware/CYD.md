@@ -812,6 +812,26 @@ Image: app 1,785,376 bytes, 180,704 bytes of headroom, SHA256
 `c79c705788fbe1955c894638f7dd1b026a13cf5827bedc3450de97aa633db799`.
 Backup: `packed-pieces-com4-backup.bin`.
 
+Further trim (same section):
+
+- The net worker task ends after a lease once the radio is off
+  (`net: worker idle: ended (stack min free 6576 B)`), freeing its 12 KB
+  stack until the next weather refresh or Wi-Fi screen.
+- Buy/sell/inventory rollback keeps its `tank_t` snapshot (8.5 KB) in spare
+  IRAM heap, copied by 32-bit words, and mutates the live tank in place
+  instead of building a second DRAM copy.
+- Weather results, the city search list and the benchmark pacing table are
+  heap-allocated only while used (~2.4 KB of .bss gone). A result that cannot
+  be allocated reports `WEATHER_ERR_MEMORY` instead of hanging.
+
+COM4 after the trim: boot weather `https start` free 29,004 B, largest
+27,648 B, OK in 2.1 s. Heap 42-48 KB, largest block 32 KB, live and in the
+shop (was 33/19 KB), while the artwork cache grows to 33 KB. FPS 13.5-15 with
+~90-105 changed rows/frame, the same as earlier runs at that load. `save` takes 214 ms;
+`bank verify` and the SD auto backup pass. App 1,786,000 bytes, 180,080 bytes of
+headroom, SHA256 `b973b4e4668e85c00745c0024a42b9b0a2d5dbf0d2996b07c7b494f4864d5ff1`.
+Backup: `memory-trim-com4-backup.bin`.
+
 ### 2.3.18 frame-pacing and snapshot follow-up
 
 The renderer can bracket an immutable frame with `render_frame_begin` and

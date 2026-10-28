@@ -379,8 +379,7 @@ static void render_benchmark(uint16_t *buffer) {
         render_set_backdrop_cache((uint8_t *)buffer + TANK_W * 80 * 2,
                                  PLAN_FB_BYTES - TANK_W * 80 * 2);
         int timed_frames = 240;
-        static frame_pacing_t benchmark_pacing;
-        memset(&benchmark_pacing, 0, sizeof benchmark_pacing);
+        frame_pacing_t *bench_pacing = calloc(1, sizeof *bench_pacing);   /* only while it runs: internal RAM */
         render_damage_policy(mode < 2 ? RENDER_DAMAGE_FULL :
                              mode == 2 ? RENDER_DAMAGE_PARTIAL : RENDER_DAMAGE_ADAPTIVE);
         int64_t started = 0, window = 0, tick = 0, draw = 0, flush = 0;
@@ -430,7 +429,7 @@ static void render_benchmark(uint16_t *buffer) {
             render_frame_end();
             if (frame >= 10) tick += b - a;
             vTaskDelay(pdMS_TO_TICKS(5) + 1);
-            if (frame >= 10) frame_pacing_add(&benchmark_pacing, (uint32_t)(esp_timer_get_time() - a));
+            if (frame >= 10 && bench_pacing) frame_pacing_add(bench_pacing, (uint32_t)(esp_timer_get_time() - a));
             if (frame >= 10 && (frame - 9) % 120 == 0) {
                 int64_t now = esp_timer_get_time();
                 double fps = 120000000.0 / (now - window);
@@ -456,11 +455,13 @@ static void render_benchmark(uint16_t *buffer) {
         render_backdrop_stats(&cached_rows, &backdrop_bytes);
         ESP_LOGI("benchmark", "BACKDROP %u/%d rows, %u bytes; optional artwork %u bytes",
                  cached_rows, TANK_H, (unsigned)backdrop_bytes, (unsigned)render_work_cache_bytes());
-        ESP_LOGI("benchmark", "PACING p50 <=%.1f p95 <=%.1f p99 <=%.1f max %.1f ms; >80ms %lu/%lu",
-                 frame_pacing_percentile(&benchmark_pacing, 50) / 1000.0,
-                 frame_pacing_percentile(&benchmark_pacing, 95) / 1000.0,
-                 frame_pacing_percentile(&benchmark_pacing, 99) / 1000.0, benchmark_pacing.max_us / 1000.0,
-                 (unsigned long)benchmark_pacing.over_80, (unsigned long)benchmark_pacing.frames);
+        if (bench_pacing)
+            ESP_LOGI("benchmark", "PACING p50 <=%.1f p95 <=%.1f p99 <=%.1f max %.1f ms; >80ms %lu/%lu",
+                     frame_pacing_percentile(bench_pacing, 50) / 1000.0,
+                     frame_pacing_percentile(bench_pacing, 95) / 1000.0,
+                     frame_pacing_percentile(bench_pacing, 99) / 1000.0, bench_pacing->max_us / 1000.0,
+                     (unsigned long)bench_pacing->over_80, (unsigned long)bench_pacing->frames);
+        free(bench_pacing);
         int64_t wire_wait, send_calls, pixel_fill;
         display_port_flush_prof(&wire_wait, &send_calls, &pixel_fill);
         ESP_LOGI("benchmark", "LCD worker fill %.2f wire wait %.2f send %.2f ms/frame; overlaps rendering in modes 1-3",

@@ -23,9 +23,10 @@ or deployment is published. Update this file when its contracts change.
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
   edit-mode/mirror/save-speed, menu-performance, minigame-art, menu-art,
-  movable-scenery, save-memory, RTC-scratch/packed-pieces and float-depth
-  follow-ups, unified build, app 1,785,376 bytes, slot headroom 180,704, SHA256
-  `c79c705788fbe1955c894638f7dd1b026a13cf5827bedc3450de97aa633db799`
+  movable-scenery, save-memory, RTC-scratch/packed-pieces, float-depth and
+  internal-RAM-trim follow-ups, unified build, app 1,786,000 bytes, slot
+  headroom 180,080, SHA256
+  `b973b4e4668e85c00745c0024a42b9b0a2d5dbf0d2996b07c7b494f4864d5ff1`
   (see [menu art and movable scenery](firmware/CYD.md#menu-art-and-movable-scenery)).
   Fresh full recovery backup, app readback/profile and saves passed. Residents/settings remain intact; the wallet
   changes only from normal passive income. Tracing is off. These follow-ups
@@ -717,7 +718,13 @@ or further split modules without a concrete maintenance benefit.
   internal-RAM static costs heap one-for-one on the CYD (no PSRAM): check the
   map's largest `.bss` symbols and the boot `weather: https start ... largest`
   line after growing any array (`DECOR_SLOTS` sizes `piece_t`/`scene_sig_t`,
-  which are packed to 16/8-bit fields for this reason). At 6424 bytes a stack copy overflowed the 12-KiB tank stack on
+  which are packed to 16/8-bit fields for this reason). Likewise the net
+  worker task exits when nothing is leased and the radio is down (its 12 KB
+  stack returns; `begin()`/`net_port_weather()` recreate it), weather results
+  and the city list are heap-allocated only while in use, and shop/inventory
+  rollback snapshots of `tank_t` go to IRAM heap (`MALLOC_CAP_EXEC|32BIT`,
+  falling back to malloc) through volatile 32-bit word copies only: IRAM
+  faults on byte access, so never touch the snapshot as a struct. At 6424 bytes a stack copy overflowed the 12-KiB tank stack on
   the console `save`; a heap copy left restore's cJSON too little room. Restore
   validation holds one top-level JSON value at a time (`json_snapshot` records
   slices, `json_expand`/`json_collapse`/`json_read_lazy`); the whole tree peaked

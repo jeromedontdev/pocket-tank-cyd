@@ -4,6 +4,7 @@
 #include "cJSON.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static weather_config_t cfg;
@@ -13,8 +14,9 @@ static float due, age, search_wait, connect_wait;
 enum { WEATHER_REFRESH_SECONDS = 3600, WEATHER_STALE_SECONDS = 7200 };
 static uint32_t generation;
 static char query[40], message[64];
-static weather_city_t cities[WEATHER_CITY_MAX];
+static weather_city_t *cities;              /* a search's results, held only until a pick (internal RAM, 2026-10-28) */
 static int city_count, page, last_error, busy_operation;
+static void cities_clear(void) { free(cities); cities = NULL; city_count = 0; }
 
 static bool coord(double lat, double lon) {
     return isfinite(lat) && isfinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
@@ -141,7 +143,7 @@ void weather_init(void) {
     if (weather_port_load(&loaded) && weather_config_valid(&loaded)) cfg = loaded;
     busy = dirty = have = failed = searching = false;
     due = age = search_wait = connect_wait = 0; generation = 1;
-    query[0] = message[0] = 0; city_count = page = 0;
+    query[0] = message[0] = 0; cities_clear(); page = 0;
     last_error = WEATHER_ERR_NONE;
 }
 static void changed(void) { dirty = true; ++generation; due = connect_wait = 0; }
@@ -189,11 +191,13 @@ void weather_tick(float dt) {
                 else { snprintf(message, sizeof message, "Save failed; retrying"); due = 30; }
             } else if (r.operation == WEATHER_SEARCH) {
                 searching = false;
-                city_count = r.ok ? r.count : 0;
-                if (city_count) { memcpy(cities, r.cities, sizeof cities); page = 2; }
+                cities_clear();
+                if (r.ok && r.count > 0 && (cities = malloc(sizeof r.cities))) {
+                    memcpy(cities, r.cities, sizeof r.cities); city_count = r.count; page = 2;
+                }
                 snprintf(message, sizeof message, "%s", !r.ok ?
                     r.error == WEATHER_ERR_MEMORY ? "Low memory; retry later" : "Search failed; try again" :
-                    city_count ? "Select your city" : "No cities found");
+                    city_count ? "Select your city" : r.count > 0 ? "Low memory; retry later" : "No cities found");
             } else if (r.operation == WEATHER_CURRENT) {
                 failed = !r.ok;
                 last_error = r.error;
@@ -278,7 +282,7 @@ static void button(uint16_t *fb, int st, int x, int y, int w, int h, const char 
     render_rect(fb, st, x, y, w, h, BUTTON);
     text(fb, st, x + (w - render_text_w(s, 2)) / 2, y + (h - 14) / 2, s);
 }
-void weather_open(void) { page = 0; forget_confirm = false; message[0] = 0; }
+void weather_open(void) { page = 0; forget_confirm = false; message[0] = 0; cities_clear(); }
 int weather_icon_code(void) { return cfg.enabled && cfg.located && have ? reading.code : -1; }
 void weather_size_status(bool saved) {
     snprintf(message, sizeof message, "%s", saved ? "Weather/event text size saved" : "Text size save failed - retry");
@@ -374,7 +378,7 @@ bool weather_tap(float fx, float fy) {
         int i = (y - 56) / 56;
         if (x >= 10 && x < 438 && y >= 56 && i < city_count && (y - 56) % 56 < 52) {
             cfg.city = cities[i]; cfg.located = 1; have = failed = false;
-            changed(); page = 0;
+            cities_clear(); changed(); page = 0;
         }
     } else if (!searching) {
         size_t n = strlen(query);
@@ -391,7 +395,7 @@ bool weather_tap(float fx, float fy) {
             else if (x >= 290 && x < 438 && n) query[n - 1] = 0;
         } else if (y >= 320 && y < 360) {
             if (x >= 12 && x < 436) {
-                if (n >= 2) { searching = true; search_wait = 0; city_count = 0; message[0] = 0; }
+                if (n >= 2) { searching = true; search_wait = 0; cities_clear(); message[0] = 0; }
                 else snprintf(message, sizeof message, "Enter at least two letters");
             }
         }

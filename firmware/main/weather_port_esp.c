@@ -21,7 +21,7 @@ static portMUX_TYPE slot_lock = portMUX_INITIALIZER_UNLOCKED;
 static int slot_state;
 static int64_t slot_since;
 static weather_request_t slot_request;
-static weather_result_t slot_result;
+static weather_result_t *slot_result;   /* heap, handed to weather_port_poll (internal RAM, 2026-10-28) */
 static const char *TAG = "weather";
 void weather_port_esp_service(void); /* run by net_port_esp.c's worker */
 static weather_config_t saved;
@@ -117,9 +117,9 @@ static bool query_url(const weather_request_t *r, char *url, size_t cap) {
     snprintf(url, cap, "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=5&language=en&format=json", encoded);
     return true;
 }
-static void finish(const weather_result_t *result) {
+static void finish(weather_result_t *result) {      /* takes the heap result; NULL = no memory for one */
     portENTER_CRITICAL(&slot_lock);
-    slot_result = *result;
+    slot_result = result;
     slot_state = SLOT_DONE;
     portEXIT_CRITICAL(&slot_lock);
 }
@@ -138,39 +138,42 @@ static void save_task(void *unused) {
     (void)unused;
     weather_request_t request;
     if (claim(true, &request)) {
-        weather_result_t result = {0};
-        result.operation = request.operation; result.generation = request.generation;
-        result.ok = save(&request.config);
-        result.error = result.ok ? WEATHER_ERR_NONE : WEATHER_ERR_SAVE;
-        finish(&result);
+        weather_result_t *result = calloc(1, sizeof *result);
+        bool ok = save(&request.config);
+        if (result) {
+            result->operation = request.operation; result->generation = request.generation;
+            result->ok = ok; result->error = ok ? WEATHER_ERR_NONE : WEATHER_ERR_SAVE;
+        }
+        finish(result);
     }
     vTaskDelete(NULL);
 }
 void weather_port_esp_service(void) {
-    static weather_request_t request;   /* only the net worker touches these */
-    static weather_result_t result;
+    static weather_request_t request;   /* only the net worker touches it */
     if (!claim(false, &request)) return;
+    weather_result_t *result = calloc(1, sizeof *result);
+    if (!result) { finish(NULL); ESP_LOGW(TAG, "no memory for a result"); return; }
     int64_t started = esp_timer_get_time();
-    memset(&result, 0, sizeof result);
-    result.operation = request.operation; result.generation = request.generation;
+    result->operation = request.operation; result->generation = request.generation;
     if (net_port_connected()) {
         char url[256];
         char *body = NULL;
         size_t n = 0;
-        result.error = WEATHER_ERR_HTTP;
-        if (query_url(&request, url, sizeof url) && fetch(url, &body, &n, &result.error)) {
-            result.ok = request.operation == WEATHER_SEARCH ?
-                weather_parse_cities(body, n, result.cities, &result.count) :
-                weather_parse_current(body, n, &result.reading);
-            result.error = result.ok ? WEATHER_ERR_NONE : WEATHER_ERR_INVALID;
-            if (!result.ok) ESP_LOGW(TAG, "response rejected (%u bytes)", (unsigned)n);
+        result->error = WEATHER_ERR_HTTP;
+        if (query_url(&request, url, sizeof url) && fetch(url, &body, &n, &result->error)) {
+            result->ok = request.operation == WEATHER_SEARCH ?
+                weather_parse_cities(body, n, result->cities, &result->count) :
+                weather_parse_current(body, n, &result->reading);
+            result->error = result->ok ? WEATHER_ERR_NONE : WEATHER_ERR_INVALID;
+            if (!result->ok) ESP_LOGW(TAG, "response rejected (%u bytes)", (unsigned)n);
         }
         free(body);
-    } else result.error = WEATHER_ERR_OFFLINE;
-    finish(&result);
+    } else result->error = WEATHER_ERR_OFFLINE;
+    bool ok = result->ok; int error = result->error;
+    finish(result);
     ESP_LOGI(TAG, "request %d finished in %lld ms: %s (error %d)",
              request.operation, (long long)((esp_timer_get_time() - started) / 1000),
-             result.ok ? "OK" : "FAILED", result.error);
+             ok ? "OK" : "FAILED", error);
 }
 void weather_port_init(void) { }
 bool weather_port_start(const weather_request_t *r) {
@@ -191,7 +194,15 @@ bool weather_port_poll(weather_result_t *out) {
     bool ok = false;
     int64_t now = esp_timer_get_time();
     portENTER_CRITICAL(&slot_lock);
-    if (slot_state == SLOT_DONE) { *out = slot_result; slot_state = SLOT_IDLE; ok = true; }
+    weather_result_t *done = NULL;
+    if (slot_state == SLOT_DONE) {
+        done = slot_result; slot_result = NULL; slot_state = SLOT_IDLE; ok = true;
+        if (!done) {                       /* finished with no memory for a result */
+            memset(out, 0, sizeof *out);
+            out->operation = slot_request.operation; out->generation = slot_request.generation;
+            out->error = WEATHER_ERR_MEMORY;
+        }
+    }
     else if (slot_state == SLOT_PENDING && slot_request.operation != WEATHER_SAVE && now - slot_since > 45000000) {
         /* Never picked up: the net worker is busy in the foreground or absent. */
         memset(out, 0, sizeof *out);
@@ -201,5 +212,6 @@ bool weather_port_poll(weather_result_t *out) {
         ok = true;
     }
     portEXIT_CRITICAL(&slot_lock);
+    if (done) { *out = *done; free(done); }
     return ok;
 }

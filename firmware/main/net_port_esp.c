@@ -114,6 +114,9 @@ enum { OP_NONE, OP_SCAN, OP_CONNECT, OP_CHECK, OP_INSTALL };
 static volatile int  s_op, s_state, s_err, s_percent;
 static volatile bool s_abort;
 static TaskHandle_t  s_task;
+/* s_task's hand-off (2026-10-28): the worker ends itself when no lease is held,
+   and a caller wanting it reads/creates under this lock after raising its flag */
+static portMUX_TYPE  s_task_lock = portMUX_INITIALIZER_UNLOCKED;
 static EventGroupHandle_t s_ev;
 #define EV_GOT_IP       (1 << 0)
 #define EV_DISCONNECTED (1 << 1)
@@ -530,6 +533,19 @@ static void background_weather_work(void) {
         s_weather_retry = now + (int64_t)seconds * 1000000;
     }
 }
+
+/* Nothing leased and the radio is down: the worker ends and frees its 12 KB
+   stack; begin()/net_port_weather() start a new one. */
+static bool worker_retire(void) {
+    bool idle;
+    taskENTER_CRITICAL(&s_task_lock);
+    idle = !atomic_load(&s_foreground) && !atomic_load(&s_weather) && !atomic_load(&s_weather_radio) &&
+           !atomic_load(&s_background_busy) && !s_up;
+    if (idle) s_task = NULL;
+    taskEXIT_CRITICAL(&s_task_lock);
+    return idle;
+}
+
 static void background_weather(void) {
     /* An idle worker wake is not a network lease: exposing it as busy can
      * make the tank discard warmed artwork caches once per second. */
@@ -542,12 +558,21 @@ static void background_weather(void) {
     atomic_store(&s_background_busy, false);
     vTaskPrioritySet(NULL, 5);
 }
+/* The worker's 12 KB stack is internal RAM the shop and the weather's TLS also
+   need; a fetch takes seconds an hour, so between leases the task is gone. */
 static void worker(void *arg) {
     (void)arg;
     for (;;) {
         uint32_t op = 0;
         xTaskNotifyWait(0, 0xffffffff, &op, pdMS_TO_TICKS(1000));
-        if (op == OP_NONE) { background_weather(); continue; }
+        if (op == OP_NONE) {
+            background_weather();
+            if (worker_retire()) {
+                ESP_LOGI(TAG, "worker idle: ended (stack min free %u B)", (unsigned)uxTaskGetStackHighWaterMark(NULL));
+                vTaskDelete(NULL);
+            }
+            continue;
+        }
         if (!radio_up()) { s_err = NET_ERR_RADIO; s_state = NET_FAILED; continue; }
         switch (op) {
         case OP_SCAN: do_scan(); break;
@@ -561,21 +586,27 @@ static void worker(void *arg) {
 static void begin(int op) {
     atomic_store(&s_foreground, true);
     if (!s_ev) s_ev = xEventGroupCreate();
-    if (!s_task) xTaskCreatePinnedToCore(worker, "net", 12288, NULL, 5, &s_task, 1);
+    taskENTER_CRITICAL(&s_task_lock); TaskHandle_t h = s_task; taskEXIT_CRITICAL(&s_task_lock);
+    if (!h) {                                    /* the handle is written before the task can run */
+        if (xTaskCreatePinnedToCore(worker, "net", 12288, NULL, 5, &s_task, 1) != pdPASS) {
+            s_task = NULL; s_op = op; s_err = NET_ERR_RADIO; s_state = NET_FAILED; return;
+        }
+        h = s_task;
+    }
     s_op = op; s_state = NET_BUSY; s_err = NET_ERR_NONE; s_abort = false;
-    xTaskNotify(s_task, (uint32_t)op, eSetValueWithOverwrite);
+    xTaskNotify(h, (uint32_t)op, eSetValueWithOverwrite);
 }
 void net_port_weather(bool wanted) {
     bool before = atomic_exchange(&s_weather, wanted);
     if (wanted && !before) atomic_store(&s_weather_reconnect, true);
-    if (s_task) return;
-    if (!wanted && !s_task) return;
+    taskENTER_CRITICAL(&s_task_lock); bool running = s_task != NULL; taskEXIT_CRITICAL(&s_task_lock);
+    if (running || !wanted) return;
     int64_t now = esp_timer_get_time();
     if (now < s_weather_init_retry) return;
     s_weather_init_retry = now + 60000000;
     if (!s_ev) s_ev = xEventGroupCreate();
     if (!s_ev) return;
-    if (!s_task && xTaskCreatePinnedToCore(worker, "net", 12288, NULL, 5, &s_task, 1) != pdPASS) return;
+    if (xTaskCreatePinnedToCore(worker, "net", 12288, NULL, 5, &s_task, 1) != pdPASS) { s_task = NULL; return; }
     s_weather_init_retry = 0;
 }
 void net_port_scan_start(void) { begin(OP_SCAN); }
@@ -603,9 +634,10 @@ void net_port_off(void) {
     }
     atomic_store(&s_foreground, true); /* no new background work during teardown */
     s_abort = true;
-    if (s_task) {                                            /* let a download notice the abort before the driver goes */
+    taskENTER_CRITICAL(&s_task_lock); TaskHandle_t h = s_task; s_task = NULL; taskEXIT_CRITICAL(&s_task_lock);
+    if (h) {                                                 /* let a download notice the abort before the driver goes */
         for (int i = 0; i < 100 && (s_state == NET_BUSY || atomic_load(&s_background_busy)); i++) vTaskDelay(pdMS_TO_TICKS(50));
-        vTaskDelete(s_task); s_task = NULL;
+        vTaskDelete(h);
     }
     radio_down(); s_weather_radio = false;
     s_op = OP_NONE; s_state = NET_IDLE;
