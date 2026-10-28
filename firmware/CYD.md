@@ -612,8 +612,8 @@ with residents intact. Not released.
 - **MIRROR.** Sprite pieces (items 9-13, 16-21, 43-62) can face the other way.
   The flag is bit 7 of the existing rank byte (`DECOR_RANK_MIRROR`), so the
   save layout is unchanged; the serial `setup off` restores it from the
-  snapshot. MIRROR has its own row under DONE (`SETUP_MIRROR_Y`), above the
-  depth bar, and the on-screen CANCEL is gone: DONE is the only way out.
+  snapshot. MIRROR sits centred between the top buttons and the depth bar
+  (`SETUP_MIRROR_X/Y`), and the on-screen CANCEL is gone: DONE is the only way out.
 - **Correct layering while dragging.** The placed piece is drawn in painter
   order (`pc_scene_live`), not over pieces ranked above it. Place-page and live
   renders differ by 0 pixels for every owned item.
@@ -637,13 +637,14 @@ after a fresh full backup (`edit-text-com4-backup.bin`). Not released.
 
 ### Menu performance and the placement button row
 
-- **Placement buttons.** MIRROR moved to its own row under DONE
-  (`SETUP_MIRROR_Y`, 24 px); the depth bar and everything below moved down 8 px
-  so MIRROR no longer covers the IN FRONT segment. The on-screen CANCEL is
+- **Placement buttons.** MIRROR replaces the DEPTH caption: a 96 x 24 button
+  centred between the top buttons and the depth bar (`SETUP_MIRROR_X/Y`), so
+  it no longer covers the IN FRONT segment. The on-screen CANCEL is
   gone (DONE saves; serial `setup off` still reverts). The copy line ("COPY n
-  OF m") and the "TAP COPY TO SELECT" hint were removed (tapping an overlap
-  still cycles copies). The title, DEPTH, the layer/hint line and the drag hint
-  are white on dark plates (`text_plate`) so they read over bright water.
+  OF m"), the "TAP COPY TO SELECT" hint and "DRAG IT LEFT OR RIGHT" were
+  removed (tapping an overlap still cycles copies). The title sits higher, and
+  it and the layer/hint line are white on dark plates (`text_plate`) so they
+  read over bright water.
 - **Tile culling for page art.** `fill_ellipse`, `fill_poly_palette`, the icon
   blitters and `render_fish_preview` clamp their loops to the page rows inside
   the current 40-row tile (`page_clamp_rows`) instead of walking the whole page
@@ -668,9 +669,9 @@ COM4 measurements (frames/s are loop iterations, so touch is sampled this often)
 | Place / live | 8.3 / 13-16 FPS | 8.2-8.5 / 14-16 FPS (unchanged) |
 
 COM4 runs this unified image (with the readable placement text): app
-1,772,320 bytes, SHA256
-`6dcbf9a54e7345dd9bee24a3eb8ae81575a0094c52f67b5c84718b473e7bad75`, flashed
-after a fresh full backup (`place-text-com4-backup.bin`). Not released.
+1,772,160 bytes, SHA256
+`bee7600d0e8392238ab6f3655e2eb56f838e5cf5e7532d00e9f17213c37c4a51`, flashed
+after a fresh full backup (`place-mirror-com4-backup.bin`). Not released.
 
 ### 2.3.18 frame-pacing and snapshot follow-up
 

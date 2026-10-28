@@ -425,7 +425,7 @@ int setup_hit(float x, float y) {
         return in_box(x, y, SETUP_MID_X, SETUP_BTN_Y, SETUP_BTN_W, SETUP_BTN_H, m) ? SETUP_HIT_NEXT : 0;
     if (nav_on_top()) {
         if (s_place && tank_decor_mirrorable(s_item) &&
-            in_box(x, y, SETUP_TOP_NEXT_X, SETUP_MIRROR_Y, SETUP_TOP_BTN_W, SETUP_MIRROR_H, 0)) return SETUP_HIT_MIRROR;
+            in_box(x, y, SETUP_MIRROR_X, SETUP_MIRROR_Y, SETUP_MIRROR_W, SETUP_MIRROR_H, 0)) return SETUP_HIT_MIRROR;
         if (in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_NEXT;
         if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_REMOVE;
         if (s_place && in_box(x, y, SETUP_ORD_X0, SETUP_TOP_BTN_Y, SETUP_ORD_W, SETUP_BTN_H, 6)) return SETUP_HIT_BCK;
@@ -880,13 +880,13 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         char title[40];
         if (s_save_error) snprintf(title, sizeof title, "%s", s_place_error ? s_place_error : "SAVE FAILED - RETRY");
         else snprintf(title, sizeof title, "PREVIEW: %s", SD_ITEMS[s_item].name);
-        text_plate(fb, stride, CX, SETUP_Y + 7, render_text_w(title, 2) <= SETUP_W ? 2 : 1, title);
+        text_plate(fb, stride, CX, SETUP_Y - 3, render_text_w(title, 2) <= SETUP_W ? 2 : 1, title);
         render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, "DONE", 2);
         render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H,
                       C_INNER, s_remove_armed ? C_GO_E : C_DIM, s_remove_armed ? "REMOVE?" : "REMOVE", 2);
         if (tank_decor_mirrorable(s_item))
-            render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_MIRROR_Y, SETUP_TOP_BTN_W, SETUP_MIRROR_H,
-                          C_INNER, placed_mirrored(t) ? C_EDGE : C_DIM, "MIRROR", 1);
+            render_button(fb, stride, SETUP_MIRROR_X, SETUP_MIRROR_Y, SETUP_MIRROR_W, SETUP_MIRROR_H,
+                          C_INNER, placed_mirrored(t) ? C_EDGE : C_DIM, "MIRROR", 2);
         /* the ORDER arrows (2026-10-17): a step back / forward in the stack of
            pieces at this depth, lit when there is a piece to pass; the relation
            is named on the hint line ("UNDER THE CORAL"). The page draws once per
@@ -923,7 +923,6 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         static const char *const coral_hint[DECOR_Z_N] = { "BEHIND THE GRASS AND THE FISH", "", "IN FRONT OF EVERYTHING" };
         int z = placed_z(t), zi = tank_decor_z_index(s_item, z);
         int n = tank_decor_z_count(s_item), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;   /* the item's own depths */
-        text_plate(fb, stride, CX, SETUP_DEPTH_Y - 18, 2, "DEPTH");
         render_rect(fb, stride, bx, SETUP_DEPTH_Y, bw, SETUP_DEPTH_H, C_KEY);
         for (int i = 0; i < n; i++) {
             int sx = bx + i * SETUP_DEPTH_SEG_W, zi_ = tank_decor_z_at(s_item, i);
@@ -986,7 +985,6 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         render_rect_blend(fb, stride, original_x - 1, sy, 3, FLOOR - sy + 4, C_TEXT, 180);
         render_rect(fb, stride, original_x - 6, FLOOR - 17, 12, 2, C_TEXT);
         chevron(fb, stride, (int)((x0 + x1) * 0.5f), FLOOR - 34, true, C_EDGE);
-        text_plate(fb, stride, CX, 296, 2, "DRAG IT LEFT OR RIGHT");
     } else if (page_is_name()) {
         /* straight on the tank: the fish being named wears a ring in its own
            colour, its name spans the middle in that colour, the active slot

@@ -52,7 +52,7 @@
  * it is dragged. The page identifies the placed original or extra copy;
  * REMOVE returns the selected decoration to storage without a refund,
  * DONE saves; there is no on-screen CANCEL (the serial `setup off` still
- * restores the original layout). MIRROR, under DONE, flips sprite pieces. */
+ * restores the original layout). MIRROR, centred over the depth bar, flips sprite pieces. */
 #ifndef POCKET_TANK_SETUP_H
 #define POCKET_TANK_SETUP_H
 #include "tank.h"
@@ -141,7 +141,7 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
 #define SETUP_HIT_REMOVE 5               /* Confirm removal from the tank into shared storage. */
 #define SETUP_HIT_BCK   6                /* the placement page's order arrows (2026-10-17): one step back in the stack ... */
 #define SETUP_HIT_FWD   7                /* ... and one step forward (tank_decor_shift) */
-#define SETUP_HIT_MIRROR 8               /* the placement page's MIRROR toggle, under DONE (sprite pieces) */
+#define SETUP_HIT_MIRROR 8               /* the placement page's MIRROR toggle, centred over the depth bar (sprite pieces) */
 #define SETUP_HIT_UP    3                /* the active slot's letter: next (A -> B) */
 #define SETUP_HIT_DOWN  4                /* ... previous */
 #define SETUP_HIT_SLOT0 10               /* + 0..FISH_NAME_MAX-1: pick that slot */
@@ -221,8 +221,10 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
                                                              * sizes the bar from tank_decor_z_count */
 #define SETUP_DEPTH_W      (DECOR_Z_N * SETUP_DEPTH_SEG_W)
 #define SETUP_DEPTH_X      ((PAGE_W - SETUP_DEPTH_W) / 2)
-#define SETUP_MIRROR_Y     (SETUP_TOP_BTN_Y + SETUP_BTN_H + 2)   /* MIRROR, under DONE; the bar clears it */
+#define SETUP_MIRROR_Y     (SETUP_TOP_BTN_Y + SETUP_BTN_H + 2)   /* MIRROR, centred over the depth bar (no DEPTH caption) */
 #define SETUP_MIRROR_H     24
+#define SETUP_MIRROR_W     96
+#define SETUP_MIRROR_X     ((PAGE_W - SETUP_MIRROR_W) / 2)
 #define SETUP_DEPTH_Y      (SETUP_MIRROR_Y + SETUP_MIRROR_H + 6)
 #define SETUP_DEPTH_H      70
 #define SETUP_DEPTH_TILE_H 40
