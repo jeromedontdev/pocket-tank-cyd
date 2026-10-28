@@ -179,10 +179,67 @@ static void test_remove_to_storage(void) {
     puts("PASS: confirmed movement removal stores every decoration without refund; cancel/write failure/full storage preserve ownership; extra-only holding works");
 }
 
+static void test_layers_and_mirror(void) {
+    tank_t t, loaded;
+    saved_size = 0;
+    tank_init(&t, 905);
+    boot_enlarged(&t);
+    progression_setup_done(&t);
+    const int items[] = {9, 10, 11, 12};
+    for (int i = 0; i < 4; i++) t.sd_unlocks |= SD_ITEMS[items[i]].bit;
+    tank_decor_set(&t, 10, TANK_W * 0.15f, DECOR_Z_BACK);
+    tank_decor_set(&t, 12, TANK_W * 0.15f + 10, DECOR_Z_BACK);   /* overlaps the shell */
+    tank_decor_set(&t, 11, TANK_W * 0.5f, DECOR_Z_BACK);         /* far away: never a layer neighbor */
+    tank_decor_set(&t, 9, TANK_W * 0.85f, DECOR_Z_BACK);
+    int up = tank_decor_neighbor(&t, 10, 1), down = tank_decor_neighbor(&t, 10, -1);
+    assert(up == 12 || down == 12);
+    assert(up != 11 && down != 11 && up != 9 && down != 9);
+    for (int d = -1; d <= 1; d += 2) { int n = tank_decor_neighbor(&t, 11, d); assert(n != 9 && n != 10 && n != 12); }
+    int dir = up == 12 ? 1 : -1;
+    tank_decor_shift(&t, 10, dir);
+    assert(tank_decor_neighbor(&t, 10, -dir) == 12);
+    assert((tank_decor_rank(&t, 10) > tank_decor_rank(&t, 12)) == (dir > 0));
+
+    int rank = tank_decor_rank(&t, 10);
+    assert(tank_decor_mirrorable(10) && !tank_decor_mirrorable(2) && !tank_decor_mirrorable(3));
+    tank_decor_set_mirrored(&t, 10, true);
+    assert(tank_decor_mirrored(&t, 10) && tank_decor_rank(&t, 10) == rank);
+    assert(tank_decor_neighbor(&t, 10, -dir) == 12);
+    assert(progression_save(&t));
+    tank_init(&loaded, 1);
+    boot_enlarged(&loaded);
+    assert(tank_decor_mirrored(&loaded, 10) && !tank_decor_mirrored(&loaded, 12));
+    assert(tank_decor_rank(&loaded, 10) == rank);
+
+    char *json = progression_backup_json(&t);
+    assert(json);
+    tank_decor_set_mirrored(&t, 10, false);
+    assert(progression_save(&t));
+    char error[96];
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+    free(json);
+    tank_init(&loaded, 2);
+    boot_enlarged(&loaded);
+    assert(tank_decor_mirrored(&loaded, 10));
+
+    setup_begin_place(&loaded, 12);
+    setup_activate(&loaded, SETUP_HIT_MIRROR);
+    assert(tank_decor_mirrored(&loaded, 12));
+    setup_cancel(&loaded);
+    assert(!tank_decor_mirrored(&loaded, 12) && tank_decor_mirrored(&loaded, 10));
+    setup_begin_place(&loaded, 12);
+    setup_activate(&loaded, SETUP_HIT_MIRROR);
+    setup_activate(&loaded, SETUP_HIT_NEXT);
+    assert(!setup_active() && tank_decor_mirrored(&loaded, 12));
+    saved_size = 0;
+    puts("PASS: layer arrows only reach overlapping pieces; mirror survives save, JSON backup and cancel");
+}
+
 int main(void) {
     test_overlapping_copy_selection_and_rollback();
     test_all_placeable_cancel_roundtrip();
     test_remove_to_storage();
+    test_layers_and_mirror();
     puts("PASS: all placeable decor previews and saves roll back to the original layout on cancel");
     return 0;
 }

@@ -20,6 +20,8 @@ static const char *TAG = "persist";
 static const char *directory = "/profiles";
 static const uint32_t store_id[2] = {0x50524631u, 0x41435456u};
 static bool s_save_blocked, s_mounted;
+/* The marker as last read or written (-1 unknown): saving then skips its stat + read (~12 ms). */
+static int s_marker = -1;
 static const char *tank_directory = "/profiles/tanks";
 bool sd_port_aquarium_read(const uint32_t id[2], int slot, void *data, size_t size);
 
@@ -167,7 +169,8 @@ bool persist_port_load(void *buf, size_t max, size_t *got) {
         if (!aquarium_store_read(directory, store_id, 1, &state, sizeof state) || (state != 1 && state != 2)) {
             s_save_blocked = true; return false;
         }
-        if (state == 2) return false; /* Durable wipe overrides all old copies. */
+        if (state == 2) { s_marker = 2; return false; } /* Durable wipe overrides all old copies. */
+        s_marker = 1;
     }
     if (active) {
         if (aquarium_store_read(directory, store_id, 0, buf, max)) { *got = max; return true; }
@@ -183,18 +186,30 @@ bool persist_port_save(const void *buf, size_t len) {
     if (!mount_store()) return false;
     int64_t started = esp_timer_get_time();
     uint32_t initialized = 1, state = 0;
-    int marker = exists(1);
-    if (marker < 0 || (marker && !aquarium_store_read(directory, store_id, 1, &state, sizeof state))) return false;
+    if (s_marker >= 0) state = (uint32_t)s_marker;
+    else {
+        int marker = exists(1);
+        if (marker < 0 || (marker && !aquarium_store_read(directory, store_id, 1, &state, sizeof state))) return false;
+    }
     if (state == 2) {
         /* Keep the wipe authoritative until both old generations are gone
          * and a complete fresh record has passed CRC/readback. */
         if (!remove_archives() || !remove_active() || !aquarium_store_write(directory, store_id, 0, buf, len)) return false;
-        return aquarium_store_write(directory, store_id, 1, &initialized, sizeof initialized);
+        s_marker = -1;
+        if (!aquarium_store_write(directory, store_id, 1, &initialized, sizeof initialized)) return false;
+        s_marker = 1; return true;
     }
-    if (state != 1 && !aquarium_store_write(directory, store_id, 1, &initialized, sizeof initialized)) return false;
+    if (state != 1) {
+        s_marker = -1;
+        if (!aquarium_store_write(directory, store_id, 1, &initialized, sizeof initialized)) return false;
+        s_marker = 1;
+    }
     if (!aquarium_store_write(directory, store_id, 0, buf, len)) return false;
     /* Each save stalls the render loop; this line shows its cost and cadence. */
-    ESP_LOGI(TAG, "saved in %lld ms", (long long)((esp_timer_get_time() - started) / 1000));
+    size_t total = 0, used = 0;
+    esp_spiffs_info("storage", &total, &used);
+    ESP_LOGI(TAG, "saved in %lld ms (spiffs %u/%u KiB)", (long long)((esp_timer_get_time() - started) / 1000),
+             (unsigned)(used / 1024), (unsigned)(total / 1024));
     /* Active is the sole commit point. Its absence from now on is an error. */
     return true;
 }
@@ -202,7 +217,9 @@ bool persist_port_erase(void) {
     /* No filesystem format, repartition or SD deletion is part of a wipe. */
     if (!s_mounted && !mount_store()) return false;
     uint32_t wiped = 2;
+    s_marker = -1;
     if (!aquarium_store_write(directory, store_id, 1, &wiped, sizeof wiped)) return false;
+    s_marker = 2;
     /* The tombstone is the commit point, including for NVS-only legacy saves.
      * From here failures are cleanup warnings, never a false failed wipe. */
     nvs_handle_t h;

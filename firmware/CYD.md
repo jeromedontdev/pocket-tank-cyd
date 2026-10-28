@@ -603,6 +603,36 @@ COM4 runs this as a unified image with the saved `cyd2432s028` profile: app
 full recovery backup, readback, HTTPS, live soak and save/reboot/reload passed
 with residents intact. Not released.
 
+### Decoration edit mode, mirroring and faster saves
+
+- **Nearby layers only.** BEHIND/FRONT steps and the layer text consider only
+  pieces whose bounds overlap the moved piece. Reinsertion shifts it past the
+  nearest overlapping neighbor, so distant pieces never prompt a layer choice.
+- **MIRROR.** Sprite pieces (items 9-13, 16-21, 43-62) can face the other way.
+  The flag is bit 7 of the existing rank byte (`DECOR_RANK_MIRROR`), so the
+  save layout is unchanged; CANCEL restores it from the snapshot. DONE and
+  CANCEL are unchanged.
+- **Correct layering while dragging.** The placed piece is drawn in painter
+  order (`pc_scene_live`), not over pieces ranked above it. Place-page and live
+  renders differ by 0 pixels for every owned item.
+- **Edit-mode cost.** Page primitives and fish portraits cull rows outside the
+  tile, the place page damages only its animated depth band instead of forcing
+  full frames, the toast/tool chip are hidden under it, its neighbor/overlap
+  text is memoized, and scaled glyphs/`rect_fill` use per-glyph weight tables
+  and write each tank row once. A golden harness confirmed byte-identical
+  output. On COM4 the place page went from about 7.5 to 8.7 FPS (overlay
+  4.4 -> 3.5 ms per tile, render ~114 -> 95 ms). It stays below the live tank
+  (13-16 FPS) because the place page hides the clock, whose solid face lets
+  live frames skip damage blocks; roughly 220 rows still change per frame.
+- **Saves.** A nibble-table CRC, a cached marker, shared copy helpers and a
+  readback of only the newest copy reduced six COM4 saves to 131-251 ms
+  (median ~185) from 137-283 ms. Flash erase/write dominates what remains.
+
+COM4 runs this unified image: app 1,771,568 bytes, 194,512 bytes of OTA
+headroom, SHA256
+`fc5a369aa44a3c448b4971bd2f6497860f621a8cfc417d064f6611b84d32275c`, flashed
+after a fresh full backup (`edit-text-com4-backup.bin`). Not released.
+
 ### 2.3.18 frame-pacing and snapshot follow-up
 
 The renderer can bracket an immutable frame with `render_frame_begin` and

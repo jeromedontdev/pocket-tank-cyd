@@ -21,12 +21,12 @@ or deployment is published. Update this file when its contracts change.
 ### Handoff baseline
 
 - COM4's current local image supersedes the release acceptance image below:
-  the post-2.3.18 edge-steering plus fluid-motion/save-pacing follow-up, unified
-  build from 50b2a14 plus local changes, app 1,769,280 bytes, slot headroom
-  196,800, SHA256
-  `44a7b57a3f4f0016fd3dadac109cd11a8c906565cfcdc36debbfab8dfa660c31`.
-  Fresh full recovery backup, app readback/profile, verified HTTPS, live soak
-  and save/reboot/reload passed. Residents/settings remain intact; the wallet
+  the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
+  edit-mode/mirror/save-speed follow-ups, unified build, app 1,771,568 bytes,
+  slot headroom 194,512, SHA256
+  `fc5a369aa44a3c448b4971bd2f6497860f621a8cfc417d064f6611b84d32275c`
+  (see [edit mode](firmware/CYD.md#decoration-edit-mode-mirroring-and-faster-saves)).
+  Fresh full recovery backup, app readback/profile and saves passed. Residents/settings remain intact; the wallet
   changes only from normal passive income. Tracing is off. These follow-ups
   are not published; the website and immutable 2.3.18 tag remain unchanged.
 - The verified 2.3.18 source is `92a2a41d3ee9edbe662d62c3c24c63fe2852a608`.
@@ -454,6 +454,13 @@ or deployment is published. Update this file when its contracts change.
   5.5, urgent 10) that never overshoots or goes negative. `test_fluid_motion`
   requires turn jerk <0.7 and speed jerk <0.35; the old bang-bang/lerp logic fails.
   Measured on COM4, this is FPS-neutral; keep any change to it FPS-neutral too.
+- Decoration placement: layer steps/text consider only overlapping pieces;
+  mirror is rank bit 7 (`DECOR_RANK_MIRROR`, sprite items only, no save-layout
+  change) and must be masked wherever ranks are compared. The placed piece is
+  drawn in painter order (`pc_scene_live`); never overdraw it after the scene.
+  The place page uses adaptive damage (its animated band), not forced full
+  frames; page primitives must cull to the tile rows. It runs ~8.7 FPS vs
+  13-16 live because no clock face occludes damage; measure before claiming more.
   `tools/test_fish_behavior.py --cc gcc` checks continuity, all ten varieties,
   tank edges, reactions and frame-step stability. Intentional behavior changes
   alter trajectories: compare old/new renderer pixels using the same updated

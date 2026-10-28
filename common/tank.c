@@ -2239,9 +2239,23 @@ bool tank_decor_owned(const tank_t *t, int item) {
 }
 static bool decor_before(const tank_t *t, int ia, int ib) {       /* a is painted before (under) b at one depth */
     int sa = tank_decor_slot(ia), sb = tank_decor_slot(ib);
-    return t->decor_rank[sa] != t->decor_rank[sb] ? t->decor_rank[sa] < t->decor_rank[sb] : sa < sb;
+    int ra = t->decor_rank[sa] & DECOR_RANK_MASK, rb = t->decor_rank[sb] & DECOR_RANK_MASK;
+    return ra != rb ? ra < rb : sa < sb;
 }
-int  tank_decor_rank(const tank_t *t, int item) { int s = tank_decor_slot(item); return s < 0 ? 0 : t->decor_rank[s]; }
+int  tank_decor_rank(const tank_t *t, int item) { int s = tank_decor_slot(item); return s < 0 ? 0 : t->decor_rank[s] & DECOR_RANK_MASK; }
+static void decor_rank_set(tank_t *t, int slot, int rank) {
+    t->decor_rank[slot] = (uint8_t)((t->decor_rank[slot] & DECOR_RANK_MIRROR) | (rank & DECOR_RANK_MASK));
+}
+bool tank_decor_mirrorable(int item) { return item >= 9 && tank_decor_placeable(item); }
+bool tank_decor_mirrored(const tank_t *t, int item) {
+    int s = tank_decor_slot(item);
+    return s >= 0 && tank_decor_mirrorable(item) && (t->decor_rank[s] & DECOR_RANK_MIRROR);
+}
+void tank_decor_set_mirrored(tank_t *t, int item, bool mirrored) {
+    int s = tank_decor_slot(item);
+    if (s < 0 || !tank_decor_mirrorable(item)) return;
+    t->decor_rank[s] = (uint8_t)((t->decor_rank[s] & DECOR_RANK_MASK) | (mirrored ? DECOR_RANK_MIRROR : 0));
+}
 int  tank_decor_order(const tank_t *t, int items[DECOR_SLOTS]) {
     int n = 0;
     for (int s = 0; s < DECOR_SLOTS; s++) if (tank_decor_owned(t, DECOR_SLOT_ITEM[s])) items[n++] = DECOR_SLOT_ITEM[s];
@@ -2258,26 +2272,38 @@ bool tank_decor_above(const tank_t *t, int a, int b) {
 }
 static void decor_normalize(tank_t *t) {                          /* ranks 1..n in the current order (ties resolved) */
     int items[DECOR_SLOTS], n = tank_decor_order(t, items);
-    for (int i = 0; i < n; i++) t->decor_rank[tank_decor_slot(items[i])] = (uint8_t)(i + 1);
+    for (int i = 0; i < n; i++) decor_rank_set(t, tank_decor_slot(items[i]), i + 1);
 }
 void tank_decor_raise(tank_t *t, int item) {
     int s = tank_decor_slot(item); if (s < 0) return;
     decor_normalize(t);
-    int top = 0; for (int k = 0; k < DECOR_SLOTS; k++) if (t->decor_rank[k] > top) top = t->decor_rank[k];
-    t->decor_rank[s] = (uint8_t)(top + 1);
+    int top = 0; for (int k = 0; k < DECOR_SLOTS; k++) if ((int)(t->decor_rank[k] & DECOR_RANK_MASK) > top) top = t->decor_rank[k] & DECOR_RANK_MASK;
+    decor_rank_set(t, s, top + 1);
 }
 int  tank_decor_neighbor(const tank_t *t, int item, int dir) {
     if (!tank_decor_owned(t, item) || tank_decor_z(t, item) == DECOR_Z_MIDDLE) return -1;   /* the woven plant has no stack */
     int items[DECOR_SLOTS], n = tank_decor_order(t, items), at = -1;
     for (int i = 0; i < n; i++) if (items[i] == item) at = i;
-    for (int i = at + dir; i >= 0 && i < n; i += dir) if (tank_decor_z(t, items[i]) == tank_decor_z(t, item)) return items[i];
+    float cx = tank_decor_x(t, item), half = tank_decor_half_w(item);
+    /* Only a piece whose footprint overlaps this one can visibly change places with it. */
+    for (int i = at + dir; i >= 0 && i < n; i += dir) {
+        if (tank_decor_z(t, items[i]) != tank_decor_z(t, item)) continue;
+        if (fabsf(tank_decor_x(t, items[i]) - cx) < half + tank_decor_half_w(items[i])) return items[i];
+    }
     return -1;
 }
 bool tank_decor_shift(tank_t *t, int item, int dir) {
     int other = tank_decor_neighbor(t, item, dir);
     if (other < 0) return false;
-    decor_normalize(t);
-    uint8_t *a = &t->decor_rank[tank_decor_slot(item)], *b = &t->decor_rank[tank_decor_slot(other)], v = *a; *a = *b; *b = v;
+    /* Reinsert just past the neighbor so the pieces in between keep their order. */
+    int items[DECOR_SLOTS], n = tank_decor_order(t, items), m = 0, order[DECOR_SLOTS];
+    for (int i = 0; i < n; i++) {
+        if (items[i] == item) continue;
+        if (items[i] == other && dir < 0) order[m++] = item;
+        order[m++] = items[i];
+        if (items[i] == other && dir > 0) order[m++] = item;
+    }
+    for (int i = 0; i < m; i++) decor_rank_set(t, tank_decor_slot(order[i]), i + 1);
     return true;
 }
 void tank_decor_reset(tank_t *t, int item) {

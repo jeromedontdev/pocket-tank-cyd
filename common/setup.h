@@ -95,6 +95,10 @@ int  setup_take_renamed(void);
 bool setup_active(void);
 bool setup_is_birth(void);               /* the birth flow, not the first run */
 bool setup_is_place(void);               /* the placement page */
+/* the placement page's look, hashed (0 = no placement page): the tank under it repaints only
+   where it changes while this holds; animated_rows: the PAGE rows it repaints every frame */
+uint32_t setup_place_signature(const tank_t *t);
+bool setup_place_animated_rect(int *x0, int *y0, int *x1, int *y1);
 int  setup_item(void);                   /* the placement page's SD item (-1 = none) */
 int  setup_fish(void);                   /* the fish the current page is about (-1 = none) */
 void setup_cancel(tank_t *t);            /* drop the pages; the save still says pending */
@@ -137,6 +141,7 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
 #define SETUP_HIT_REMOVE 5               /* Confirm removal from the tank into shared storage. */
 #define SETUP_HIT_BCK   6                /* the placement page's order arrows (2026-10-17): one step back in the stack ... */
 #define SETUP_HIT_FWD   7                /* ... and one step forward (tank_decor_shift) */
+#define SETUP_HIT_MIRROR 8               /* the placement page's MIRROR toggle, under DONE (sprite pieces) */
 #define SETUP_HIT_UP    3                /* the active slot's letter: next (A -> B) */
 #define SETUP_HIT_DOWN  4                /* ... previous */
 #define SETUP_HIT_SLOT0 10               /* + 0..FISH_NAME_MAX-1: pick that slot */

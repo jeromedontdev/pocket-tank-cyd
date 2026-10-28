@@ -64,6 +64,14 @@ static void placed_set(tank_t *t, float x, int z) {
     t->inventory.extra[s_extra].z = z == DECOR_Z_BACK ? DECOR_Z_BACK : DECOR_Z_FRONT;
 }
 typedef struct { int item, copy; } place_copy_t;
+static bool placed_mirrored(const tank_t *t) {
+    return s_extra < 0 ? tank_decor_mirrored(t, s_item) : (t->inventory.extra[s_extra].rank & DECOR_RANK_MIRROR) != 0;
+}
+static void placed_mirror_toggle(tank_t *t) {
+    if (!tank_decor_mirrorable(s_item)) return;
+    if (s_extra < 0) tank_decor_set_mirrored(t, s_item, !tank_decor_mirrored(t, s_item));
+    else t->inventory.extra[s_extra].rank ^= DECOR_RANK_MIRROR;
+}
 static void place_restore_preview(tank_t *t) {
     s_extra = -1;
     for (int item = 0; item < SD_ITEM_COUNT; item++) {
@@ -162,6 +170,41 @@ static const char *fish_name(const tank_t *t, int i) { return i >= 0 && i < t->n
 static void stage(tank_t *t);
 static void tidy_name(tank_t *t, int fish);
 
+static uint32_t sig_mix(uint32_t h, const void *data, size_t size) {
+    const unsigned char *p = data;
+    while (size--) h = (h ^ *p++) * 16777619u;
+    return h;
+}
+uint32_t setup_place_signature(const tank_t *t) {
+    if (!s_active || s_page != SETUP_PG_PLACE) return 0;
+    struct {
+        int item, extra, z, total, number, owned, coral, cluster; float x, original_x;
+        bool remove_armed, save_error, mirrored; const char *error;
+        uint32_t fish_color, fish_accent; int fish_variety, fish_pattern, fish_stage, n_fish;
+    } s;
+    memset(&s, 0, sizeof s);
+    s.item = s_item; s.extra = s_extra; s.z = placed_z(t); s.x = placed_x(t); s.original_x = s_selected_original_x;
+    s.total = place_copy_count(t); s.number = place_copy_number(t);
+    s.owned = s_extra >= 0 ? t->inventory.extra[s_extra].item == s_item + 1 : progression_item_owned(t, s_item);
+    s.coral = (int)tank_coral_rgb(t); s.cluster = tank_cluster_scheme(t);
+    s.remove_armed = s_remove_armed; s.save_error = s_save_error; s.error = s_place_error; s.mirrored = placed_mirrored(t);
+    s.n_fish = t->n_fish;
+    if (t->n_fish > 0) {
+        const fish_t *f = &t->fish[0];
+        s.fish_color = f->color; s.fish_accent = f->accent; s.fish_variety = f->variety; s.fish_pattern = f->pattern; s.fish_stage = f->stage;
+    }
+    uint32_t h = sig_mix(2166136261u, &s, sizeof s);
+    h = sig_mix(h, t->decor_rank, sizeof t->decor_rank);
+    h = sig_mix(h, t->inventory.extra, sizeof t->inventory.extra);
+    return h ? h : 1;
+}
+bool setup_place_animated_rect(int *x0, int *y0, int *x1, int *y1) {
+    if (!s_active || s_page != SETUP_PG_PLACE) return false;
+    int bw = tank_decor_z_count(s_item) * SETUP_DEPTH_SEG_W;   /* the depth tiles' fish swim; their words stay still */
+    *x0 = (PAGE_W - bw) / 2; *x1 = *x0 + bw;
+    *y0 = SETUP_DEPTH_Y; *y1 = SETUP_DEPTH_Y + 4 + SETUP_DEPTH_TILE_H + 4;
+    return true;
+}
 void setup_begin(tank_t *t) {
     if (t->n_fish < 2) { progression_setup_done(t); s_active = false; return; }   /* nothing to name */
     s_save_error = false;
@@ -382,6 +425,8 @@ int setup_hit(float x, float y) {
         return in_box(x, y, SETUP_MID_X, SETUP_BTN_Y, SETUP_BTN_W, SETUP_BTN_H, m) ? SETUP_HIT_NEXT : 0;
     if (nav_on_top()) {
         if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, 0)) return SETUP_HIT_BACK;
+        if (s_place && tank_decor_mirrorable(s_item) &&
+            in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, 0)) return SETUP_HIT_MIRROR;
         if (in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_NEXT;
         if (s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_REMOVE;
         if (s_place && in_box(x, y, SETUP_ORD_X0, SETUP_TOP_BTN_Y, SETUP_ORD_W, SETUP_BTN_H, 6)) return SETUP_HIT_BCK;
@@ -494,6 +539,7 @@ void setup_activate(tank_t *t, int id) {
             else { s_place = true; s_save_error = true; }
         }
         else if ((id == SETUP_HIT_BCK || id == SETUP_HIT_FWD) && s_extra < 0) tank_decor_shift(t, s_item, id == SETUP_HIT_FWD ? 1 : -1);
+        else if (id == SETUP_HIT_MIRROR) placed_mirror_toggle(t);
         else if (id >= SETUP_HIT_Z0 && id < SETUP_HIT_Z0 + DECOR_Z_N)
             placed_set(t, placed_x(t), id - SETUP_HIT_Z0);
         else if (s_item == 3 && id >= SETUP_HIT_COLOR0 && id < SETUP_HIT_COLOR0 + CORAL_N)
@@ -834,26 +880,39 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H,
                       C_INNER, s_remove_armed ? C_GO_E : C_DIM, s_remove_armed ? "REMOVE?" : "REMOVE", 2);
         render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26, C_INNER, C_DIM, "CANCEL", 1);
+        if (tank_decor_mirrorable(s_item))
+            render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y + SETUP_BTN_H + 2, SETUP_TOP_BTN_W, 26,
+                          C_INNER, placed_mirrored(t) ? C_EDGE : C_DIM, "MIRROR", 1);
         /* the ORDER arrows (2026-10-17): a step back / forward in the stack of
            pieces at this depth, lit when there is a piece to pass; the relation
-           is named on the hint line ("UNDER THE CORAL") */
-        int below = s_extra < 0 ? tank_decor_neighbor(t, s_item, -1) : -1;
-        int above = s_extra < 0 ? tank_decor_neighbor(t, s_item, 1) : -1;
+           is named on the hint line ("UNDER THE CORAL"). The page draws once per
+           tile, so its lookups run once a frame (keyed by the clock and the page's look). */
+        static struct { const tank_t *t; float clock; uint32_t sig; int below, above; bool overlap; char rel[40]; } memo;
+        uint32_t sig = setup_place_signature(t);
+        if (memo.t != t || memo.clock != clock || memo.sig != sig) {
+            memo.t = t; memo.clock = clock; memo.sig = sig;
+            memo.below = s_extra < 0 ? tank_decor_neighbor(t, s_item, -1) : -1;
+            memo.above = s_extra < 0 ? tank_decor_neighbor(t, s_item, 1) : -1;
+            /* the relation, in the depth bar's own words (Strato 2026-10-17: "behind
+               the coral" / "in front of the coral"); "THE" goes when the line is too
+               long for where it sits (the hint line, or beside COLOR / LOOK) */
+            int rel_avail = PAGE_W - 2 * 56 - 8;                               /* the hint line: the box every glass shows whole */
+            if (s_item == 3) rel_avail = (SETUP_COL_N - 1) * SETUP_COL_PX + SETUP_COL_W - render_text_w("COLOR", 2) - 14;
+            if (s_item == 4) rel_avail = (SETUP_LOOK_N - 1) * SETUP_LOOK_PX + SETUP_LOOK_W - render_text_w("LOOK", 2) - 14;
+            memo.rel[0] = 0;
+            for (int pass = 0; pass < 2; pass++) {
+                const char *the = pass ? "" : "THE ";
+                if (memo.above >= 0) snprintf(memo.rel, sizeof memo.rel, "BEHIND %s%s", the, SD_ITEMS[memo.above].name);
+                else if (memo.below >= 0) snprintf(memo.rel, sizeof memo.rel, "IN FRONT OF %s%s", the, SD_ITEMS[memo.below].name);
+                if (render_text_w(memo.rel, 2) <= rel_avail) break;
+            }
+            place_copy_t overlaps[SD_ITEM_COUNT + DECOR_EXTRA_CAP];
+            memo.overlap = place_candidates_at(t, placed_x(t), FLOOR * TANK_H / PAGE_H, overlaps) > 1;
+        }
+        int below = memo.below, above = memo.above;
+        const char *rel = memo.rel;
         ord_arrow(fb, stride, SETUP_ORD_X0, SETUP_TOP_BTN_Y, false, below >= 0);
         ord_arrow(fb, stride, SETUP_ORD_X1, SETUP_TOP_BTN_Y, true, above >= 0);
-        /* the relation, in the depth bar's own words (Strato 2026-10-17: "behind
-           the coral" / "in front of the coral"); "THE" goes when the line is too
-           long for where it sits (the hint line, or beside COLOR / LOOK) */
-        char rel[40] = "";
-        int rel_avail = PAGE_W - 2 * 56 - 8;                               /* the hint line: the box every glass shows whole */
-        if (s_item == 3) rel_avail = (SETUP_COL_N - 1) * SETUP_COL_PX + SETUP_COL_W - render_text_w("COLOR", 2) - 14;
-        if (s_item == 4) rel_avail = (SETUP_LOOK_N - 1) * SETUP_LOOK_PX + SETUP_LOOK_W - render_text_w("LOOK", 2) - 14;
-        for (int pass = 0; pass < 2; pass++) {
-            const char *the = pass ? "" : "THE ";
-            if (above >= 0) snprintf(rel, sizeof rel, "BEHIND %s%s", the, SD_ITEMS[above].name);
-            else if (below >= 0) snprintf(rel, sizeof rel, "IN FRONT OF %s%s", the, SD_ITEMS[below].name);
-            if (render_text_w(rel, 2) <= rel_avail) break;
-        }
         /* the DEPTH bar: one outlined box, three joined segments, the chosen
            one lit; a picture tile on each and the word under it */
         static const char *const zl[DECOR_Z_N] = { "BEHIND", "AMONG", "IN FRONT" };
@@ -931,10 +990,8 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         char copy_status[64];
         if (!selected_owned) snprintf(copy_status, sizeof copy_status, "PREVIEW - NOT AN OWNED COPY");
         else snprintf(copy_status, sizeof copy_status, "PLACED %d OF %d - REMOVE KEEPS IT IN STORAGE", number, total);
-        place_copy_t overlaps[SD_ITEM_COUNT + DECOR_EXTRA_CAP];
-        bool can_select_overlap = place_candidates_at(t, placed_x(t), FLOOR * TANK_H / PAGE_H, overlaps) > 1;
         text_c(fb, stride, CX, 281, 1, C_TEXT, copy_status);
-        text_c(fb, stride, CX, 296, 2, C_CAPT, can_select_overlap ? "TAP COPY TO SELECT - DRAG TO MOVE" : "DRAG IT LEFT OR RIGHT");
+        text_c(fb, stride, CX, 296, 2, C_CAPT, memo.overlap ? "TAP COPY TO SELECT - DRAG TO MOVE" : "DRAG IT LEFT OR RIGHT");
     } else if (page_is_name()) {
         /* straight on the tank: the fish being named wears a ring in its own
            colour, its name spans the middle in that colour, the active slot

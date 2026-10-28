@@ -18,11 +18,15 @@
 typedef struct { uint32_t magic, version, sequence, length, crc, header_crc; } header_t;
 #define STORE_MAGIC 0x41515943u
 static uint32_t crc32(uint32_t crc, const void *data, size_t size) {
+    static const uint32_t nibble[16] = {
+        0x00000000u, 0x1db71064u, 0x3b6e20c8u, 0x26d930acu, 0x76dc4190u, 0x6b6b51f4u, 0x4db26158u, 0x5005713cu,
+        0xedb88320u, 0xf00f9344u, 0xd6d6a3e8u, 0xcb61b38cu, 0x9b64c2b0u, 0x86d3d2d4u, 0xa00ae278u, 0xbdbdf21cu};
     const unsigned char *p = data;
     crc = ~crc;
     while (size--) {
         crc ^= *p++;
-        for (int k = 0; k < 8; k++) crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
+        crc = (crc >> 4) ^ nibble[crc & 15u];
+        crc = (crc >> 4) ^ nibble[crc & 15u];
     }
     return ~crc;
 }
@@ -32,28 +36,42 @@ static bool name(char path[192], const char *directory, const uint32_t id[2], in
     if (n <= 0 || n >= 192) { fprintf(stderr, "Aquarium snapshot path too long\n"); return false; }
     return true;
 }
-/* 0 missing, 1 valid, -1 unreadable/corrupt. Verify without a second full-size buffer. */
-static int inspect(const char *path, size_t size, uint32_t *sequence) {
+/* Opens a copy and checks its header: 0 missing, 1 header valid (file left open), -1 unreadable/corrupt. */
+static int open_copy(const char *path, size_t size, FILE **out, header_t *h) {
     FILE *file = fopen(path, "rb");
     if (!file) {
         if (errno == ENOENT) return 0;
         fprintf(stderr, "Aquarium open failed: %s (%s)\n", path, strerror(errno)); return -1;
     }
-    header_t h = {0};
-    bool ok = fread(&h, 1, sizeof h, file) == sizeof h && h.magic == STORE_MAGIC && h.version == 1 &&
-              h.length && h.length <= size && h.sequence && h.header_crc == crc32(0, &h, offsetof(header_t, header_crc));
+    memset(h, 0, sizeof *h);
+    if (fread(h, 1, sizeof *h, file) == sizeof *h && h->magic == STORE_MAGIC && h->version == 1 &&
+        h->length && h->length <= size && h->sequence && h->header_crc == crc32(0, h, offsetof(header_t, header_crc))) {
+        *out = file; return 1;
+    }
+    fclose(file);
+    fprintf(stderr, "Aquarium snapshot validation failed: %s\n", path); return -1;
+}
+/* Verifies the body of a copy opened by open_copy and closes it. */
+static int finish_copy(const char *path, FILE *file, const header_t *h, uint32_t *sequence) {
     unsigned char buffer[256];
     uint32_t crc = 0;
-    size_t left = h.length;
-    while (ok && left) {
+    size_t left = h->length;
+    bool ok = true;
+    while (left) {
         size_t n = left < sizeof buffer ? left : sizeof buffer;
         if (fread(buffer, 1, n, file) != n) { ok = false; break; }
         crc = crc32(crc, buffer, n); left -= n;
     }
-    ok = ok && crc == h.crc && fgetc(file) == EOF && !ferror(file);
+    ok = ok && crc == h->crc && fgetc(file) == EOF && !ferror(file);
     if (fclose(file) != 0) ok = false;
     if (!ok) { fprintf(stderr, "Aquarium snapshot validation failed: %s\n", path); return -1; }
-    *sequence = h.sequence; return 1;
+    *sequence = h->sequence; return 1;
+}
+/* 0 missing, 1 valid, -1 unreadable/corrupt. Verify without a second full-size buffer. */
+static int inspect(const char *path, size_t size, uint32_t *sequence) {
+    FILE *file; header_t h;
+    int status = open_copy(path, size, &file, &h);
+    return status == 1 ? finish_copy(path, file, &h, sequence) : status;
 }
 static bool copies(const char *directory, const uint32_t id[2], int slot, size_t size,
                    char paths[2][192], uint32_t sequence[2], int status[2]) {
@@ -81,11 +99,21 @@ bool aquarium_store_read(const char *directory, const uint32_t id[2], int slot, 
     return ok;
 }
 bool aquarium_store_write(const char *directory, const uint32_t id[2], int slot, const void *data, size_t size) {
-    char paths[2][192]; uint32_t sequence[2] = {0}; int status[2];
-    if (size > UINT32_MAX || !copies(directory, id, slot, size, paths, sequence, status)) return false;
-    /* Never erase the newest verified copy. An interrupted alternate write is recoverable. */
-    int newest = status[1] == 1 && (status[0] != 1 || sequence[1] > sequence[0]) ? 1 : 0;
-    uint32_t last = status[newest] == 1 ? sequence[newest] : 0;
+    char paths[2][192]; FILE *files[2] = {NULL, NULL}; header_t heads[2]; int status[2];
+    if (size > UINT32_MAX || !name(paths[0], directory, id, slot, 0) || !name(paths[1], directory, id, slot, 1)) return false;
+    for (int i = 0; i < 2; i++) status[i] = open_copy(paths[i], size, &files[i], &heads[i]);
+    /* Never erase the newest verified copy. Only the copy with the higher header sequence needs its body
+       verified: if it is sound it is the newest, and the other is the one rewritten either way. */
+    int first = status[1] == 1 && (status[0] != 1 || heads[1].sequence > heads[0].sequence) ? 1 : 0;
+    int newest = -1; uint32_t last = 0;
+    for (int k = 0; k < 2; k++) {
+        int i = k ? 1 - first : first;
+        if (status[i] != 1) continue;
+        if (newest >= 0) fclose(files[i]);
+        else if (finish_copy(paths[i], files[i], &heads[i], &last) == 1) newest = i;
+        files[i] = NULL;
+    }
+    if (newest < 0) last = 0;
     if (last == UINT32_MAX) { fprintf(stderr, "Aquarium generation limit reached\n"); return false; }
     int use = last ? 1 - newest : 0;
     header_t h = {STORE_MAGIC, 1, last + 1, (uint32_t)size, crc32(0, data, size), 0};

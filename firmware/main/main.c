@@ -701,7 +701,7 @@ static void tank_task(void *arg) {
             }
             render_frame_begin(&tank);
             render_damage_begin(&tank, photo || page ||
-                (touch_port_selected() >= 0 && !render_clock_active(&tank)) || setup_active() || touch_port_confirm_up() ||
+                (touch_port_selected() >= 0 && !render_clock_active(&tank)) || (setup_active() && !setup_is_place()) || touch_port_confirm_up() ||
                 touch_port_calibrating() || (!render_clock_active(&tank) && notice_current() != NULL));
             int damage_cursor = 0, left = 0, first = 0, width = TANK_W, height = tile_height;
             uint16_t *frame_base = fb[cur];
@@ -742,9 +742,9 @@ static void tank_task(void *arg) {
                 if (touch_port_aquariums()) render_aquariums(&tank, pixels, TANK_W);
                 else render_shop(&tank, pixels, TANK_W);
                 sel = -1;
-            } else if (!idle_clock) render_sd_toast(&tank, pixels, TANK_W);   /* the live tank: "+N" as dollars are earned */
+            } else if (!idle_clock && !setup_is_place()) render_sd_toast(&tank, pixels, TANK_W);   /* the live tank: "+N" as dollars are earned */
             if (sel >= 0) render_stats_card(&tank, sel, pixels, TANK_W);   /* tapped fish: stats card (+ the pill) */
-            if (!idle_clock) render_tool_chip(&tank, sel, pixels, TANK_W);
+            if (!idle_clock && !setup_is_place()) render_tool_chip(&tank, sel, pixels, TANK_W);
             if (!idle_clock && !touch_port_milestones() && !touch_port_settings() && !touch_port_updates() && !touch_port_shop()) {   /* an announcement over the live tank */
                 const notice_t *nt = notice_current();
                 if (nt) render_notice(&tank, pixels, TANK_W, nt->kind, nt->fish, nt->bit, 1.0f - nt->age / NOTICE_UP_S);
@@ -754,7 +754,7 @@ static void tank_task(void *arg) {
             if (touch_port_confirm_up())         /* reset prompt: over everything, fish still swim */
                 render_confirm_reset(pixels, TANK_W, touch_port_confirm_frac());
             int64_t t1 = esp_timer_get_time();
-            if (sel >= 0) { card_us += t1 - tc; card_frames++; }
+            if (sel >= 0 || setup_active()) { card_us += t1 - tc; card_frames++; }
             /* the next frame's scene prefetch starts BEFORE this frame's flush (2026-10-03): the copy
                into the idle framebuffer takes ~14 ms, and started after the flush it had only the
                tick and a 1 ms sleep to hide behind - the next frame waited ~9 ms for it. The flush

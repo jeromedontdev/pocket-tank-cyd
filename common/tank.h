@@ -1307,8 +1307,18 @@ int   tank_decor_rank(const tank_t *t, int item);
 int   tank_decor_order(const tank_t *t, int items[DECOR_SLOTS]);   /* the owned pieces, back to front (rank, then slot); the count */
 bool  tank_decor_above(const tank_t *t, int a, int b);             /* a is painted over b: a greater depth, or at one depth the higher rank */
 void  tank_decor_raise(tank_t *t, int item);                       /* on top: the highest rank of all + 1 */
-int   tank_decor_neighbor(const tank_t *t, int item, int dir);     /* the piece just in front (+1) or behind (-1) at its depth, or -1 */
-bool  tank_decor_shift(tank_t *t, int item, int dir);              /* swap ranks with that neighbour; false = none */
+int   tank_decor_neighbor(const tank_t *t, int item, int dir);     /* the nearest piece in front (+1) or behind (-1) at its depth whose footprint overlaps it, or -1 */
+bool  tank_decor_shift(tank_t *t, int item, int dir);              /* move just past that neighbour, others keep their order; false = none */
+/* MIRROR (2026-11): a sprite piece (chest, shell, starfish, anchor, buoy,
+ * the ornaments and the content decorations) can face the other way. The
+ * flag is bit 7 of the piece's rank byte (ranks stay below 64), so the save
+ * layout is unchanged and the placement snapshot carries it; an inventory
+ * copy keeps it in inventory_extra_t.rank bit 7. */
+#define DECOR_RANK_MIRROR 0x80u
+#define DECOR_RANK_MASK   0x7fu
+bool  tank_decor_mirrorable(int item);
+bool  tank_decor_mirrored(const tank_t *t, int item);
+void  tank_decor_set_mirrored(tank_t *t, int item, bool mirrored);
 /* the snail has two poses (Strato's sprites, 2026-09-15): UPRIGHT, walking
  * the tank floor (nothing to graze: it comes down and ambles along the
  * bottom, turning at the ends), and flat ON THE GLASS (crawling to film and
