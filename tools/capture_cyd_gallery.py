@@ -5,6 +5,7 @@ import ctypes
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import tempfile
@@ -86,7 +87,7 @@ def main():
 
                 def restore(snapshot, preserve_life=False):
                     snapshot = copy.deepcopy(snapshot)
-                    if snapshot.get("schema") in (11, 12, 13, 14, 15, 16, 17, 18, 19) and not preserve_life:
+                    if snapshot.get("schema") in (11, 12, 13, 14, 15, 16, 17, 18, 19, 20) and not preserve_life:
                         # Staged rosters replace identities; migrate their life records honestly.
                         snapshot["schema"] = 10
                         snapshot.pop("polish")
@@ -101,6 +102,7 @@ def main():
                         snapshot.pop("mussel", None)
                         snapshot.pop("game_income", None)
                         snapshot.pop("content", None)
+                        snapshot.pop("fixed", None)
                     data = json.dumps(snapshot, separators=(",", ":")).encode()
                     if not lib.sim_restore(data, len(data)):
                         raise RuntimeError(lib.sim_error().decode())
@@ -306,16 +308,23 @@ def main():
                     restore(creature)
                     for _ in range(200):
                         lib.sim_frame(.1)
-                    for _ in range(120):
-                        point = lib.sim_creature_target(card)
-                        if point >= 0:
-                            break
-                        lib.sim_frame(.1)
-                    if point < 0:
-                        raise RuntimeError(f"Could not find a touch target for {name}")
                     width = lib.sim_width()
-                    lib.sim_touch(point % width, point // width, 1)
-                    lib.sim_touch(point % width, point // width, 0)
+                    # A story notice that pops up meanwhile takes the first tap, so retry
+                    # after the tap-burst window from the creature's current position.
+                    for _ in range(3):
+                        for _ in range(120):
+                            point = lib.sim_creature_target(card)
+                            if point >= 0:
+                                break
+                            lib.sim_frame(.1)
+                        if point < 0:
+                            raise RuntimeError(f"Could not find a touch target for {name}")
+                        lib.sim_touch(point % width, point // width, 1)
+                        lib.sim_touch(point % width, point // width, 0)
+                        if lib.sim_selected() == card:
+                            break
+                        for _ in range(8):
+                            lib.sim_frame(.1)
                     if lib.sim_selected() != card:
                         raise RuntimeError(f"Selection not reproducible for {name}")
                     capture(name)
@@ -571,7 +580,13 @@ def main():
                 capture("shop-expansion")
                 lib.sim_action(0)
                 lib.sim_action(3)
-                order = sorted(range(len(sim.SHOP_PRICES)), key=lambda i: (sim.SHOP_PRICES[i], i))
+                price_defines = dict(re.findall(r"#define (SD_PRICE_\w+)\s+(\d+)",
+                                               (ROOT / "common" / "progression.h").read_text()))
+                catalog = re.search(r"const sd_item_t SD_ITEMS\[[^\]]+\] = \{([\s\S]*?)\n\};",
+                                    (ROOT / "common" / "progression.c").read_text()).group(1)
+                prices = [int(price_defines.get(price, price)) for price in re.findall(
+                    r'\{\s*[^,]+,\s*"[^"]*",\s*"[^"]*",\s*"[^"]*",\s*(\w+)\s*\}', catalog)]
+                order = sorted(range(len(prices)), key=lambda i: (prices[i], i))
                 for _ in range(order.index(30) // 4):
                     tap(400, 40)
                 capture("shop-upkeep")

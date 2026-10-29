@@ -464,7 +464,10 @@ def main():
                         assert current["polish"]["scenery_unlocks"] & (1 << (item - 36)), item
                     else:
                         assert current["tank"]["stat_upgrades"] & (1 << (item - 32)), item
-                    assert lib.sim_page() == 3, "Fixed scenery/upkeep must not open placement"
+                    if 22 <= item <= 29 or 36 <= item <= 41:
+                        assert lib.sim_page() == 0 and lib.sim_setup_page() >= 0, ("Movable scenery opens placement after buying", item)
+                    else:
+                        assert lib.sim_page() == 3 and lib.sim_setup_page() < 0, ("Upkeep/mussel must not open placement", item)
                 assert current["tank"]["sd_balance"] == 70
                 lib.sim_action(0)
                 lib.sim_action(3)
@@ -479,7 +482,7 @@ def main():
                 assert not sold["sd_unlocks"] & (1 << 29) and sold["sd_balance"] == 82
                 data = json.dumps(shop_original).encode()
                 assert lib.sim_restore(data, len(data))
-                print("PASS: twenty-one shop purchases through price-sorted UI, including all four stat upgrades, six fixed scenery pieces and the pearl mussel")
+                print("PASS: twenty-one shop purchases through price-sorted UI, including all four stat upgrades, six fixed scenery pieces (each opening placement) and the pearl mussel")
                 lib.sim_action(1)
                 lib.sim_action(7); tap(100, 100); tap(330, 100)
                 assert lib.sim_page() == 6, "Fish category must open the fish bank"

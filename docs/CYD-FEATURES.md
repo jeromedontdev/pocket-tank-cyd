@@ -2,7 +2,33 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.18**
+**An illustrated tour of Pocket Tank CYD 2.3.19**
+
+**2.3.19 smoother fish:** the tail beat advances continuously, turns ease in
+and out, and pace follows a damped spring, so speed changes and late frames no
+longer make fins or headings jump. Edge avoidance ramps in, so fish stop
+seesawing along the surface, sides and sand. None of this is saved state.
+
+**2.3.19 illustrated games and menus:** all eighteen mini-games share water
+gradients, light shafts, kelp, sand, bevelled blocks and game-specific props,
+with HUD text on dark plates; menus share one backdrop and bevelled buttons,
+and shop cards show every preview in full colour. Hit boxes are unchanged.
+
+![Illustrated shop cards with full-colour previews](media/cyd-features/shop.png)
+
+![Reef Defender with the shared mini-game art kit](media/cyd-features/game-reef-defender.png)
+
+**2.3.19 move anything:** buying a decoration opens its placement page
+immediately, and every piece, including the original sand scenery and the
+surface floats, can be moved later with MOVE. MIRROR flips a piece; BEHIND /
+IN FRONT only steps past pieces it actually overlaps; floats can sit behind or
+in front of the fish. DONE saves (there is no separate CANCEL).
+
+**2.3.19 speed and saves:** still menu pages are not redrawn every frame,
+routine saves are coalesced and faster, and the flash runs at the standard
+80 MHz. Controlled CYD fixtures rose from about 14-17 to 17-22 FPS. Saves
+become schema 20 / 6424 bytes; back up first, because older firmware cannot
+read them.
 
 **2.3.18 aquarium-first polish:** per-frame clock metadata is shared across
 tiles, final opaque spans reuse exact shaded colors, and repeated Normal-scale

@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.18
+# Pocket Tank CYD 2.3.19
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.18**. Stable firmware,
+now versioned independently. This source targets **2.3.19**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,7 +25,46 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.18: everyday aquarium polish
+## New in 2.3.19: smoother fish, illustrated menus and movable scenery
+
+Fish swim more fluidly. The tail beat advances continuously instead of jumping
+when speed changes, turns ease in and out, and pace follows a damped spring.
+Fish no longer seesaw nose-up/nose-down along the surface, sides or sand.
+These motion fields are runtime only; they add no save data or render cost.
+
+The eighteen mini-games and their menu thumbnails now share an illustrated
+art kit: water gradients, light shafts, kelp, sand, bevelled blocks and
+game-specific props, with HUD text on dark plates. Every menu page shares the
+same backdrop, bevelled buttons and full-colour shop previews. Hit boxes are
+unchanged, and games still run at 27-30 FPS on the CYD.
+
+**Every decoration can be moved**, including the fourteen original and added
+sand pieces and the surface floats. Buying a piece opens its placement page
+right away; the shop's MOVE button reopens it. The placement page offers
+MIRROR to flip a piece, and BEHIND / IN FRONT choices consider only nearby
+pieces. Floats (lily pads, log and duck) can sit behind the fish or in front
+of them. DONE saves; the separate CANCEL button is gone.
+
+Still menu pages are no longer redrawn every frame, so touch is sampled two to four times as often in the shop and Milestones. Routine saves are coalesced to at
+least two minutes apart and are faster (about 120-250 ms each); purchases,
+renames, rewards, sleep and updates still save at once. Internal RAM was
+trimmed so purchases and HTTPS weather keep enough working memory.
+
+The flash now runs at **80 MHz** (DIO), the ESP32's standard rate, instead of
+ESP-IDF's conservative 40 MHz default. On the CYD the controlled fixtures went
+from 17.4/16.7/13.9/14.9 to **21.9/21.2/17.3/18.7 FPS**, beating the earlier
+2.3.18-era build, with no memory cost. This was measured on the
+ESP32-2432S028; the ELEGOO board uses the same module class and image but was
+not separately benchmarked.
+
+**Saves are now schema 20 / 6424 bytes** (an 88-byte movable-scenery tail
+after the unchanged 6336-byte prefix). Older saves and schema 1-19 backups
+load unchanged. Firmware older than 2.3.19 cannot read the new save or
+schema-20 exports: back up before updating and do not downgrade afterwards.
+Partitions, calibration, hardware profiles and companion version 7 are unchanged.
+See [hardware measurements](firmware/CYD.md#fluid-fish-motion-and-save-pacing-after-2318).
+
+## Retained from 2.3.18: everyday aquarium polish
 
 This follow-up prioritizes the aquarium itself: existing fish movement,
 individual reactions and understandable care feedback, not more mini-games,

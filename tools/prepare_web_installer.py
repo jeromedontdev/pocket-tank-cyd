@@ -27,6 +27,7 @@ FEATURE_IMAGES = (
     "tank-crafted-reef.png", "tank-crafted-plants.png",
     "fish-bodies.png", "fish-accessories.png", "aquarium-details.png", "tank-crafted-floats.png",
     "typography-normal.png", "typography-enlarged.png",
+    "shop.png", "game-reef-defender.png",
 )
 
 

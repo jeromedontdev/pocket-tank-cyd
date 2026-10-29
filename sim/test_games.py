@@ -26,6 +26,13 @@ def exercise(lib, backup, output):
                    for j in range(max(0, ny - radius), min(lib.sim_height(), ny + radius + 1))
                    for i in range(max(0, nx - radius), min(lib.sim_width(), nx + radius + 1)))
 
+    def mix(a, b, p):  # The art kit's opaque pre-mixed tints (games.c ga_mix).
+        return sum(((a >> s & 255) + int(((b >> s & 255) - (a >> s & 255)) * p / 256)) << s for s in (16, 8, 0))
+
+    def glassy(pixels, x, y):  # Translucent bubble rims/highlights glow pale against the dark water.
+        p = pixels[round(y * lib.sim_height() / 368) * lib.sim_width() + round(x * lib.sim_width() / 448)]
+        return (p >> 11) >= 12 and (p >> 5 & 63) >= 40 and (p & 31) >= 20
+
     def digit(pixels, x, y, color):
         glyphs = (
             (14, 17, 19, 21, 25, 17, 14), (4, 12, 4, 4, 4, 4, 14),
@@ -71,12 +78,14 @@ def exercise(lib, backup, output):
             pause_footer = footer
         assert footer == pause_footer, ("Every game must retain the complete pause footer", game)
         before = snapshot()
-        if game == 0:  # Bubble Pop: hit the actual visible ring centers.
+        if game == 0:  # Bubble Pop: hit the actual visible bubble rims and gold "3" bubbles.
             for _ in range(120):
                 pixels = frame(0.25)
+                if not cue(pixels, 250, 30, 0x1c2f36, 1):
+                    break  # The PAUSE button is gone: the timer ended on the result page.
                 for y in range(104, 320, 8):
                     for x in range(32, 424, 8):
-                        if cue(pixels, x, y, 0x73e5ff, 1) or cue(pixels, x, y, 0xffdc73, 1):
+                        if glassy(pixels, x, y) or cue(pixels, x, y, 0xffdc73, 1):
                             tap(x, y)
         elif game == 1:  # Learn pairs by their displayed pearl colors.
             colors = (0xffdc73, 0x73e5ff, 0xffa3cf, 0x89ffb1, 0xc5adff, 0xff8173)
@@ -104,20 +113,21 @@ def exercise(lib, backup, output):
                     for _ in range(4):
                         frame(0.25)
             assert len(matched) == 12
-        elif game == 2:  # Slalom: follow each gold open gate.
+        elif game == 2:  # Slalom: follow the open gate between its two gold buoys.
             lane = 1
             for _ in range(12):
                 pixels = frame()
-                target = next(i for i in range(3) if cue(pixels, 38 + i * 140, 113, 0xffdc73))
+                target = next(i for i in range(3) if cue(pixels, 38 + i * 140, 113, 0xf2c45a)
+                              and cue(pixels, 110 + i * 140, 113, 0xf2c45a))
                 while lane != target:
                     tap(320 if lane < target else 110, 302)
                     lane += 1 if lane < target else -1
                 for _ in range(9):
                     frame(0.25)
-        elif game == 3:  # Cast at the moving hook's exact treasure center.
+        elif game == 3:  # Cast at the moving hook's exact treasure-chest center.
             for _ in range(5):
                 pixels = frame()
-                target = next(i for i in range(3) if cue(pixels, 96 + i * 128, 244, 0xa97532))
+                target = next(i for i in range(3) if cue(pixels, 96 + i * 128, 248, 0x7a4824))
                 remaining = (target + 0.5) / 3 / 0.9
                 while remaining > 0:
                     dt = min(0.25, remaining)
@@ -128,13 +138,13 @@ def exercise(lib, backup, output):
             for _ in range(120):
                 pixels = frame(0.25)
                 if _ < 119:
-                    target = next(i for i in range(3) if cue(pixels, 88 + i * 136, 256, 0xffdc73))
+                    target = next(i for i in range(3) if cue(pixels, 88 + i * 136, 255, 0xf2c45a))
                     tap(88 + target * 136, 296)
         else:  # Solve the actual randomized plumbing, not a fixed tap sequence.
             pixels = frame()
             offsets = ((0, -31), (31, 0), (0, 31), (-31, 0))
-            masks = [sum(1 << d for d, (dx, dy) in enumerate(offsets)
-                         if cue(pixels, 145 + i % 3 * 72 + dx, 131 + i // 3 * 72 + dy, 0x73e5ff, 1))
+            masks = [sum(1 << d for d, (dx, dy) in enumerate(offsets)  # Bronze flange at each pipe end.
+                         if cue(pixels, 145 + i % 3 * 72 + dx, 131 + i // 3 * 72 + dy, 0x8a5a2e, 1))
                      for i in range(9)]
 
             def path(i, incoming, seen):
@@ -254,27 +264,27 @@ def exercise(lib, backup, output):
         assert frame() == paused, "Pause must freeze game physics and ignore board touches"
         tap(280, 20)
         assert frame() == initial, "Resume must retain the exact game position"
-        if game == 0:  # Defender: aim at visible invaders, leading their descent.
+        if game == 0:  # Defender: aim at visible crab shells (red or armored violet), leading their descent.
             for _ in range(1100):
                 pixels = frame(0.25)
                 target = next(((x, y) for y in range(112, 280, 12) for x in range(36, 416, 12)
-                               if cue(pixels, x, y, 0xffdc73, 1) or cue(pixels, x, y, 0xff8173, 1)), None)
+                               if cue(pixels, x, y, 0xe4654f, 1) or cue(pixels, x, y, 0x9a62b8, 1)), None)
                 if target:
                     tap(target[0], min(280, target[1] + 12))
         elif game == 1:  # Runner: follow the actual pearl lane in each scrolling gate.
             for _ in range(350):
                 pixels = frame(0.25)
-                target = next((i for i in range(5) if any(cue(pixels, 62 + i * 80, y, 0xffdc73, 2)
+                target = next((i for i in range(5) if any(cue(pixels, 62 + i * 80, y, 0xf2c45a, 2)
                                                           for y in range(112, 292, 6))), None)
                 if target is not None:
                     tap(62 + target * 80, 304)
-        elif game == 2:  # Breaker: track the real white ball and move underneath it.
+        elif game == 2:  # Breaker: track the real pearl ball and move underneath it.
             tap(224, 260)
             for _ in range(2500):
                 pixels = frame(0.125)
                 w, h = lib.sim_width(), lib.sim_height()
                 points = [(i % w, i // w) for i in range(round(106 * h / 368) * w, round(312 * h / 368) * w)
-                          if pixels[i] == rgb(0xffffff)]
+                          if pixels[i] == rgb(0xf1ebdf)]
                 if points:
                     x = sum(p[0] for p in points) / len(points) * 448 / w
                     tap(x + (18 if (_ // 100) % 2 else -18), 310)
@@ -284,11 +294,11 @@ def exercise(lib, backup, output):
             for _ in range(22):
                 pixels = frame()
                 board = []
-                for i in range(25):
-                    x, y = 102 + i % 5 * 50, 95 + i // 5 * 40
-                    board.append(3 if cue(pixels, x, y, 0x785b6a, 1) else
-                                 4 if cue(pixels, x, y, 0xffdc73, 1) else
-                                 2 if cue(pixels, x, y, 0xff8173, 1) else 0)
+                for i in range(25):  # Rock, gold flag or red crab drawn in each board socket.
+                    x, y = 99 + i % 5 * 50, 92 + i // 5 * 40
+                    board.append(3 if cue(pixels, x + 10, y + 22, 0x5b6a6c, 1) else
+                                 4 if cue(pixels, x + 28, y + 10, 0xf2c45a, 1) else
+                                 2 if cue(pixels, x + 23, y + 25, 0xe4654f, 1) else 0)
                 queue = [(pos, [])]
                 seen = {pos}
                 route = None
@@ -392,8 +402,8 @@ def exercise(lib, backup, output):
         if game == 0:  # Lighthouse: solve the displayed cross-toggle system over GF(2).
             pixels = frame()
             rows = []
-            for i in range(16):
-                lit = cue(pixels, 118 + i % 4 * 56, 106 + i // 4 * 48, 0xffdc73, 1)
+            for i in range(16):  # A lit lantern's gold glass (unlit glass is slate).
+                lit = cue(pixels, 131 + i % 4 * 56, 121 + i // 4 * 48, 0xffcf56, 1)
                 coefficients = sum(1 << j for j in range(16)
                                    if abs(i % 4 - j % 4) + abs(i // 4 - j // 4) <= 1)
                 rows.append(coefficients | (int(lit) << 16))
@@ -416,7 +426,7 @@ def exercise(lib, backup, output):
         elif game == 1:  # Shell Slide: only tiles adjacent to the visible gap may move.
             pixels = frame()
             blank = next(i for i in range(9)
-                         if cue(pixels, 134 + i % 3 * 64, 106 + i // 3 * 64, 0x102831, 1))
+                         if cue(pixels, 134 + i % 3 * 64, 106 + i // 3 * 64, 0x0a232c, 1))
             invalid = next(i for i in range(9) if abs(i % 3 - blank % 3) + abs(i // 3 - blank // 3) > 1)
             tap(157 + invalid % 3 * 64, 129 + invalid // 3 * 64)
             assert frame() == pixels, "Nonadjacent sliding tiles must not move"
@@ -424,8 +434,8 @@ def exercise(lib, backup, output):
             tap(157 + valid % 3 * 64, 129 + valid // 3 * 64)
             assert frame() != pixels, "A legal slide must move a real tile into the gap"
             pixels = frame()
-            state = tuple(0 if cue(pixels, 134 + i % 3 * 64, 106 + i // 3 * 64, 0x102831, 1)
-                          else digit(pixels, 152 + i % 3 * 64, 121 + i // 3 * 64, 0x031015)
+            state = tuple(0 if cue(pixels, 134 + i % 3 * 64, 106 + i // 3 * 64, 0x0a232c, 1)
+                          else digit(pixels, 152 + i % 3 * 64, 122 + i // 3 * 64, 0x031015)
                           for i in range(9))
             goal = (1, 2, 3, 4, 5, 6, 7, 8, 0)
 
@@ -477,7 +487,7 @@ def exercise(lib, backup, output):
                 probed.add(cell)
                 pixels = frame()
                 if active(pixels):
-                    found = cue(pixels, 119 + cell % 5 * 44, 117 + cell // 5 * 36, 0x1c5145, 1)
+                    found = cue(pixels, 119 + cell % 5 * 44, 117 + cell // 5 * 36, 0x184a44, 1)
                     candidates = [board for board in candidates if bool(board & (1 << cell)) == found]
                     assert candidates
                     tap(133 + cell % 5 * 44, 127 + cell // 5 * 36)
@@ -494,7 +504,7 @@ def exercise(lib, backup, output):
                 for _ in range(200):
                     pixels = frame(0.05)
                     y = 273 - layer * 14
-                    if cue(pixels, 108, y, 0xffdc73, 1) and not cue(pixels, 88, y, 0xffdc73, 1):
+                    if cue(pixels, 108, y, 0xf2c45a, 1) and not cue(pixels, 88, y, 0xf2c45a, 1):
                         break
                 else:
                     raise AssertionError("Moving stack bar must cross the supporting layer")
@@ -506,8 +516,8 @@ def exercise(lib, backup, output):
                 notes, previous = [], None
                 for step in range(int((length * 0.8 + 0.35) / 0.1) + 2):
                     pixels = frame(0 if step == 0 else 0.1)
-                    pad = next((i for i, color in enumerate(colors)
-                                if cue(pixels, 74 + i % 2 * 160, 120 + i // 2 * 90, color, 1)), None)
+                    pad = next((i for i, color in enumerate(colors)  # Lit pads brighten to a near-pure tint.
+                                if cue(pixels, 74 + i % 2 * 160, 120 + i // 2 * 90, mix(color, 0x0b2630, 70), 1)), None)
                     if pad is not None and pad != previous:
                         notes.append(pad)
                     previous = pad
@@ -634,6 +644,7 @@ def exercise(lib, backup, output):
     legacy.pop("mussel", None)
     legacy.pop("game_income", None)
     legacy.pop("content", None)
+    legacy.pop("fixed", None)
     encoded = json.dumps(legacy).encode()
     if original.get("profile", {}).get("mode", 0) == 2:
         before = snapshot()

@@ -163,6 +163,7 @@ Only install trusted downloads; these images are not publisher-signed.
         instructions = instructions.replace("Read INSTALL.txt", "Read elegoo-INSTALL.txt")
         instructions += "\nSelect ELEGOO in the web installer. Do not use the original CYD image.\nReplace YOUR_PORT with the verified ELEGOO port; never guess another aquarium's port.\nIf the board already has the wrong CYD identity/white LCD, use the documented backed-up app-only board conversion, not factory reset.\nGPIO34 is battery sensing, not room light; audio and battery charging are not game features.\n"
     instructions += "\n2.3.10 SAVE COMPATIBILITY: back up before updating. The version-6 companion\nrecord stores mussel colors in a reserved byte; save size/offsets are unchanged.\nOlder firmware cannot read this record. Do not downgrade after saving with 2.3.10.\n"
+    instructions += "\n2.3.19 SAVE COMPATIBILITY: back up before updating. Saves grow to schema 20 /\n6424 bytes to remember where movable scenery stands. Older saves load unchanged;\nfirmware before 2.3.19 cannot read the new save. Do not downgrade after saving.\n"
     (output / f"{asset_prefix}INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
@@ -175,7 +176,16 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.18: aquarium-first polish
+### New in 2.3.19: smoother fish, illustrated menus and movable scenery
+
+- Fluid swimming: a continuous tail-beat phase, eased turns and a damped speed spring replace stepped fin, heading and pace changes. Edge avoidance ramps in smoothly, so fish no longer seesaw at the surface, sides or sand. Runtime-only state; no save or render cost.
+- The eighteen mini-games and their thumbnails share an illustrated art kit (water gradients, light shafts, kelp, sand, bevelled blocks, game-specific props, HUD plates). Every menu shares the same backdrop, bevelled buttons and full-colour shop previews. Hit boxes are unchanged; games still run at 27-30 FPS.
+- Every decoration can be moved, including the fourteen sand pieces and surface floats. Buying a piece opens its placement page; the shop's MOVE reopens it. MIRROR flips a piece, BEHIND / IN FRONT only consider nearby pieces, and floats can sit behind or in front of the fish. DONE saves; CANCEL was removed.
+- Still menu pages skip redundant redraws, sampling touch two to four times as often in the shop and Milestones. Routine saves coalesce to at least two minutes apart and take about 120-250 ms; purchases, renames, rewards, sleep and updates still save immediately. Internal RAM was trimmed so purchases and HTTPS weather keep working memory.
+- The flash runs at 80 MHz (DIO), the ESP32 standard, instead of the conservative 40 MHz default. Controlled CYD fixtures improved from 17.4/16.7/13.9/14.9 to 21.9/21.2/17.3/18.7 FPS with no memory cost. Measured on the ESP32-2432S028; the ELEGOO board uses the same image but was not separately benchmarked.
+- Saves are now schema 20 / 6424 bytes: an 88-byte movable-scenery tail after the unchanged 6336-byte prefix. Older saves and schema 1-19 backups load unchanged. Firmware before 2.3.19 cannot read the new save or schema-20 exports: back up first and do not downgrade. Partitions, calibration, hardware profiles and companion version 7 are unchanged.
+
+### Retained from 2.3.18: aquarium-first polish
 
 - Fish ease into personality-scaled rest hovers. Existing laziness affects food pursuit; close pellet approaches steer more directly downward. Bold fish are less startled by taps and repeated taps. No new personality stats, animation banks or persistent state.
 - Fish Interaction shows the next 10/25/50-bond trick target and rounded-up +5 greeting count, with the existing 30-second cooldown visible. Creative bypasses bond locks; Follow still needs a tankmate. A Fish's Life explains growth-hours to the next stage, slower sleep growth and decor rest/interest spots without adding chores.

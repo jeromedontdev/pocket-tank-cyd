@@ -20,6 +20,13 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- Release candidate 2.3.19 collects the motion, placement, illustrated art,
+  save-memory and 80 MHz follow-ups below. Version/docs/website and 194 actual
+  renderer screenshots are refreshed. Local native regressions, simulator
+  smoke and the unified firmware build passed. Publication is requested:
+  verify the main checks, release assets and release-pinned Pages before
+  reporting success. COM4 still runs the measured pre-release image below;
+  publishing does not authorize another flash or aquarium reset.
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
   edit-mode/mirror/save-speed, menu-performance, minigame-art, menu-art,
@@ -30,7 +37,7 @@ or deployment is published. Update this file when its contracts change.
   (see [menu art and movable scenery](firmware/CYD.md#menu-art-and-movable-scenery)).
   Fresh full recovery backup, app readback/profile and saves passed. Residents/settings remain intact; the wallet
   changes only from normal passive income. Tracing is off. These follow-ups
-  are not published; the website and immutable 2.3.18 tag remain unchanged.
+  are collected in 2.3.19; the immutable 2.3.18 tag remains unchanged.
 - The verified 2.3.18 source is `92a2a41d3ee9edbe662d62c3c24c63fe2852a608`.
   At release acceptance COM4 ran that clean unified build with the saved `cyd2432s028` profile:
   app1,769,568 bytes, slot headroom196,512, static DRAM79,731 bytes, SHA256
@@ -750,6 +757,15 @@ or further split modules without a concrete maintenance benefit.
   dirty regions. Avoid per-frame allocation, full-screen animated effects,
   unconditional full redraws and new continuous simulation. Keep old/new
   damage bounds and cached/live pixels equivalent.
+- Flash runs at **80 MHz DIO** (`CONFIG_ESPTOOLPY_FLASHFREQ_80M` in
+  `sdkconfig.defaults` and the identical `sdkconfig.cyd`; edit `build_*\sdkconfig`
+  too, because defaults only seed new keys). The app reapplies its own header's
+  clock at startup, so OTA carries it; the bootloader log still says 40MHz.
+  All code executes from flash through a 32 KB cache: unrelated code growth can
+  reshuffle layout and cost 10%+ FPS with identical host profiles (see
+  [FPS regression](firmware/CYD.md#fps-regression-since-6510382-flash-cache-not-work)).
+  Do not pin hot code with `IRAM_ATTR`: IRAM heap is internal heap, and the
+  37.7 KB experiment broke Wi-Fi init. Compare device `benchmark` mode 3 instead.
 - Flash has **two 1,966,080-byte OTA app slots**, not one 4 MB app budget;
   the SPIFFS partition is only **128 KiB**. Firmware image headroom, internal
   RAM, NVS save entries and SD capacity are separate limits. Report app bytes
@@ -836,6 +852,10 @@ git diff --check
   equivalence at both resolutions. Keep it in checks and release workflows.
 - Screenshot command:
   `python tools\capture_cyd_gallery.py --cc gcc --out <separate-output-directory>`.
+  When the save schema grows, add it to the script's `restore()` downgrade list
+  and pop the new top-level JSON key there, or staging fails with
+  "Incompatible format". Creature-card taps retry because random story notices
+  can take the first tap.
   New ornament/wardrobe art review:
   `python tools\capture_decoration_art.py --cc gcc --out <separate-output-directory>`.
   Never capture against the user's live save. Refresh relevant named images,

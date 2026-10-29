@@ -529,6 +529,26 @@ successful HTTPS, the same residents/wallet/settings and another successful
 save. The cause of the earlier alternate-copy warning was not established.
 No save reset or old-snapshot restoration was performed. Verbose tracing is off.
 
+### 2.3.19 release consolidation
+
+Release 2.3.19 includes the following previously local motion, placement,
+menu/minigame art, save-memory and flash-clock follow-ups. The historical
+measurements below identify each tested intermediate image; "not released"
+describes that intermediate step, not the contents of 2.3.19.
+
+The local 2.3.19 unified build is 1,785,968 bytes, leaving 180,112 bytes per
+OTA slot. Native regressions (including both board page-art variants), backup
+migration, renderer stress, simulator touch gameplay and gallery generation
+passed. The gallery contains 194 refreshed renderer captures. The simulator
+tests now identify the illustrated game's actual rendered props rather than
+the superseded flat-art colours; buying scenery is tested through placement.
+Save compatibility is schema 20 / 6424 bytes; back up before updating, and do
+not downgrade after saving. No partitions or calibration changed.
+
+COM4 retains the measured 80 MHz pre-release image described below. Publication
+is separate from a physical flash. ELEGOO at 80 MHz has not been separately
+benchmarked on hardware.
+
 ### Edge-steering follow-up after 2.3.18
 
 A cruising fixture reproduced nose-up/nose-down seesawing at the surface
