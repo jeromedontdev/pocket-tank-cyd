@@ -23,10 +23,10 @@ or deployment is published. Update this file when its contracts change.
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
   edit-mode/mirror/save-speed, menu-performance, minigame-art, menu-art,
-  movable-scenery, save-memory, RTC-scratch/packed-pieces, float-depth and
-  internal-RAM-trim follow-ups, unified build, app 1,786,000 bytes, slot
-  headroom 180,080, SHA256
-  `b973b4e4668e85c00745c0024a42b9b0a2d5dbf0d2996b07c7b494f4864d5ff1`
+  movable-scenery, save-memory, RTC-scratch/packed-pieces, float-depth,
+  internal-RAM-trim and 80 MHz flash follow-ups, unified build, app 1,785,968
+  bytes, slot headroom 180,112, SHA256
+  `b23e72b4d083d275705432cc218b2217133ba46801cbc470ba75f7bd5d038d05`
   (see [menu art and movable scenery](firmware/CYD.md#menu-art-and-movable-scenery)).
   Fresh full recovery backup, app readback/profile and saves passed. Residents/settings remain intact; the wallet
   changes only from normal passive income. Tracing is off. These follow-ups

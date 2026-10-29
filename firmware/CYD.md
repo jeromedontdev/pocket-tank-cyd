@@ -852,6 +852,29 @@ veg_span and span (+37.7 KB IRAM).
 - Reverted. Any IRAM pinning costs internal heap one-for-one, so a future fix
   must be small and targeted, or a faster flash clock (a board-wide change).
 
+Fix: flash clock 40 -> 80 MHz (`CONFIG_ESPTOOLPY_FLASHFREQ_80M`, still DIO,
+in `sdkconfig.defaults` and its `sdkconfig.cyd` alias). 80 MHz is the ESP32's
+standard maximum and Arduino's default; 40 MHz was only ESP-IDF's
+conservative default. On the ESP32 the app reapplies the flash clock from its
+OWN image header at startup (`cpu_start.c` `configure_flash`). An OTA update
+therefore carries it without a new bootloader; the boot log's
+`boot.esp32: SPI Speed : 40MHz` line is the bootloader's and stays.
+App rollback is enabled for an image that cannot boot.
+COM4's flash is JEDEC manufacturer 0x5e, device 0x4016 (4 MB).
+
+COM4 at 80 MHz:
+- `benchmark` mode 3, fixtures 0/1/2/3: 21.87/21.19/17.30/18.65 FPS (40 MHz:
+  17.41/16.72/13.94/14.89; 6510382: -/19.16/15.66/17.03). Tick 4.9 -> 2.7 ms.
+- No memory cost (boot heap 74 KB). Weather OK.
+- A 15-minute soak: live FPS 15.7-19.7 (avg 17.9), no resets. Saves took
+  127-244 ms; `bank verify` and two SD auto backups (one the real daily)
+  verified.
+- App 1,785,968 bytes, SHA256
+  `b23e72b4d083d275705432cc218b2217133ba46801cbc470ba75f7bd5d038d05`,
+  backup `flash80-com4-backup.bin`.
+- The ELEGOO board shares this image and is NOT yet verified at 80 MHz: run
+  `benchmark` plus a soak on one before publishing.
+
 ### 2.3.18 frame-pacing and snapshot follow-up
 
 The renderer can bracket an immutable frame with `render_frame_begin` and
