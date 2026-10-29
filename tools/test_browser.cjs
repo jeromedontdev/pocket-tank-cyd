@@ -497,7 +497,7 @@ async function main() {
       assert.match(await viewer.locator("#decorations").textContent(), new RegExp(`SUBMARINE.*${submarineStored + 1} stored`));
       assert.match(await viewer.locator("#home .card").first().textContent(), /Wearing: SCARF/);
       assert.match(await viewer.locator("#home .card").first().textContent(), /Wardrobe:.*SCARF/);
-      assert.equal(viewerSave.schema, 19);
+      assert.equal(viewerSave.schema, 20);
       await viewer.close();
       await page.locator('[data-action="2"]').click();
       await menuImage(`settings-${scale}`);
@@ -804,7 +804,7 @@ async function main() {
       fs.rmSync(profile, {recursive: true, force: true});
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: 63-item shop including highest ID62 purchases, extended copies/place/store/reload and schema19 viewer facts at both scales; normal mussel/first-decoration purchases, automatic healthy income, care125 with unchanged XP, per-game5/day caps, Settings/Clock/Weather, fish tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
+    console.log("PASS: 63-item shop including highest ID62 purchases, extended copies/place/store/reload and schema20 viewer facts at both scales; normal mussel/first-decoration purchases, automatic healthy income, care125 with unchanged XP, per-game5/day caps, Settings/Clock/Weather, fish tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
   } finally {
     await browser.close();
   }
