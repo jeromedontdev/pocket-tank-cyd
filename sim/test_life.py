@@ -19,8 +19,10 @@ def exercise(lib, backup):
         lib.sim_action(7)
 
     def care():
-        home(); tap(100, 100); tap(100, 100)
+        home(); tap(100, 336); tap(100, 100)
 
+    lib.sim_action(1)
+    frame(); tap(392, 326)  # Acknowledge existing firsts before testing read-only navigation.
     lib.sim_action(1)
     keeper = frame()
     original = json.loads(backup(lib))
@@ -31,6 +33,10 @@ def exercise(lib, backup):
     hub = frame()
     assert hub != keeper
     tap(100, 100)
+    assert lib.sim_page() == 1, "Names & Looks must be on the first Home screen"
+    tap(392, 326)
+    assert frame() == hub, "Direct Names & Looks Back must return to Home"
+    tap(100, 336)
     fish_hub = frame()
     tap(100, 100)
     companions = frame()
@@ -100,7 +106,7 @@ def exercise(lib, backup):
     wardrobe["tank"].update(journal_xp=0, sd_balance=1000)
     data = json.dumps(wardrobe).encode()
     assert lib.sim_restore(data, len(data))
-    home(); tap(100, 100); tap(100, 180)
+    home(); tap(100, 336); tap(100, 180)
     before = json.loads(backup(lib))
     wardrobe_frame = frame()
     tap(405, 234)
@@ -111,7 +117,7 @@ def exercise(lib, backup):
     wardrobe["tank"]["journal_xp"] = 10000
     data = json.dumps(wardrobe).encode()
     assert lib.sim_restore(data, len(data))
-    home(); tap(100, 100); tap(100, 180)
+    home(); tap(100, 336); tap(100, 180)
     os.environ["POCKET_TANK_SAVE"] = str(Path(save_path).parent / "missing-wardrobe" / "save.sav")
     tap(100, 300)
     failed = json.loads(backup(lib))
@@ -172,7 +178,25 @@ def exercise(lib, backup):
         assert scaled["tank"]["sd_balance"] == reset["tank"]["sd_balance"]
         data = json.dumps(scaled).encode()
         assert lib.sim_restore(data, len(data)) and lib.sim_width() == width
-        home(); tap(100, 100); tap(100, 180)
+        home()
+        home_frame = frame()
+        guide_before = json.loads(backup(lib))
+        tap(330, 336)
+        guide_pages = [frame()]
+        for _ in range(2):
+            tap(330, 326)
+            guide_pages.append(frame())
+        assert len(set(guide_pages)) == 3, "All symbol guide pages must be distinct and reachable"
+        tap(330, 326)
+        assert frame() == guide_pages[0], "Symbol guide NEXT wraps"
+        tap(100, 326)
+        assert frame() == guide_pages[2], "Symbol guide PREVIOUS wraps"
+        tap(380, 24)
+        assert frame() == home_frame, "Symbol guide Back must return Home"
+        guide_after = json.loads(backup(lib))
+        guide_after["tank"]["saved_unix"] = guide_before["tank"]["saved_unix"]
+        assert guide_after == guide_before, "Guide navigation must not feed, spend, save or change tools"
+        home(); tap(100, 336); tap(100, 180)
         wardrobe_view = frame()
         tap(60, 180)
         colors_view = frame()
@@ -189,7 +213,8 @@ def exercise(lib, backup):
         tap(380, 24); tap(380, 24)
         assert lib.sim_page() == 9, "Wardrobe BACK returns to the Fish category"
         for category, child, destination in (
-                ((100, 100), (330, 100), 6),
+                ((100, 336), (330, 100), 6),
+                ((100, 100), None, 1),
                 ((330, 100), (100, 100), 3),
                 ((330, 100), (330, 100), 7),
                 ((330, 180), (100, 100), 5),
@@ -199,11 +224,11 @@ def exercise(lib, backup):
             if child:
                 parent = frame(); tap(*child)
             assert lib.sim_page() == destination
-            frame(); tap(392, 326 if destination == 3 else 19)
+            frame(); tap(392, 326 if destination in (1, 3) else 19)
             assert lib.sim_page() == 9, (width, category, destination, "Back must return Home/category")
             if child:
                 assert frame() == parent, "Back must return to the category actually used"
-        home(); tap(100, 100); tap(330, 180)
+        home(); tap(100, 336); tap(330, 180)
         assert lib.sim_page() == 1
         for point in ((70, 356), (170, 356), (275, 356), (375, 356), (70, 326), (220, 326)):
             tap(*point)
@@ -263,7 +288,7 @@ def exercise(lib, backup):
         tap(100, 320); help_frame = frame(); assert help_frame != care_frame
         tap(380, 24); assert frame() == care_frame, "Help has one Back, returning to interactions"
         polish_before = json.loads(backup(lib))
-        home(); tap(100, 100); tap(100, 260)
+        home(); tap(100, 336); tap(100, 260)
         life_frame = frame()
         assert life_frame != care_frame, "Fish Life opens from the Fish category, not Say Hello"
         for x, y in ((100, 272), (330, 272), (60, 320), (220, 320), (370, 320)):

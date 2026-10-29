@@ -2185,7 +2185,7 @@ int tank_ornament_h(int item) {
 }
 bool  tank_decor_placeable(int item) { return SD_IS_NEW_DECOR(item) || item == 0 || item == 2 || item == 3 || item == 4 || item == 8 || item == 9 || tank_ornament_index(item) >= 0; }
 int   tank_fixed_index(int item) { return SD_IS_SCENERY(item) ? item - SD_SCENERY_FIRST : item >= 22 && item <= 29 ? 6 + item - 22 : -1; }
-bool  tank_decor_movable(int item) { return tank_decor_placeable(item) || tank_fixed_index(item) >= 0; }
+bool  tank_decor_movable(int item) { return item != 8 && (tank_decor_placeable(item) || tank_fixed_index(item) >= 0); }
 bool  tank_decor_surface(int item) { return item == 24 || item == 28 || item == 29; }
 /* the fixed scenery's historical spots: the sand set in two staggered rows, the floats in quarters */
 static float fixed_default_x(int item) {
@@ -2257,6 +2257,7 @@ static const int DECOR_SLOT_ITEM[DECOR_SLOTS] = { 2, 3, 4, 8, 0, 9, 10, 11, 12, 
 int  tank_decor_slot(int item) { for (int s = 0; s < DECOR_SLOTS; s++) if (DECOR_SLOT_ITEM[s] == item) return s; return -1; }
 int  tank_decor_slot_item(int slot) { return slot >= 0 && slot < DECOR_SLOTS ? DECOR_SLOT_ITEM[slot] : -1; }
 bool tank_decor_owned(const tank_t *t, int item) {
+    if (item == 8) return false;
     if (SD_IS_SCENERY(item)) return (t->polish.scenery_unlocks & (1u << (item - SD_SCENERY_FIRST))) != 0;
     return SD_IS_NEW_DECOR(item) ? (t->content.owned & (1u << (item - SD_DECOR_FIRST))) != 0 :
         tank_decor_slot(item) >= 0 && (t->sd_unlocks & (1u << item));

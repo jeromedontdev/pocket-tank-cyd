@@ -436,7 +436,81 @@ static void test_harbor_garden_content(void) {
     puts("PASS: 20 unique static decorations, purchases/sales/copy storage, rollback, placement, binary/JSON ownership and six packed/colorable proportional wearables");
 }
 
+static void test_retired_pumpkin(void) {
+    tank_t t, loaded;
+    tank_init(&t, 701);
+    assert(progression_reset(&t, 701) && !progression_mode_select(&t, GAME_MODE_NORMAL));
+    progression_setup_done(&t);
+    const uint64_t bit = UINT64_C(1) << 8;
+    int slot = tank_decor_slot(8);
+    t.sd_balance = 100;
+    t.sd_unlocks |= SD_ITEM_PUMPKIN;
+    t.profile.owned_items |= bit;
+    t.profile.paid_items |= bit;
+    t.inventory.version = 1;
+    t.inventory.stored[slot] = 3;
+    t.inventory.paid[slot] = 2;
+    t.pumpkin_x = 80;
+    assert(!progression_pumpkin_offered(&t));
+    assert(!progression_item_owned(&t, 8) && !progression_item_unlocked(&t, 8));
+    assert(!tank_decor_owned(&t, 8) && !tank_decor_movable(8));
+    assert(progression_shop_count(&t) == SD_ITEM_COUNT - 1);
+    for (int row = 0; row < progression_shop_count(&t); row++)
+        assert(progression_shop_item(&t, row) != 8);
+    assert(!progression_buy(&t, 8) && !progression_inventory_buy(&t, 8));
+    assert(!progression_inventory_place(&t, 8) && !progression_inventory_store(&t, 8, -1));
+    assert(progression_save(&t));
+    char *legacy_json = progression_backup_json(&t); assert(legacy_json);
+    assert(test_decor_scenery_reload(&loaded, 702) == AQUARIUM_SAVE_BYTES);
+    int refunded = 100 + 3 * progression_sell_value(8);
+    assert(loaded.sd_balance == refunded && !(loaded.sd_unlocks & SD_ITEM_PUMPKIN));
+    assert(!(loaded.profile.owned_items & bit) && !(loaded.profile.paid_items & bit));
+    assert(!loaded.inventory.stored[slot] && !loaded.inventory.paid[slot] && !loaded.pumpkin_x);
+    test_decor_scenery_reject_write(true);
+    assert(!progression_save(&loaded));
+    test_decor_scenery_reject_write(false);
+    assert(test_decor_scenery_reload(&loaded, 705) == AQUARIUM_SAVE_BYTES);
+    assert(loaded.sd_balance == refunded);
+    assert(progression_save(&loaded));
+    assert(test_decor_scenery_reload(&loaded, 703) == AQUARIUM_SAVE_BYTES);
+    assert(loaded.sd_balance == refunded);
+    char *json = progression_backup_json(&loaded);
+    char error[96];
+    assert(json && progression_restore_json(json, strlen(json), true, error, sizeof error));
+    free(json);
+    assert(test_decor_scenery_reload(&loaded, 704) == AQUARIUM_SAVE_BYTES);
+    assert(loaded.sd_balance == refunded && !progression_pumpkin_offered(&loaded));
+    assert(progression_restore_json(legacy_json, strlen(legacy_json), true, error, sizeof error));
+    free(legacy_json);
+    assert(test_decor_scenery_reload(&loaded, 707) == AQUARIUM_SAVE_BYTES);
+    assert(loaded.sd_balance == refunded && !(loaded.sd_unlocks & SD_ITEM_PUMPKIN));
+    assert(!loaded.inventory.stored[slot] && !(loaded.profile.paid_items & bit));
+    assert(progression_reset(&t, 706) && !progression_mode_select(&t, GAME_MODE_NORMAL));
+    progression_setup_done(&t);
+    t.sd_balance = 2000;
+    t.sd_unlocks |= SD_ITEM_PUMPKIN;
+    t.profile.owned_items |= bit; t.profile.paid_items |= bit;
+    t.inventory.version = 1;
+    t.inventory.stored[slot] = t.inventory.paid[slot] = 1;
+    assert(progression_save(&t));
+    test_decor_scenery_reject_write(true);
+    assert(progression_aquarium_move(&t, 1));
+    assert(t.sd_balance == 2000 && (t.sd_unlocks & SD_ITEM_PUMPKIN));
+    test_decor_scenery_reject_write(false);
+    assert(!progression_aquarium_move(&t, 1));
+    int switched = 2000 - AQUARIUM_PRICE + progression_sell_value(8);
+    assert(t.sd_balance == switched && !t.inventory.stored[slot]);
+    progression_setup_done(&t);
+    assert(!progression_aquarium_move(&t, 0));
+    switched += progression_sell_value(8);
+    assert(t.sd_balance == switched && !(t.sd_unlocks & SD_ITEM_PUMPKIN));
+    assert(!progression_aquarium_move(&t, 1) && !progression_aquarium_move(&t, 0));
+    assert(t.sd_balance == switched && !t.inventory.stored[slot]);
+    puts("PASS: retired pumpkin hidden, unavailable and migrated with one refund per paid copy");
+}
+
 void test_decor_scenery(void) {
+    test_retired_pumpkin();
     test_decor_scenery_catalog();
     test_decor_scenery_buy_sell();
     test_decor_scenery_reload_paths();

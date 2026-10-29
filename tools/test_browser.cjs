@@ -72,8 +72,9 @@ async function main() {
       .match(/const sd_item_t SD_ITEMS\[[^\]]+\] = \{([\s\S]*?)\n\};/)[1];
     const catalog = [...catalogSource.matchAll(/\{\s*[^,]+,\s*"[^"]*",\s*"[^"]*",\s*"[^"]*",\s*(\w+)\s*\}/g)]
       .map(([, price], item) => ({item, price: prices.has(price) ? prices.get(price) : Number(price)}))
+      .filter(entry => entry.item !== 8)
       .sort((a, b) => a.price - b.price);
-    assert.equal(catalog.length, 63);
+    assert.equal(catalog.length, 62);
     async function openShopItem(item) {
       await page.locator('[data-action="0"]').click();
       await page.locator('[data-action="3"]').click();
@@ -807,7 +808,7 @@ async function main() {
       fs.rmSync(profile, {recursive: true, force: true});
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: 63-item shop including highest ID62 purchases, extended copies/place/store/reload and schema20 viewer facts at both scales; normal mussel/first-decoration purchases, automatic healthy income, care125 with unchanged XP, per-game5/day caps, Settings/Clock/Weather, fish tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
+    console.log("PASS: 62-item shop with retired ID8 excluded, highest ID62 purchases, extended copies/place/store/reload and schema20 viewer facts at both scales; normal mussel/first-decoration purchases, automatic healthy income, care125 with unchanged XP, per-game5/day caps, Settings/Clock/Weather, fish tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
   } finally {
     await browser.close();
   }

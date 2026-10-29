@@ -20,6 +20,27 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- The 2.3.20 work retires pumpkin ID 8, not the catalog index itself. Keep all
+  63 stable IDs and the legacy slot/position fields reserved: 62 items remain
+  offered. Never reuse that bit or collapse the inventory slot mapping.
+  `tank_decor_placeable(8)` remains true only for historical save validation;
+  availability, ownership, movement and inventory actions reject it.
+  `retire_pumpkin` clears placed/stored copies and paid provenance on load,
+  returning the normal sell value only for paid copies outside Creative.
+  Inactive tanks must retire **after** `share_progress`, so shared-wallet
+  copying cannot overwrite refunds. Failed persistence must retain retry
+  semantics, and revisiting a saved tank must not refund twice. Keep binary
+  schema 20 / 6424 bytes unchanged. Regression coverage includes failed
+  aquarium switches, archive visits, paid/free storage and binary/JSON reloads.
+- 2.3.20 Home routing: first tile opens Names & Looks; footer left opens the
+  unchanged Fish category as Life & Care, footer right opens Symbol Guide.
+  Update synthetic capture/test taps when routing changes; a nonempty frame
+  is not evidence that the intended page was captured. Clock screenshots
+  must use the Clock/Weather SHOW CLOCK tile, not obsolete footer coordinates.
+  Preserve all seven faces, saved settings and live/tile/cache pixel parity.
+  Fish-card labels must retain existing tool/next/lock hitboxes and input
+  behavior. Sponge/scissors are intentionally retained. The Symbol Guide
+  explains actual needs, traits and tools without adding progression rules.
 - Release 2.3.19 is published at tag/source
   `2141e67fd7ddf8b5720b76e0bd15c30e30102f32`. It collects the motion,
   placement, illustrated art, save-memory and 80 MHz follow-ups below, with

@@ -816,6 +816,7 @@ static void shop_save_failed(const char *what, const char *name) {
 }
 bool progression_item_owned(const tank_t *t, int item) {
     if (!t || item < 0 || item >= SD_ITEM_COUNT) return false;
+    if (item == 8) return false;
     if (item == SD_SHOP_MUSSEL)
         return tank_mussel_owned(t);
     if (SD_IS_NEW_DECOR(item)) return tank_decor_owned(t, item);
@@ -824,7 +825,7 @@ bool progression_item_owned(const tank_t *t, int item) {
         (t->aquariums.stat_upgrades & (1u << (item - 32))) != 0;
 }
 bool progression_item_unlocked(const tank_t *t, int item) {
-    return item >= 0 && item < SD_ITEM_COUNT &&
+    return item >= 0 && item < SD_ITEM_COUNT && item != 8 &&
         (progression_creative(t) || (t->profile.owned_items & (UINT64_C(1) << item)) ||
          progression_item_owned(t, item));
 }
@@ -844,13 +845,9 @@ int progression_shop_item(const tank_t *t, int row) {
     }
     return items[row];
 }
-/* the pumpkin's season (0.3.6; Strato 2026-10-17: "it can remain on their
- * board until they upgrade ... whatever release comes after oct 31 will
- * remove the pumpkin"): no date check - SD_PUMPKIN_IN_SHOP says whether
- * this build sells it; a keeper who has one keeps it (and its shop row, to
- * MOVE or SELL it) whatever the build */
 bool progression_pumpkin_offered(const tank_t *t) {
-    return progression_item_unlocked(t, 8) || SD_PUMPKIN_IN_SHOP;
+    (void)t;
+    return false;
 }
 static void sd_award(tank_t *t, int n) {
     if (n <= 0 || progression_creative(t)) return;
@@ -1419,7 +1416,7 @@ static bool inventory_fail(const char *notice) { s_shop_notice = notice; return 
 static uint32_t *s_inventory_undo;              /* inventory_begin's, until commit or abort */
 static tank_t *inventory_begin(tank_t *t, int item) {
     s_shop_notice = NULL;
-    if (!t || inventory_slot(item) < 0) {
+    if (!t || item == 8 || inventory_slot(item) < 0) {
         inventory_fail("THIS ITEM CANNOT BE STORED"); return NULL;
     }
     if (!inventory_valid(&t->inventory) || !content_valid(&t->content, &t->inventory)) {
@@ -1947,6 +1944,34 @@ static bool extra_games_valid(const game_records_t *s) {
 RTC_NOINIT_ATTR
 #endif
 static save_t s_save_scratch;
+static bool retire_pumpkin(save_t *sv) {
+    const uint64_t bit = UINT64_C(1) << 8;
+    int slot = tank_decor_slot(8);
+    bool changed = (sv->sd_unlocks & SD_ITEM_PUMPKIN) || (sv->profile.owned_items & bit) ||
+        (sv->profile.paid_items & bit) || sv->inventory.stored[slot] || sv->inventory.paid[slot] ||
+        sv->pumpkin_x != 0 || sv->pumpkin_z1 > 1;
+    unsigned paid = ((sv->sd_unlocks & SD_ITEM_PUMPKIN) && (sv->profile.paid_items & bit)) != 0;
+    paid += sv->inventory.paid[slot];
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++) if (sv->inventory.extra[i].item == 9) {
+        paid += sv->inventory.extra[i].paid != 0;
+        memset(&sv->inventory.extra[i], 0, sizeof sv->inventory.extra[i]);
+        changed = true;
+    }
+    sv->sd_unlocks &= ~SD_ITEM_PUMPKIN;
+    sv->profile.owned_items &= ~bit;
+    sv->profile.paid_items &= ~bit;
+    sv->inventory.stored[slot] = sv->inventory.paid[slot] = 0;
+    sv->pumpkin_x = 0; sv->pumpkin_z1 = 0;
+    int refund = sv->profile.mode == GAME_MODE_CREATIVE ? 0 : (int)paid * progression_sell_value(8);
+    if (sv->sd_balance > INT_MAX - refund) {
+        fprintf(stderr, "Retired pumpkin refund limited by wallet capacity\n");
+        refund = INT_MAX - sv->sd_balance;
+    }
+    sv->sd_balance += refund;
+    if (changed) fprintf(stderr, "Retired pumpkin removed; %d sand dollars refunded\n", refund);
+    return changed;
+}
+
 static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     save_t *sv = &s_save_scratch; memset(sv, 0, sizeof *sv);
     *saved_unix = 0; s_loaded_release = 0; s_loaded_unix = 0;
@@ -1990,6 +2015,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     }
     if (sv->companion.away && !bank_valid(&sv->companion.traveler)) return false;
     for (int i = 0; i < sv->bank_count; i++) if (!bank_valid(&sv->bank[i])) return false;
+    if (retire_pumpkin(sv)) mark_dirty();
     tank_reframe(t, sv->companion.display_compact != 0);
     if (got == SAVE_PRE_BUBBLE_SIZE) {         /* the first public installer's layout: see SAVE_PRE_BUBBLE_SIZE */
         memmove(&sv->ms_seen, &sv->bubble_x, sizeof sv->ms_seen + sizeof sv->tank_ms_seen);
@@ -3704,6 +3730,7 @@ static const char *aquarium_move(tank_t *t, int target) {
     error = share_bank(&s->incoming, &s->outgoing);
     if (error) goto done;
     share_progress(&s->incoming, &s->outgoing);
+    retire_pumpkin(&s->incoming);
     s->incoming.aquariums = owned; s->incoming.aquariums.active = (uint8_t)target;
     s->incoming.aquariums.stat_upgrades = incoming_stats;
     s->incoming.aquariums.clock_theme = incoming_clock;

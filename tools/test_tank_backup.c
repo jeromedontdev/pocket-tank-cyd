@@ -1217,7 +1217,7 @@ static void test_journal(void) {
     assert(progression_restore_json(old_json, strlen(old_json), true, error, sizeof error));
     saved_size = 2000; tank_init(&reloaded, 8); boot_enlarged(&reloaded);
     assert(!reloaded.journal.xp && !reloaded.journal.seen && !reloaded.journal.initialized);
-    assert(reloaded.fish[0].variety == FISH_SHARK && reloaded.sd_unlocks == t.sd_unlocks);
+    assert(reloaded.fish[0].variety == FISH_SHARK && reloaded.sd_unlocks == (t.sd_unlocks & ~SD_ITEM_PUMPKIN));
     journal_tick(&reloaded); assert(!reloaded.journal.xp && (reloaded.journal.seen & (1u << FISH_SHARK)));
     free(json); free(old_json);
     size_t pixels = TANK_W * TANK_H;
@@ -2677,7 +2677,7 @@ static void test_social_and_preview(void) {
         tank_set_name(&t, 0, "renamed"); t.fish[0].color ^= 0xffffff;
         assert(tank_favorite_decor(&t, 0) == favorite);
         for (int item = 0; item < SD_ITEM_COUNT; item++) {
-            if (!tank_decor_placeable(item)) continue;
+            if (item == 8 || !tank_decor_placeable(item)) continue;
             char *original = progression_backup_json(&t); assert(original);
             setup_begin_place(&t, item); assert(setup_is_place());
             tank_decor_set(&t, item, TANK_W * .7f, DECOR_Z_BACK);
@@ -3444,7 +3444,7 @@ static void test_inventory(void) {
     t.sd_balance = wallet;
     assert(!progression_inventory_buy(&t, 1) && !progression_inventory_duplicate(0));
     for (int item = 0; item <= 8; item++) {
-        if (!tank_decor_placeable(item)) continue;
+        if (item == 8 || !tank_decor_placeable(item)) continue;
         assert(progression_buy(&t, item));
         assert(progression_inventory_store(&t, item, -1));
         assert(progression_inventory_buy(&t, item));
@@ -3455,7 +3455,7 @@ static void test_inventory(void) {
     t.coral_growth = 0.42f; tank_coral_set_rgb(&t, 0x123456);
     t.cluster_growth = 0.57f; tank_cluster_set_scheme(&t, 2);
     tank_veg_set(&t, 3, 0.63f);
-    const int complex[] = {0, 2, 3, 4, 8};
+    const int complex[] = {0, 2, 3, 4};
     for (unsigned i = 0; i < sizeof complex / sizeof *complex; i++) {
         int item = complex[i];
         tank_decor_set(&t, item, 100 + (float)i * 15, DECOR_Z_FRONT);

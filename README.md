@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.19
+# Pocket Tank CYD 2.3.20
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.19**. Stable firmware,
+now versioned independently. This source targets **2.3.20**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -25,7 +25,23 @@ decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.19: smoother fish, illustrated menus and movable scenery
+## New in 2.3.20: fish-first identity and quieter presentation
+
+**Names & Looks** is the first Home tile. **Life & Care** keeps greetings,
+wardrobe, Bank and life-history routes together, while **Symbol Guide** on
+Home explains needs, personality, tools and bond. Tapped-fish cards now label
+their bars and personality traits; sponge, scissors and lock controls remain.
+All seven clock faces gain restrained framing and clearer detail without
+animated glow, new buffers or changes to saved clock preferences.
+
+The seasonal pumpkin is retired, including its flicker, night illumination
+and full-screen redraw requirement. It is no longer sold, placed or drawn.
+Old saves still load: item ID 8 and its binary fields remain reserved, and
+paid pumpkins receive their usual 20-percent sell-back value once when their
+aquarium is loaded. Stored copies are retired too; free/Creative copies earn
+no refund. This changes neither save size nor partitions.
+
+## Retained from 2.3.19: smoother fish, illustrated menus and movable scenery
 
 Fish swim more fluidly. The tail beat advances continuously instead of jumping
 when speed changes, turns ease in and out, and pace follows a damped spring.
@@ -444,8 +460,8 @@ do not generate resale money.
 
 Storage holds up to 64 pieces. A tank retains its existing primary placements
 and can display up to eight additional basic ornaments, each with its own
-position and front/back depth. Plants, castles, living coral, reef clusters
-and pumpkins can have multiple owned copies in storage or different tanks,
+position and front/back depth. Plants, castles, living coral and reef clusters
+can have multiple owned copies in storage or different tanks,
 but only one of each is placed per tank: their vegetation, lighting, growth
 and helper-anchor systems remain single-instance. Helpers, permanent upgrades,
 themes and fixed background scenery are not inventory objects.

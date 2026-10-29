@@ -386,7 +386,7 @@ def main():
                 tap(172, 315)
                 assert json.loads(backup(lib))["tank"]["tools_locked"] == 1 and lib.sim_selected() == first
                 tap(70, 80)
-                assert lib.sim_page() == 9, "The fish card MENU must open Home"
+                assert lib.sim_page() == 9, "The fish card HOME must open Home"
                 print("PASS: fish-card arrow cycles all fish, wraps, cancels off-target releases and does not feed/open Keeper")
                 from test_games import exercise
                 exercise(lib, backup, output)
@@ -445,7 +445,7 @@ def main():
                 prices = [int(price_defines.get(price, price)) for price in re.findall(
                     r'\{\s*[^,]+,\s*"[^"]*",\s*"[^"]*",\s*"[^"]*",\s*(\w+)\s*\}', catalog)]
                 assert len(prices) == 63
-                order = sorted(range(len(prices)), key=lambda i: (prices[i], i))
+                order = sorted((i for i in range(len(prices)) if i != 8), key=lambda i: (prices[i], i))
                 fry_row = int(bool(shop_demo["tank"]["tank_ms_bits"] & (1 << 14)))
                 for item in range(22, 43):
                     lib.sim_action(0)  # Reset shop pagination without altering the save.
@@ -484,7 +484,7 @@ def main():
                 assert lib.sim_restore(data, len(data))
                 print("PASS: twenty-one shop purchases through price-sorted UI, including all four stat upgrades, six fixed scenery pieces (each opening placement) and the pearl mussel")
                 lib.sim_action(1)
-                lib.sim_action(7); tap(100, 100); tap(330, 100)
+                lib.sim_action(7); tap(100, 336); tap(330, 100)
                 assert lib.sim_page() == 6, "Fish category must open the fish bank"
                 lib.sim_frame(0.04)
                 bank_before = json.loads(backup(lib))

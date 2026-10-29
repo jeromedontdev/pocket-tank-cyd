@@ -69,7 +69,7 @@ def exercise(lib, backup):
         assert lib.sim_page() == 7
         tap(200, 308); tap(310, 240)
         assert snapshot()["tank"]["n_fish"] == 5
-        lib.sim_action(7); tap(100, 100); tap(330, 100)
+        lib.sim_action(7); tap(100, 336); tap(330, 100)
         assert lib.sim_page() == 6
         tap(300, 330); tap(350, 196); tap(300, 240)
         stored = snapshot()
@@ -78,7 +78,7 @@ def exercise(lib, backup):
         lineage = bytes.fromhex(stored["story"]["bank"])[:10]
         aquariums(); tap(350, 160); tap(300, 250)
         assert snapshot()["bank"] == stored["bank"], "New tanks share the same Bank"
-        lib.sim_action(7); tap(100, 100); tap(330, 100)
+        lib.sim_action(7); tap(100, 336); tap(330, 100)
         tap(350, 104); tap(120, 240); tap(300, 240)
         moved = snapshot()
         assert not moved["bank"] and moved["tank"]["n_fish"] == 3
@@ -87,13 +87,13 @@ def exercise(lib, backup):
         aquariums(); tap(350, 120); tap(300, 250)
         assert not snapshot()["bank"] and snapshot()["tank"]["n_fish"] == 4, "Do not revive a stale SD Bank"
         aquariums(); tap(350, 160); tap(300, 250)
-        lib.sim_action(7); tap(100, 100); tap(330, 100)
+        lib.sim_action(7); tap(100, 336); tap(330, 100)
         tap(300, 330); tap(350, 196); tap(300, 240)
         aquariums(); tap(350, 120); tap(300, 250)
-        lib.sim_action(7); tap(100, 100); tap(330, 100)
+        lib.sim_action(7); tap(100, 336); tap(330, 100)
         tap(350, 104); tap(120, 240); tap(300, 240)
         assert not snapshot()["bank"] and snapshot()["tank"]["n_fish"] == 5
-        lib.sim_action(7); tap(100, 100); tap(100, 180); tap(100, 300)
+        lib.sim_action(7); tap(100, 336); tap(100, 180); tap(100, 300)
         assert bytes.fromhex(snapshot()["companion"]["active"])[9] != 0, "Creative wardrobe is free"
         lib.sim_action(7); tap(330, 180); tap(100, 180)
         for cosmetic in (1, 2, 3, 0):

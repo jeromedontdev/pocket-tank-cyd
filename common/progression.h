@@ -302,11 +302,8 @@ void progression_shop_notice_clear(void);
  * and saved at once */
 bool progression_buy(tank_t *t, int item);
 int progression_item_price_for(const tank_t *t, int item);
-/* the seasonal pumpkin (0.3.6): sold while SD_PUMPKIN_IN_SHOP - the first
- * release after October 31 sets it to 0 (Strato: no date check, a board
- * keeps selling it until it is updated). One bought stays in its tank, so
- * the shop keeps its row for the keeper who has one. */
-#define SD_PUMPKIN_IN_SHOP 1
+/* Retired item 8 remains reserved for old binary/JSON saves; never reassign it. */
+#define SD_PUMPKIN_IN_SHOP 0
 bool progression_pumpkin_offered(const tank_t *t);
 /* the sale back (2026-09-24, Strato): a placeable piece sells for SD_SELL_PCT
  * of its price (the snail is a permanent resident), goes back to the shop at

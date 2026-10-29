@@ -404,7 +404,38 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
     const tank_polish_t *p = &t->polish;
     char line[80], date[40];
     int i = selected < t->n_fish ? selected : 0;
-    if (page == COMPANION_SECTION_LIFE) {
+    if (page == COMPANION_SECTION_SYMBOLS) {
+        static const char *const headings[] = {
+            "READING YOUR FISH", "PERSONALITY, NOT A SCORE", "TOOLS & TOUCH"
+        };
+        static const char *const lines[3][6] = {
+            {"FOOD / FULLNESS: MORE IS BETTER.",
+             "BOLT / ENERGY: MORE IS BETTER.",
+             "STRESS: LESS IS BETTER.",
+             "HEART / TRUST: MORE IS BETTER.",
+             "BARS SHOW CURRENT NEEDS, NOT BOND.",
+             "BOND GROWS WHEN YOU SAY HELLO."},
+            {"BOLDNESS: SHY <-> BOLD.",
+             "SOCIAL: SOLO <-> SOCIAL.",
+             "CURIOSITY: CAUTIOUS <-> CURIOUS.",
+             "NEITHER END IS GOOD OR BAD.",
+             "? = NOT YET OBSERVED. WATCH THEM.",
+             "BORDER COLOR IDENTIFIES YOUR FISH."},
+            {"SPONGE: WIPE ALGAE FROM THE GLASS.",
+             "SCISSORS: TRIM SEAGRASS.",
+             "OPEN LOCK: BARE TOUCH CAN CLEAN.",
+             "CLOSED LOCK: USE A TOOL TO CLEAN.",
+             "ARROW: NEXT FISH. HOME: FISH PAGES.",
+             "DONE: PUT THE CURRENT TOOL AWAY."}
+        };
+        text(fb, stride, 14, 92, 0xffd998, headings[leaf]);
+        for (int j = 0; j < 6; j++)
+            render_text(fb, stride, 14, 128 + j * 24, 1, 0xe7f4dc, lines[leaf][j]);
+        snprintf(line, sizeof line, "SYMBOLS %d/3", leaf + 1);
+        render_text(fb, stride, 14, 290, 1, 0xa7c4ba, line);
+        button(fb, stride, 12, 312, 205, "< PREVIOUS");
+        button(fb, stride, 231, 312, 205, "NEXT >");
+    } else if (page == COMPANION_SECTION_LIFE) {
         if (!t->n_fish) text(fb, stride, 14, 94, 0xe7f4dc, "No fish at home. Check Bank / away.");
         else {
             const fish_t *f = &t->fish[i]; const fish_life_t *life = &p->active[i];
@@ -618,6 +649,7 @@ static bool information_page(void) {
     case COMPANION_SECTION_VISITORS:
     case COMPANION_SECTION_REWARDS:
     case COMPANION_SECTION_GENES:
+    case COMPANION_SECTION_SYMBOLS:
         return true;
     default:
         return false;
@@ -631,7 +663,7 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
     render_rect_edge(fb, stride, 3, 3, PAGE_W - 6, PAGE_H - 6, frame_colors[cosmetic]);
     const char *title = page == COMPANION_SECTION_CARE ? "FISH INTERACTION" : page == COMPANION_SECTION_COLLECTIONS ? "DISCOVERIES" : page == COMPANION_SECTION_ADVENTURES ? "ADVENTURES" :
                         page == COMPANION_SECTION_WARDROBE ? "WARDROBE" : page == COMPANION_SECTION_CREATURE_COLORS ? "CREATURE COLORS" : page == COMPANION_SECTION_GEAR_COLORS ? "GEAR COLORS" : page == COMPANION_SECTION_APPEARANCE ? "SAND & WATER" :
-                        page == COMPANION_SECTION_LIFE ? "A FISH'S LIFE" : page == COMPANION_SECTION_RECAP ? "WHILE YOU WATCHED" : page == COMPANION_SECTION_IDENTITY ? "TANK IDENTITY" :
+                        page == COMPANION_SECTION_SYMBOLS ? "SYMBOL GUIDE" : page == COMPANION_SECTION_LIFE ? "A FISH'S LIFE" : page == COMPANION_SECTION_RECAP ? "WHILE YOU WATCHED" : page == COMPANION_SECTION_IDENTITY ? "TANK IDENTITY" :
                         page == COMPANION_SECTION_OBJECTS ? "OBJECT STORIES" : page == COMPANION_SECTION_KEEPSAKES ? "ADVENTURE KEEPSAKES" : page == COMPANION_SECTION_HINTS ? "DISCOVERY HINTS" :
                         page == COMPANION_SECTION_FIRSTS ? "LIFE FIRSTS" : page == COMPANION_SECTION_FAMILY ? "FAMILY TREE" : page == COMPANION_SECTION_VISITORS ? "VISITOR LOG" :
                         page == COMPANION_SECTION_REWARDS ? "DISPLAY REWARDS" : page == COMPANION_SECTION_GENES ? "FISH GENES" :
@@ -885,7 +917,10 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
             }
         }
     } else if (information_page()) {
-        if ((page == COMPANION_SECTION_LIFE || page == COMPANION_SECTION_FAMILY || page == COMPANION_SECTION_GENES) && y >= 84 && y < 116 && x >= 304 && x < 436 && t->n_fish)
+        if (page == COMPANION_SECTION_SYMBOLS && y >= 312 && y < 342 &&
+            ((x >= 12 && x < 217) || (x >= 231 && x < 436)))
+            leaf = (leaf + (x < 217 ? 2 : 1)) % 3;
+        else if ((page == COMPANION_SECTION_LIFE || page == COMPANION_SECTION_FAMILY || page == COMPANION_SECTION_GENES) && y >= 84 && y < 116 && x >= 304 && x < 436 && t->n_fish)
             selected = (selected + 1) % t->n_fish;
         else if (page == COMPANION_SECTION_IDENTITY && y >= 256 && y < 286 && x >= 231 && x < 436) {
             uint8_t f = t->story.flags, next = f & STORY_SEASONS_OFF ? 0 : f & STORY_SEASONS_SOUTH ? STORY_SEASONS_OFF : STORY_SEASONS_SOUTH;

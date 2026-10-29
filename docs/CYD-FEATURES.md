@@ -2,7 +2,18 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.3.19**
+**An illustrated tour of Pocket Tank CYD 2.3.20**
+
+**2.3.20 fish-first Home:** Names & Looks is the first tile; Life & Care in
+the footer retains the fish menus. The adjacent three-page Symbol Guide
+explains needs, personality and tools. Fish cards label their bars and traits,
+and keep sponge/scissors/lock behavior. All seven clock faces have cleaner
+static framing and detail, preserving every size, color and layout preference.
+
+**2.3.20 pumpkin retirement:** the pumpkin and its animated lighting are
+removed from the shop and all aquariums. Old saves remain readable, with its
+ID and binary fields reserved. Paid copies receive the normal 20-percent
+sell-back value once on loading; free and Creative copies receive no refund.
 
 **2.3.19 smoother fish:** the tail beat advances continuously, turns ease in
 and out, and pace follows a damped spring, so speed changes and late frames no
@@ -235,7 +246,7 @@ inventory. Existing tank layouts remain local. Storage is limited to 64
 pieces, with up to eight additional basic ornaments per tank. Extra ornaments
 have independent positions and front/back depths; **CANCEL** discards only
 the selected copy's positioning draft. They are decorative copies, not extra
-helper anchors. Complex plants/castles/living coral/reef clusters/pumpkins
+helper anchors. Complex plants/castles/living coral/reef clusters
 remain one placed copy of each type per tank, but additional owned copies can
 be stored or placed in other aquariums. Helpers, upgrades, themes and fixed
 background scenery retain their existing behavior outside inventory.
@@ -1341,9 +1352,9 @@ Prices are in sand dollars.
 
 The shop now sorts unlocks **cheapest first**, keeping equal-price choices
 in a stable order. The optional nursery FRY row remains a separate first row.
-There are **42 stable unlock IDs** in the catalog (the seasonal pumpkin can
-be unavailable), plus the separate nursery offers. All original and added
-the shop list shows every item's preview **in full color** on its own card;
+There are **63 stable catalog IDs**, with retired pumpkin ID 8 reserved:
+**62 items** remain available, plus the separate nursery offers.
+The shop list shows every item's preview **in full color** on its own card;
 the detail dialog shows an item muted gray before purchase and full color
 after. Gray does not mean you cannot afford an item; the price/button
 indicates affordability.

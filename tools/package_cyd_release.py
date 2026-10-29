@@ -176,7 +176,14 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.19: smoother fish, illustrated menus and movable scenery
+### New in 2.3.20: fish-first identity and quieter presentation
+
+- Names & Looks is the first Home tile; Life & Care retains fish menus and Symbol Guide explains needs, personality and tools. Fish cards label their bars and traits, retaining sponge/scissors/lock controls.
+- All seven clock faces have cleaner static framing and detail, preserving sizes, colors, layout and saved preferences without adding glow or buffers.
+- The pumpkin is retired from the shop and all aquariums, including its animated glow, night lighting and full-screen damage requirement. Legacy item ID 8, inventory slot and binary fields stay reserved; saves and exports retain schema 20 / 6424 bytes.
+- Old paid pumpkins receive their usual 20-percent sell-back value once on loading. Stored copies are retired too; free/Creative copies earn no refund. Inactive aquariums migrate when opened, without changing partitions, fish or unrelated decorations.
+
+### Retained from 2.3.19: smoother fish, illustrated menus and movable scenery
 
 - Fluid swimming: a continuous tail-beat phase, eased turns and a damped speed spring replace stepped fin, heading and pace changes. Edge avoidance ramps in smoothly, so fish no longer seesaw at the surface, sides or sand. Runtime-only state; no save or render cost.
 - The eighteen mini-games and their thumbnails share an illustrated art kit (water gradients, light shafts, kelp, sand, bevelled blocks, game-specific props, HUD plates). Every menu shares the same backdrop, bevelled buttons and full-colour shop previews. Hit boxes are unchanged; games still run at 27-30 FPS.

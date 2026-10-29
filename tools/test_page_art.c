@@ -100,12 +100,50 @@ static void check_menu_layout(const char *gallery) {
         snprintf(name, sizeof name, "clock-%d", p); menu_begin(name);
         render_settings(&t, full_frame, TANK_W, 100); menu_end(gallery);
     }
-    for (int section = COMPANION_SECTION_CARE; section <= COMPANION_SECTION_RPG_HELP; section++) {
+    for (int section = COMPANION_SECTION_CARE; section <= COMPANION_SECTION_SYMBOLS; section++) {
         if (section == 17) continue;
         companion_open_section(section);
         snprintf(name, sizeof name, "companion-%d", section); menu_begin(name);
         companion_render(&t, full_frame, TANK_W); menu_end(gallery);
     }
+    companion_open_section(COMPANION_SECTION_SYMBOLS);
+    for (int p = 0; p < 3; p++) {
+        snprintf(name, sizeof name, "symbol-guide-%d", p); menu_begin(name);
+        companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+        for (int y = 0; y < TANK_H; y += 17) {
+            int height = TANK_H - y < 17 ? TANK_H - y : 17;
+            memset(tile_frame, 0, sizeof tile_frame);
+            render_tile(y, height);
+            companion_render(&t, tile_frame, TANK_W);
+            assert(!memcmp(tile_frame, full_frame + y * TANK_W, (size_t)height * TANK_W * 2));
+        }
+        render_tile(0, 0);
+        companion_tap(&t, render_frame_x(330), render_frame_y(326));
+    }
+    render_set_card_cache(NULL);
+    for (int known = 0; known < 2; known++) {
+        t.fish[0].ms_bits = known ? MS_FIRST_DART | MS_FIRST_FOLLOW | MS_INSPECTED : 0;
+        memset(full_frame, 0, sizeof full_frame);
+        snprintf(name, sizeof name, "fish-card-%d", known); menu_begin(name);
+        render_stats_card(&t, 0, full_frame, TANK_W); menu_end(gallery);
+        for (int y = 0; y < TANK_H; y += 17) {
+            int height = TANK_H - y < 17 ? TANK_H - y : 17;
+            memset(tile_frame, 0, sizeof tile_frame);
+            render_tile(y, height);
+            render_stats_card(&t, 0, tile_frame, TANK_W);
+            assert(!memcmp(tile_frame, full_frame + y * TANK_W, (size_t)height * TANK_W * 2));
+        }
+        render_tile(0, 0);
+    }
+    if (gallery) for (int theme = CLOCK_COMPACT; theme < CLOCK_THEME_COUNT; theme++)
+        for (int size = 0; size < CLOCK_SIZE_COUNT; size++) {
+            t.aquariums.clock_theme = (uint8_t)theme;
+            t.aquariums.clock_layout = clock_layout_set_size(0, size);
+            memset(full_frame, 0, sizeof full_frame);
+            render_clock_overlay(&t, full_frame, TANK_W, INT64_C(1735745662));
+            snprintf(name, sizeof name, "face-%d-size-%d", theme, size);
+            menu_screen = name; menu_end(gallery);
+        }
     render_aquariums_open(&t);
     for (int pick = -1; pick <= 1; pick++) {
         g_aquarium_pick = pick;
@@ -633,7 +671,20 @@ static void check_companion_navigation(void) {
     tank_t tank;
     tank_init(&tank, 77);
     tank_new_population(&tank);
-    for (int section = COMPANION_SECTION_CARE; section <= COMPANION_SECTION_RPG_EVENT; section++) {
+    tank_t before = tank;
+    render_life_open();
+    assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(100)) == HOME_KEEPER);
+    assert(!g_home_category && !g_life_page);
+    assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(336)) == HOME_NONE);
+    assert(g_home_category == 1 && !g_life_page);
+    assert(render_life_tap(&tank, render_frame_x(330), render_frame_y(100)) == HOME_BANK);
+    render_life_open();
+    assert(render_life_tap(&tank, render_frame_x(330), render_frame_y(336)) == HOME_NONE);
+    assert(g_life_page);
+    assert(render_life_tap(&tank, render_frame_x(390), render_frame_y(24)) == HOME_NONE);
+    assert(!g_life_page && !g_home_category);
+    assert(!memcmp(&before, &tank, sizeof tank));
+    for (int section = COMPANION_SECTION_CARE; section <= COMPANION_SECTION_SYMBOLS; section++) {
         if (section == 17) continue;
         companion_open_section(section);
         companion_render(&tank, full_frame, TANK_W);
@@ -654,6 +705,75 @@ static void check_companion_navigation(void) {
     companion_key_face(repeated, 304, 86, 132);
     render_text(repeated, TANK_W, 312, 93, 2, 0xe7f4dc, "NEXT TYPE");
     assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
+}
+
+static void check_retired_lantern(void) {
+    tank_t t = help_tank;
+    t.aquariums.clock_theme = CLOCK_OFF;
+    t.clock_requested = false;
+    size_t bytes = (size_t)TANK_W * TANK_H * 2;
+    render_damage_policy(RENDER_DAMAGE_PARTIAL);
+    for (int night = 0; night < 2; night++) {
+        t.night = night != 0;
+        t.sd_unlocks &= ~SD_ITEM_PUMPKIN;
+        render_set_scene_cache(NULL);
+        render_tank(&t, full_frame, TANK_W);
+        render_damage_begin(&t, true);
+        for (int i = 0; i < 3; i++) render_damage_begin(&t, false);
+        uint16_t damage[TANK_MAX_H], blocks[6];
+        memcpy(damage, g_damage, sizeof damage);
+        memcpy(blocks, g_damage_blocks, sizeof blocks);
+        t.sd_unlocks |= SD_ITEM_PUMPKIN; /* Deliberately bypass migrations and progression. */
+        render_set_pumpkin_hidden(false);
+        render_tank(&t, repeated, TANK_W);
+        assert(!memcmp(full_frame, repeated, bytes));
+        assert(pc_index(8) == -1 && g_pk_lx == -1);
+        render_damage_begin(&t, false);
+        assert(!memcmp(damage, g_damage, sizeof damage));
+        assert(!memcmp(blocks, g_damage_blocks, sizeof blocks));
+        memset(repeated, 0x5a, bytes);
+        memcpy(full_frame, repeated, bytes);
+        render_decor_thumbnail(repeated, TANK_W, 80, 80, 40, 8, true);
+        assert(!memcmp(full_frame, repeated, bytes));
+        int glow = -1;
+        assert(!render_pumpkin_px(&glow) && !glow && !render_glow_rgb(&t));
+    }
+    render_damage_policy(RENDER_DAMAGE_ADAPTIVE);
+    puts("PASS: raw retired lantern bit adds no day/night pixels, thumbnail, light or damage rectangles");
+}
+
+static void benchmark_modern_surfaces(void) {
+    tank_t t;
+    tank_init(&t, 77); tank_new_population(&t);
+    assert(t.n_fish > 0);
+    const int samples = 500;
+    render_tile(0, 0); render_region(0, 0);
+    render_set_card_cache(NULL); render_set_scene_cache(NULL);
+    printf("HOST UI %dx%d (500 warmed draws, existing framebuffer only):", TANK_W, TANK_H);
+    for (int surface = 0; surface < 12; surface++) {
+        render_life_open();
+        if (surface >= 2 && surface < 5) {
+            companion_open_section(COMPANION_SECTION_SYMBOLS);
+            for (int p = 2; p < surface; p++)
+                companion_tap(&t, render_frame_x(330), render_frame_y(326));
+        }
+        if (surface >= 5) {
+            t.aquariums.clock_theme = (uint8_t)(surface - 4);
+            t.aquariums.clock_layout = clock_layout_set_size(0, CLOCK_MEDIUM);
+        }
+        clock_t start = 0;
+        for (int sample = -1; sample < samples; sample++) {
+            if (!sample) start = clock();
+            if (!surface) render_life(&t, full_frame, TANK_W);
+            else if (surface == 1) render_stats_card(&t, 0, full_frame, TANK_W);
+            else if (surface < 5) companion_render(&t, full_frame, TANK_W);
+            else render_clock_overlay(&t, full_frame, TANK_W, INT64_C(1735745662));
+        }
+        double mean_ms = (double)(clock() - start) * 1000 / CLOCKS_PER_SEC / samples;
+        printf(" %s%d=%.3fms", surface == 0 ? "Home" : surface == 1 ? "Card" :
+               surface < 5 ? "Guide" : "Clock", surface < 2 ? 0 : surface < 5 ? surface - 2 : surface - 4, mean_ms);
+    }
+    printf(" (optional existing work caches: %zu bytes)\n", render_work_cache_bytes());
 }
 
 static void check_content_page_tiles(void) {
@@ -1545,10 +1665,12 @@ int main(int argc, char **argv) {
         check_clock_replay_pixels();
         check_ornament_spans();
         check_companion_navigation();
+        check_retired_lantern();
         check_content_page_tiles();
         check_inventory_ui();
         assert(TANK_W == (resolution ? 320 : 240));
         check_menu_layout(gallery);
+        benchmark_modern_surfaces();
         check_aquarium_effects();
         check_care_scene_cache();
         if (gallery) {

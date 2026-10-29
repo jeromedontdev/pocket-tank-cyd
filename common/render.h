@@ -164,9 +164,9 @@ int render_stats_next(const tank_t *t, int selected);
 #define RENDER_CARD_X 14
 #define RENDER_CARD_Y 8
 #define RENDER_CARD_W 124
-#define RENDER_CARD_H 258       /* 228 + the MORE button strip (2026-09-16) */
+#define RENDER_CARD_H 258       /* includes the HOME button strip */
 /* the card's tap hit box (touch ports): the card itself plus slop, most of
- * it BELOW the MORE button - fingers aiming at a button by the foot land
+ * it BELOW the HOME button - fingers aiming at a button by the foot land
  * low and wide (Strato, 2026-09-16: "I'm not tapping it reliably"). Since
  * the toolbox (2026-10-01) the slop below is the gap down to it: 56 px of
  * it was for the panel's stretched report, which the calibration (09-30)
@@ -180,7 +180,7 @@ int render_stats_next(const tank_t *t, int selected);
                                RENDER_CARD_HIT_Y(y) >= RENDER_CARD_Y && RENDER_CARD_HIT_Y(y) < RENDER_CARD_Y + RENDER_CARD_H + RENDER_CARD_HIT_BELOW)
 void render_set_card_cache(uint16_t *buf);
 /* The TOOLBOX (2026-10-01): under a fish's card, a little apart from it so
- * MORE keeps its own ground, a box in the card's dress with two big buttons
+ * HOME keeps its own ground, a box in the card's dress with two big buttons
  * - the SPONGE and the SCISSORS (tank.h TOOL_*). render_stats_card draws it
  * with a fish's card; the one in hand is lit (a white double edge on a
  * lighter fill - brightness, not hue). render_tools_hit(x, y) is the tap

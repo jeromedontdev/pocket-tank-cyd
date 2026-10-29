@@ -8,7 +8,32 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.14 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.3.20 is a distinct aquarium game, not just a board port.**
+
+## Release 2.3.20: fish-first identity
+
+Names & Looks is the first Home tile. Life & Care in the footer preserves
+the fish menu; Symbol Guide alongside it explains needs, personality, bond
+and tools across three pages. Tapped-fish cards label fullness, energy,
+stress, trust and traits, retaining sponge/scissors/lock/next behavior.
+All seven clock faces gain restrained static framing and clearer detail;
+saved faces, sizes, colors, positions and transparency remain unchanged.
+
+The pumpkin is retired completely, including its static halo, animated
+illumination and unconditional full-screen night damage. Catalog ID 8 and
+its old binary fields/inventory slot remain reserved; the shop offers 62
+items without renumbering the 63 stable IDs. Existing paid placements and
+stored copies receive the usual 20-percent sell-back value once on loading.
+Free/Creative copies receive no refund. Inactive aquariums migrate on entry,
+after shared progress is copied, preserving refunds and retry behavior on
+failed saves. Saves remain schema 20 / 6424 bytes, with no partition change.
+
+The local native matrix, both-scale page audit, 30-second/1200-frame retained
+renderer soak, simulator smoke and real Edge browser acceptance passed.
+Host timings over 500 warmed draws were Home 0.036/0.048 ms, fish card
+0.044/0.046 ms, guide pages 0.028-0.030/0.032-0.034 ms and clocks
+0.004-0.012/0.006-0.012 ms at 240/320 widths. These are absolute host costs,
+not CYD FPS gains. No work buffers or per-frame animation were added.
 
 Version 2.3.10 treats the mussel as an inspectable, color-customizable creature.
 Tap it for automatic-income progress, daily allowance and earning/paused status.

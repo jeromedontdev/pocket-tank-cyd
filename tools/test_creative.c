@@ -150,6 +150,10 @@ int main(void) {
     wallet(&t, 37, 59, 0);
 
     for (int i = 0; i < SD_ITEM_COUNT; i++) {
+        if (i == 8) {
+            assert(!progression_item_unlocked(&t, i) && !progression_buy(&t, i));
+            continue;
+        }
         if (progression_item_owned(&t, i)) continue;
         assert(progression_buy(&t, i));
         assert(progression_item_owned(&t, i));
@@ -171,10 +175,16 @@ int main(void) {
     t.player_feedings += 100; t.algae_colonies += 100; t.trim_px += 1000;
     for (int i = 0; i < t.n_fish; i++) t.fish[i].ms_bits |= MS_REACHED_JUV | MS_REACHED_ADULT;
     progression_tick(&t, 1); wallet(&t, 37, 59, 0);
+    t.sd_unlocks |= SD_ITEM_PUMPKIN;
+    t.profile.owned_items |= UINT64_C(1) << 8;
+    t.profile.paid_items |= UINT64_C(1) << 8;
+    t.inventory.version = 1;
+    t.inventory.stored[tank_decor_slot(8)] = t.inventory.paid[tank_decor_slot(8)] = 1;
     assert(progression_save(&t));
     char *json = progression_backup_json(&t); assert(json);
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     reload(&t); wallet(&t, 37, 59, 0); assert(progression_creative(&t));
+    assert(!(t.sd_unlocks & SD_ITEM_PUMPKIN) && !t.inventory.stored[tank_decor_slot(8)]);
     free(json);
 
     before = t; reject_write = true;

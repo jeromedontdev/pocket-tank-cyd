@@ -137,10 +137,41 @@ static void check_growth(bool compact) {
     draw_feedback(&t, COMPANION_SECTION_LIFE);
     assert(progression_age_s(&t, 0) == age); /* Rendering itself never advances time. */
 }
+static void check_symbols(bool compact) {
+    tank_t t;
+    fresh_feedback(&t, compact, GAME_MODE_NORMAL);
+    tank_t before = t;
+    int old_writes = writes;
+    companion_open_section(COMPANION_SECTION_SYMBOLS);
+    static const char *const expected[] = {
+        "STRESS: LESS IS BETTER.", "NEITHER END IS GOOD OR BAD.",
+        "CLOSED LOCK: USE A TOOL TO CLEAN."
+    };
+    for (int p = 0; p < 3; p++) {
+        observed[0] = 0; observed_count = 0;
+        companion_render(&t, feedback_frame, TANK_W);
+        assert(strstr(observed, expected[p]));
+        if (!p) {
+            assert(strstr(observed, "FOOD / FULLNESS: MORE IS BETTER."));
+            assert(strstr(observed, "BOLT / ENERGY: MORE IS BETTER."));
+            assert(strstr(observed, "HEART / TRUST: MORE IS BETTER."));
+        }
+        if (p == 2) {
+            assert(strstr(observed, "SPONGE: WIPE ALGAE FROM THE GLASS."));
+            assert(strstr(observed, "SCISSORS: TRIM SEAGRASS."));
+        }
+        assert(!companion_tap(&t, render_frame_x(330), render_frame_y(326)));
+    }
+    assert(leaf == 0);
+    assert(!companion_tap(&t, render_frame_x(100), render_frame_y(326)) && leaf == 2);
+    assert(companion_tap(&t, render_frame_x(390), render_frame_y(24)));
+    assert(writes == old_writes && !memcmp(&before, &t, sizeof t));
+}
 int main(void) {
     for (int compact = 0; compact < 2; compact++) {
         check_bonds(compact != 0);
         check_growth(compact != 0);
+        check_symbols(compact != 0);
     }
     puts("PASS: companion bond thresholds/counts/cooldowns, Creative tricks, stage rounding and sleep growth; read-only pages fit both scales.");
     return 0;
