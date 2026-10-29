@@ -594,7 +594,10 @@ async function main() {
       const pixels = game._sim_frame(0) >>> 1;
       for (let y = 110; y < 320; y++) for (let x = 32; x < 424; x++) {
         const i = Math.round(y * height / 368) * width + Math.round(x * width / 448);
-        if (game.HEAPU16[pixels + i] === 65535) return [x + 6, y + 10];
+        const color = game.HEAPU16[pixels + i];
+        // Bubble highlights blend white over water; they are not opaque white.
+        if ((color >> 11) >= 28 && ((color >> 5) & 63) >= 56 && (color & 31) >= 28)
+          return [x + 6, y + 10];
       }
       return null;`);
     assert.ok(bubble, "Bubble Pop must render a playable bubble");
