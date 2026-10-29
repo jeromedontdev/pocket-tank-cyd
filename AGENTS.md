@@ -20,6 +20,29 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
+- Release 2.3.20 is published at tag/source
+  `7b5411019ac89cb7ad6e3a75fa223459e366c81e`. Main acceptance
+  (40806623944) and all-board release/installer gates (40808164983) passed.
+  All 29 public assets were downloaded; checksums, ZIP members, PTUs,
+  OTA metadata and embedded board/version/DIO-80-MHz markers passed.
+  Published unified app: 1,777,456 bytes / 188,624 slot bytes free, SHA256
+  `d3b3a0af2b3569e62b8e48757deee1e23555aaab2222672f1d87f6f00d1a54a1`.
+  Keep this CI artifact identity separate from COM4's local tested build below.
+  Release-pinned Pages run 40809467894 passed. Live home, all 33 images,
+  installer/viewer/play, all board manifests/app hashes and browser
+  release/source identity passed after deployment.
+- COM4 now runs the local 2.3.20 unified image, superseding the older
+  hardware baselines below: 1,777,472 bytes / 188,608 slot bytes free,
+  SHA256 `b852aa70f334f93a57c1d4bd72e564f54b8d57d6ade584e73e68231e89d14724`.
+  A new full recovery dump, active-slot app-only flash and exact readback
+  passed. All 16 before/after fixtures completed; mode-3 FPS improved
+  21.87/21.20/17.31/18.65 to 22.28/21.72/17.55/19.14. These fixtures
+  have no pumpkin: do not attribute all gains to its removal or substitute
+  native pumpkin CPU overhead for device FPS. Save/Bank JSON and original
+  residents passed. A post-save reboot preserved clock/ownership/care settings,
+  wallet difference equalled earned income, and HTTPS weather succeeded before
+  radio shutdown. Quiet live soak still had a 257-ms service stall; do not
+  claim hitch-free output. Publication identity is recorded separately.
 - The 2.3.20 work retires pumpkin ID 8, not the catalog index itself. Keep all
   63 stable IDs and the legacy slot/position fields reserved: 62 items remain
   offered. Never reuse that bit or collapse the inventory slot mapping.

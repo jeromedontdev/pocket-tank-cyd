@@ -35,6 +35,66 @@ Host timings over 500 warmed draws were Home 0.036/0.048 ms, fish card
 0.004-0.012/0.006-0.012 ms at 240/320 widths. These are absolute host costs,
 not CYD FPS gains. No work buffers or per-frame animation were added.
 
+### 2.3.20 COM4 comparison
+
+A fresh full 4-MB recovery dump preceded an app-only flash to the active
+`ota_0` slot on COM4; exact readback passed. The local unified app is
+1,777,472 bytes, leaving 188,608 bytes per OTA slot, SHA256
+`b852aa70f334f93a57c1d4bd72e564f54b8d57d6ade584e73e68231e89d14724`.
+The CYD profile and original bolt/pip/kelp/odie residents remain intact.
+This is the local tested build, not a claim that CI produces the same hash.
+
+All sixteen controlled fixtures completed before and after the change.
+Default cost-based mode 3, 240 frames per fixture:
+
+| Fixture | Before FPS | 2.3.20 FPS | Before / after render ms |
+|---|---:|---:|---:|
+| 0, day | 21.87 | 22.28 | 29.32 / 28.35 |
+| 1, night | 21.20 | 21.72 | 31.11 / 30.08 |
+| 2, frozen clock/decor | 17.31 | 17.55 | 43.31 / 42.69 |
+| 3, dense | 18.65 | 19.14 | 38.01 / 36.98 |
+
+These are modest 1.4-2.6-percent gains, not a promise of 30 FPS or a
+measurement of pumpkin cost: these fixtures do not own a pumpkin.
+The earlier identical-scene native comparison with/without pumpkin measured
+32-40-percent day and 65-82-percent night CPU-render overhead across both
+sizes. Host percentages are not hardware FPS percentages. Removal tests
+separately require identical day/night pixels and damage blocks when only
+the retired raw ownership bit changes. Explicit save and Bank JSON
+round-trip checks passed after the benchmark, with tracing left off.
+
+After an explicit reboot, HTTPS weather completed successfully (4.132 s),
+the radio shut down again, and the original residents, clock/ownership/care
+settings and Bank JSON survived. The wallet rose by one dollar, exactly
+matching earned income. The two-minute quiet soak reported 17.6-19.7 FPS
+after warmup, with ordinary maxima 62-73 ms and one 257-ms service stall.
+Console diagnostics themselves caused a separate 766-ms interval. These
+live moving-scene samples are not a controlled speed comparison and do not
+establish hitch-free animation.
+
+### 2.3.20 publication
+
+Immutable tag/source `7b5411019ac89cb7ad6e3a75fa223459e366c81e` passed
+main checks (40806623944) before tagging. Release run 40808164983 passed
+all-board builds, native/simulator suites and actual staged USB
+installer/migration acceptance. All 29 public assets were downloaded and
+verified: checksums, ZIP contents, PTUs, OTA metadata and embedded
+board/version/DIO-80-MHz markers.
+
+| Published app | Bytes | OTA-slot headroom |
+|---|---:|---:|
+| CYD | 1,776,800 | 189,280 |
+| ELEGOO | 1,776,816 | 189,264 |
+| Unified | 1,777,456 | 188,624 |
+
+Unified SHA256:
+`d3b3a0af2b3569e62b8e48757deee1e23555aaab2222672f1d87f6f00d1a54a1`.
+COM4 retains the locally built, readback-verified image documented above;
+do not confuse its build-metadata-dependent hash with the CI artifact.
+Release-pinned Pages deployment 40809467894 passed; live HTTP verification
+covered home and all 33 images, installer/viewer/play, board manifests and
+app hashes, and the browser's exact 2.3.20 release/source identity.
+
 Version 2.3.10 treats the mussel as an inspectable, color-customizable creature.
 Tap it for automatic-income progress, daily allowance and earning/paused status.
 Visible arrows cycle owned helper cards; fish-card arrows use graphical
