@@ -549,6 +549,19 @@ COM4 retains the measured 80 MHz pre-release image described below. Publication
 is separate from a physical flash. ELEGOO at 80 MHz has not been separately
 benchmarked on hardware.
 
+Publication verified: v2.3.19 points to
+`2141e67fd7ddf8b5720b76e0bd15c30e30102f32`. Main checks, release packaging and
+release-pinned Pages passed (runs 40799910228 / 40801238113 / 40802367853).
+All 29 public assets were downloaded and checked against their SHA256 lists;
+ZIP contents, PTUs, OTA metadata and embedded board/version/DIO-80MHz markers
+passed. Published app sizes are 1,785,296 (CYD), 1,785,312 (ELEGOO) and
+1,785,968 (unified) bytes. Unified SHA256:
+`4bb3758636cc48ccb36c3859e485fdf634e9782a3c7d27addb6e9f0586091aec`.
+Live home/flasher/viewer/play, all 33 home images, board manifests, application
+hashes and the browser's released source identity passed. Browser gameplay and
+installer/migration acceptance passed in CI; the local integrated browser was
+unavailable, so deployed-content verification used HTTP downloads.
+
 ### Edge-steering follow-up after 2.3.18
 
 A cruising fixture reproduced nose-up/nose-down seesawing at the surface

@@ -20,13 +20,19 @@ or deployment is published. Update this file when its contracts change.
 
 ### Handoff baseline
 
-- Release candidate 2.3.19 collects the motion, placement, illustrated art,
-  save-memory and 80 MHz follow-ups below. Version/docs/website and 194 actual
-  renderer screenshots are refreshed. Local native regressions, simulator
-  smoke and the unified firmware build passed. Publication is requested:
-  verify the main checks, release assets and release-pinned Pages before
-  reporting success. COM4 still runs the measured pre-release image below;
-  publishing does not authorize another flash or aquarium reset.
+- Release 2.3.19 is published at tag/source
+  `2141e67fd7ddf8b5720b76e0bd15c30e30102f32`. It collects the motion,
+  placement, illustrated art, save-memory and 80 MHz follow-ups below, with
+  updated docs/website and 194 renderer captures. Main checks (40799910228),
+  release (40801238113) and release-pinned Pages (40802367853) passed.
+  All 29 public assets were downloaded: checksums, ZIP contents, PTUs, OTA
+  metadata and board/version/80 MHz markers passed. Unified app is 1,785,968
+  bytes / 180,112 slot bytes free, SHA256
+  `4bb3758636cc48ccb36c3859e485fdf634e9782a3c7d27addb6e9f0586091aec`.
+  Live Pages home/flasher/viewer/play, all 33 home images, board manifests,
+  app hashes and browser release/commit passed. Recheck before future claims.
+  COM4 still runs the measured pre-release image below; publication did not
+  flash or reset it. ELEGOO at 80 MHz remains unbenchmarked on hardware.
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
   edit-mode/mirror/save-speed, menu-performance, minigame-art, menu-art,
