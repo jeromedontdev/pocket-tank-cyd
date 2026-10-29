@@ -10,6 +10,14 @@ explains needs, personality and tools. Fish cards label their bars and traits,
 and keep sponge/scissors/lock behavior. All seven clock faces have cleaner
 static framing and detail, preserving every size, color and layout preference.
 
+![Home: Names & Looks, Life & Care and Symbol Guide](media/cyd-features/desk-companion.png)
+
+![Symbol Guide: needs and bond](media/cyd-features/symbol-guide.png)
+
+![Symbol Guide: personality](media/cyd-features/symbol-guide-personality.png)
+
+![Symbol Guide: retained tools](media/cyd-features/symbol-guide-tools.png)
+
 **2.3.20 pumpkin retirement:** the pumpkin and its animated lighting are
 removed from the shop and all aquariums. Old saves remain readable, with its
 ID and binary fields reserved. Paid copies receive the normal 20-percent
