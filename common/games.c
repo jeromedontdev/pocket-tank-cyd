@@ -273,6 +273,111 @@ void render_games_open(void) {
     casino_close();
 }
 int render_games_menu_page(void) { return g_game_menu; }
+/* Current Runner: a side-scrolling dive. Taps pulse the sub upward against
+ * gravity through gaps in rock pillars (foes[]: x, gap centre y, vx = pearl
+ * taken, vy = gap counted). Unlike Fish Slalom there are no lanes. */
+#define RUN_TOP 100
+#define RUN_SAND 294
+#define RUN_MID 197
+#define RUN_COLS 3
+#define RUN_SPACING 150.0f
+#define RUN_SUB_X 104.0f
+#define RUN_HALF_W 17.0f
+#define RUN_GAPS 18
+static float runner_gap(void) { return g_game_relaxed ? 50.0f : 40.0f; }
+static void runner_column(int i, float x) {
+    float prev = g_game.foes[(i + RUN_COLS - 1) % RUN_COLS].y;
+    if (prev < RUN_TOP) prev = RUN_MID;
+    float lo = RUN_TOP + 56, hi = RUN_SAND - 56;
+    float y = prev + (float)((int)(game_random() % 141u) - 70);
+    g_game.foes[i].x = x;
+    g_game.foes[i].y = y < lo ? lo : y > hi ? hi : y;
+    g_game.foes[i].vx = g_game.foes[i].vy = 0; g_game.foes[i].hp = 1;
+}
+/* Reef Architect: a coral logic grid. Plant exactly the clued number of
+ * corals in each row and column; corals shade each other, so none may touch,
+ * even at a corner. Rocks cannot be planted. Clues live in cards[0..9]. */
+#ifndef ARCH_CORALS
+#define ARCH_CORALS 6
+#endif
+#define ARCH_X 99
+#define ARCH_Y 100
+#define ARCH_CW 50
+#define ARCH_CH 38
+static bool arch_touch(int a, int b) {
+    return a != b && abs(a % 5 - b % 5) <= 1 && abs(a / 5 - b / 5) <= 1;
+}
+/* solutions of the clue grid, stopping at 2: a fair puzzle has exactly one */
+GAME_LOCAL int arch_solutions(const uint8_t *rocks, const uint8_t *clue, uint8_t *put, int cell, int left, int *row, int *col) {
+    if (!left) {
+        for (int i = 0; i < 5; i++) if (row[i] != clue[i] || col[i] != clue[5 + i]) return 0;
+        return 1;
+    }
+    if (cell == 25 || 25 - cell < left) return 0;
+    int found = 0, r = cell / 5, c = cell % 5;
+    bool ok = rocks[cell] != 3 && row[r] < clue[r] && col[c] < clue[5 + c];
+    for (int j = 0; j < cell && ok; j++) if (put[j] && arch_touch(cell, j)) ok = false;
+    if (ok) {
+        put[cell] = 1; row[r]++; col[c]++;
+        found += arch_solutions(rocks, clue, put, cell + 1, left - 1, row, col);
+        put[cell] = 0; row[r]--; col[c]--;
+    }
+    /* leaving a cell empty: a finished row must already meet its clue */
+    if (found < 2 && (c < 4 || row[r] == clue[r]))
+        found += arch_solutions(rocks, clue, put, cell + 1, left, row, col);
+    return found;
+}
+static void game_architect_deal(void) {
+    uint8_t sol[25];
+    for (int tries = 0; tries < 200; tries++) {
+        memset(g_game.board, 0, 25); memset(sol, 0, sizeof sol);
+        for (int rocks = 0; rocks < 2;) {
+            int r = (int)(game_random() % 25u);
+            if (!g_game.board[r]) { g_game.board[r] = 3; rocks++; }
+        }
+        int order[25], placed = 0;
+        for (int i = 0; i < 25; i++) order[i] = i;
+        for (int i = 24; i > 0; i--) {
+            int j = (int)(game_random() % (unsigned)(i + 1)), tmp = order[i];
+            order[i] = order[j]; order[j] = tmp;
+        }
+        for (int k = 0; k < 25 && placed < ARCH_CORALS; k++) {
+            int cell = order[k];
+            bool ok = g_game.board[cell] != 3;
+            for (int j = 0; j < 25 && ok; j++) if (sol[j] && arch_touch(cell, j)) ok = false;
+            if (ok) { sol[cell] = 1; placed++; }
+        }
+        if (placed == ARCH_CORALS) {
+            uint8_t clue[10] = {0}, put[25] = {0};
+            int row[5] = {0}, col[5] = {0};
+            for (int i = 0; i < 25; i++) if (sol[i]) { clue[i / 5]++; clue[5 + i % 5]++; }
+            if (arch_solutions(g_game.board, clue, put, 0, ARCH_CORALS, row, col) == 1) break;
+        }
+        memset(g_game.board, 0, 25); memset(sol, 0, sizeof sol);   /* fallback layout, unique */
+        g_game.board[21] = g_game.board[23] = 3;
+        sol[0] = sol[2] = sol[4] = sol[10] = sol[12] = sol[14] = 1;
+    }
+    for (int i = 0; i < 10; i++) g_game.cards[i] = 0;
+    for (int i = 0; i < 25; i++) if (sol[i]) { g_game.cards[i / 5]++; g_game.cards[5 + i % 5]++; }
+}
+/* count of corals in row (line < 5) or column (line >= 5) */
+static int arch_line(int line) {
+    int n = 0;
+    for (int k = 0; k < 5; k++) n += g_game.board[line < 5 ? line * 5 + k : k * 5 + line - 5] == 1;
+    return n;
+}
+static bool arch_clashes(int cell) {
+    for (int j = 0; j < 25; j++) if (g_game.board[j] == 1 && arch_touch(cell, j)) return true;
+    return false;
+}
+static int arch_lines_met(bool *solved) {
+    int met = 0, corals = 0;
+    bool clash = false;
+    for (int line = 0; line < 10; line++) met += arch_line(line) == g_game.cards[line];
+    for (int i = 0; i < 25; i++) if (g_game.board[i] == 1) { corals++; if (arch_clashes(i)) clash = true; }
+    if (solved) *solved = met == 10 && !clash && corals == ARCH_CORALS;
+    return met;
+}
 GAME_LOCAL void game_start(int kind) {
     int fish = g_game.fish;
     render_games_open(); g_game.fish = fish; g_game.page = g_game.kind = kind; g_game.left = 30;
@@ -305,8 +410,10 @@ GAME_LOCAL void game_start(int kind) {
         g_game.board[6] = g_game.board[18] = 3;
         g_game.board[0] = g_game.board[4] = g_game.board[12] = 4;
     } else if (kind == GAME_ARCHITECT) {
-        g_game.board[6] = g_game.board[18] = 3;
-        g_game.selected = 1;
+        game_architect_deal();
+    } else if (kind == GAME_RUNNER) {
+        g_game.hp = 3; g_game.by = RUN_MID; g_game.vy = 0;
+        for (int i = 0; i < RUN_COLS; i++) runner_column(i, 300.0f + i * RUN_SPACING);
     }
     for (int i = 0; i < 3; i++) g_game.choices[i] = (uint8_t)((game_random() + i) % 5);
     if (kind >= GAME_LIGHTHOUSE) game_practice_start(kind);
@@ -329,17 +436,10 @@ GAME_LOCAL void game_finish(void) {
 static int game_distance(int a, int b) {
     return abs(a % 5 - b % 5) + abs(a / 5 - b / 5);
 }
-static void game_architect_score(void) {
-    int score = 0;
-    for (int i = 0; i < 25; i++) if (g_game.board[i] == 1 || g_game.board[i] == 2) {
-        bool water = false, partner = false;
-        for (int j = 0; j < 25; j++) if (game_distance(i, j) == 1) {
-            if (!g_game.board[j]) water = true;
-            if (g_game.board[j] == 3 - g_game.board[i]) partner = true;
-        }
-        score += 1 + water + partner;
-    }
-    g_game.score = score;
+static void game_architect_solve(void) {
+    int extra = g_game.moves - ARCH_CORALS;
+    g_game.score = 24 + (extra < 8 ? 16 - extra * 2 : 0);
+    game_finish();
 }
 static void game_extra_tick(float dt) {
     if (g_game.cooldown > 0) g_game.cooldown -= dt;
@@ -374,14 +474,34 @@ static void game_extra_tick(float dt) {
             }
         }
     } else if (g_game.page == GAME_RUNNER) {
-        g_game.travel += dt * (72 + g_game.rounds * 2) * speed;
-        if (g_game.travel >= 180) {
-            if (g_game.lane != g_game.target && g_game.lane != (g_game.target + 1) % 5) g_game.hp--;
-            else g_game.score += g_game.lane == g_game.target ? 3 : 1;
-            g_game.rounds++; g_game.travel = 0;
-            int shift = (int)(game_random() % 3) - 1;
-            g_game.target = (g_game.target + shift + 5) % 5;
-            if (g_game.hp <= 0 || g_game.rounds == 18) game_finish();
+        if (!g_game.launched) return;
+        float gap = runner_gap(), pace = (70 + g_game.rounds * 2) * speed;
+        g_game.travel += dt * pace;
+        if (g_game.travel >= 1000) g_game.travel -= 1000;
+        g_game.vy += 430 * dt * speed;
+        if (g_game.vy > 230) g_game.vy = 230;
+        g_game.by += g_game.vy * dt * speed;
+        bool hit = false;
+        if (g_game.by < RUN_TOP + 10) { g_game.by = RUN_TOP + 10; g_game.vy = 0; }
+        if (g_game.by > RUN_SAND - 10) { g_game.by = RUN_SAND - 10; g_game.vy = -160; hit = true; }
+        for (int i = 0; i < RUN_COLS; i++) {
+            g_game.foes[i].x -= dt * pace;
+            float dx = fabsf(g_game.foes[i].x - RUN_SUB_X), dy = fabsf(g_game.by - g_game.foes[i].y);
+            if (dx < RUN_HALF_W + 12 && dy > gap - 7) hit = true;
+            if (!g_game.foes[i].vx && dx < 14 && dy < 16) { g_game.foes[i].vx = 1; g_game.score += 2; }
+            if (!g_game.foes[i].vy && g_game.foes[i].x < RUN_SUB_X - RUN_HALF_W - 12) {
+                g_game.foes[i].vy = 1; g_game.score++;
+                if (++g_game.rounds >= RUN_GAPS) { g_game.score += g_game.hp * 2; game_finish(); return; }
+            }
+        }
+        for (int i = 0; i < RUN_COLS; i++) if (g_game.foes[i].x < 24 - RUN_HALF_W) {
+            float far = 0;
+            for (int j = 0; j < RUN_COLS; j++) if (g_game.foes[j].x > far) far = g_game.foes[j].x;
+            runner_column(i, far + RUN_SPACING);
+        }
+        if (hit && g_game.invincible <= 0) {
+            g_game.invincible = 1.2f;
+            if (--g_game.hp <= 0) game_finish();
         }
     } else if (g_game.page == GAME_BREAKER && g_game.launched) {
         for (int step = 0; step < 8; step++) {
@@ -497,8 +617,8 @@ static void game_extra_tap(float x, float y) {
             g_game.shots[i].vx = dx / length * 330; g_game.shots[i].vy = dy / length * 330;
             g_game.shots[i].hp = 1; g_game.cooldown = 0.22f; break;
         }
-    } else if (g_game.page == GAME_RUNNER && x >= 24 && x < 424 && y >= 100 && y < 326) {
-        g_game.lane = (int)(x - 24) / 80;
+    } else if (g_game.page == GAME_RUNNER && x >= 24 && x < 424 && y >= 96 && y < 330) {
+        g_game.launched = true; g_game.vy = -175;
     } else if (g_game.page == GAME_BREAKER && x >= 280 && x < 424 && y >= 54 && y < 86) {
         game_finish();
     } else if (g_game.page == GAME_BREAKER && x >= 24 && x < 424 && y >= 200 && y < 328) {
@@ -530,20 +650,20 @@ static void game_extra_tap(float x, float y) {
         else if (g_game.hp <= 0 || g_game.moves >= 22) game_finish();
     } else if (g_game.page == GAME_ARCHITECT) {
         if (y >= 298 && y < 328) {
-            if (x >= 24 && x < 150) g_game.selected = 1;
-            else if (x >= 160 && x < 286) g_game.selected = 2;
-            else if (x >= 296 && x < 424 && g_game.moves == 12) { game_architect_score(); game_finish(); }
-        } else if (x >= 99 && x < 349 && y >= 92 && y < 292) {
-            int i = (int)(y - 92) / 40 * 5 + (int)(x - 99) / 50;
-            if (g_game.board[i] == 3) return;
-            if (g_game.board[i]) { g_game.board[i] = 0; g_game.moves--; }
-            else if (g_game.moves < 12) {
-                int count = 0;
-                for (int j = 0; j < 25; j++) if (g_game.board[j] == g_game.selected) count++;
-                if (count >= 6) return;
-                g_game.board[i] = (uint8_t)g_game.selected; g_game.moves++;
+            if (x >= 24 && x < 150) {
+                for (int i = 0; i < 25; i++) if (g_game.board[i] != 3) g_game.board[i] = 0;
+            } else if (x >= 296 && x < 424) {
+                g_game.score = arch_lines_met(NULL);            /* unsolved: one point per clue met */
+                game_finish();
             }
-            game_architect_score();
+        } else if (x >= ARCH_X && x < ARCH_X + 5 * ARCH_CW && y >= ARCH_Y && y < ARCH_Y + 5 * ARCH_CH) {
+            int i = (int)(y - ARCH_Y) / ARCH_CH * 5 + (int)(x - ARCH_X) / ARCH_CW;
+            if (g_game.board[i] == 3) return;
+            g_game.board[i] = (uint8_t)(g_game.board[i] == 0 ? 1 : g_game.board[i] == 1 ? 2 : 0);
+            if (g_game.board[i] == 1) g_game.moves++;
+            bool solved;
+            g_game.pairs = arch_lines_met(&solved);
+            if (solved) game_architect_solve();
         }
     } else if (g_game.page == GAME_EXPEDITION) {
         if (x >= 24 && x < 424 && y >= 298 && y < 328) {
@@ -1211,26 +1331,41 @@ static void game_extra_render(render_ctx_t *c) {
         }
         ga_hud(c, 60, 320, 2, MSP_TEAL, "TAP THE WATER TO AIM AND FIRE");
     } else if (g_game.page == GAME_RUNNER) {
-        snprintf(text, sizeof text, "GATES %d/18  HULL %d  SCORE %d", g_game.rounds, g_game.hp, g_game.score);
-        ga_hud(c, 24, 88, 2, MSP_TEAL, text);
-        for (int i = 0; i < 5; i++) {
-            int x = 24 + i * 80;
-            ga_wash(c, x, 110, 76, 180, 0x041820, 105);
-            render_internal_rect_blend(c, x, 110, 2, 180, 0x9fd8e2, 50);
-            int y = 110 + (int)g_game.travel;
-            if (i != g_game.target && i != (g_game.target + 1) % 5) {
-                ga_rock(c, x + 22, y + 8, 40, 18, 0x56676b);
-                ga_rock(c, x + 52, y + 7, 36, 16, 0x4c5c60);
-            } else if (i == g_game.target) {
-                render_internal_ellipse(c, x + 38, y + 7, 14, 14, 0xffd77a, 50);
-                ga_ell(c, x + 39, y + 8, 8, 8, ga_dark(GA_GOLD, 110));
-                ga_ell(c, x + 38, y + 7, 7.5f, 7.5f, GA_GOLD);
-                render_internal_annulus(c, x + 38, y + 7, 5, 3.5f, 0xb8862e, 255);
-                ga_ell(c, x + 35, y + 4, 2, 1.6f, 0xfff4cf);
+        snprintf(text, sizeof text, "GAPS %d/%d  HULL %d  SCORE %d", g_game.rounds, RUN_GAPS, g_game.hp, g_game.score);
+        ga_hud(c, 24, 76, 2, MSP_TEAL, text);
+        float gap = runner_gap();
+        ga_wash(c, 24, RUN_TOP, 400, RUN_SAND - RUN_TOP, 0x041820, 80);
+        for (int k = 0; k < 7; k++) {                        /* the current streaming past */
+            float sx = fmodf(k * 67.0f - g_game.travel * 1.6f, 400.0f);
+            if (sx < 0) sx += 400;
+            int w = sx + 26 > 400 ? 400 - (int)sx : 26;
+            if (w > 0) render_internal_rect_blend(c, 24 + (int)sx, RUN_TOP + 14 + k * 26, w, 1, 0x9fd8e2, 70);
+        }
+        ga_fill(c, 24, RUN_SAND, 400, 8, ga_dark(GA_SAND, 50));
+        ga_fill(c, 24, RUN_SAND, 400, 1, GA_SAND);
+        for (int i = 0; i < RUN_COLS; i++) {
+            float x = g_game.foes[i].x;
+            if (x + RUN_HALF_W <= 24 || x - RUN_HALF_W >= 424) continue;
+            int l = (int)(x - RUN_HALF_W) < 24 ? 24 : (int)(x - RUN_HALF_W);
+            int r = (int)(x + RUN_HALF_W) > 424 ? 424 : (int)(x + RUN_HALF_W);
+            int top = (int)(g_game.foes[i].y - gap), bot = (int)(g_game.foes[i].y + gap);
+            ga_fill(c, l, RUN_TOP, r - l, top - RUN_TOP, 0x4c5c60);
+            ga_fill(c, l, bot, r - l, RUN_SAND - bot, 0x56676b);
+            if (l + 4 < r) {
+                ga_fill(c, l + 3, RUN_TOP, 3, top - RUN_TOP, 0x66787c);
+                ga_fill(c, l + 3, bot, 3, RUN_SAND - bot, 0x6e8286);
+            }
+            bool whole = x - 22 >= 24 && x + 22 < 424;
+            if (whole) {
+                ga_rock(c, x, (float)top - 4, 44, 14, 0x56676b);
+                ga_rock(c, x, (float)bot + 5, 44, 14, 0x5e7074);
+                ga_grass(c, x - 12, (float)RUN_SAND, 0.55f);
+                if (!g_game.foes[i].vx) ga_pearl(c, x, g_game.foes[i].y, 5.5f, GA_PEARL);
             }
         }
-        ga_sub(c, 61 + g_game.lane * 80, 283, 1.0f);
-        ga_hud(c, 48, 308, 2, MSP_TEAL, "TAP A LANE - GOLD IS 3 POINTS");
+        bool blink = g_game.invincible > 0 && ((int)(g_game.invincible * 10) & 1);
+        if (!blink) ga_sub(c, RUN_SUB_X, g_game.by, 0.9f);
+        ga_hud(c, 48, 308, 2, MSP_TEAL, g_game.launched ? "TAP TO RISE - PEARLS +2" : "TAP TO START THE DIVE");
     } else if (g_game.page == GAME_BREAKER) {
         render_internal_button(c, 280, 54, 144, 32, 0x1c2f36, MSP_TEAL, "BANK SCORE", 1);
         snprintf(text, sizeof text, "BALLS %d  SCORE %d", g_game.hp, g_game.score);
@@ -1251,6 +1386,38 @@ static void game_extra_render(render_ctx_t *c) {
         ga_fill(c, px - 18, 289, 48, 1, 0x5e3c1e);
         ga_pearl(c, g_game.bx, g_game.by, 6, GA_PEARL);
         ga_hud(c, 40, 310, 2, MSP_TEAL, g_game.launched ? "TAP BELOW BRICKS TO MOVE PADDLE" : "TAP BELOW BRICKS TO LAUNCH");
+    } else if (g_game.page == GAME_ARCHITECT) {
+        int met = arch_lines_met(NULL), corals = 0;
+        for (int i = 0; i < 25; i++) corals += g_game.board[i] == 1;
+        snprintf(text, sizeof text, "CORALS %d/%d  CLUES MET %d/10", corals, ARCH_CORALS, met);
+        ga_hud(c, 24, 56, 2, MSP_TEAL, text);
+        ga_block(c, ARCH_X - 6, ARCH_Y - 6, 5 * ARCH_CW + 8, 5 * ARCH_CH + 8, 0x16323b);
+        for (int line = 0; line < 10; line++) {
+            int have = arch_line(line), want = g_game.cards[line];
+            uint32_t ink = have == want ? 0x89ffb1 : have > want ? 0xff8173 : 0xffdc73;
+            char clue[4];
+            snprintf(clue, sizeof clue, "%d", want);
+            if (line < 5) render_internal_text(c, ARCH_X + 5 * ARCH_CW + 12, ARCH_Y + line * ARCH_CH + 10, 2, ink, clue);
+            else render_internal_text(c, ARCH_X + (line - 5) * ARCH_CW + 17, ARCH_Y - 24, 2, ink, clue);
+        }
+        for (int i = 0; i < 25; i++) {
+            int x = ARCH_X + i % 5 * ARCH_CW, y = ARCH_Y + i / 5 * ARCH_CH, tile = g_game.board[i];
+            ga_socket(c, x, y, ARCH_CW - 4, ARCH_CH - 4, 0x2c5148);
+            if (tile == 3) ga_rock(c, x + 23, y + 18, 40, 26, 0x5b6a6c);
+            else if (tile == 2) {
+                render_internal_annulus(c, x + 23, y + 17, 5, 3.5f, 0x73e5ff, 170);
+                ga_ell(c, x + 21, y + 15, 1.2f, 1.2f, 0xd8f6ff);
+            } else if (tile == 1) {
+                bool clash = arch_clashes(i);
+                ga_coral(c, x + 23, y + 32, 1.05f, clash ? 0xff5a4a : 0xe2786a);
+                if (clash) {
+                    render_internal_rect_edge(c, x, y, ARCH_CW - 4, ARCH_CH - 4, 0xff8173);
+                    render_internal_rect_edge(c, x + 1, y + 1, ARCH_CW - 6, ARCH_CH - 6, 0xff8173);
+                }
+            }
+        }
+        render_internal_button(c, 24, 298, 126, 30, 0x1c2f36, MSP_TEAL, "CLEAR", 2);
+        render_internal_button(c, 296, 298, 128, 30, 0x1c2f36, MSP_TEAL, "GIVE UP", 2);
     } else if (g_game.page == GAME_TACTICS || g_game.page == GAME_ARCHITECT) {
         bool tactics = g_game.page == GAME_TACTICS;
         if (tactics) snprintf(text, sizeof text, "HP %d  TURN %d/22  FLAGS %d/3", g_game.hp, g_game.moves, g_game.pairs);
@@ -1365,10 +1532,11 @@ GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
         ga_ell(c, X + 20, Y + 25, 8, 3.5f, 0xb08cc0);
         ga_pearl(c, X + 20, Y + 22, 2.5f, GA_PEARL);
     } else if (game == 7) {
-        ga_rock(c, X + 8, Y + 9, 14, 8, 0x56676b);
-        ga_rock(c, X + 32, Y + 9, 14, 8, 0x56676b);
-        ga_ell(c, X + 20, Y + 9, 3.5f, 3.5f, GA_GOLD);
-        ga_sub(c, X + 19, Y + 22, 0.5f);
+        ga_fill(c, x + 22, y + 1, 8, 9, 0x56676b);
+        ga_fill(c, x + 22, y + 21, 8, 6, 0x56676b);
+        ga_pearl(c, X + 26, Y + 15, 2.5f, GA_PEARL);
+        ga_sub(c, X + 10, Y + 18, 0.45f);
+        ga_fill(c, x + 3, y + 8, 6, 1, 0x9fd8e2);
     } else if (game == 8) {
         for (int i = 0; i < 8; i++)
             ga_block(c, x + 2 + i % 4 * 9, y + 3 + i / 4 * 7, 8, 6, i < 4 ? 0xe0895a : 0x5fbccc);
@@ -1422,8 +1590,9 @@ GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
             ga_sub(c, X + 10, Y + 14, 0.32f);
         } else {
             ga_coral(c, X + 10, Y + 9, 0.38f, 0xe2786a);
-            ga_grass(c, X + 30, Y + 18, 0.4f);
-            ga_coral(c, X + 20, Y + 27, 0.38f, 0xd8608e);
+            ga_coral(c, X + 30, Y + 18, 0.38f, 0xe2786a);
+            ga_coral(c, X + 10, Y + 27, 0.38f, 0xe2786a);
+            ga_fill(c, x + 36, y + 3, 2, 6, 0x89ffb1);
         }
     }
 }
@@ -1643,8 +1812,8 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
         render_internal_button(&c, 280, 60, 144, 42, 0x1c2f36, MSP_TEAL, ">", 3);
         static const char *const genres[] = {
             "POP & SCORE", "FIND PAIRS", "SWIM GATES", "CAST & AIM",
-            "FEED & TAP", "JOIN PIPES", "AIM & FIRE", "DODGE ROCKS",
-            "HIT BRICKS", "TURN BASED", "PLANT REEF", "PICK ROUTE",
+            "FEED & TAP", "JOIN PIPES", "AIM & FIRE", "TAP TO RISE",
+            "HIT BRICKS", "TURN BASED", "LOGIC GRID", "PICK ROUTE",
             "SWITCH OFF", "SLIDE TILES", "SONAR HUNT", "MERGE TILES",
             "TIME STACK", "COPY NOTES"
         };
@@ -1876,10 +2045,10 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
                 {"Tap the requested food.", "Wrong choices lose a point.", "Challenge lasts 30 seconds.", "Relaxed: FINISH when ready.", "No real fish are fed."},
                 {"Tap pipes to rotate them.", "Connect IN on left to OUT.", "Both pipe ends must meet.", "Fewer moves earn medals.", "No timer."},
                 {"Tap water to aim and fire.", "Defend the reef for 5 waves.", "Armored targets take 2 hits.", "Five breaches end the round.", "Each target scores 2."},
-                {"Tap any of the five lanes.", "Avoid the scrolling rocks.", "Gold lane: 3, other gap: 1.", "Survive 18 gates; 5 hull.", "Relaxed scrolls more slowly."},
+                {"Tap anywhere to pulse upward.", "Gravity pulls the sub down.", "Slip through the rock gaps.", "Gap +1, pearl +2. 18 gaps.", "3 hull. Relaxed: wider, slower."},
                 {"Tap below bricks to launch.", "Tap left/right to move paddle.", "Gold bricks need two hits.", "Paddle edges angle the ball.", "24 bricks / 3 balls. BANK ends."},
                 {"Tap a neighboring grid cell.", "Red: attack. Gold: capture.", "Enemies move after your turn.", "Gold outline warns of attack.", "GUARD blocks/heals. 22 turns."},
-                {"Place 6 coral and 6 grass.", "Choose species, then tap cell.", "Tap planted cells to remove.", "+1 per tile, +1 by open water,", "+1 by other species. FINISH."},
+                {"Plant 6 corals. Edge numbers", "count corals per row/column.", "Corals may not touch, even", "at corners. Rocks stay bare.", "Tap: coral > mark > empty."},
                 {"Choose one of three routes.", "Costs and loot shown on cards.", "Keys open ruins; food heals.", "RETURN banks loot plus hull.", "8 depths. No air/hull: 1/2 loot."},
                 {"Tap a lamp: it and its four", "neighbors switch on or off.", "Solve for +1 (daily cap).", "Gold: solve in 8 moves or less.", "FINISH saves; unsolved: no pay."},
                 {"Tap a tile beside the gap.", "Slide numbers into order 1-8.", "Solve for +1 (daily cap).", "Gold: solve in 24 moves.", "FINISH saves; unsolved: no pay."},

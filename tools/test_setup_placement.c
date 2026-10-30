@@ -113,14 +113,15 @@ static void test_all_placeable_cancel_roundtrip(void) {
 static void test_remove_to_storage(void) {
     for (int normal = 0; normal < 2; normal++)
         for (int item = 0; item < SD_ITEM_COUNT; item++) {
-            if (item == 8 || !tank_decor_placeable(item)) continue;
+            if (item == 8 || !tank_decor_movable(item)) continue;
             tank_t t;
             saved_size = 0;
             tank_init(&t, 96);
             boot_enlarged(&t);
             tank_resolution(normal != 0);
             t.companion.display_compact = normal != 0;
-            t.sd_unlocks |= SD_ITEMS[item].bit;
+            if (SD_IS_SCENERY(item)) t.polish.scenery_unlocks |= (uint8_t)(1u << (item - SD_SCENERY_FIRST));
+            else t.sd_unlocks |= SD_ITEMS[item].bit;
             if (SD_IS_NEW_DECOR(item)) t.content.owned |= 1u << (item - SD_DECOR_FIRST);
             t.profile.owned_items |= UINT64_C(1) << item;
             t.profile.paid_items |= UINT64_C(1) << item;
@@ -149,6 +150,15 @@ static void test_remove_to_storage(void) {
             assert(progression_inventory_stored(&loaded, item) == 1 && loaded.sd_balance == wallet);
             assert(progression_inventory_place(&loaded, item));
             assert(progression_item_owned(&loaded, item) && !progression_inventory_stored(&loaded, item));
+            if (tank_fixed_index(item) >= 0) {
+                /* fixed scenery: the shop's PLACE brings it back free, still refundable */
+                assert(progression_inventory_store(&loaded, item, -1) && !progression_item_owned(&loaded, item));
+                assert(!tank_decor_owned(&loaded, item) && progression_item_price_for(&loaded, item) == 0);
+                int before = loaded.sd_balance;
+                assert(progression_buy(&loaded, item) && progression_item_owned(&loaded, item));
+                assert(loaded.sd_balance == before && progression_sell_value_for(&loaded, item) > 0);
+                assert(!loaded.fixed.stored[0] && !loaded.fixed.stored[1]);
+            }
         }
 
     tank_t t;
@@ -264,7 +274,7 @@ static void test_every_item_buys_and_moves(void) {
             if (!setup_is_place() || setup_item() != item) fprintf(stderr, "Item %d (%s) has no placement page\n", item, SD_ITEMS[item].name);
             assert(setup_active() && setup_is_place() && setup_item() == item);
             bool surface = tank_decor_surface(item);
-            assert(place_hit_at(SETUP_HIT_REMOVE, SETUP_TOP_BACK_X + 20, SETUP_TOP_BTN_Y + 20) == tank_decor_placeable(item));
+            assert(place_hit_at(SETUP_HIT_REMOVE, SETUP_TOP_BACK_X + 20, SETUP_TOP_BTN_Y + 20) == tank_decor_movable(item));
             assert(place_hit_at(SETUP_HIT_MIRROR, PAGE_W / 2, SETUP_MIRROR_Y + 12) == tank_decor_mirrorable(item));
             assert(place_hit_at(SETUP_HIT_BCK, SETUP_ORD_X0 + 18, SETUP_TOP_BTN_Y + 20) == !surface);
             int depth = setup_hit(render_frame_x(PAGE_W / 2), render_frame_y(SETUP_DEPTH_Y + SETUP_DEPTH_H / 2));

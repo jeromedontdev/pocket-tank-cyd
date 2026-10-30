@@ -151,6 +151,7 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
 #define SETUP_HIT_BCK   6                /* the placement page's order arrows (2026-10-17): one step back in the stack ... */
 #define SETUP_HIT_FWD   7                /* ... and one step forward (tank_decor_shift) */
 #define SETUP_HIT_MIRROR 8               /* the placement page's MIRROR toggle, centred over the depth bar (sprite pieces) */
+#define SETUP_HIT_SUGGEST 9              /* the fish keyboard's SUGGEST key: a fresh name from the pool */
 #define SETUP_HIT_PREV_PIECE 230
 #define SETUP_HIT_NEXT_PIECE 231
 #define SETUP_HIT_UP    3                /* retired letter-wheel identifier */

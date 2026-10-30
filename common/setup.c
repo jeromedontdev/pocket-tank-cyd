@@ -367,6 +367,7 @@ const char *setup_hit_name(int id) {
     if (id == SETUP_HIT_PREV_PIECE) return "PREV PIECE";
     if (id == SETUP_HIT_NEXT_PIECE) return "NEXT PIECE";
     if (id == SETUP_HIT_MIRROR) return "MIRROR";
+    if (id == SETUP_HIT_SUGGEST) return "SUGGEST";
     if (id == SETUP_HIT_BCK) return "SEND BACK";
     if (id == SETUP_HIT_FWD) return "BRING FORWARD";
     if (id == SETUP_HIT_UP)   return "up";
@@ -378,9 +379,10 @@ const char *setup_hit_name(int id) {
 }
 
 /* Keep typed spaces and existing printable characters intact. Only an empty
- * name takes tank_set_name's preset fallback. */
+ * name takes a fresh suggestion from the name pool. */
+static uint32_t s_suggestions;
 static void finish_name(tank_t *t, int fish) {
-    if (!t->fish[fish].name[0]) tank_set_name(t, fish, "");
+    if (!t->fish[fish].name[0]) tank_give_name(t, fish, ++s_suggestions);
 }
 
 enum { NAME_KEY_H = 30, NAME_KEY_GAP = 4, NAME_KEY_PITCH = NAME_KEY_H + NAME_KEY_GAP };
@@ -441,7 +443,13 @@ void setup_name_keyboard_draw(uint16_t *fb, int stride, int x, int y, int width,
         next_row++;
     }
     int space_w = width * 2 / 3, delete_w = width - space_w - NAME_KEY_GAP;
-    keyboard_key(fb, stride, x, y + next_row * NAME_KEY_PITCH, space_w, "SPACE", fill, edge);
+    if (extended) keyboard_key(fb, stride, x, y + next_row * NAME_KEY_PITCH, space_w, "SPACE", fill, edge);
+    else {
+        int half = (space_w - NAME_KEY_GAP) / 2;
+        keyboard_key(fb, stride, x, y + next_row * NAME_KEY_PITCH, half, "SPACE", fill, edge);
+        keyboard_key(fb, stride, x + half + NAME_KEY_GAP, y + next_row * NAME_KEY_PITCH,
+                     space_w - half - NAME_KEY_GAP, "SUGGEST", fill, edge);
+    }
     keyboard_key(fb, stride, x + space_w + NAME_KEY_GAP, y + next_row * NAME_KEY_PITCH,
                  delete_w, "DELETE", fill, edge);
 }
@@ -469,7 +477,9 @@ int setup_name_keyboard_hit(float x, float y, int left, int top, int width, bool
     int space_w = width * 2 / 3;
     int action_y = top + row * NAME_KEY_PITCH;
     if (y >= action_y && y < action_y + NAME_KEY_H) {
-        if (x >= left && x < left + space_w) return ' ';
+        int half = (space_w - NAME_KEY_GAP) / 2;
+        if (!extended && x >= left + half + NAME_KEY_GAP && x < left + space_w) return SETUP_HIT_SUGGEST;
+        if (x >= left && x < left + (extended ? space_w : half)) return ' ';
         if (x >= left + space_w + NAME_KEY_GAP && x < left + width) return '\b';
     }
     return 0;
@@ -520,7 +530,7 @@ int setup_hit(float x, float y) {
         if (s_place && tank_decor_mirrorable(s_item) &&
             in_box(x, y, SETUP_MIRROR_X, SETUP_MIRROR_Y, SETUP_MIRROR_W, SETUP_MIRROR_H, 0)) return SETUP_HIT_MIRROR;
         if (in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_NEXT;
-        if (s_place && tank_decor_placeable(s_item) && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_REMOVE;
+        if (s_place && tank_decor_movable(s_item) && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_REMOVE;
         if (s_place && !tank_decor_surface(s_item) && in_box(x, y, SETUP_ORD_X0, SETUP_TOP_BTN_Y, SETUP_ORD_W, SETUP_BTN_H, 6)) return SETUP_HIT_BCK;
         if (s_place && !tank_decor_surface(s_item) && in_box(x, y, SETUP_ORD_X1, SETUP_TOP_BTN_Y, SETUP_ORD_W, SETUP_BTN_H, 6)) return SETUP_HIT_FWD;
         if (!s_place && in_box(x, y, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_BACK;
@@ -644,6 +654,11 @@ void setup_activate(tank_t *t, int id) {
     }
     int name_key = id >= 'A' && id <= 'Z' ? id + ('a' - 'A') :
                    (id >= '0' && id <= '9') || id == '-' || id == ' ' || id == '\b' ? id : 0;
+    if (page_is_name() && id == SETUP_HIT_SUGGEST) {
+        tank_give_name(t, page_fish(), ++s_suggestions);
+        tank_emit(TEV_WHEEL_TICK, -1);
+        return;
+    }
     if (page_is_name() && name_key && setup_name_keyboard_apply(f->name, sizeof f->name, name_key)) {
         tank_emit(TEV_WHEEL_TICK, -1);
         return;
@@ -966,7 +981,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         else snprintf(title, sizeof title, "PREVIEW: %s", SD_ITEMS[s_item].name);
         text_plate(fb, stride, CX, SETUP_Y - 3, render_text_w(title, 2) <= SETUP_W ? 2 : 1, title);
         render_button(fb, stride, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, "DONE", 2);
-        if (tank_decor_placeable(s_item))           /* fixed scenery is not stored: the shop sells it */
+        if (tank_decor_movable(s_item))             /* every piece, fixed scenery too, can be put away */
             render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H,
                           C_INNER, s_remove_armed ? C_GO_E : C_DIM, s_remove_armed ? "REMOVE?" : "REMOVE", 2);
         bool surface = tank_decor_surface(s_item);

@@ -3791,7 +3791,170 @@ static uint32_t scenery_pixel(int item, int x, int y) {
     default: return 0;
     }
 }
+/* the statement pieces, as tall or as wide as the castle (tank_decor_grand):
+ * a striped lighthouse on its rock, a mossy stone bridge, a three-roof pagoda
+ * and a torii gate with its rope */
+static uint32_t grand_masonry(int x, int y, int dx, int half, int course) {
+    int row = y / course;
+    if (y % course == 0 || (x + (row & 1) * 6) % 12 == 0) return 0x536c69;
+    int grain = (x * 13 + y * 7 + row * 5) & 15;
+    if (grain == 0) return 0xb7c9b3;
+    if (grain == 1) return 0x4d6462;
+    return dx < -half / 3 ? 0x9cb2a7 : dx > half / 3 ? 0x6a8580 : 0x84a097;
+}
+static uint32_t grand_pixel(int item, int x, int y) {
+    int dx = x - tank_ornament_w(item) / 2, adx = abs(dx);
+    switch (item - SD_DECOR_FIRST) {
+    case 0: {                                           /* LIGHTHOUSE, 56 x 132 */
+        if (y <= 3) return dx == 0 || (y == 1 && adx <= 1) ? 0xe8c98a : 0;
+        if (y <= 13) {
+            int half = 2 + (y - 4) * 7 / 9 + (y == 13);
+            if (adx > half) return 0;
+            return y == 13 ? 0x243b4b : dx < 0 ? 0x617c89 : 0x3e596b;
+        }
+        if (y >= 25 && y <= 29 && adx <= 13 && (y == 25 || adx % 3 == 0)) return 0x415b65;
+        if (y <= 29) {
+            if (adx > 7) return 0;
+            if (adx == 7 || y == 14) return 0x324855;
+            if (adx == 3) return 0x536978;
+            if (adx <= 1 && y >= 18 && y <= 24) return 0xfff4c8;
+            return y > 25 ? 0xd7a45b : dx < 0 ? 0xfff0bb : 0xffd77e;
+        }
+        if (y <= 33) {
+            if (adx > 14) return 0;
+            return y == 30 ? 0x6b8792 : y == 33 ? 0x2c3f47 : 0x415b65;
+        }
+        if (y <= 111) {
+            int half = 9 + (y - 34) * 7 / 77;
+            if (adx <= half) {
+                if (y >= 98 && adx <= 4 && (y >= 102 || dx * dx + (y - 102) * (y - 102) <= 16))
+                    return adx == 4 || y == 98 ? 0x354750 : dx == 2 && y == 105 ? 0xd4b47d : 0x6f5842;
+                if ((y >= 50 && y <= 56) || (y >= 76 && y <= 82)) {
+                    if (adx <= 1) return y == 50 || y == 76 ? 0x9bb4bd : 0x263e48;
+                    if (adx == 2 && y != 50 && y != 76) return 0x46606a;
+                }
+                bool red = (y - 34) / 13 % 2 == 1;
+                if (adx == half) return dx < 0 ? red ? 0x9d4549 : 0xb9ae96 : red ? 0x6e3438 : 0x694e4d;
+                if (dx < -half / 3) return red ? 0xe28673 : 0xffedc4;
+                if (dx > half / 3) return red ? 0x9d4549 : 0xb4b3a0;
+                return red ? 0xc65d55 : 0xe1d7b6;
+            }
+            if (y < 108) return 0;
+        }
+        int ry = 131 - y, half = 27 - ry * ry / 34 + ((ry * 5 + (dx < 0) * 3) % 4) - 1;
+        if (adx > half) return 0;
+        if ((x * 3 + y * 5) % 23 == 0) return 0x3f5352;
+        if (ry > 12 && adx > half - 3) return dx < 0 ? 0x6f9a62 : 0x4f7550;
+        if (adx > half - 1) return 0x3f5352;
+        return dx < -8 ? 0x8fa39c : dx > 8 ? 0x4f6463 : 0x6c837f;
+    }
+    case 6: {                                           /* STONE BRIDGE, 136 x 72 */
+        int top = adx <= 50 ? 10 + dx * dx / 700 : 14 + (adx - 50) * 2;
+        if (y < top) return 0;
+        float ex = dx / 38.0f, ey = (y - 71) / 42.0f, n = ex * ex + ey * ey;
+        if (n < 1) {                                    /* the arch is open: ivy hangs from its crown */
+            static const int strands[5] = {-21, -9, 4, 16, 27}, lengths[5] = {9, 15, 7, 12, 8};
+            float crown = 71 - 42 * sqrtf(fmaxf(0, 1 - ex * ex));
+            for (int i = 0; i < 5; i++)
+                if (abs(dx - strands[i] - (int)(y - crown) / 5 % 2) <= 0 && y - crown < lengths[i])
+                    return (y + i) % 3 ? 0x5e8a5a : 0x8fbd78;
+            return 0;
+        }
+        int hx = adx - 47, hy = y - 50;
+        if (hx * hx + hy * hy < 36) return 0;           /* the spandrel's flood eyes */
+        if (y <= top + 4 && adx <= 49 && y >= top + 2 && x % 6 >= 2 && x % 6 <= 3) return 0;   /* the balustrade */
+        if (y == top) return 0xd1d3b3;
+        if (y <= top + 4) return y == top + 1 ? 0xa7ad97 : adx % 6 == 1 ? 0x6f8580 : 0x9eac93;
+        if (y <= top + 7) return y == top + 5 ? 0xc2c4a4 : 0x5d7470;
+        if (n < 1.56f) {                                /* the voussoir ring */
+            float a = atan2f(71.0f - y, (float)dx) * 11 / 3.14159265f;
+            if (a - floorf(a) < .12f) return 0x465f60;
+            if ((int)a == 5) return 0xd9dbbd;
+            return dx < 0 ? 0xc2c4a4 : 0x9eac93;
+        }
+        if (y <= top + 10 && (x * 5) % 7 < 3) return 0x658362;
+        if (y >= 67) return (x + y) % 5 ? 0x4d6462 : 0x658362;
+        return grand_masonry(x, y, dx, 68, 6);
+    }
+    case 7: {                                           /* PAGODA, 88 x 118 */
+        static const int roof_top[3] = {13, 41, 75}, roof_h[3] = {10, 12, 14};
+        static const int core[3] = {14, 20, 26}, eave[3] = {28, 36, 43}, body_end[3] = {40, 74, 107};
+        if (y <= 12) {
+            if (y % 3 == 0 && y > 0 && adx <= 3) return 0xd8c08a;
+            return adx <= 1 ? dx < 0 ? 0xc6af7c : 0x8f7a4f : 0;
+        }
+        for (int i = 0; i < 3; i++) {
+            int ry = y - roof_top[i], rh = roof_h[i];
+            if (ry >= 0 && ry < rh) {
+                int hw = core[i] / 2 + (eave[i] - core[i] / 2) * ry / (rh - 1);
+                int lift = adx > eave[i] - 10 ? (adx - (eave[i] - 10)) / 3 : 0;
+                if (adx > hw || ry > rh - 1 - lift) {
+                    int bell = rh - lift - 1;
+                    return adx == eave[i] - 3 && ry > bell && ry <= bell + 3 ? 0xd4b47d : 0;
+                }
+                if (ry == rh - 1 - lift) return 0x354f54;
+                if (ry == 0 || adx >= hw - 1) return 0x91aaa0;
+                if (x % 4 == 0) return 0x46655f;
+                return dx < 0 ? 0x638d87 : 0x50736f;
+            }
+            int body0 = roof_top[i] + rh;
+            if (y >= body0 && y <= body_end[i]) {
+                int half = core[i], len = body_end[i] - body0;
+                if (adx == eave[i] - 3 && y <= body0 + 1) return 0xd4b47d;
+                if (y >= body_end[i] - 2 && adx <= half + 3 && (y == body_end[i] - 2 || adx % 4 == 0)) return 0x7a4a2c;
+                if (adx > half) return 0;
+                if (adx >= half - 2) return dx < 0 ? 0xc65d55 : 0x8f3b35;
+                if (i == 2 && adx <= 5 && y >= body_end[i] - 11)
+                    return adx == 5 || y == body_end[i] - 11 ? 0x7a4a2c : dx == 3 && y == body_end[i] - 6 ? 0xc6af7c : 0x2c3e44;
+                if (adx <= half - 6 && y >= body0 + 4 && y <= body0 + len - 5)
+                    return (x + y) % 4 == 0 || (x - y + 400) % 4 == 0 ? 0x7a4a2c : 0xffd77e;
+                return dx > half / 3 ? 0xc9bfa3 : 0xe8dcc0;
+            }
+        }
+        if (y >= 108 && adx <= (y <= 112 ? 40 : 43))
+            return y == 108 || y == 113 ? 0xc0c1a6 : grand_masonry(x, y, dx, 43, 5);
+        return 0;
+    }
+    case 10: {                                          /* TORII GATE, 112 x 96 */
+        int lift = adx > 36 ? (adx - 36) * (adx - 36) / 80 : 0, ky = 5 - lift;
+        if (adx <= 55 && y >= ky && y <= ky + 5) {
+            if (y == ky) return 0x46444a;
+            if (y == ky + 1) return 0x2b2a2e;
+            return y == ky + 5 ? 0x7f2a26 : dx > 30 ? 0xb23a30 : 0xd2483a;
+        }
+        if (y >= 11 && y <= 13 && adx <= 50) return y == 13 ? 0x7f2a26 : 0xb23a30;
+        if (y >= 15 && y <= 25 && adx <= 7) {
+            if (adx == 7 || y == 15 || y == 25) return 0xd4b47d;
+            return (y == 18 || y == 22) && adx <= 3 ? 0xd4b47d : 0x24302f;
+        }
+        if (y >= 14 && y <= 29 && adx <= 2) return dx > 0 ? 0x9a3229 : 0xc8402f;
+        if (y >= 30 && y <= 35 && adx <= 48) return y == 30 ? 0xe0614f : y == 35 ? 0x7f2a26 : dx > 30 ? 0xb23a30 : 0xc8402f;
+        int pdx = dx < 0 ? dx + 34 : dx - 34, half = y > 60 ? 5 : 4;
+        if (y >= 88 && abs(pdx) <= 8) {
+            if (y == 88) return 0xb7c9b3;
+            if (y >= 92 && (x * 7 + y) % 5 == 0) return 0x658362;
+            return grand_masonry(x, y, pdx, 8, 4);
+        }
+        if (y >= 14 && y < 88 && abs(pdx) <= half + (y >= 80)) {
+            if (y >= 80) return y == 80 ? 0x46444a : 0x2b2a2e;
+            return pdx < -1 ? 0xe0614f : pdx > 1 ? 0x9a3229 : 0xc8402f;
+        }
+        if (adx <= 29) {
+            int ry = 38 + (29 * 29 - dx * dx) / 170;
+            if (y >= ry && y <= ry + 2) return (x + y) % 4 < 2 ? 0xe8d39a : 0xb89a5c;
+            static const int papers[3] = {-18, 0, 18};
+            for (int i = 0; i < 3; i++) {
+                int py = y - ry - 3, off = py / 2 % 2 ? 1 : -1;
+                if (py >= 0 && py <= 8 && abs(dx - papers[i] - off) <= 1) return dx - papers[i] - off > 0 ? 0xc9c6bb : 0xf4f1e6;
+            }
+        }
+        return 0;
+    }
+    }
+    return 0;
+}
 static uint32_t harbor_garden_pixel(int item, int x, int y) {
+    if (tank_decor_grand(item)) return grand_pixel(item, x, y);
     int dx = x - 20;
     int grain = (x * 17 + y * 29 + x * y * 3) & 31;
     uint32_t stone = grain == 0 ? 0xb7c9b3 : grain == 1 ? 0x536d6b :
@@ -3799,30 +3962,6 @@ static uint32_t harbor_garden_pixel(int item, int x, int y) {
     uint32_t wood = (x + y / 8) % 7 == 0 ? 0x76513a :
                     grain < 3 ? 0xc59b63 : 0xa57a4c;
     switch (item - SD_DECOR_FIRST) {
-    case 0: { /* tapered masonry, glazed lantern and railed gallery */
-        if (y >= 34 && y <= 38 && abs(dx) <= 15 - (38 - y) / 2)
-            return y == 34 ? 0xb6b8a0 : y > 36 ? 0x536b6a : stone;
-        if (y >= 13 && y < 35 && abs(dx) <= 5 + (y - 13) / 7) {
-            int half = 5 + (y - 13) / 7;
-            if (y >= 28 && abs(dx) <= 2)
-                return y == 28 || x == 22 ? 0x354750 : x == 19 ? 0x9b7751 : 0x263e48;
-            if ((y == 18 || y == 25) && abs(dx) <= 1) return 0x294654;
-            if (abs(dx) == half) return dx < 0 ? 0xc2b89e : 0x694e4d;
-            bool red = (y >= 21 && y <= 25) || y >= 31;
-            return red ? dx < -1 ? 0xe28673 : dx > 2 ? 0x9d4549 : 0xc65d55 :
-                         dx < -1 ? 0xffedc4 : dx > 2 ? 0xb4b3a0 : 0xe1d7b6;
-        }
-        if (y >= 5 && y <= 12 && abs(dx) <= 6) {
-            if (y == 5 || y == 12) return 0x324855;
-            if (abs(dx) == 6 || x == 18 || x == 22) return 0x536978;
-            return x < 19 ? 0xfff0bb : x > 22 ? 0xd7a45b : 0xffd77e;
-        }
-        if ((y == 13 && abs(dx) <= 9) ||
-            (y >= 10 && y < 13 && abs(dx) <= 9 && x % 3 == 2)) return 0x415b65;
-        if (y >= 2 && y < 5 && abs(dx) <= 2 + y * 2)
-            return y == 4 ? 0x243b4b : dx < 0 ? 0x617c89 : 0x3e596b;
-        return x == 20 && y == 1 ? 0xd4b47d : 0;
-    }
     case 1: { /* clinker hull, sewn sails and rigging */
         if (y >= 29 && y <= 36 && abs(dx) <= 18 - (y - 29) * 2) {
             if (y == 29) return 0xe4c28a;
@@ -3902,41 +4041,6 @@ static uint32_t harbor_garden_pixel(int item, int x, int y) {
         if (x > 27 && y > 25 && grain < 10) return 0x597c70;
         return dx < -3 ? 0xdfb472 : dx > 4 ? 0x8b603e : 0xb98a50;
     }
-    case 6: { /* curved parapet, arch voussoirs and mossy piers */
-        int arch = dx * dx + (y - 35) * (y - 35);
-        int top = 10 + dx * dx / 65;
-        if (y < top || y > 37 || abs(dx) > 18) return 0;
-        if (y > 23 && arch < 121) return 0;
-        if (y <= top + 2) return y == top ? 0xd1d3b3 : 0x809790;
-        if (y > 19 && arch < 210) {
-            if (arch < 145) return 0x465f60;
-            if (dx == 0 || abs(dx) == abs(y - 35) ||
-                abs(dx) == 2 * abs(y - 35)) return 0x566d69;
-            return dx < 0 ? 0xc2c4a4 : 0x9eac93;
-        }
-        if (y % 6 == 1 || (x + y / 6 * 5) % 10 == 0) return 0x536c69;
-        if (y > 31 && grain < 8) return 0x658362;
-        return stone;
-    }
-    case 7: { /* upturned layered eaves, ridge finial and open balconies */
-        if (y >= 2 && y <= 7 && abs(dx) <= (y == 2 ? 1 : 2)) return 0xc6af7c;
-        for (int level = 0; level < 2; level++) {
-            int roof = 7 + level * 13, ry = y - roof;
-            if (ry >= 0 && ry <= 6 && abs(dx) <= 5 + ry * 2 + (ry == 5 ? 3 : 0)) {
-                if (ry == 6) return 0x354f54;
-                if (ry == 5 || (x + ry) % 6 == 0) return 0x91aaa0;
-                return dx < 0 ? 0x638d87 : 0x50736f;
-            }
-            if (ry > 6 && ry < 13 && abs(dx) <= 10) {
-                if (abs(dx) >= 8) return dx < 0 ? 0xe0ba80 : 0xa27751;
-                if (ry == 11 || (ry == 12 && x % 3 == 0)) return 0xb48e60;
-                return x % 4 == 0 ? 0x6d6c57 : 0x2a464c;
-            }
-        }
-        if (y >= 33 && y <= 37 && abs(dx) <= 11 + (y - 33))
-            return y == 33 || y == 36 ? 0xc0c1a6 : stone;
-        return 0;
-    }
     case 8: { /* finial, hip roof, lattice windows and stepped pedestal */
         if (y >= 2 && y <= 5 && dx * dx + (y - 4) * (y - 4) < 6) return 0xbcc9aa;
         if (y >= 6 && y <= 13 && abs(dx) <= 3 + (y - 6) * 2) {
@@ -3975,22 +4079,6 @@ static uint32_t harbor_garden_pixel(int item, int x, int y) {
                 return ey < -1 ? 0x81ad74 : 0x4e805e;
             }
         }
-        return 0;
-    }
-    case 10: { /* swept lintel, paired beams, plaque and stone shoes */
-        int top = 4 - (abs(dx) > 13 ? 1 : 0);
-        if (y >= top && y <= top + 2 && abs(dx) <= 18)
-            return y == top ? 0x73837b : 0x354f52;
-        if ((y >= 7 && y <= 9 && abs(dx) <= 16) ||
-            (y >= 15 && y <= 17 && abs(dx) <= 15))
-            return y == 7 || y == 15 ? 0xea9a79 : y == 17 ? 0x883e3c : 0xc45e50;
-        if (y >= 10 && y <= 15 && abs(dx) <= 2)
-            return abs(dx) == 2 || y == 10 || y == 15 ? 0xc6a06a : 0x354c4d;
-        int post = 10 + (y - 10) / 14;
-        if (y >= 10 && y < 35 && abs(abs(dx) - post) <= 2)
-            return abs(dx) == post + 2 ? 0x833e3a : abs(dx) == post - 2 ? 0xe99472 : 0xc65e50;
-        if (y >= 34 && y <= 38 && abs(abs(dx) - 11) <= 5)
-            return y == 34 ? 0xb3bb9d : stone;
         return 0;
     }
     case 11: { /* bevelled brass moon on a carved plinth */
@@ -4414,9 +4502,11 @@ static void ornament_select(const tank_t *t) {
         for (int slot = 0; slot < DECOR_SLOTS; slot++) {
             int item = tank_decor_slot_item(slot);
             if (item < 9 || item == 13 || item == 21) continue;
+            int iw = tank_ornament_w(item), ih = tank_ornament_h(item);
+            if (iw > 64 || ih > 110 || iw * ih > 4096) continue;   /* beyond the cache: always drawn live */
             int count = counts[item] + progression_item_owned(t, item);
             if (!count) continue;
-            int score = count * tank_ornament_w(item) * tank_ornament_h(item);
+            int score = count * iw * ih;
             if (tank_decor_z(t, item) == DECOR_Z_FRONT) score *= 2;
             if (score > most) { most = score; selected = item; }
         }
@@ -4520,6 +4610,57 @@ static void draw_ornament_flip(ctx_t *c, int item, int x0, int y0, int scale, bo
 static void draw_ornament(ctx_t *c, int item, int x0, int y0, int scale, bool final, bool lit, uint32_t background) {
     draw_ornament_flip(c, item, x0, y0, scale, final, lit, background, false);
 }
+/* the seahorse's grips on a sprite: the highest sturdy column (solid for 6 of
+ * the 8 px below, 14 px above its floor) in each third of the art, the
+ * highest first, 10 px apart; found once per piece */
+#define GRIPS_MAX 3
+static int ornament_grips(int item, uint8_t *gx, uint8_t *gy, uint8_t *ghw, int max) {
+    static uint8_t found[SD_ITEM_COUNT], px[SD_ITEM_COUNT][GRIPS_MAX], py[SD_ITEM_COUNT][GRIPS_MAX], phw[SD_ITEM_COUNT][GRIPS_MAX];
+    if (item < 0 || item >= SD_ITEM_COUNT) return 0;
+    if (!found[item]) {
+        int w = tank_ornament_w(item), h = tank_ornament_h(item), n = 0;
+        int16_t top[256];
+        if (w > 256) w = 256;
+        for (int x = 0; x < w; x++) {
+            top[x] = -1;
+            for (int y = 0; y < h; y++) if (ornament_pixel(item, x, y)) { top[x] = (int16_t)y; break; }
+        }
+        /* the highest sturdy column in each third of the piece: a finial and two eaves */
+        int cx[3], cy[3], nc = 0;
+        for (int band = 0; band < 3; band++) {
+            int b0 = w * band / 3, b1 = w * (band + 1) / 3, mid = (b0 + b1) / 2, bx = -1;
+            for (int x = b0; x < b1; x++) {
+                if (top[x] < 0 || h - top[x] < 14) continue;
+                int solid = 0;
+                for (int y = top[x]; y < h && y < top[x] + 8; y++) solid += ornament_pixel(item, x, y) != 0;
+                if (solid < 6) continue;
+                if (bx < 0 || top[x] < top[bx] || (top[x] == top[bx] && abs(x - mid) < abs(bx - mid))) bx = x;
+            }
+            if (bx >= 0) { cx[nc] = bx; cy[nc] = top[bx]; nc++; }
+        }
+        while (n < GRIPS_MAX) {
+            int best = -1;
+            for (int i = 0; i < nc; i++) {
+                bool apart = true;
+                for (int j = 0; j < n; j++) if (abs(cx[i] - px[item][j]) < 10) apart = false;
+                if (apart && (best < 0 || cy[i] < cy[best])) best = i;
+            }
+            if (best < 0) break;
+            int y = cy[best] + 3 < h ? cy[best] + 3 : h - 1, l = cx[best], r = cx[best];
+            while (l > 0 && ornament_pixel(item, l - 1, y)) l--;
+            while (r < w - 1 && ornament_pixel(item, r + 1, y)) r++;
+            int half = (r - l + 1) / 2;
+            px[item][n] = (uint8_t)cx[best]; py[item][n] = (uint8_t)y;
+            phw[item][n] = (uint8_t)(half < 2 ? 2 : half > 10 ? 10 : half);
+            n++;
+        }
+        found[item] = (uint8_t)(n + 1);
+    }
+    int n = found[item] - 1;
+    if (n > max) n = max;
+    for (int i = 0; i < n; i++) { gx[i] = px[item][i]; gy[i] = py[item][i]; ghw[i] = phw[item][i]; }
+    return n;
+}
 static void draw_pearl_mussel(ctx_t *c, float x, float y, float scale, bool ready,
                               bool lit, uint32_t background, uint8_t colors) {
     uint32_t shell[] = {0x26465b, 0x182d45, 0x48627c, 0x80959e, 0xa5b9bc};
@@ -4585,6 +4726,10 @@ static void draw_ornament_icon(ctx_t *c, int item, int x0, int y0, int size, boo
     int w = tank_ornament_w(item), h = tank_ornament_h(item);
     if (item == 21) h = 56;
     int extent = w > h ? w : h;
+    if (tank_decor_grand(item)) {                       /* centred, standing on the box's floor */
+        x0 += (size - (w * size + extent - 1) / extent) / 2;
+        y0 += size - (h * size + extent - 1) / extent;
+    }
     for (int y = 0; y < size; y++) {
         if (!page_rows_in_tile(c, y0 + y, y0 + y)) continue;
         for (int x = 0; x < size; x++) {
@@ -6458,6 +6603,7 @@ static void draw_care_stroke(const tank_t *t, uint16_t *fb, int stride) {
     }
 }
 void render_tank(const tank_t *t, uint16_t *fb, int stride) {
+    tank_set_grip_source(ornament_grips);
     if (!render_clock_active(t) || !t->companion.display_compact || g_scene) {
         render_tank_scene(t, fb, stride);
         draw_care_stroke(t, fb, stride);
@@ -6780,7 +6926,11 @@ static void seahorse_card_draw(ctx_t *c, const tank_t *t) {
     else if (t->sh_mode == SH_HITCH) snprintf(now, sizeof now, "SWIMMING TO YOU");
     else if (t->night && t->sh_mode == SH_PERCH) snprintf(now, sizeof now, "ASLEEP");   /* only once it holds on (0.3.7: it said ASLEEP on the finger) */
     else if (t->sh_mode == SH_PERCH && t->sh_akind == SH_ANCHOR_SAND) snprintf(now, sizeof now, "RESTING ON THE SAND");
-    else if (t->sh_mode == SH_PERCH) snprintf(now, sizeof now, "HOLDING %s", tank_seahorse_holding(t));
+    else if (t->sh_mode == SH_PERCH) {
+        const char *on = tank_seahorse_holding(t);
+        if (!strcmp(on, "DECOR") && t->sh_aitem >= 0 && t->sh_aitem < SD_ITEM_COUNT) on = SD_ITEMS[t->sh_aitem].name;
+        snprintf(now, sizeof now, "HOLDING %s", on);
+    }
     else snprintf(now, sizeof now, "ADRIFT");
     draw_text(c, TX, Y + 156, 2, 0x9fd8e2, now);
 }
@@ -8475,7 +8625,8 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         else if (owned && SD_IS_FOLIAGE(i))
             button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "MANAGE", 2);
         else if (owned) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, MSP_INK, MSP_DIM, "IN TANK", 2);
-        else if (can) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, !price ? "ADD" : "BUY", 2);
+        else if (can) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL,
+                             !price ? progression_inventory_stored(t, i) ? "PLACE" : "ADD" : "BUY", 2);
         else           button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_DIM, "UNLOCK", 2);
     }
     const char *notice = progression_shop_notice();

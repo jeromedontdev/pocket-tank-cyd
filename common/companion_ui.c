@@ -1018,15 +1018,15 @@ static const help_topic_t HELP_TOPICS[] = {
         "Doubloons are the only currency. Earn them from games, fish and creature sales, and a pearl mussel; spend them on stock, decor, foliage, food and themes."}},
     {"FISH NEEDS", STAMP_HEART, {
         "TRUST grows with meals and gentle holds. ENERGY drains while swimming and refills with rest. FULLNESS falls over time; feed when it runs low. CALM drops when startled.",
-        "Every bar is better when full. Calm recovers by itself, faster near cover, with Cozy Shelter, and when the fish's favorite piece is in the tank."}},
+        "Calm is cultivated, not given: a newcomer settles only part way, and each point of trust raises how calm it can become. Cover, Cozy Shelter and its favorite piece help it settle."}},
     {"COMFORT & FAVORITES", STAMP_LEAF, {
-        "Every fish loves one decoration or foliage set, shown as LOVES on its summary. With that piece placed, calm recovers 30% faster and the fish grows 10% faster.",
-        "Without it the fish stays a little restless: calm settles no higher than about 7.5 and growth is 10% slower. Store pieces instead of selling them to switch favorites quickly."}},
+        "Every fish loves one decoration or foliage set, shown as LOVES on its summary. With that piece placed, calm recovers 30% faster, settles a quarter higher and the fish grows 10% faster.",
+        "Without it the fish stays a little restless and grows 10% slower. Store pieces instead of selling them to switch favorites quickly."}},
     {"GROWTH & FOOD", STAMP_FISH, {
         "Fry become juveniles after 2 growth hours, adults after 12 and elders after 96. Asleep or away, a tank grows at a quarter of awake speed.",
         "Permanent diets multiply growth: Pellets 1x, Flakes 1.25x (250), Bloodworms 1.5x (750). Favorite decor adds or removes 10%; hybrid vigor adds up to 10%."}},
     {"BREEDING", STAMP_FAMILY, {
-        "Two healthy adults or elders of the SAME variety can breed when there is room and you have fed them. Varieties never cross. Name each new fry with the keyboard.",
+        "Two healthy adults or elders of the SAME variety can breed when there is room and you have fed them. Varieties never cross. Name each new fry with the keyboard; SUGGEST rolls a fresh name.",
         "Fry inherit one allele of each gene from each parent. Pair carriers of hidden traits to reveal them. Check Fish > Family to follow a line."}},
     {"GENETICS & VIGOR", STAMP_GENES, {
         "Each fish has two marking alleles, two body-color alleles and four recessive traits. A trait shows only with two copies; one copy is carried silently.",
@@ -1039,19 +1039,19 @@ static const help_topic_t HELP_TOPICS[] = {
         "Market > Auction: on Saturdays one RARE+ or 2nd-generation adult can be sold to rival bidders. Commit first; the hammer lands at 95-165% of the quote. One lot a week."}},
     {"CREATURES", STAMP_SHELL, {
         "Market > Creature Market trades every creature. They do not breed: one snail, urchin, seahorse, pearl mussel and shrimp school per tank. Colors roll at purchase: NATURAL, TINTED (x1.4), TWO-TONE (x2) or PRIZED (x3.5) resale.",
-        "Shrimp forage fallen food. The snail keeps the glass clear (calm recovers 10% faster); the urchin grazes at night (resting fish settle 20% faster). Seahorses perch on kelp and double trust from holds. The pearl mussel earns doubloons while your fish stay fed."}},
+        "Shrimp eat fallen food. The snail clears the glass (calm recovers 10% faster); the urchin grazes at night (resting fish settle 20% faster). Seahorses perch on kelp, grass and decor and double trust from holds. The mussel pays doubloons."}},
     {"TANKS & IDENTITY", STAMP_FLAG, {
         "Keep up to eight aquariums, each with its own residents, decor and theme. Tank > Tank Summary switches, adds and reviews tanks.",
         "Tank Summary > Name & Identity renames a tank and picks one of many subtitles and illustrated emblems, enough for every tank to have its own."}},
     {"DECOR & FOLIAGE", STAMP_LEAF, {
-        "Tank > Decor & Storage buys, places, stores and sells pieces. Hold a piece in the tank to move it; the arrows step through pieces.",
-        "Ground cover and kelp are permanent foliage sets that never need trimming. Tall pieces give fish shelter and seahorses perches."}},
+        "Tank > Decor & Storage buys, places, stores and sells pieces. Hold a piece in the tank to move it; REMOVE sends any piece, even fixed scenery, to storage and PLACE brings it back.",
+        "The lighthouse, stone bridge, pagoda and torii gate are large pieces as big as the castle. Ground cover and kelp never need trimming. Tall pieces give fish shelter and seahorses perches."}},
     {"THEMES", STAMP_BOOK, {
         "Tank > Themes changes the backdrop of the current tank. Original is free; the others are bought once with doubloons and stay unlocked for every tank.",
         "A theme only changes scenery and light. Residents, decor and foliage stay where you placed them."}},
     {"GAMES", STAMP_STAR, {
         "Main Menu > Games lists every arcade game, the Stories trips and The Lost Current RPG together. Page through with the arrow.",
-        "Each game pays its score reward plus 2 doubloons for up to five rounds a day. Stories and the RPG are calm, story-driven trips."}},
+        "Each game pays its score reward plus 2 doubloons for up to five rounds a day. Current Run is a tap-to-rise dive through rock gaps; Reef Architect is a coral logic grid."}},
     {"CASINO", STAMP_COIN, {
         "Main Menu > Casino holds Fish Races, Reef Reels, Pearl Hi-Lo, a Shell Game, Treasure Dive and the Tide Wheel. Choose a bet of 5, 10, 25 or 50 doubloons before each round.",
         "Results are random, and every win or loss is saved at once. Bet only spare doubloons; your fish, decor and creatures are never at stake."}},

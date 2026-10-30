@@ -87,7 +87,7 @@ school). Colors roll at purchase: NATURAL 45%, TINTED 30% (x1.4 resale),
 TWO-TONE 20% (x2) or PRIZED 5% (x3.5), so rare colors are worth reselling and
 rerolling is a gamble that loses on average. Roles: shrimp forage fallen food,
 snails keep the glass clear (calm +10%), urchins graze at night (rest +20%),
-seahorses perch on kelp (trust from holds doubles) and the pearl mussel pays
+seahorses perch on kelp, sword grass and the tops of decor (trust from holds doubles) and the pearl mussel pays
 doubloons while your fish stay fed. Legacy creature pairs and nursery stock
 were retired once with a refund. The Decor shop now sells only decorations and
 ground cover.
@@ -419,6 +419,23 @@ or STORE COPY controls in item management. Removing
 does not sell or refund a piece; moving and placing owned items do not charge
 again. **SELL STORED** requires a second confirmation and only pays the resale
 value of a paid copy, never a free/Creative one.
+
+Since 2.4.0 every movable piece has REMOVE, including the fixed scenery (sea
+glass, brain coral, tiki, bottle, anemone, teapot and the 0.3.8 floor and float
+pieces). A removed scenery piece is kept in storage; its Decor & Storage row then
+reads **PLACE** and puts it back at no charge.
+
+**Large pieces:** the Lighthouse (56 x 132), Stone Bridge (136 x 72, with an
+open arch and spandrel eyes to swim through), Pagoda (88 x 118) and Torii Gate
+(112 x 96, with a rope and paper streamers) stand at the castle's scale. They
+draw live from the same procedural art, so they need no cache memory. The
+seahorse finds grips on any standing piece by reading the art's highest sturdy
+points, up to three per piece, so a lighthouse rail, pagoda eave or torii beam
+is a real perch, mirrored or not.
+
+| Harbor statement pieces | Garden statement pieces |
+|---|---|
+| ![Striped lighthouse on its rock beside a mossy stone bridge](media/cyd-features/tank-grand-harbor.png) | ![Red torii gate with rope beside a three-roof pagoda](media/cyd-features/tank-grand-garden.png) |
 
 The 2.3.9 placement preview highlights the selected piece and its starting
 position. Tap an overlap to select another placed decoration or copy, including
@@ -970,9 +987,9 @@ Reef Architect and Deep Expedition**. Tap PLAY AS to choose an active
 fish's appearance. Your actual fish are never put at risk or fed by a game.
 Aquarium care pauses while the games menu, round or result is open.
 
-Page two adds longer-form play: five-wave aimed defense, an 18-gate runner,
+Page two adds longer-form play: five-wave aimed defense, an 18-gap tap-to-rise sub dive,
 a multi-hit brick board with three balls, a 22-turn flag-capture tactics grid,
-a coral/grass placement puzzle, and an eight-depth expedition with oxygen,
+a coral logic grid (six corals to match every row and column clue, never touching), and an eight-depth expedition with oxygen,
 health, food, keys, and a safe return decision. Each has an opening rules screen,
 HELP, PAUSE, replay, and its own saved challenge records and medals.
 
@@ -982,13 +999,13 @@ HELP, PAUSE, replay, and its own saved challenge records and medals.
 |---|---|
 | ![Tide Tactics grid with movement, enemies and flags](media/cyd-features/game-tide-tactics.png) | ![Deep Expedition route choices and inventory](media/cyd-features/game-deep-expedition.png) |
 
-| Aim through five waves | Pick the safe current |
+| Aim through five waves | Rise and sink through the gaps |
 |---|---|
-| ![Reef Defender aimed defense](media/cyd-features/game-reef-defender.png) | ![Current Runner five-lane scrolling course](media/cyd-features/game-current-runner.png) |
+| ![Reef Defender aimed defense](media/cyd-features/game-reef-defender.png) | ![Current Runner tap-to-rise sub between rock pillars](media/cyd-features/game-current-runner.png) |
 
-| Clear the brick board | Build a balanced habitat |
+| Clear the brick board | Solve the coral clues |
 |---|---|
-| ![Pearl Breaker paddle and brick board](media/cyd-features/game-pearl-breaker.png) | ![Reef Architect coral and seagrass placement](media/cyd-features/game-reef-architect.png) |
+| ![Pearl Breaker paddle and brick board](media/cyd-features/game-pearl-breaker.png) | ![Reef Architect coral logic grid with row and column clues](media/cyd-features/game-reef-architect.png) |
 
 | Pick a game | Swim through the open gates |
 |---|---|

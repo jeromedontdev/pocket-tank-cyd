@@ -272,13 +272,30 @@ def exercise(lib, backup, output):
                                if cue(pixels, x, y, 0xe4654f, 1) or cue(pixels, x, y, 0x9a62b8, 1)), None)
                 if target:
                     tap(target[0], min(280, target[1] + 12))
-        elif game == 1:  # Runner: follow the actual pearl lane in each scrolling gate.
-            for _ in range(350):
-                pixels = frame(0.25)
-                target = next((i for i in range(5) if any(cue(pixels, 62 + i * 80, y, 0xf2c45a, 2)
-                                                          for y in range(112, 292, 6))), None)
-                if target is not None:
-                    tap(62 + target * 80, 304)
+        elif game == 1:  # Runner: hold the real sub near the centre of the next real rock gap.
+            seen_sub, missing = False, 0
+            for _ in range(1600):
+                pixels = frame(0.05)
+                sub = [y for y in range(104, 292, 2) if cue(pixels, 104, y, 0xf3c94b, 0)]
+                sub = sum(sub) / len(sub) if sub else None
+                if sub is None:
+                    missing += 1
+                    if seen_sub and missing > 40:
+                        break  # The course ended; never tap the result page.
+                    if not seen_sub:
+                        tap(224, 200)
+                    continue
+                missing = 0
+                column = next((x for x in range(126, 424, 4) if cue(pixels, x, 102, 0x4c5c60, 0)), None)
+                target = 197
+                if column is not None:
+                    rows = [y for y in range(102, 292, 2) if not cue(pixels, column, y, 0x4c5c60, 0)
+                            and not cue(pixels, column, y, 0x56676b, 0)]
+                    if rows:
+                        target = (rows[0] + rows[-1]) / 2
+                if sub > target + 6 or not seen_sub:
+                    tap(224, 200)
+                seen_sub = True
         elif game == 2:  # Breaker: track the real pearl ball and move underneath it.
             tap(224, 260)
             for _ in range(2500):
@@ -318,15 +335,30 @@ def exercise(lib, backup, output):
                 tap(122 + cell % 5 * 50, 110 + cell // 5 * 40)
                 if board[cell] != 2:
                     pos = cell
-        elif game == 4:  # Architect: a mixed habitat, then remove and replace one tile.
-            cells = [i for i in range(25) if i not in (6, 18)][:12]
-            for n, cell in enumerate(cells):
-                tap(80 if n % 2 == 0 else 220, 312)
-                tap(122 + cell % 5 * 50, 110 + cell // 5 * 40)
-            cell = cells[-1]
-            tap(122 + cell % 5 * 50, 110 + cell // 5 * 40)
-            tap(122 + cell % 5 * 50, 110 + cell // 5 * 40)
-            tap(360, 312)
+        elif game == 4:  # Architect: read the real clues and rocks, solve the grid, tap the corals.
+            pixels = frame()
+
+            def clue(x, y):
+                for ink in (0x89ffb1, 0xffdc73):
+                    try:
+                        return digit(pixels, x, y, ink)
+                    except AssertionError:
+                        pass
+                raise AssertionError(("Architect clue must be readable", x, y))
+
+            rows = [clue(361, 110 + r * 38) for r in range(5)]
+            cols = [clue(116 + c * 50, 76) for c in range(5)]
+            rocks = {i for i in range(25) if any(cue(pixels, 99 + i % 5 * 50 + dx, 100 + i // 5 * 38 + dy, 0x5b6a6c, 2)
+                                                 for dx in (11, 23, 35) for dy in (10, 18, 26))}
+            assert len(rocks) == 2, ("Architect board shows two rocks", rocks)
+            free = [i for i in range(25) if i not in rocks]
+            solution = next(pick for pick in itertools.combinations(free, 6)
+                            if all(abs(a % 5 - b % 5) > 1 or abs(a // 5 - b // 5) > 1
+                                   for a, b in itertools.combinations(pick, 2))
+                            and [sum(i // 5 == r for i in pick) for r in range(5)] == rows
+                            and [sum(i % 5 == c for i in pick) for c in range(5)] == cols)
+            for cell in solution:
+                tap(99 + cell % 5 * 50 + 23, 100 + cell // 5 * 38 + 17)
         else:  # Expedition: complete two routes then deliberately bank loot safely.
             tap(80, 200)
             tap(80, 200)

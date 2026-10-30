@@ -809,6 +809,7 @@ static void test_shop_expansion(void) {
         give_favorite(&capped, 0);
         fish_t *f = &capped.fish[0];
         f->energy = f->curiosity = 9.9999f; f->stress = 0.0001f;
+        f->trust = 10;                       /* full trust: calm floor is 0 */
         f->goal.id = goal ? GOAL_EXPLORE : GOAL_REST;
         tank_tick(&capped, 0.1f, NULL);
         assert(f->stress == 0 && (goal ? f->curiosity == 10 : f->energy == 10));

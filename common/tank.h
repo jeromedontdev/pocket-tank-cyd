@@ -521,11 +521,12 @@ typedef struct {
 } decor_content_t;
 _Static_assert(sizeof(decor_content_t) == 168, "schema-19 decoration tail");
 /* schema 20: where the fixed scenery stands. x <= 0 = its historical spot;
- * rank carries DECOR_RANK_MIRROR like decor_rank. */
+ * rank carries DECOR_RANK_MIRROR like decor_rank. Version 2 adds stored, a
+ * little-endian mask of pieces put away (REMOVE) by tank_fixed_index. */
 typedef struct {
     float x[DECOR_FIXED_COUNT];
     uint8_t z[DECOR_FIXED_COUNT], rank[DECOR_FIXED_COUNT];
-    uint8_t version, reserved[3];
+    uint8_t version, stored[2], reserved;
 } decor_fixed_t;
 _Static_assert(sizeof(decor_fixed_t) == 88, "schema-20 fixed scenery tail");
 typedef struct {
@@ -1073,6 +1074,7 @@ int   tank_favorite_decor(const tank_t *t, int fish_idx);
 int   tank_fish_favorite_item(const tank_t *t, int fish_idx);   /* SD item this fish loves, from its life id */
 bool  tank_item_in_tank(const tank_t *t, int item);            /* decor placed or foliage planted */
 int   tank_fish_comfort(const tank_t *t, int fish_idx);         /* +1 favorite present, -1 missing */
+float tank_calm_floor(const tank_t *t, int fish_idx);           /* the stress trust lets it settle to */
 void  tank_mussel_pose(const tank_t *t, float *x, float *y, float *crawl);
 bool  tank_mussel_owned(const tank_t *t);
 bool  tank_interest_spot(const tank_t *t, int fish_idx, float *x, float *y);
@@ -1093,6 +1095,9 @@ extern const uint32_t LOOK_ACCENT[LOOK_N];
 extern const uint32_t FISH_BODY_COLORS[FISH_COLOR_N];
 extern const uint32_t FISH_MARKING_COLORS[FISH_COLOR_N];
 void  tank_set_name(tank_t *t, int slot, const char *name);
+/* a fresh suggestion from the name pool (never a roster name, never a tankmate's) */
+const char *tank_suggest_name(const tank_t *t, int slot, uint32_t salt);
+void  tank_give_name(tank_t *t, int slot, uint32_t salt);
 void tank_fish_set_look(fish_t *f, uint32_t body, uint32_t accent);
 void tank_set_look(tank_t *t, int slot, uint32_t body, uint32_t accent);
 enum { FISH_CLASSIC, FISH_ANGEL, FISH_GUPPY, FISH_TETRA, FISH_PUFFER,
@@ -1318,6 +1323,11 @@ void  tank_decor_reset(tank_t *t, int item);
 #define CHEST_H 34
 int   tank_ornament_w(int item);
 int   tank_ornament_h(int item);
+bool  tank_decor_grand(int item);         /* a statement piece as big as the castle: lighthouse, stone bridge, pagoda, torii gate */
+/* a sprite piece's seahorse grips (x, y in its art; hw the coil's half width),
+ * found from the art by the renderer, which registers itself here */
+typedef int (*tank_grip_source_t)(int item, uint8_t *x, uint8_t *y, uint8_t *hw, int max);
+void  tank_set_grip_source(tank_grip_source_t fn);
 int   tank_ornament_index(int item);
 int   tank_decor_slot(int item);                  /* 0..DECOR_SLOTS-1 (the tie order), or -1 */
 int   tank_decor_slot_item(int slot);

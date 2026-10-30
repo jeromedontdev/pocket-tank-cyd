@@ -237,6 +237,24 @@ def main():
                         restore(showcase, preserve_life=True)
                     scene(name)
                 restore(demo)
+                for name, pieces in (("tank-grand-harbor", ((43, 52), (49, 214))),
+                                     ("tank-grand-garden", ((53, 92), (50, 250)))):
+                    grand = copy.deepcopy(demo)
+                    grand["tank"].update(n_fish=2, journal_theme=0, sd_unlocks=0)
+                    restore(grand)
+                    grand = json.loads(sim.backup(lib))
+                    content = grand["content"]
+                    z, ranks = bytearray.fromhex(content["z"]), bytearray.fromhex(content["rank"])
+                    for rank, (item, x) in enumerate(pieces):
+                        i = item - 43
+                        content["owned"] |= 1 << i
+                        content["x"][i] = x * args.width / 320
+                        z[i] = 0
+                        ranks[i] = 40 + rank
+                    content["z"], content["rank"] = z.hex(), ranks.hex()
+                    restore(grand, preserve_life=True)
+                    scene(name)
+                restore(demo)
                 polish = json.loads(sim.backup(lib))
                 polish["polish"].update(scenery_unlocks=63, subtitle=3, emblem=3)
                 restore(polish, preserve_life=True)

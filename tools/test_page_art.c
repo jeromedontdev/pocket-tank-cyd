@@ -1035,6 +1035,47 @@ static void check_kelp_forest(void) {
     puts("PASS: Kelp Forest tips taper and the entire first leaf survives every stalk height without horizontal cuts");
 }
 
+/* every standing piece alone with the seahorse: it finds grips on the piece's own art
+ * (the large pieces several), holds one at the art's top, and names the piece */
+static void check_decor_perches(void) {
+    int pieces = 0, held = 0;
+    for (int item = 9; item < SD_ITEM_COUNT; item++) {
+        if (item == 13 || tank_decor_surface(item) || !tank_decor_movable(item)) continue;
+        tank_t t;
+        tank_init(&t, 178); tank_new_population(&t);
+        t.sd_unlocks = SD_ITEM_SEAHORSE;
+        t.foliage = (foliage_state_t){0};
+        t.polish.scenery_unlocks = 0;
+        if (SD_IS_NEW_DECOR(item)) t.content.owned = 1u << (item - SD_DECOR_FIRST);
+        else if (SD_IS_SCENERY(item)) t.polish.scenery_unlocks = (uint8_t)(1u << (item - SD_SCENERY_FIRST));
+        else if (item < 32) t.sd_unlocks |= 1u << item;
+        if (!tank_decor_owned(&t, item)) continue;
+        tank_decor_set(&t, item, TANK_W * .5f, DECOR_Z_BACK);
+        render_tank(&t, full_frame, TANK_W);
+        tank_seahorse_place(&t);
+        pieces++;
+        if (t.sh_akind != SH_ANCHOR_POST) continue;
+        assert(t.sh_aitem == item);
+        int w = tank_ornament_w(item), h = tank_ornament_h(item);
+        float left = (int)tank_decor_x(&t, item) - w / 2;
+        assert(t.sh_ax >= left && t.sh_ax <= left + w);
+        assert(t.sh_ay >= TANK_BOT - 60 - h && t.sh_ay < TANK_BOT);
+        held++;
+        if (tank_decor_grand(item)) {
+            /* the big pieces: several grips, and the mirror carries them across */
+            uint8_t gx[3], gy[3], ghw[3];
+            int grips = ornament_grips(item, gx, gy, ghw, 3);
+            if (grips < 2) fprintf(stderr, "decor %d: %d grips\n", item, grips);
+            assert(grips >= 2);
+            tank_decor_set_mirrored(&t, item, true);
+            tank_seahorse_place(&t);
+            assert(t.sh_akind == SH_ANCHOR_POST && t.sh_aitem == item);
+        }
+    }
+    assert(pieces > 40 && held * 10 >= pieces * 9);
+    printf("PASS: the seahorse finds grips on %d of %d standing decorations, several on each large piece\n", held, pieces);
+}
+
 static void check_kelp(void) {
     tank_t t;
     tank_init(&t, 177); tank_new_population(&t);
@@ -1416,8 +1457,8 @@ static void check_tank_materials(void) {
                                53, 54, 55, 56, 57, 58, 59, 60, 61, 62};
     for (unsigned i = 0; i < sizeof items / sizeof *items; i++) {
         int item = items[i], width = tank_ornament_w(item), height = tank_ornament_h(item);
-        uint16_t colors[32];
-        int count = 0, painted = 0, transparent = 0;
+        uint16_t colors[64];
+        int count = 0, painted = 0, transparent = 0, limit = tank_decor_grand(item) ? 64 : 32;
         for (int y = -1; y <= height; y++) for (int x = -1; x <= width; x++) {
             uint32_t rgb = ornament_pixel(item, x, y);
             assert(rgb == ornament_pixel(item, x, y));
@@ -1432,7 +1473,7 @@ static void check_tank_materials(void) {
                 int k = 0;
                 while (k < count && colors[k] != color) k++;
                 if (k == count) {
-                    assert(count < 32);
+                    assert(count < limit);
                     colors[count++] = color;
                 }
             }
@@ -1444,17 +1485,13 @@ static void check_tank_materials(void) {
     assert(ornament_pixel(9, 23, 23) != ornament_pixel(9, 21, 23)); /* Recessed latch. */
     assert(ornament_pixel(26, 11, 10) != ornament_pixel(26, 12, 10)); /* Hoop rivet. */
     static const struct { int item, x0, y0, x1, y1; } details[] = {
-        {43, 19, 8, 18, 8},   /* Glazed lantern and mullion. */
         {44, 24, 13, 24, 14}, /* Sewn sail seam. */
         {45, 20, 17, 20, 18}, /* Braided rope. */
         {46, 20, 18, 23, 18}, /* Brass wheel hub. */
         {47, 6, 12, 7, 12},   /* Iron corner rivet. */
         {48, 20, 18, 20, 21}, /* Porthole reflection. */
-        {49, 20, 10, 20, 11}, /* Parapet cap. */
-        {50, 20, 17, 21, 17}, /* Recessed balcony lattice. */
         {51, 20, 17, 19, 17}, /* Lantern window frame. */
         {52, 20, 31, 20, 32}, /* Planter lip and soil. */
-        {53, 20, 10, 20, 11}, /* Torii plaque border. */
         {54, 6, 18, 9, 18},   /* Crescent bevel. */
         {55, 20, 21, 20, 16}, /* Geode cavity and facets. */
         {56, 17, 19, 20, 20}, /* Fossil spiral and chamber. */
@@ -1475,13 +1512,20 @@ static void check_tank_materials(void) {
         }
     }
     assert(!lost_details);
-    assert(!ornament_pixel(49, 20, 34));
-    assert(!ornament_pixel(53, 20, 26));
+    assert(!ornament_pixel(49, 68, 60));   /* the bridge arch is open to swim under */
+    assert(!ornament_pixel(53, 56, 60));   /* and so is the torii, between its posts */
+    assert(rgb565(ornament_pixel(43, 28, 20), 1) != rgb565(ornament_pixel(43, 31, 20), 1)); /* lamp and mullion */
+    assert(rgb565(ornament_pixel(49, 68, 10), 1) != rgb565(ornament_pixel(49, 68, 11), 1)); /* parapet cap */
+    assert(rgb565(ornament_pixel(50, 44, 28), 1) != rgb565(ornament_pixel(50, 44, 29), 1)); /* shoji lattice */
+    assert(rgb565(ornament_pixel(53, 56, 15), 1) != rgb565(ornament_pixel(53, 56, 17), 1)); /* plaque border */
+    assert(tank_ornament_h(43) >= 120 && tank_ornament_w(49) >= 120);
+    assert(tank_ornament_h(50) >= 110 && tank_ornament_w(53) >= 100);
     assert(!ornament_pixel(54, 27, 16));
     bool work_enabled = g_work_enabled;
     render_work_caches(true);
     tank_t t = {0};
     for (int item = SD_DECOR_FIRST; item < SD_DECOR_FIRST + DECOR_NEW_COUNT; item++) {
+        if (tank_decor_grand(item)) continue;   /* drawn live, too big for the 40 px cache */
         t.inventory.extra[0].item = t.inventory.extra[1].item = (uint8_t)(item + 1);
         ornament_select(&t);
         const ornament_art_t *art = ornament_art(item);
@@ -1784,6 +1828,121 @@ static void check_puzzle_games(void) {
         assert(g_game.page == GAME_RESULT && !g_game.score);
     }
     g_game_relaxed = false;
+}
+
+static void games_tap_page(float x, float y) {
+    render_games_tap(&help_tank, x * TANK_W / PAGE_W, y * TANK_H / PAGE_H);
+}
+
+static bool architect_search(int from, int left) {
+    if (!left) {
+        for (int line = 0; line < 10; line++) {
+            int n = 0;
+            for (int k = 0; k < 5; k++) n += g_game.board[line < 5 ? line * 5 + k : k * 5 + line - 5] == 1;
+            if (n != g_game.cards[line]) return false;
+        }
+        return true;
+    }
+    for (int i = from; i < 25; i++) {
+        if (g_game.board[i] == 3) continue;
+        bool ok = true;
+        for (int j = 0; j < 25 && ok; j++)
+            if (g_game.board[j] == 1 && abs(i % 5 - j % 5) <= 1 && abs(i / 5 - j / 5) <= 1) ok = false;
+        if (!ok) continue;
+        g_game.board[i] = 1;
+        if (architect_search(i + 1, left - 1)) return true;
+        g_game.board[i] = 0;
+    }
+    return false;
+}
+
+static void check_runner_and_architect(void) {
+    for (int relaxed = 0; relaxed < 2; relaxed++) {
+        g_game_relaxed = relaxed != 0;
+        game_start(GAME_RUNNER);
+        g_game.help = false;
+        float start = g_game.foes[0].x;
+        for (int i = 0; i < 20; i++) render_games_tick(0.05f);
+        assert(!g_game.launched && g_game.foes[0].x == start && g_game.hp == 3);
+        games_tap_page(224, 200);
+        assert(g_game.launched && g_game.vy < 0);
+        /* an autopilot that pulses when it falls below the next gap clears the course */
+        for (int step = 0; step < 6000 && g_game.page == GAME_RUNNER; step++) {
+            int next = 0;
+            for (int i = 0; i < 3; i++) {
+                bool ahead = g_game.foes[i].x > 104 - 30;
+                bool best = g_game.foes[next].x <= 104 - 30 || g_game.foes[i].x < g_game.foes[next].x;
+                if (ahead && best) next = i;
+            }
+            if (g_game.by > g_game.foes[next].y + 6 && g_game.vy > -40) games_tap_page(224, 200);
+            render_games_tick(0.02f);
+        }
+        assert(g_game.page == GAME_RESULT && g_game.rounds == 18 && g_game.hp > 0);
+        assert(g_game.score >= 18 + g_game.hp * 2 && g_game.reward >= 4 && g_game.reward <= 10);
+        /* never tapping again: the sand scrapes the hull until the run ends */
+        game_start(GAME_RUNNER);
+        g_game.help = false;
+        games_tap_page(224, 200);
+        for (int step = 0; step < 2000 && g_game.page == GAME_RUNNER; step++) render_games_tick(0.05f);
+        assert(g_game.page == GAME_RESULT && g_game.hp <= 0 && g_game.rounds < 18);
+    }
+    g_game_relaxed = false;
+    int fallbacks = 0;
+    for (int round = 0; round < 12; round++) {
+        game_start(GAME_ARCHITECT);
+        g_game.help = false;
+        int rows = 0, cols = 0, rocks = 0;
+        for (int i = 0; i < 5; i++) { rows += g_game.cards[i]; cols += g_game.cards[5 + i]; }
+        for (int i = 0; i < 25; i++) { assert(g_game.board[i] == 0 || g_game.board[i] == 3); rocks += g_game.board[i] == 3; }
+        assert(rows == 6 && cols == 6 && rocks == 2);
+        {
+            uint8_t put[25] = {0};
+            int row[5] = {0}, col[5] = {0};
+            assert(arch_solutions(g_game.board, g_game.cards, put, 0, ARCH_CORALS, row, col) == 1);
+            if (g_game.board[21] == 3 && g_game.board[23] == 3 && g_game.cards[0] == 3 && g_game.cards[2] == 3) fallbacks++;
+        }
+        uint8_t start[25];
+        memcpy(start, g_game.board, sizeof start);
+        assert(architect_search(0, 6));
+        uint8_t solution[25];
+        memcpy(solution, g_game.board, sizeof solution);
+        memcpy(g_game.board, start, sizeof start);
+        int rock = 0;
+        while (start[rock] != 3) rock++;
+        games_tap_page(99 + rock % 5 * 50 + 20, 100 + rock / 5 * 38 + 16);
+        assert(g_game.board[rock] == 3 && !g_game.moves);
+        int first = -1, last = -1;
+        for (int i = 0; i < 25; i++) if (solution[i] == 1) { if (first < 0) first = i; last = i; }
+        if (round == 0) {
+            /* tapping cycles coral > mark > empty; CLEAR empties the board */
+            games_tap_page(99 + first % 5 * 50 + 20, 100 + first / 5 * 38 + 16);
+            assert(g_game.board[first] == 1 && g_game.moves == 1);
+            games_tap_page(99 + first % 5 * 50 + 20, 100 + first / 5 * 38 + 16);
+            assert(g_game.board[first] == 2);
+            games_tap_page(99 + first % 5 * 50 + 20, 100 + first / 5 * 38 + 16);
+            assert(g_game.board[first] == 0 && g_game.moves == 1);
+            games_tap_page(99 + first % 5 * 50 + 20, 100 + first / 5 * 38 + 16);
+            games_tap_page(80, 312);
+            assert(!g_game.board[first] && g_game.page == GAME_ARCHITECT);
+            g_game.moves = 0;
+        }
+        for (int i = 0; i < 25; i++) if (solution[i] == 1) {
+            assert(g_game.page == GAME_ARCHITECT);
+            games_tap_page(99 + i % 5 * 50 + 20, 100 + i / 5 * 38 + 16);
+        }
+        assert(g_game.page == GAME_RESULT && g_game.score == 40 && g_game.reward == 10);
+        (void)last;
+    }
+    assert(fallbacks <= 1);   /* random deals, each with exactly one answer */
+    /* touching corals never solve, and GIVE UP scores only the clues met */
+    game_start(GAME_ARCHITECT);
+    g_game.help = false;
+    memset(g_game.board, 0, 25);
+    games_tap_page(99 + 20, 100 + 16);
+    games_tap_page(99 + 50 + 20, 100 + 16);
+    assert(g_game.page == GAME_ARCHITECT && g_game.board[0] == 1 && g_game.board[1] == 1);
+    games_tap_page(360, 312);
+    assert(g_game.page == GAME_RESULT && g_game.score <= 10 && g_game.reward <= 2);
 }
 
 static void check_puzzle_rewards(void) {
@@ -2642,6 +2801,7 @@ int main(int argc, char **argv) {
     ctx_t c = {pixels, 448, 1.0f, 0, 0, 448, 368, false};
     check_puzzle_games();
     check_puzzle_rewards();
+    check_runner_and_architect();
     uint32_t previews[18];
     for (int game = 0; game < 18; game++) {
         memset(pixels, 0, sizeof pixels);
@@ -2721,6 +2881,7 @@ int main(int argc, char **argv) {
         check_serene_interface(gallery);
         check_kelp_forest();
         check_kelp();
+        check_decor_perches();
         check_retired_lantern();
         check_content_page_tiles();
         check_inventory_ui();

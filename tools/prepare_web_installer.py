@@ -21,7 +21,7 @@ FEATURE_IMAGES = (
     "main-menu.png", "tank-kelp.png", "tank-rare-visitor.png",
     "fish-summary.png", "fish-genes.png", "fish-life.png",
     "fish-market.png", "fish-sale.png", "collection.png",
-    "ground-cover-mixed.png", "shop-decorations.png", "food-upgrades.png", "journal-themes.png",
+    "ground-cover-mixed.png", "tank-grand-harbor.png", "food-upgrades.png", "journal-themes.png",
     "aquarium-summary.png", "tank-identity.png",
     "games-menu.png", "game-reef-defender.png", "rpg-chapter-1.png",
     "clock-analog.png", "clock-flip.png", "clock-weather.png",

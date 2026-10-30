@@ -32,6 +32,8 @@ extern const int game_kinds[18];
 extern const char *const game_names[18];
 extern const char *const game_titles[18];
 void game_start(int kind);
+int arch_solutions(const uint8_t *rocks, const uint8_t *clue, uint8_t *put, int cell, int left, int *row, int *col);
+#define ARCH_CORALS 6
 void game_finish(void);
 bool game_slide_solved(void);
 void game_practice_tap(float x, float y);

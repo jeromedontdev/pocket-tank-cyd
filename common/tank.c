@@ -431,6 +431,51 @@ void tank_set_name(tank_t *t, int slot, const char *name) {
     }
     f->name[n] = 0;
 }
+/* Suggested names (2026-10-30): a wide pool of short originals, none of
+ * them a roster name, so a suggestion is always saved as the fish's own. */
+static const char *const NAME_POOL[] = {
+    "ash", "basil", "bean", "birch", "bixby", "blink", "bloop", "bonnie", "brook", "bubba",
+    "buttons", "cairo", "cashew", "cedar", "chai", "chip", "cinder", "clove", "cobalt", "coco",
+    "comet", "cosmo", "crumb", "dash", "dewdrop", "dill", "dot", "drift", "dune", "echo",
+    "ember", "fable", "fennel", "fig", "finn", "flint", "fluke", "flurry", "fudge", "gizmo",
+    "ginger", "gumbo", "halo", "hazel", "honey", "indigo", "inky", "iris", "ivy", "jasper",
+    "jiggy", "juno", "kiwi", "koi", "lark", "latte", "lemon", "lilo", "loki", "lotus",
+    "luna", "lyric", "mango", "maple", "marble", "mimi", "minnow", "misty", "mochi", "moss",
+    "muffin", "nacho", "nimbus", "nova", "nugget", "nutmeg", "olive", "onyx", "opal", "otis",
+    "pebble", "peanut", "pepper", "pickle", "pixel", "plum", "poppy", "puddle", "quill", "rain",
+    "reed", "remy", "ripple", "river", "rocket", "rosie", "rusty", "saffron", "sage", "sandy",
+    "scout", "shadow", "skipper", "sky", "slate", "smudge", "sorbet", "sparky", "speck", "splash",
+    "sprout", "squid", "storm", "sunny", "taffy", "tango", "tansy", "tide", "toffee", "twig",
+    "violet", "waffle", "wasabi", "willow", "wisp", "yuzu", "zephyr", "ziggy", "zinnia", "zuzu",
+};
+#define NAME_POOL_N ((int)(sizeof NAME_POOL / sizeof NAME_POOL[0]))
+static uint32_t name_hash(uint32_t x) {
+    x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x;
+}
+static bool name_taken(const tank_t *t, int slot, const char *name) {
+    for (int i = 0; i < t->n_fish && i < N_FISH_MAX; i++)
+        if (i != slot && !strncmp(t->fish[i].name, name, FISH_NAME_MAX)) return true;
+    return false;
+}
+/* A stable hash picks the name, so suggesting draws nothing from the tank's
+ * rng and seeded runs keep their sequence. Names already in the tank and the
+ * slot's current name are skipped. */
+const char *tank_suggest_name(const tank_t *t, int slot, uint32_t salt) {
+    const char *current = slot >= 0 && slot < N_FISH_MAX ? t->fish[slot].name : "";
+    uint32_t h = name_hash(t->rng ^ salt * 0x9e3779b1u ^ (uint32_t)slot * 0x632be5abu ^
+                           (uint32_t)t->story.births * 0x85ebca6bu);
+    int first = (int)(h % NAME_POOL_N);
+    for (int step = 0; step < NAME_POOL_N; step++) {
+        const char *name = NAME_POOL[(first + step * 37) % NAME_POOL_N];
+        if (!name_taken(t, slot, name) && strncmp(current, name, FISH_NAME_MAX)) return name;
+    }
+    return NAME_POOL[first];
+}
+void tank_give_name(tank_t *t, int slot, uint32_t salt) {
+    if (slot < 0 || slot >= N_FISH_MAX) return;
+    t->fish[slot].name[0] = 0;
+    tank_set_name(t, slot, tank_suggest_name(t, slot, salt));
+}
 static uint32_t fin_for(uint32_t body) {
     for (int i = 0; i < ROSTER_N; i++) if (ROSTER[i].color == body) return ROSTER[i].fin;
     /* a body colour of the keeper's own: the fin is that body at 58% */
@@ -468,7 +513,7 @@ void tank_make_fish(tank_t *t, int slot, int preset, float sociable, float bold,
     f->speed = 0; f->target_speed = 0; f->speed_vel = 0; f->wander = f->x * 0.05f; f->swim_phase = f->wander;
     f->base_size = p->size; f->size = p->size; f->turn_rate = p->turn_rate;
     f->hunger = tank_randf(t, 3, 6); f->energy = tank_randf(t, 5, 8);
-    f->stress = tank_randf(t, 0, 2); f->curiosity = p->curiosity;
+    f->stress = tank_randf(t, 4.5f, 6.5f); f->curiosity = p->curiosity;   /* a newcomer arrives unsettled: calm is cultivated */
     f->sociable = sociable; f->bold = bold; f->lazy = p->lazy;
     f->bold0 = bold; f->sociable0 = sociable; f->drift_acc = 0;
     f->stage = stage;
@@ -528,6 +573,8 @@ void tank_new_population(tank_t *t) {
     /* New aquariums begin with the simple first-tier Tetra; existing residents keep their saved variety. */
     t->fish[0].variety = t->fish[1].variety = FISH_TETRA;
     t->n_fish = 2;
+    tank_give_name(t, 0, 0x51u);
+    tank_give_name(t, 1, 0x52u);
 }
 
 /* ---- genetics (1.3) ----------------------------------------------------
@@ -680,6 +727,7 @@ int tank_add_fish(tank_t *t, int parent_a, int parent_b) {
     place_near_reef(t, &t->fish[slot]);
     t->fish[slot].hunger = 4; t->fish[slot].trust = 4;
     t->n_fish++;
+    tank_give_name(t, slot, 0xb0u);
     return slot;
 }
 
@@ -703,6 +751,7 @@ int tank_add_bought_fry(tank_t *t, uint32_t body, uint32_t accent) {
     f->heading = tank_randf(t, 1.2f, 1.9f); tank_fish_face(f);   /* heading down into the water */
     f->hunger = 4; f->trust = 4;
     t->n_fish++;
+    tank_give_name(t, slot, 0xf1u);
     return slot;
 }
 
@@ -1296,6 +1345,10 @@ static void sh_grip(const tank_t *t, int b, int i, float *x, float *y) {
 /* the POSTS: solid parts of the decorations, at any depth - a piece IN FRONT
  * puts it in its front lane. Offsets from each piece's centre on its floor
  * line, hand-placed on the geometry in render.c. */
+static tank_grip_source_t s_grip_source;
+void tank_set_grip_source(tank_grip_source_t fn) { s_grip_source = fn; }
+#define SH_POSTS_MAX 48
+#define SH_GRIPS_PER_PIECE 3
 static int sh_posts(const tank_t *t, sh_cand_t *out, int max) {
     int n = 0;
     #define POST(it, fr, px, py, phw) do { if (n < max) { out[n].kind = SH_ANCHOR_POST; out[n].front = (fr); out[n].bed = out[n].frond = -1; out[n].item = (it); out[n].x = (px); out[n].y = (py); out[n].hw = (phw); n++; } } while (0)
@@ -1322,6 +1375,18 @@ static int sh_posts(const tank_t *t, sh_cand_t *out, int max) {
         float sz = CLUSTER_SIZE_MIN + (1.0f - CLUSTER_SIZE_MIN) * g;
         POST(4, fr, cx + 33 * sz, fy - 40 * sz, 11 * sz); POST(4, fr, cx + 52 * sz, fy - 32 * sz, 10 * sz); POST(4, fr, cx + 17 * sz, fy - 27 * sz, 9 * sz);
     }
+    /* every other standing piece: the peaks of its own art (render.c finds them: spires, masts,
+     * towers, the tips of fronds), its lane its depth, mirrored with it */
+    if (s_grip_source) for (int item = 9; item < SD_ITEM_COUNT; item++) {
+        if (item == 13 || tank_decor_surface(item) || !tank_decor_movable(item) || !tank_decor_owned(t, item)) continue;
+        uint8_t gx[SH_GRIPS_PER_PIECE], gy[SH_GRIPS_PER_PIECE], ghw[SH_GRIPS_PER_PIECE];
+        int k = s_grip_source(item, gx, gy, ghw, SH_GRIPS_PER_PIECE);
+        int w = tank_ornament_w(item), h = tank_ornament_h(item);
+        float x0 = (float)((int)tank_decor_x(t, item) - w / 2);
+        float y0 = tank_fixed_index(item) >= 0 ? TANK_BOT - (SD_IS_SCENERY(item) ? 52 : 48) : TANK_BOT - 14 + DECOR_SINK - h;
+        bool fr = tank_decor_z(t, item) == DECOR_Z_FRONT, mir = tank_decor_mirrored(t, item);
+        for (int j = 0; j < k; j++) POST(item, fr, x0 + (mir ? w - 1 - gx[j] : gx[j]) + 0.5f, y0 + gy[j], ghw[j]);
+    }
     #undef POST
     return n;
 }
@@ -1338,7 +1403,7 @@ static bool sh_hold_ok(tank_t *t) {
         return true;
     }
     if (t->sh_akind == SH_ANCHOR_POST) {
-        sh_cand_t c[12]; int n = sh_posts(t, c, 12);
+        sh_cand_t c[SH_POSTS_MAX]; int n = sh_posts(t, c, SH_POSTS_MAX);
         for (int i = 0; i < n; i++)
             if (c[i].item == t->sh_aitem && fabsf(c[i].x - t->sh_ax) < 0.01f && fabsf(c[i].y - t->sh_ay) < 0.01f) { t->sh_front = c[i].front != 0; return true; }
         return false;
@@ -1376,7 +1441,7 @@ static bool sh_pick(tank_t *t, float from_x, float from_y) {
             if (!have || score > bs) { bs = score; best = c; have = true; }
         }
     }
-    sh_cand_t posts[12]; int np = sh_posts(t, posts, 12);
+    sh_cand_t posts[SH_POSTS_MAX]; int np = sh_posts(t, posts, SH_POSTS_MAX);
     for (int i = 0; i < np; i++) {
         if (t->sh_akind == SH_ANCHOR_POST && fabsf(posts[i].x - t->sh_ax) < 0.01f && fabsf(posts[i].y - t->sh_ay) < 0.01f) continue;
         float score = -tank_dist(posts[i].x, posts[i].y, from_x, from_y) + tank_randf(t, 0, 30) - (posts[i].front != t->sh_front ? 15 : 0);   /* a lane change a little later */
@@ -1394,8 +1459,8 @@ static bool sh_pick(tank_t *t, float from_x, float from_y) {
 /* anything to hold at all (a blade tall enough, a post on a piece behind)? */
 static bool sh_any_hold(const tank_t *t) {
     if (tank_kelp_anchor(t, 0, NULL, NULL)) return true;
-    sh_cand_t c[12];
-    if (sh_posts(t, c, 12) > 0) return true;
+    sh_cand_t c[SH_POSTS_MAX];
+    if (sh_posts(t, c, SH_POSTS_MAX) > 0) return true;
     for (int b = 0; b < tank_veg_beds(t); b++) {
         float bx0; int n; veg_bed_base(t, b, &bx0, &n);
         for (int i = 0; i < n; i++) if (sh_frond_ok(t, b, i)) return true;
@@ -1408,7 +1473,7 @@ static bool sh_another_hold(const tank_t *t) {
     for (int patch = 0; patch < KELP_PATCH_COUNT; patch++)
         if (tank_kelp_anchor(t, patch, NULL, NULL) &&
             !(t->sh_akind == SH_ANCHOR_KELP && t->sh_frond == patch)) return true;
-    sh_cand_t c[12]; int n = sh_posts(t, c, 12);
+    sh_cand_t c[SH_POSTS_MAX]; int n = sh_posts(t, c, SH_POSTS_MAX);
     for (int i = 0; i < n; i++)
         if (!(t->sh_akind == SH_ANCHOR_POST && fabsf(c[i].x - t->sh_ax) < 0.01f && fabsf(c[i].y - t->sh_ay) < 0.01f)) return true;
     for (int b = 0; b < tank_veg_beds(t); b++) {
@@ -1438,7 +1503,7 @@ void tank_seahorse_place(tank_t *t) {
 const char *tank_seahorse_holding(const tank_t *t) {
     if (t->sh_akind == SH_ANCHOR_KELP) return "KELP";
     if (t->sh_akind == SH_ANCHOR_BLADE) return t->sh_bed >= 0 && tank_veg_kind(t, t->sh_bed) == VEG_KIND_SWORD ? "A LEAF" : "A BLADE";
-    if (t->sh_akind == SH_ANCHOR_POST) return t->sh_aitem == 2 ? "THE CASTLE" : t->sh_aitem == 3 ? "THE CORAL" : "THE REEF";
+    if (t->sh_akind == SH_ANCHOR_POST) return t->sh_aitem == 2 ? "THE CASTLE" : t->sh_aitem == 3 ? "THE CORAL" : t->sh_aitem == 4 ? "THE REEF" : "DECOR";
     return "OPEN WATER";
 }
 bool tank_seahorse_hit(const tank_t *t, float x, float y) {
@@ -1828,12 +1893,28 @@ const char *const FISH_PATTERN_NAMES[FISH_PATTERN_COUNT] = { "STRIPES", "SPOTS",
     "SADDLE", "TIGER", "SPECKLE", "FADE", "MASK" };
 const char *const FISH_TRAIT_NAMES[TRAIT_COUNT] = { "SHIMMER", "PAINTED FINS", "PALE BELLY", "GOLD EYE" };
 int tank_ornament_index(int item) { return item >= 10 && item <= 13 ? item - 10 : item >= 16 && item < 22 ? item - 12 : -1; }
+/* the statement pieces: as tall or as wide as the castle (render.c grand_pixel) */
+static const struct { uint8_t item, w, h; } GRAND_DECOR[] = {
+    {SD_DECOR_FIRST + 0, 56, 132},                      /* lighthouse on its rock */
+    {SD_DECOR_FIRST + 6, 136, 72},                      /* stone bridge */
+    {SD_DECOR_FIRST + 7, 88, 118},                      /* pagoda */
+    {SD_DECOR_FIRST + 10, 112, 96},                     /* torii gate */
+};
+static int grand_index(int item) {
+    for (int i = 0; i < (int)(sizeof GRAND_DECOR / sizeof *GRAND_DECOR); i++) if (GRAND_DECOR[i].item == item) return i;
+    return -1;
+}
+bool tank_decor_grand(int item) { return grand_index(item) >= 0; }
 int tank_ornament_w(int item) {
     static const int widths[6] = {64, 30, 42, 48, 58, 36};
+    int g = grand_index(item);
+    if (g >= 0) return GRAND_DECOR[g].w;
     return item >= 22 && item < SD_ITEM_COUNT ? 40 : item >= 16 && item < 22 ? widths[item - 16] : item == 9 ? CHEST_W : item == 10 ? 36 : item == 11 ? 34 : item == 12 ? 32 : item == 13 ? 36 : 0;
 }
 int tank_ornament_h(int item) {
     static const int heights[6] = {52, 40, 46, 68, 64, 110};
+    int g = grand_index(item);
+    if (g >= 0) return GRAND_DECOR[g].h;
     return item >= 22 && item < SD_ITEM_COUNT ? 40 : item >= 16 && item < 22 ? heights[item - 16] : item == 9 ? CHEST_H : item == 10 ? 24 : item == 11 ? 32 : item == 12 ? 40 : item == 13 ? 104 : 0;
 }
 bool  tank_decor_placeable(int item) { return SD_IS_NEW_DECOR(item) || item == 0 || item == 2 || item == 3 || item == 4 || item == 8 || item == 9 || tank_ornament_index(item) >= 0; }
@@ -2252,6 +2333,7 @@ void tank_tick_sleep(tank_t *t, float seconds) {
         f->energy = clampf(f->energy + SLEEP_ENERGY_PER_H * h * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1), 0, 10);
         f->stress = clampf(f->stress - SLEEP_STRESS_PER_H * h * ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1), 0, 10);
         if (tank_fish_comfort(t, i) < 0 && f->stress < 2) f->stress = 2;   /* missing its favorite piece */
+        if (f->stress < tank_calm_floor(t, i)) f->stress = tank_calm_floor(t, i);
         f->speed = 0; f->target_speed = 0; f->speed_vel = 0; f->turn_vel = 0; f->bored = 0; f->breather = 0;  /* a night's sleep is a fresh start */
         f->goal_age += seconds; f->ask_age += seconds;  /* wake re-asks the advisor at once */
     }
@@ -2323,6 +2405,14 @@ bool tank_item_in_tank(const tank_t *t, int item) {
 int tank_fish_comfort(const tank_t *t, int idx) {
     int item = tank_fish_favorite_item(t, idx);
     return item < 0 ? 0 : tank_item_in_tank(t, item) ? 1 : -1;
+}
+/* The lowest stress a fish settles to (2026-10-30): calm is earned. A
+ * newcomer's trust leaves it ~6 calm at best; patient holds raise trust and
+ * with it the ceiling, and its favorite decor lowers the floor a quarter. */
+float tank_calm_floor(const tank_t *t, int idx) {
+    if (idx < 0 || idx >= t->n_fish) return 0;
+    float settle = (10 - clampf(t->fish[idx].trust, 0, 10)) * 0.7f;
+    return tank_fish_comfort(t, idx) > 0 ? settle * 0.75f : settle;
 }
 
 void tank_mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
@@ -2527,6 +2617,7 @@ static void eat_nearby_food(tank_t *t, fish_t *f) {
             food_y = fminf(food_y, TANK_SAND_TOP - tank_fish_clearance(f));
         if (tank_dist(f->x, f->y, t->food[i].x, food_y) < 12 * f->size + 4) {
             t->food[i].alive = false;
+            if (t->food[i].from_player && f->hunger > 3) f->trust = fminf(10, f->trust + 0.05f);   /* a hungry fish fed by hand learns the keeper */
             f->hunger = clampf(f->hunger - 4.3f, 0, 10);
             f->energy = clampf(f->energy + 1.0f, 0, 10);
             f->curiosity = clampf(f->curiosity + 0.5f, 0, 10);   /* was 0.8: a trickle burst
@@ -2590,6 +2681,8 @@ static void update_fish(tank_t *t, int idx, float dt) {
         f->stress = clampf(f->stress - dt * (rest ? 0.48f : 0.18f) * roles *
                            ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1) * (comfort > 0 ? 1.3f : 1), 0, 10);
         if (comfort < 0 && f->stress < 2.5f) f->stress = fminf(2.5f, f->stress + dt * 0.02f);
+        float settle = tank_calm_floor(t, idx);      /* calm is cultivated: it settles only as far as trust allows */
+        if (f->stress < settle) f->stress = fminf(settle, f->stress + dt * 0.02f);
     }
     /* energy: the prototype's per-second drain (full to empty in ~3 min of
      * cruising) kept the school at energy ~3 - permanently tired, so the

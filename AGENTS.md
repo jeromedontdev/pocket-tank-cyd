@@ -104,7 +104,7 @@ old bullets only as history and evidence.
   losing average with lottery-like upside. Selling clears that tank's colors.
 - Roles: shrimp forage fallen food; the snail keeps glass clear (calm
   recovers faster); the urchin grazes at night (resting fish settle faster);
-  the seahorse perches on kelp and doubles trust from holds; the pearl mussel
+  the seahorse perches on kelp, sword grass and the tops of standing decor and doubles trust from holds; the pearl mussel
   earns 1 doubloon per `MUSSEL_SECONDS` while fish are healthy, up to
   `MUSSEL_DAILY_LIMIT` per day, paid automatically. Mussel ownership is the
   per-aquarium `mussel.owned` bitmask (version 2); selling clears only the
@@ -249,6 +249,27 @@ old bullets only as history and evidence.
   Keep the native-size clipped fast path and shared 16-color dimmed palette.
   Seahorses can genuinely perch on kelp's fixed stems: keep grip and art aligned,
   release on Store, and preserve upright open-water swimming without perches.
+  Any standing decor is a perch too: `sh_posts` asks the renderer-registered
+  `tank_set_grip_source` hook (render.c `ornament_grips`, cached per item) for
+  up to three grips per piece: the highest sturdy column in each third of the
+  art. tank.c must never call render.c directly, because test_profiles,
+  test_creative and test_reef_progression link tank.c alone. Without a
+  registered source there are simply no decor grips.
+- Grand decor (`tank_decor_grand`: Lighthouse 43, Stone Bridge 49, Pagoda 50,
+  Torii 53) overrides `tank_ornament_w/h` beyond 40 px and draws live through
+  `grand_pixel`. `ornament_select` must skip them (cache limit 64 px wide,
+  4096 px). Icons centre and bottom-align them with ceil rounding so thumbnails
+  never spill out of the box. Keep the bridge arch and torii gap open (tested).
+- Calm is cultivated: `tank_calm_floor` = (10 - trust) x 0.7 stress, x0.75 with
+  the favorite piece placed. Never seed new fish with full calm or bypass the
+  floor. Every movable item, fixed scenery included, offers REMOVE. Fixed
+  scenery goes to `fixed.stored` (fixed.version 2), and the shop row's PLACE
+  re-buys it at price 0.
+- Current Runner is a tap-to-rise course (gravity 430, tap -175, 18 gaps, pearls
+  +2, hull x2 bonus) and must stay distinct from Fish Slalom's lanes. Reef
+  Architect is a coral logic grid (6 non-touching corals, row/column clues,
+  rocks), with every generated puzzle uniquely solvable. sim/test_games.py drives
+  both through pixel autopilots; keep their colors in sync with the art.
   Sword art and grip width must share sword_half; its preview uses the same
   folded emerald/teal direction, not the retired thin lime silhouette.
   Keep legacy SD_ITEM_COUNT and 64-bit profile ownership frozen; foliage uses

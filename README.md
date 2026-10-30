@@ -41,6 +41,21 @@ popups and growth-stage announcements, their runtime detectors, and one-time
 growth/trust bonus payouts. Actual growth, birth income and trading remain;
 historical badge records and earned wallets are preserved in saves.
 
+**Cultivated calm, fresh names and statement pieces:** fish are no longer born
+or bought fully calm. Calm settles only as far as trust allows (a newcomer about
+6 of 10), so patient holds and feeding raise it; a fish's favorite piece closes
+another quarter of the gap. Naming keyboards have a **SUGGEST** key that draws
+from 130 names, skipping names already in the tank. Every movable piece,
+including the fixed sea-glass, brain-coral, tiki, bottle, anemone and teapot
+scenery, now has **REMOVE** on the movement screen; it goes to storage and
+**PLACE** in Decor & Storage brings it back free. The **Lighthouse, Stone Bridge,
+Pagoda and Torii Gate** are now large pieces on the castle's scale. Seahorses
+read grips from each piece's own art, so every standing decoration offers perches
+(the large ones several, mirrored or not). **Current Runner** is now a tap-to-rise
+dive through rock gaps rather than a lane game like Fish Slalom, and **Reef
+Architect** is a real logic puzzle: plant six corals that match every row and
+column clue without touching.
+
 **No environmental chores:** seagrass, algae, sponge, scissors, Reef Rhythm
 and the bubbler are retired. Swipes no longer activate currents or current bonuses.
 Buy **Anubias Carpet (60), Moss Cushions (85), Pearlweed (110) or
@@ -146,7 +161,7 @@ school). Colors roll at purchase: NATURAL 45%, TINTED 30% (x1.4 resale),
 TWO-TONE 20% (x2) or PRIZED 5% (x3.5), so rare colors are worth reselling and
 rerolling is a gamble that loses on average. Roles: shrimp forage fallen food,
 snails keep the glass clear (calm +10%), urchins graze at night (rest +20%),
-seahorses perch on kelp (trust from holds doubles) and the pearl mussel pays
+seahorses perch on kelp, sword grass and the tops of decor (trust from holds doubles) and the pearl mussel pays
 doubloons while your fish stay fed. Legacy creature pairs and nursery stock
 were retired once with a refund. The Decor shop now sells only decorations and
 ground cover.
@@ -1390,10 +1405,10 @@ not fish transfers: games cannot injure, feed, train or change the actual fish.
 | Feed Frenzy | Choose each visiting fish's requested snack for 30 seconds. Correct +2; wrong -1, never below zero. | Score 2+ |
 | Reef Puzzle | Rotate pipe tiles to connect the left inlet to the right outlet; untimed, always solvable. | Solve the pipes |
 | Reef Defender | Aim taps at incoming hazards; defend the reef across five increasingly busy waves. | Score 4+ |
-| Current Runner | Choose among five lanes through 18 scrolling gates; gold gap scores 3, neighboring gap 1. | Score 4+ |
+| Current Runner | Tap to rise and let the sub sink through 18 rock gaps; each gap scores 1, a pearl inside it 2, and leftover hull 2 each. | Score 4+ |
 | Pearl Breaker | Move the paddle to keep the pearl bouncing and clear the reef blocks. | Score 4+ |
 | Tide Tactics | Move/attack orthogonally, guard to heal, and capture three flags within 22 turns; enemies respond after each move. | Score 4+ |
-| Reef Architect | Place coral and seagrass on a grid, balancing water access and neighboring habitats. | Score 4+ |
+| Reef Architect | Logic grid: plant 6 corals so every row and column matches its edge number, no two corals touch (even diagonally) and rocks stay bare. Solved scores 24-40 (fewer taps is better); giving up scores one per clue met. | Score 4+ |
 | Deep Expedition | Choose branching routes, manage oxygen and inventory, and return with your loot. | Score 4+ |
 
 Use the page arrows to browse three pages. Page three adds **Lighthouse**
@@ -1430,7 +1445,7 @@ mode, but only challenge play records personal bests and medals.
 | Current Runner | 12 | 28 | 44 |
 | Pearl Breaker | 6 | 14 | 24 |
 | Tide Tactics | 8 | 18 | 30 |
-| Reef Architect | 12 | 24 | 36 |
+| Reef Architect | 8 | 24 | 36 |
 | Deep Expedition | 10 | 24 | 40 |
 
 Each qualifying round offers **1 sand dollar**, up to **5 dollars per game per UTC day**
@@ -1727,7 +1742,9 @@ Bevelled moon metal, geode facets, fossil chambers, spotted mushroom caps,
 castle battlements, a carved sign, an envelope panel and a compass-marked map
 give the smaller objects individual details.
 
-All twenty retain their existing 40-by-40 artwork bounds and use the same
+Four of them are large pieces on the castle's scale: the Lighthouse (56 by 132),
+Stone Bridge (136 by 72, open to swim under), Pagoda (88 by 118) and Torii Gate
+(112 by 96). The other sixteen retain their existing 40-by-40 artwork bounds and use the same
 procedural RGB565 rendering and bounded static caches as the other ornaments.
 There are no new bitmap banks, animation frames, allocations or save fields.
 

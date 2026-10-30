@@ -101,6 +101,12 @@ crowns instead of rebuilding static caches. Native-size drawing clips before
 scanning and avoids resampling divisions; a shared 16-color dimmed palette
 adds about 268 bytes of static storage, not another heap/frame buffer.
 Planted kelp provides real seahorse perches; storing it releases the grip.
+Standing decor also offers perches: render.c registers `ornament_grips()`
+through `tank_set_grip_source()`, which finds up to three sturdy art tops per
+piece (at least two on large pieces). The seahorse card names the held piece.
+Lighthouse, Stone Bridge, Pagoda and Torii Gate are large live-drawn pieces
+(castle scale, up to 136x132). Every movable piece, fixed scenery included,
+has REMOVE on the move screen; stored pieces show PLACE in Decor & Storage.
 Sword leaves and their grip-width helper now share a broader folded profile,
 with emerald/teal shading, pale ribs, textured veins and a redrawn shop icon.
 Kelp Forest theme leaf positions are relative to each stalk's tapered tip,

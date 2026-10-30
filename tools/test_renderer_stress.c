@@ -326,7 +326,7 @@ static void check_ornament_art(void) {
             for (int y = 0; y < tank_ornament_h(item); y++)
                 for (int x = -1; x <= tank_ornament_w(item); x++)
                     assert(ornament_cached_pixel(item, x, y) == ornament_pixel(item, x, y));
-            if (item != 13 && item != 21) assert(g_ornament_art && !g_ornament_failed);
+            if (item != 13 && item != 21 && !tank_decor_grand(item)) assert(g_ornament_art && !g_ornament_failed);
             if (g_ornament_art) for (int y = 0; y < tank_ornament_h(item); y++)
                 for (int x = 0; x < tank_ornament_w(item); x++)
                     assert(((g_ornament_art->mask[y] >> x) & 1) == (ornament_pixel(item, x, y) != 0));
@@ -363,7 +363,7 @@ static void check_foreground_art(void) {
     for (int normal = 0; normal < 2; normal++) {
         tank_resolution(normal != 0);
         for (int item = 9; item < SD_ITEM_COUNT; item++) {
-            if (!tank_decor_placeable(item) || item == 13 || item == 21) continue;
+            if (!tank_decor_placeable(item) || item == 13 || item == 21 || tank_decor_grand(item)) continue;
             tank_t t = {0};
             t.inventory.extra[0].item = (uint8_t)(item + 1);
             for (int mode = 0; mode < 8; mode++) {

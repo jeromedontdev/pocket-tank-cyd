@@ -167,7 +167,8 @@ static void test_decor_scenery_render(void) {
     }
     for (int item = SD_DECOR_FIRST; item < SD_ITEM_COUNT; item++) {
         int index = item - SD_DECOR_FIRST;
-        assert(tank_ornament_w(item) == 40 && tank_ornament_h(item) == 40);
+        assert(tank_decor_grand(item) ? tank_ornament_w(item) > 40 || tank_ornament_h(item) > 40
+                                      : tank_ornament_w(item) == 40 && tank_ornament_h(item) == 40);
         t.content.owned = UINT32_C(1) << index;
         tank_decor_set(&t, item, 34 + index * (TANK_W - 68) / (DECOR_NEW_COUNT - 1),
                        index & 1 ? DECOR_Z_FRONT : DECOR_Z_BACK);

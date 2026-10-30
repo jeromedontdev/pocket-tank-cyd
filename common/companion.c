@@ -900,7 +900,7 @@ bool companion_game_claim(tank_t *t, int game, int score, int moves, int dollars
         t->games.version = 1;
         if (metric > t->games.best[index]) t->games.best[index] = (uint16_t)metric;
         if (t->games.rounds[index] < UINT16_MAX) t->games.rounds[index]++;
-        static const uint16_t thresholds[6][3] = {{8,20,36},{12,28,44},{6,14,24},{8,18,30},{12,24,36},{10,24,40}};
+        static const uint16_t thresholds[6][3] = {{8,20,36},{12,28,44},{6,14,24},{8,18,30},{8,24,36},{10,24,40}};
         for (int i = 0; i < 3; i++) if (metric >= thresholds[index][i] && t->games.medals[index] < i + 1)
             t->games.medals[index] = (uint8_t)(i + 1);
     } else if (!relaxed) {
