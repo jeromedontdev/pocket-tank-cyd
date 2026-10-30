@@ -1442,6 +1442,20 @@ static void casino_symbol(render_ctx_t *c, const tank_t *t, uint16_t *fb, int st
         fish_t f = {0}; progression_market_preview(t, FISH_TETRA, &f);
         render_fish_portrait(fb, stride, (float)cx, (float)cy, 0.7f, &f, clock);
     } else if (sym == 3) ga_pearl(c, (float)cx, (float)cy, 13, 0xf1ebdf);
+    else if (sym == 5) {   /* the colour wheel in miniature: red/blue wedges, one gold, and a pointer */
+        static const uint32_t wedge[3] = {0xda6970, 0x5ba9e8, GA_GOLD};
+        float spin = clock * 0.6f;
+        for (int i = 0; i < 13; i++) {
+            float a = i * 6.283185f / 13 + spin, b = (i + 1) * 6.283185f / 13 + spin;
+            float xs[3] = {(float)cx, cx + cosf(a) * 15, cx + cosf(b) * 15};
+            float ys[3] = {(float)cy, cy + sinf(a) * 15, cy + sinf(b) * 15};
+            render_internal_poly(c, xs, ys, 3, wedge[i == 12 ? 2 : i % 2], 255);
+        }
+        render_internal_annulus(c, (float)cx, (float)cy, 17, 15, GA_GOLD, 255);
+        render_internal_ellipse(c, (float)cx, (float)cy, 3, 3, 0xfff6c8, 255);
+        float px[3] = {(float)cx - 4, (float)cx + 4, (float)cx}, py[3] = {(float)cy - 21, (float)cy - 21, (float)cy - 13};
+        render_internal_poly(c, px, py, 3, 0xffffff, 255);
+    }
     else { render_doubloon(fb, stride, cx - 8, cy - 8); render_internal_annulus(c, (float)cx, (float)cy, 16, 13, GA_GOLD, 255); }
 }
 static void casino_controls(render_ctx_t *c, const char *go) {
@@ -1486,7 +1500,7 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
     render_internal_text(&c, 48, 56, 1, 0xffe29a, text);
     if (s_cas.page == CASINO_LOBBY) {
         static const char *const subs[6] = {"PICK A FISH", "MATCH THREE", "HIGH OR LOW", "FIND PEARL", "PUSH LUCK", "PICK COLOR"};
-        static const int symbols[6] = {2, 4, 3, 0, 1, 4};
+        static const int symbols[6] = {2, 4, 3, 0, 1, 5};
         for (int i = 0; i < 6; i++) {
             int x = 24 + i % 2 * 204, y = 84 + i / 2 * 76;
             render_internal_button(&c, x, y, 196, 70, 0x10282e, GA_GOLD, "", 1);
