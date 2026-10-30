@@ -6211,7 +6211,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     const int veg_n = tank_veg_beds(t) < VEG_BEDS_MAX ? tank_veg_beds(t) : VEG_BEDS_MAX;
 #define VEG_PASS(b, layer) do { g_veg_skip = veg_skip_for(t, (b)); \
         g_pk_shade_all = g_pk_lx >= 0 && ((b) == 3 ? tank_decor_above(t, 0, 8) : pkz == DECOR_Z_BACK); \
-        draw_veg(&c, t, (b), veg_seed[(b)], (layer), cached); g_pk_shade_all = false; } while (0)
+        draw_veg(&c, t, (b), (unsigned)(b) < VEG_BEDS_MAX ? veg_seed[(b)] : 0, (layer), cached); g_pk_shade_all = false; } while (0)
     for (int b = 3; b < veg_n; b++)
         if (bed_z(t, b) == DECOR_Z_BACK) VEG_PASS(b, -1);
     for (int b = 3; b < veg_n; b++)
