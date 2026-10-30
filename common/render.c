@@ -6208,19 +6208,20 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
        spans skip the pieces above it (veg_skip_for), and a bed in front of
        the lantern is backlit (g_pk_shade_all). */
     const int *veg_seed = VEG_SEED;
+    const int veg_n = tank_veg_beds(t) < VEG_BEDS_MAX ? tank_veg_beds(t) : VEG_BEDS_MAX;
 #define VEG_PASS(b, layer) do { g_veg_skip = veg_skip_for(t, (b)); \
         g_pk_shade_all = g_pk_lx >= 0 && ((b) == 3 ? tank_decor_above(t, 0, 8) : pkz == DECOR_Z_BACK); \
         draw_veg(&c, t, (b), veg_seed[(b)], (layer), cached); g_pk_shade_all = false; } while (0)
-    for (int b = 3; b < tank_veg_beds(t); b++)
+    for (int b = 3; b < veg_n; b++)
         if (bed_z(t, b) == DECOR_Z_BACK) VEG_PASS(b, -1);
-    for (int b = 3; b < tank_veg_beds(t); b++)
+    for (int b = 3; b < veg_n; b++)
         if (bed_z(t, b) == DECOR_Z_MIDDLE) VEG_PASS(b, 0);
         /* no DYN_RECT: with the scene cache each frond span vignettes itself */
     if (g_veg_mask_cx >= 0) {                        /* a castle IN FRONT: inside its open arch the late fronds go before the fish */
         g_veg_arch_pass = -1;
-        for (int b = 3; b < tank_veg_beds(t); b++)
+        for (int b = 3; b < veg_n; b++)
             if (bed_z(t, b) == DECOR_Z_MIDDLE) VEG_PASS(b, 1);
-        for (int b = 3; b < tank_veg_beds(t); b++)
+        for (int b = 3; b < veg_n; b++)
             if (bed_z(t, b) == DECOR_Z_FRONT) VEG_PASS(b, -1);
         g_veg_arch_pass = 0;
     }
@@ -6302,9 +6303,9 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
        own vignette and untags itself, so the fish rects below skip it) */
     int64_t front_start = PROF_MARK();
     if (g_veg_mask_cx >= 0) g_veg_arch_pass = 1;     /* (the arch's pixels were drawn before the fish) */
-    for (int b = 3; b < tank_veg_beds(t); b++)
+    for (int b = 3; b < veg_n; b++)
         if (bed_z(t, b) == DECOR_Z_MIDDLE) VEG_PASS(b, 1);
-    for (int b = 3; b < tank_veg_beds(t); b++)
+    for (int b = 3; b < veg_n; b++)
         if (bed_z(t, b) == DECOR_Z_FRONT) VEG_PASS(b, -1);
     g_veg_arch_pass = 0;
     if (render_clock_us) {
