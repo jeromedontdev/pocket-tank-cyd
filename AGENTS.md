@@ -18,7 +18,7 @@ or deployment is published. Update this file when its contracts change.
 4. Validate the exact behavior and error/rollback paths. Record what actually
    passed, what was not tested, and any remaining work in the final response.
 
-## Game direction and design (2.4.0, authoritative)
+## Game direction and design (2.4.1, authoritative)
 
 This section is the current design contract. Where an older bullet below
 (handoff logs, historical revisions) disagrees, this section wins; keep the
@@ -116,6 +116,13 @@ old bullets only as history and evidence.
   Dive and Tide Wheel. Bets are 5/10/25/50 doubloons, settled once per play via
   `progression_wallet_settle` (transactional; failure shows SAVE FAILED).
   Keep every game's return below 100% and betting off in Creative.
+- Casino art uses the existing bounded ellipse/annulus/polygon kit: wheel rim,
+  recessed reels and faceted stars must not add image buffers. The fixed wheel
+  pointer must agree with the winning color, not just its text label.
+- Lost Current keeps its original landmark sprites with static chapter scenery.
+  Prompts use 20-unit line pitch; the completed-story page allows a fourth line.
+  Keep choice artwork and hitboxes aligned, and audit every encounter, detour
+  and ending for complete text at both scales in `test_page_art`.
 
 ### Technical guardrails for this direction
 
@@ -131,7 +138,56 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
-- Current verified COM4 2.4.0 app (Creature Market, contracts, auction, six
+- Final local 2.4.1 COM4 app is 1,803,760 bytes / 162,320 OTA-slot bytes free,
+  SHA256 `82be06f384797f6c078e2a52a225d66b33e980b618ac7b06f4d37fac08bb250b`.
+  Full backup `identity-polish-com4-20261030-122559-backup.bin`, detected
+  `ota_0` app-only write and exact readback passed. Both HTTPS requests,
+  original five residents/clock, save/Bank/reboot/quiet soak and all sixteen
+  fixtures pass. Final adaptive day/night/clock/dense FPS:
+  22.85/22.49/17.82/19.78; p95 52/52/64/58 ms, all zero >80-ms intervals.
+  Final weather/version layout does not fully retain the pre-weather recovery:
+  day/night/dense are 2.3-2.6% below optimization-only, clock/decor +0.7%.
+  Do not claim FPS-neutral art or a proven instruction-cache cause. Total
+  `.bss` stays 62,838 (including RTC); DRAM `.bss` 55,792 / `.data` 19,379.
+  All 28 native groups, fresh clock-only shading/cache/bounds tests, pinned
+  Chromium game and 222 gallery scenes per scale pass. Publication identity
+  must be verified separately; never equate this local hash with CI assets.
+- The 2.4.1 polish scope adds no mechanics. Weather icons use bounded shaded
+  materials; Tube Sponges and Dive Helmet alone get selective decor detail.
+  Their silhouettes/grips and all other decor remain unchanged. Preserve exact
+  scalar snail-stalk equivalence and material-tone tests in clock weather.
+  The pre-weather culling candidate (1,803,424 bytes, SHA256
+  `71f1e879009fbcc40a5d169d911a6e306064d5464369472590a9e42ffc4a93e3`)
+  recovered adaptive day/night/clock/dense FPS to 23.44/23.15/17.86/20.30.
+  Fresh full backup, detected-slot app-only flash, readback, HTTPS, original
+  roster/clock/save/Bank/reboot/quiet soak and all sixteen fixtures passed.
+  This supersedes the regression below; final versioned-image evidence is in
+  firmware/CYD.md. Do not equate local image hashes with CI binaries.
+- Earlier local COM4 casino/story-art image is 1,802,080 bytes, with 164,000
+  OTA-slot bytes free and unchanged `.bss` 62,838. SHA256
+  `3e14881af07a0f658871f53aa8785cd830bf900dc46714a5baefb27efad59fed`;
+  fresh full backup, detected-slot app-only write and exact readback passed.
+  Both-profile/both-scale page art, all story prompts/choice hitboxes, casino
+  settlement checks, browser, save/reboot/Bank JSON, HTTPS and all sixteen
+  fixtures pass. Default day/night/clock/dense FPS is
+  22.45/21.98/17.15/19.44: **3.1-4.6% slower** than the optimization-only image
+  below, not an FPS-neutral art pass. No new buffers or live aquarium work;
+  layout/cache sensitivity is possible but unproven. Quiet soak still includes
+  a 211-ms save / 273-ms frame. No commit, release or Pages deployment.
+- Local polish follow-up to `4473656`: COM4 app-only `ota_0` readback verified,
+  1,800,816 bytes / 165,264 slot bytes free, SHA256
+  `645d2b313e32dd9e985f8766e2eb7cd0749b7614df0ddbca68c62760df2da661`.
+  App saves 4,608 bytes; `.bss` saves 640. Default adaptive day/night/clock-decor/
+  dense fixtures: 23.39/23.04/17.70/20.30 FPS versus
+  23.29/23.01/16.19/20.14 before. Clock gain is 9.33%; other scenes are nearly
+  unchanged. Bounded sampling avoids per-pixel catalog dimension searches.
+  Carried-color/indexed-run trials regressed the clock fixture and were discarded.
+  All 28 native groups, final exact renderer tests, both-profile page art,
+  rebuilt Chromium game, save/reboot/Bank JSON and real HTTPS pass. Quiet soak
+  still includes a 274-ms save / 334-ms frame; diagnostic state/Bank/save reaches
+  599 ms. No hitch-free claim, new commit, release or Pages publication.
+  See firmware/CYD.md's polish acceptance for full scope and backup identity.
+- Earlier verified COM4 2.4.0 app (Creature Market, contracts, auction, six
   casino games, Tide Wheel icon, 16 Help topics incl. Casino) is 1,796,384
   bytes (0x1b6920, 9% app partition free), SHA256
   `fd8b771c679b37f8fa9dbaf3f213d4ace1d895be5c1bcd4021297fb78de00143`; app-only
@@ -250,16 +306,27 @@ old bullets only as history and evidence.
   Seahorses can genuinely perch on kelp's fixed stems: keep grip and art aligned,
   release on Store, and preserve upright open-water swimming without perches.
   Any standing decor is a perch too: `sh_posts` asks the renderer-registered
-  `tank_set_grip_source` hook (render.c `ornament_grips`, cached per item) for
+  `tank_set_grip_source` hook (render.c `ornament_grips`, immutable art-derived table) for
   up to three grips per piece: the highest sturdy column in each third of the
   art. tank.c must never call render.c directly, because test_profiles,
   test_creative and test_reef_progression link tank.c alone. Without a
-  registered source there are simply no decor grips.
+  registered source there are simply no decor grips. Regenerate coordinates
+  with `test_page_art.py --dump-grips`; the test independently derives them
+  from neutral source art. Iterate candidates one piece at a time; never cap
+  the aquarium-wide list or allocate a large candidate array on the tank stack.
 - Grand decor (`tank_decor_grand`: Lighthouse 43, Stone Bridge 49, Pagoda 50,
   Torii 53) overrides `tank_ornament_w/h` beyond 40 px and draws live through
   `grand_pixel`. `ornament_select` must skip them (cache limit 64 px wide,
   4096 px). Icons centre and bottom-align them with ceil rounding so thumbnails
   never spill out of the box. Keep the bridge arch and torii gap open (tested).
+  Ornament span drawing clips source columns before evaluation and calls the
+  in-bounds sampler only after width/height validation. Do not repeat catalog
+  dimension searches for each pixel in an already-bounded row. Preserve
+  cached/live, mirrored, scaled, final-lighting and clipped pixels. Sword masks
+  combine piece filtering and row extraction in one pass; unmirrored cached
+  masks use bounded word extraction. Help audits visit all sixteen
+  topics at both scales and reject incomplete/overlapping paragraphs, not just
+  text outside the screen.
 - Calm is cultivated: `tank_calm_floor` = (10 - trust) x 0.7 stress, x0.75 with
   the favorite piece placed. Never seed new fish with full calm or bypass the
   floor. Every movable item, fixed scenery included, offers REMOVE. Fixed
@@ -979,8 +1046,11 @@ or further split modules without a concrete maintenance benefit.
 
 ## Persistence and memory: hard constraints
 
-- Current source binary save **6424 bytes**, JSON **schema 20**; imports schemas 1-19.
-  Schema 20 appends the 88-byte `decor_fixed_t` (`fixed`: version, x, z and
+- Current source binary save **6476 bytes**, JSON **schema 23**; imports schemas 1-22.
+  The 6424-byte schema-20 prefix remains frozen; the append-only tails are
+  Reef Rhythm (20 bytes), creature stock (20), progression (8) and foliage (4).
+  Retired state stays reserved and readable; do not remove migration fields
+  when deleting unreachable UI. Schema 20 appended the 88-byte `decor_fixed_t` (`fixed`: version, x, z and
   ranks of the 14 movable fixed pieces) at 6336; 6336-byte saves load with
   default spots. JSON exports a `"fixed"` object after `"content"`.
   The 24-byte `care_state_t` appends at offset 6008; quotas and care progress

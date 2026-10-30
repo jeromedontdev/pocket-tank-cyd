@@ -239,6 +239,30 @@ static void check_frame_clock(void) {
 }
 
 static void check_motion_cache(void) {
+    for (int pose = 0; pose < 64; pose++) {
+        float sway = sinf(pose * .2f);
+        const float segments[][5] = {
+            {12.5f, -7.5f, 17.5f + sway, -13.5f, .7f},
+            {13.5f, -6.5f, 18.5f + sway, -9.5f, .7f},
+            {-2.2f, 10, -3.6f, 11.6f + .4f * sway, .6f},
+            {2.2f, 10, 3.6f, 11.6f + .4f * sway, .6f}
+        };
+        for (size_t s = 0; s < sizeof segments / sizeof *segments; s++)
+            for (int y = -72; y <= 72; y++) for (int x = -80; x <= 80; x++) {
+                const float *v = segments[s];
+                float a = pose * .09817477f;
+                float lx = cosf(a) * x * .25f + sinf(a) * y * .25f;
+                float ly = -sinf(a) * x * .25f + cosf(a) * y * .25f;
+                float vx = v[2] - v[0], vy = v[3] - v[1];
+                float u = ((lx - v[0]) * vx + (ly - v[1]) * vy) / (vx * vx + vy * vy);
+                u = u < 0 ? 0 : u > 1 ? 1 : u;
+                float ex = lx - (v[0] + u * vx), ey = ly - (v[1] + u * vy), actual;
+                bool hit = ex * ex + ey * ey < v[4] * v[4];
+                assert(sn_seg(lx, ly, v[0], v[1], v[2], v[3], v[4], &actual) == hit);
+                if (hit) assert(actual == u);
+            }
+    }
+    fprintf(stderr, "PASS: bounded snail stalk tests preserve scalar coverage and along-segment coordinates across poses and rotations\n");
     fish_t f = {0};
     for (int i = 0; i < 100; i++) {
         f.preset = i % 3 ? i : -1;
@@ -724,11 +748,10 @@ static void check_scaled_fish_bounds(bool normal) {
 
 static void fixture(tank_t *t, bool normal, int group) {
     tank_resolution(normal);
+    tank_set_grip_source(NULL);
     memset(t, 0, sizeof *t);
     tank_init(t, 0x5167);
-#ifndef RENDER_BASELINE
     t->foliage = (foliage_state_t){1, (1u << FOLIAGE_COUNT) - 1, (1u << FOLIAGE_COUNT) - 1, 0};
-#endif
     tank_new_population(t);
     while (t->n_fish < 5) assert(tank_add_fish(t, 0, 1) >= 0);
     t->companion.display_compact = normal;

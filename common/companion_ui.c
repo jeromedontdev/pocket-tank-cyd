@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static int page = COMPANION_SECTION_CARE, section = COMPANION_SECTION_CARE;
+static int page = COMPANION_SECTION_SUMMARY, section = COMPANION_SECTION_SUMMARY;
 static int selected, leaf, story;
 static bool draft_pending;
 static bool confirm_departure;
@@ -196,15 +196,48 @@ static void story_scene(uint16_t *fb, int stride, int x, int y,
     static const uint32_t water[6] = {0x123d50, 0x123e36, 0x253f58, 0x182c4d, 0x29374a, 0x153b4b};
     int theme = chapter < 6 ? chapter : 5;
     render_rect(fb, stride, x, y, w, h, water[theme]);
+    render_rect(fb, stride, x + 1, y + 1, w - 2, h / 3, 0x254e56);
+    int floor = y + h - 8;
     for (int j = 0; j < 4; j++) {
-        int sx = x + 12 + j * (w - 24) / 4;
-        render_rect(fb, stride, sx, y + 5, 2, h - 12, 0x31535d);
-        render_rect(fb, stride, sx + 2, y + h - 16, 5, 3, 0x51897d);
-        render_rect(fb, stride, sx - 4, y + h - 25, 5, 4, 0x51897d);
-        render_rect(fb, stride, sx + 2, y + h - 35, 6, 4, 0x3f736c);
+        int sx = x + 14 + j * (w - 50) / 4, height = h - 18 - j % 2 * 7;
+        if (theme == 0 || theme == 1) {
+            render_rect(fb, stride, sx, floor - height, 2, height, 0x3f736c);
+            for (int leaf = 4; leaf < height; leaf += 9) {
+                int side = leaf % 2 ? -1 : 1;
+                for (int row = 0; row < 5; row++) {
+                    int reach = row < 2 ? row + 2 : 6 - row;
+                    render_rect(fb, stride, side < 0 ? sx - reach : sx + 2,
+                                floor - leaf - row, reach, 1, row < 2 ? 0x51897d : 0x365f5b);
+                }
+            }
+        } else if (theme == 2 || theme == 4) {
+            int top = floor - height;
+            render_rect(fb, stride, sx - 4, top, 12, 3, 0x8fa6a0);
+            render_rect(fb, stride, sx - 2, top + 3, 8, height - 3, 0x526d75);
+            render_rect(fb, stride, sx - 2, top + 3, 2, height - 3, 0x76908e);
+            for (int row = top + 10; row < floor; row += 10)
+                render_rect(fb, stride, sx, row, 6, 1, 0x344e59);
+            render_rect(fb, stride, sx - 5, floor - 3, 14, 3, 0x71908b);
+        } else if (theme == 3) {
+            render_rect(fb, stride, sx, y + 4, 1, 7, 0x6e8178);
+            render_rect(fb, stride, sx - 4, y + 11, 9, 3, 0x94744e);
+            render_rect(fb, stride, sx - 3, y + 14, 7, 9, 0xe7bd75);
+            render_rect(fb, stride, sx - 1, y + 15, 2, 7, 0xffe6a3);
+            render_rect(fb, stride, sx - 4, y + 23, 9, 2, 0x685a48);
+        } else {
+            for (int row = 0; row < 10; row++) {
+                int reach = row < 4 ? row + 1 : 10 - row;
+                render_rect(fb, stride, sx - reach, floor - 10 + row, reach * 2, 1,
+                            row < 4 ? 0x779c9e : 0x456875);
+            }
+            render_rect(fb, stride, sx - 1, floor - 9, 2, 7, 0xa2c8bc);
+        }
     }
-    render_rect(fb, stride, x + 1, y + h - 8, w - 2, 7, 0x8e947a);
-    render_rect(fb, stride, x + w / 3, y + h - 6, w / 3, 5, 0xbfc09a);
+    render_rect(fb, stride, x + 1, floor, w - 2, 7, 0x727d70);
+    render_rect(fb, stride, x + 1, floor, w - 2, 2, 0xa3aa8b);
+    render_rect(fb, stride, x + w / 3, floor + 2, w / 3, 5, 0xbfc09a);
+    for (int j = 0; j < 7; j++)
+        render_rect(fb, stride, x + 9 + j * (w - 24) / 7, floor + 4 + j % 2, 3, 1, 0x4d6868);
     int scale = h >= 56 ? 3 : 2;
     int ax = x + w / 2 - 8 * scale, ay = y + h - 8 - 16 * scale;
     story_sprite(fb, stride, ax, ay, theme, scale, true);
@@ -212,17 +245,25 @@ static void story_scene(uint16_t *fb, int stride, int x, int y,
         for (int j = 0; j < 3; j++)
             render_ring(fb, stride, x + w - 20 - 5 * j, y + 12 + 12 * j, 3, 0xa8e1e0);
     } else {
-        render_rect(fb, stride, x + w - 36, y + 12, 24, 5, 0x617e85);
-        render_rect(fb, stride, x + w - 36, y + 17, 5, h - 24, 0x617e85);
-        render_rect(fb, stride, x + w - 17, y + 17, 5, h - 24, 0x617e85);
+        int gate = x + w - 38;
+        render_rect(fb, stride, gate, y + 10, 28, 4, 0x91a69c);
+        render_rect(fb, stride, gate + 2, y + 14, 24, 3, 0x526d75);
+        for (int side = 0; side < 2; side++) {
+            int post = gate + 2 + side * 19;
+            render_rect(fb, stride, post, y + 17, 5, h - 25, 0x617e85);
+            render_rect(fb, stride, post, y + 17, 1, h - 25, 0x9ab0a5);
+            for (int row = y + 23; row < floor; row += 7)
+                render_rect(fb, stride, post + 1, row, 4, 1, 0x344e59);
+        }
     }
     if (fish) render_fish_portrait(fb, stride, x + 38, y + h / 2, 0.7f, fish, 0);
     render_rect_edge(fb, stride, x, y, w, h, 0x719ba2);
 }
-static void story_prompt(uint16_t *fb, int stride, const char *prompt) {
+static void story_prompt(uint16_t *fb, int stride, const char *prompt, bool finished) {
     size_t capacity = (420 - render_text_w("W", 1)) /
         (render_text_w("WW", 1) - render_text_w("W", 1)) + 1;
-    for (int y = 184; *prompt && y < 218; y += 16) {
+    int y = 184;
+    for (; *prompt && y < (finished ? 245 : 225); y += 20) {
         size_t length = strlen(prompt), count = length < capacity ? length : capacity;
         if (length > count) {
             while (count && prompt[count] != ' ') count--;
@@ -233,6 +274,10 @@ static void story_prompt(uint16_t *fb, int stride, const char *prompt) {
         render_text(fb, stride, 14, y, 1, 0xe7f4dc, line);
         prompt += count; while (*prompt == ' ') prompt++;
     }
+#ifdef RENDER_HELP_TESTING
+    extern void menu_test_story_prompt(int end, bool complete, int bottom);
+    menu_test_story_prompt(y, !*prompt, finished ? 272 : 244);
+#endif
 }
 static void fish_heading(const tank_t *t, int fish, uint16_t *fb, int stride, const char *detail) {
     render_rect(fb, stride, 12, 82, 278, 36, 0x183b47);
@@ -311,24 +356,27 @@ static void rpg_render(const tank_t *t, uint16_t *fb, int stride) {
     else snprintf(line, sizeof line, "COMPLETE");
     render_text(fb, stride, 14, 150, 1, 0xa7c4ba, line);
     render_text(fb, stride, 14, 166, 1, 0xffd998, companion_rpg_chapter_name(t));
-    story_prompt(fb, stride, companion_rpg_prompt(t));
+    story_prompt(fb, stride, companion_rpg_prompt(t), r->chapter >= 6);
     if (r->chapter < 6 && t->n_fish) {
         for (int choice = 0; choice < 3; choice++) {
             companion_rpg_choice_label(t, choice, line, sizeof line);
-            render_button(fb, stride, 12, 232 + choice * 36, 424, 30,
+            render_button(fb, stride, 12, 244 + choice * 34, 424, 28,
                           0x183a43, 0x739c99, "", 1);
-            stamp(fb, stride, 20, 239 + choice * 36,
+            stamp(fb, stride, 20, 250 + choice * 34,
                   choice == 0 ? STAMP_FLAG : choice == 1 ? STAMP_EYE : STAMP_HEART, true);
-            render_text(fb, stride, 46, 243 + choice * 36, 1, 0xe7f4dc, line);
+            render_text(fb, stride, 46, 253 + choice * 34, 1, 0xe7f4dc, line);
         }
     } else if (r->chapter >= 6) {
-        render_text_wrap(fb, stride, 14, 240, 420, 0xffd998, companion_rpg_outcome(t));
+        render_text_wrap(fb, stride, 14, 272, 420, 0xffd998, companion_rpg_outcome(t));
         button(fb, stride, 12, 304, 424, "READ YOUR CAMPAIGN JOURNAL");
     } else render_text_wrap(fb, stride, 14, 240, 420, 0xa7c4ba, "Return a fish from the Bank or wait for your traveler. The story waits without penalty.");
     snprintf(line, sizeof line, "COURAGE %u / CURIOSITY %u / KIND %u", r->skills[0], r->skills[1], r->skills[2]);
     render_text(fb, stride, 14, 346, 1, 0xa7c4ba, line);
 }
 static void paragraph_at(uint16_t *fb, int stride, int x, int y, int width, uint32_t rgb, const char *s) {
+#ifdef RENDER_HELP_TESTING
+    int start = y;
+#endif
     size_t capacity = (width - render_text_w("W", 1)) /
         (render_text_w("WW", 1) - render_text_w("W", 1)) + 1;
     if (capacity > 70) capacity = 70;
@@ -343,6 +391,10 @@ static void paragraph_at(uint16_t *fb, int stride, int x, int y, int width, uint
         s += count; while (*s == ' ') s++;
         y += 16;
     }
+#ifdef RENDER_HELP_TESTING
+    extern void menu_test_paragraph(int start, int end, bool complete);
+    menu_test_paragraph(start, y, !*s);
+#endif
 }
 static void paragraph(uint16_t *fb, int stride, int y, uint32_t rgb, const char *s) {
     paragraph_at(fb, stride, 14, y, 420, rgb, s);
@@ -556,65 +608,6 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
         render_text(fb, stride, 14, 312, 1, 0xa7c4ba, located ?
                     "SEASONS USE WEATHER CITY." : "SET WEATHER CITY FOR SEASONS.");
         render_text(fb, stride, 14, 335, 1, 0xa7c4ba, "NAME, BADGE & SUBTITLE.");
-    } else if (page == COMPANION_SECTION_OBJECTS) {
-        int item = leaf % SD_ITEM_COUNT;
-        bool owned = progression_item_owned(t, item);
-        render_decor_thumbnail(fb, stride, 14, 82, 32, item, owned);
-        text(fb, stride, 58, 90, 0xe7f4dc, SD_ITEMS[item].name);
-        render_text(fb, stride, 14, 124, 1, 0xa7c4ba, SD_ITEMS[item].words);
-        render_text(fb, stride, 14, 144, 1, 0xa7c4ba, SD_ITEMS[item].words2);
-        text(fb, stride, 14, 166, 0xffd998, owned ? "OWNED / SHOP PURCHASE" : "AVAILABLE IN TANK > SHOP");
-        int date_item = item < 32 ? item : SD_IS_SCENERY(item) ? 32 + item - SD_SCENERY_FIRST : -1;
-        if (date_item >= 0 && owned && p->decor_since[date_item])
-            snprintf(line, sizeof line, "Bought at tank hour %lu.", (unsigned long)((p->decor_since[date_item] - 1) / 3600));
-        else snprintf(line, sizeof line, "Purchase date not recorded.");
-        render_text(fb, stride, 14, 202, 1, 0xa7c4ba, line);
-        int fans = 0;
-        for (int j = 0; j < t->n_fish; j++) if (tank_favorite_decor(t, j) == item) {
-            snprintf(line, sizeof line, "Favorite of %s.", t->fish[j].name);
-            render_text(fb, stride, 14, 226, 1, 0xe7f4dc, line); fans++; break;
-        }
-        if (!fans) render_text(fb, stride, 14, 226, 1, 0xa7c4ba, "A little piece of your tank's story.");
-        button(fb, stride, 12, 258, 205, "< OBJECT");
-        button(fb, stride, 231, 258, 205, "OBJECT >");
-    } else if (page == COMPANION_SECTION_KEEPSAKES) {
-        static const char *const keepsakes[] = {"Lantern shell", "Pearl bookmark", "Star stone"};
-        static const char *const tales[] = {
-            "A shell that recalls the lagoon's gentle lights.",
-            "A tiny marker from a library beneath the tide.",
-            "A smooth stone found under a sky of stars."
-        };
-        for (int j = 0; j < 3; j++) {
-            bool have = t->n_fish && (p->active[i].adventures & (1u << j));
-            story_sprite(fb, stride, 14, 92 + j * 62, j == 0 ? 0 : j == 1 ? 6 : 7, 2, have);
-            snprintf(line, sizeof line, "%s / %s", keepsakes[j], have ? "BROUGHT HOME" : "NOT FOUND");
-            render_text(fb, stride, 58, 96 + j * 62, 1, have ? 0xffd998 : 0xa7c4ba, line);
-            render_text_wrap(fb, stride, 58, 116 + j * 62, 378, 0xa7c4ba, tales[j]);
-        }
-        render_text(fb, stride, 14, 278, 1, 0xa7c4ba, "Find more in Adventures.");
-    } else if (page == COMPANION_SECTION_HINTS) {
-        static const char *const hints[] = {
-            "Watch a calm fish explore the bubble column.",
-            "Leave room for a little unhurried exploration.",
-            "Leave a reef, sword plant or decor as a calm resting place.",
-            "Calm nearby fish get to know one another.",
-            "Fed, rested fish sometimes make a playful dart.",
-            "Reef decorations give curious fish a destination.",
-            "Use My Fish > Say Hello to build a bond.",
-            "Say hello, then try a bond-unlocked trick.",
-            "Send a fish to Lantern lagoon; wait for its return.",
-            "Send a fish to Pearl library; wait for its return.",
-            "Send a fish to Starlight cove; wait for its return.",
-            "Patient care gives a young fish time to grow."
-        };
-        int d = leaf % COMPANION_DISCOVERY_COUNT;
-        text(fb, stride, 14, 94, 0xe7f4dc, COMPANION_DISCOVERIES[d]);
-        story_scene(fb, stride, 14, 122, 420, 62, d < 6 ? 1 : d < 8 ? 5 : d < 11 ? (d - 8) * 2 : 0,
-                    t->n_fish ? &t->fish[i] : NULL, d == 0 || d == 8);
-        render_text_wrap(fb, stride, 14, 190, 420, 0xa7c4ba, hints[d]);
-        render_text(fb, stride, 14, 282, 1, 0xa7c4ba, "No streaks, deadlines, or penalties.");
-        button(fb, stride, 12, 240, 205, "< HINT");
-        button(fb, stride, 231, 240, 205, "HINT >");
     } else if (page == COMPANION_SECTION_FAMILY) {
         family_render(t, i, fb, stride);
     } else if (page == COMPANION_SECTION_GENES) {
@@ -634,19 +627,6 @@ static void polish_render(const tank_t *t, uint16_t *fb, int stride) {
         }
         if (p->visits && s->seen[s->last_species]) render_text_wrap(fb, stride, 14, 260, 420, 0xffd998, COMPANION_VISITORS[s->last_species].words);
         else render_text_wrap(fb, stride, 14, 260, 420, 0xa7c4ba, "Visitors come only while you watch.");
-    } else if (page == COMPANION_SECTION_FIRSTS && t->n_fish) {
-        uint32_t milestones = p->active[i].milestones;
-        fish_heading(t, i, fb, stride, "LIFE FIRSTS");
-        int n = 0;
-        for (int j = 0; j < MS_FISH_COUNT; j++) if (milestones & (1u << j)) {
-            if (n / 6 == leaf) {
-                stamp(fb, stride, 14, 121 + (n % 6) * 24, STAMP_STAR, true);
-                render_text(fb, stride, 40, 124 + (n % 6) * 24, 1, 0xa7c4ba, MS_NAMES[j]);
-            }
-            n++;
-        }
-        if (!n) render_text_wrap(fb, stride, 14, 124, 420, 0xa7c4ba, "Life firsts appear through patient care.");
-        button(fb, stride, 304, 264, 132, "MORE");
     }
     if (page == COMPANION_SECTION_RECAP) render_text(fb, stride, 14, 344, 1, 0xa7c4ba, "Observed here. No offline stories.");
 }
@@ -699,13 +679,8 @@ static bool information_page(void) {
     case COMPANION_SECTION_LIFE:
     case COMPANION_SECTION_RECAP:
     case COMPANION_SECTION_IDENTITY:
-    case COMPANION_SECTION_OBJECTS:
-    case COMPANION_SECTION_KEEPSAKES:
-    case COMPANION_SECTION_HINTS:
-    case COMPANION_SECTION_FIRSTS:
     case COMPANION_SECTION_FAMILY:
     case COMPANION_SECTION_VISITORS:
-    case COMPANION_SECTION_REWARDS:
     case COMPANION_SECTION_GENES:
     case COMPANION_SECTION_SYMBOLS:
     case COMPANION_SECTION_REEF:
@@ -1032,14 +1007,14 @@ static const help_topic_t HELP_TOPICS[] = {
         "Each fish has two marking alleles, two body-color alleles and four recessive traits. A trait shows only with two copies; one copy is carried silently.",
         "VIGOR (0-10) counts mixed alleles and carried traits. Diverse lines grow faster and sell higher. Rare birth mutations change a marking, trait or color."}},
     {"MARKET PRICES", STAMP_COIN, {
-        "Value = life stage x variety tier x care x genes. Care uses trust, energy, fullness and calm (60-100%). Genes add 4% per vigor, 15% per shown trait, 25% per mutation and 10% for a fancy marking.",
+        "Worth = stage x tier x care x genes. Care: 60-100%. Genes: +4% per vigor, +15% per shown trait, +25% per mutation, +10% for a rare marking.",
         "Grades: COMMON, FINE (125%), RARE (150%), PRIZED (190%). Market stock is plain and costs more than its resale, so profit comes from breeding and raising."}},
     {"CONTRACTS & AUCTIONS", STAMP_COIN, {
         "Market > Contracts: every 3 days a visitor orders one variety you have unlocked, bred by you, at FINE+ or RARE+ grade or with a mutation. Filling it pays the quote x1.6 + 50, once per order.",
         "Market > Auction: on Saturdays one RARE+ or 2nd-generation adult can be sold to rival bidders. Commit first; the hammer lands at 95-165% of the quote. One lot a week."}},
     {"CREATURES", STAMP_SHELL, {
-        "Market > Creature Market trades every creature. They do not breed: one snail, urchin, seahorse, pearl mussel and shrimp school per tank. Colors roll at purchase: NATURAL, TINTED (x1.4), TWO-TONE (x2) or PRIZED (x3.5) resale.",
-        "Shrimp eat fallen food. The snail clears the glass (calm recovers 10% faster); the urchin grazes at night (resting fish settle 20% faster). Seahorses perch on kelp, grass and decor and double trust from holds. The mussel pays doubloons."}},
+        "One of each per tank: shrimp school, snail, urchin, seahorse and pearl mussel. No breeding. Colors roll at purchase: Natural, Tinted x1.4, Two-tone x2 or Prized x3.5 resale.",
+        "Shrimp eat fallen food. Snail: calm +10%. Urchin: night rest +20%. Seahorse: double hold trust; perches on kelp, sword grass and decor tops. Mussel: pays while fish stay fed."}},
     {"TANKS & IDENTITY", STAMP_FLAG, {
         "Keep up to eight aquariums, each with its own residents, decor and theme. Tank > Tank Summary switches, adds and reviews tanks.",
         "Tank Summary > Name & Identity renames a tank and picks one of many subtitles and illustrated emblems, enough for every tank to have its own."}},
@@ -1133,17 +1108,16 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
                         page == COMPANION_SECTION_CARE ? "FISH INTERACTION" : page == COMPANION_SECTION_COLLECTIONS ? "DISCOVERIES" : page == COMPANION_SECTION_ADVENTURES ? "ADVENTURES" :
                         page == COMPANION_SECTION_WARDROBE ? "WARDROBE" : page == COMPANION_SECTION_CREATURE_COLORS ? "CREATURE COLORS" : page == COMPANION_SECTION_GEAR_COLORS ? "GEAR COLORS" : page == COMPANION_SECTION_APPEARANCE ? "SAND & WATER" :
                         page == COMPANION_SECTION_REEF ? "CURRENTS" : page == COMPANION_SECTION_SYMBOLS ? "SYMBOL GUIDE" : page == COMPANION_SECTION_LIFE ? "A FISH'S LIFE" : page == COMPANION_SECTION_RECAP ? "WHILE YOU WATCHED" : page == COMPANION_SECTION_IDENTITY ? "NAME & IDENTITY" :
-                        page == COMPANION_SECTION_OBJECTS ? "OBJECT STORIES" : page == COMPANION_SECTION_KEEPSAKES ? "ADVENTURE KEEPSAKES" : page == COMPANION_SECTION_HINTS ? "DISCOVERY HINTS" :
-                        page == COMPANION_SECTION_FIRSTS ? "LIFE FIRSTS" : page == COMPANION_SECTION_FAMILY ? "FAMILY TREE" : page == COMPANION_SECTION_VISITORS ? "VISITOR LOG" :
-                        page == COMPANION_SECTION_REWARDS ? "DISPLAY REWARDS" : page == COMPANION_SECTION_GENES ? "FISH GENES" :
+                        page == COMPANION_SECTION_FAMILY ? "FAMILY TREE" : page == COMPANION_SECTION_VISITORS ? "VISITOR LOG" :
+                        page == COMPANION_SECTION_GENES ? "FISH GENES" :
                         page == COMPANION_SECTION_RPG ? "THE LOST CURRENT" : page == COMPANION_SECTION_RPG_JOURNAL ? "CAMPAIGN JOURNAL" :
                         page == COMPANION_SECTION_RPG_HELP ? "STORY HELP" : page == COMPANION_SECTION_RPG_EVENT ? "STORY EVENT" : "BOND & TRICKS";
     int emblem = page >= COMPANION_SECTION_CONTRACT && page <= COMPANION_SECTION_AUCTION_RESULT ? STAMP_COIN :
                  page == COMPANION_SECTION_ADVENTURES || rpg_page() ? STAMP_SHELL :
                  page == COMPANION_SECTION_FAMILY ? STAMP_FAMILY : page == COMPANION_SECTION_GENES ? STAMP_GENES :
-                 page == COMPANION_SECTION_COLLECTIONS || page == COMPANION_SECTION_HINTS || page == COMPANION_SECTION_VISITORS ? STAMP_EYE :
-                 page == COMPANION_SECTION_LIFE || page == COMPANION_SECTION_FIRSTS ? STAMP_FISH :
-                 page == COMPANION_SECTION_RECAP || page == COMPANION_SECTION_OBJECTS || page == COMPANION_SECTION_KEEPSAKES ||
+                 page == COMPANION_SECTION_COLLECTIONS || page == COMPANION_SECTION_VISITORS ? STAMP_EYE :
+                 page == COMPANION_SECTION_LIFE ? STAMP_FISH :
+                 page == COMPANION_SECTION_RECAP ||
                  page == COMPANION_SECTION_HELP || page == COMPANION_SECTION_HELP_TOPIC ? STAMP_BOOK : STAMP_HEART;
     stamp(fb, stride, 14, 16, emblem, true);
     render_text(fb, stride, 40, 15, render_text_w(title, 2) <= 202 ? 2 : 1,
@@ -1240,30 +1214,10 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
         return;
     }
     if (information_page()) polish_render(t, fb, stride);
-    if (information_page() && page != COMPANION_SECTION_REWARDS) {
+    if (information_page()) {
         return;
     }
-    if (page == COMPANION_SECTION_REWARDS) {
-        paragraph(fb, stride, 84, 0xa7c4ba, "Complete discovery sets, then claim their display rewards. No care bonuses.");
-        for (int j = 0; j < 3; j++) {
-            static const char *const names[] = {"NATURE", "FRIENDSHIP", "ADVENTURES"};
-            static const unsigned masks[] = {0x3f, 0xc0, 0x700}, totals[] = {6, 2, 3};
-            snprintf(line, sizeof line, "%s %u/%u: %s", names[j], bits(s->discoveries & masks[j]), totals[j],
-                     progression_creative(t) ? "AVAILABLE" : s->collections & (1u << j) ? "CLAIMED" :
-                     companion_collection_ready(t, j) ? "TAP TO CLAIM" : "FIND MORE");
-            illustrated_button(fb, stride, 12, 130 + j * 34, 424, line,
-                               j == 0 ? STAMP_LEAF : j == 1 ? STAMP_HEART : STAMP_SHELL,
-                               !!(s->collections & (1u << j)));
-        }
-        button(fb, stride, 12, 242, 205, s->decor ? "TROPHIES: SHOW" : "TROPHIES: HIDE");
-        static const char *const frames[] = {"BASE", "NATURE", "FRIEND", "STORY"};
-        snprintf(line, sizeof line, "FRAME: %s", frames[cosmetic]);
-        render_rect(fb, stride, 231, 242, 205, 30, 0x264d55);
-        render_text(fb, stride, 239, 249, 2, 0xe7f4dc, line);
-        paragraph(fb, stride, 282, 0xa7c4ba, progression_creative(t) ?
-                  "Creative: all frames are available. Trophies sit on the sand. Frames change border colors, not the font." :
-                  "Trophies sit on the sand. Frames change border colors, not the font. Claim a set to unlock its frame.");
-    } else if (page == COMPANION_SECTION_CARE) {
+    if (page == COMPANION_SECTION_CARE) {
         if (t->n_fish) {
             int i = selected < t->n_fish ? selected : 0;
             const companion_bond_t *b = &s->active[i];
@@ -1522,9 +1476,9 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
             page = COMPANION_SECTION_RPG_JOURNAL; notice[0] = 0;
         } else if (t->rpg.chapter >= 6 && x >= 12 && x < 436 && y >= 304 && y < 334) {
             page = COMPANION_SECTION_RPG_JOURNAL; notice[0] = 0;
-        } else if (t->rpg.chapter < 6 && t->n_fish && x >= 12 && x < 436 && y >= 232 && y < 334) {
-            int choice = (int)(y - 232) / 36;
-            if ((int)(y - 232) % 36 < 30) {
+        } else if (t->rpg.chapter < 6 && t->n_fish && x >= 12 && x < 436 && y >= 244 && y < 340) {
+            int choice = (int)(y - 244) / 34;
+            if ((int)(y - 244) % 34 < 28) {
                 int before = t->rpg.chapter;
                 bool ok = companion_rpg_choose(t, selected < t->n_fish ? selected : 0, choice);
                 if (ok) {
@@ -1542,23 +1496,6 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
         if (x >= 12 && x < 436 && y >= 304 && y < 334) { page = COMPANION_SECTION_RPG; notice[0] = 0; }
     } else if (page == COMPANION_SECTION_RPG_HELP) {
         return false;
-    } else if (page == COMPANION_SECTION_REWARDS) {
-        if (x >= 12 && x < 436 && y >= 130 && y < 228) {
-            int set = (int)(y - 130) / 34;
-            if ((int)(y - 130) % 34 >= 30) return false;
-            if (progression_creative(t)) snprintf(notice, sizeof notice, "All frames available. Choose one below.");
-            else if (s->collections & (1u << set)) snprintf(notice, sizeof notice, "Claimed. Choose its frame below.");
-            else if (!companion_collection_ready(t, set)) snprintf(notice, sizeof notice, "Complete this discovery set first.");
-            else result(companion_collection_claim(t, set));
-        } else if (y >= 242 && y < 272 && x >= 12 && x < 217) result(companion_set_decor(t, !s->decor));
-        else if (y >= 242 && y < 272 && x >= 231 && x < 436) {
-            if (!progression_creative(t) && !s->collections) snprintf(notice, sizeof notice, "Claim a set to unlock menu frames.");
-            else {
-                int next = s->cosmetic;
-                do { next = (next + 1) % 4; } while (!progression_creative(t) && next && !(s->collections & (1u << (next - 1))));
-                result(companion_cosmetic(t, next));
-            }
-        }
     } else if (information_page()) {
         if (page == COMPANION_SECTION_SYMBOLS && y >= 312 && y < 342 &&
             ((x >= 12 && x < 217) || (x >= 231 && x < 436)))
@@ -1578,14 +1515,6 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
         else if (page == COMPANION_SECTION_IDENTITY && x >= 12 && x < 436 && ((y >= 154 && y < 184) || (y >= 192 && y < 222)))
             snprintf(notice, sizeof notice, "%s", companion_identity(t, y >= 192) ?
                      "Identity saved." : "Save failed; identity unchanged.");
-        else if ((page == COMPANION_SECTION_OBJECTS || page == COMPANION_SECTION_HINTS) && y >= (page == COMPANION_SECTION_OBJECTS ? 258 : 240) &&
-                 y < (page == COMPANION_SECTION_OBJECTS ? 288 : 270) && ((x >= 12 && x < 217) || (x >= 231 && x < 436))) {
-            int count = page == COMPANION_SECTION_OBJECTS ? SD_ITEM_COUNT : COMPANION_DISCOVERY_COUNT;
-            leaf = (leaf + count + (x < 217 ? -1 : 1)) % count;
-        } else if (page == COMPANION_SECTION_FIRSTS && y >= 264 && y < 294 && x >= 304 && x < 436) {
-            unsigned pages = (bits(t->polish.active[selected < t->n_fish ? selected : 0].milestones) + 5) / 6;
-            leaf = (leaf + 1) % (pages ? pages : 1);
-        }
     } else if (page == COMPANION_SECTION_CARE) {
         if (y >= 306 && y < 336 && x >= 12 && x < 436) { page = COMPANION_SECTION_TRICKS; notice[0] = 0; }
         else if (y >= 110 && y < 140 && x >= 304 && x < 436 && t->n_fish) selected = (selected + 1) % t->n_fish;

@@ -1,4 +1,4 @@
-"""Capture new static ornaments and wearable geometry through the native renderer."""
+"""Capture movable ornaments and wearable geometry through the native renderer."""
 import argparse
 from html import escape
 from pathlib import Path
@@ -21,8 +21,9 @@ def image(src, alt, width=None):
 
 def write_index(output):
     entries = []
-    for offset, name in enumerate(DECORATIONS):
-        item = 43 + offset
+    for path in sorted(output.glob("decoration-*-320.png")):
+        item = int(path.stem.split("-")[1])
+        name = DECORATIONS[item - 43] if 43 <= item < 63 else f"Classic decor {item}"
         previews = "".join(
             f'<a href="decoration-{item:02d}-{width}.png">'
             f'{image(f"decoration-{item:02d}-{width}.png", f"Decoration {item}: {name} at {width}px tank resolution", 240)}'
@@ -42,7 +43,7 @@ def write_index(output):
             )
     html = f"""<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>New Decoration and Wearable Art Review</title>
+<title>Decoration and Wearable Art Review</title>
 <style>
 body{{margin:2rem auto;max-width:1180px;padding:0 1rem;background:#10232b;color:#e8f1e7;font:16px/1.45 system-ui,sans-serif}}
 h1,h2,h3{{color:#f1d89b}}a{{color:#a7e3dd}}.contact img{{max-width:100%;height:auto;image-rendering:pixelated}}
@@ -52,14 +53,15 @@ article,.wearables>a,.contact{{padding:1rem;background:#1a343e;border-radius:10p
 .previews img{{max-width:min(100%,240px);height:auto;image-rendering:pixelated}}
 .wearables img{{display:block;max-width:100%;height:auto;image-rendering:pixelated}}
 </style>
-<h1>New Decoration and Wearable Art Review</h1>
+<h1>Decoration and Wearable Art Review</h1>
 <p>All images are RGB565 captures from the native tank renderer. Individual ornament
-frames use their 40×40 in-tank artwork bounds; the contact sheet labels every new shop ID.</p>
+frames use their native in-tank artwork bounds; the contact sheet uses fitted shop
+thumbnails, including the large ornaments.</p>
 <section class="contact"><h2>All 20 new decorations</h2>
 {image("new-decoration-contact.png", "Labeled contact sheet of decorations 43 through 62", 960)}
 <p><a href="new-decoration-contact.png">Open contact sheet</a></p></section>
 <h2>Wearable geometry comparison</h2><div class="wearables">{''.join(comparisons)}</div>
-<h2>Individual decoration captures</h2><div class="grid">{''.join(entries)}</div>
+<h2>Individual decoration captures (including older pieces)</h2><div class="grid">{''.join(entries)}</div>
 </html>"""
     (output / "index.html").write_text(html, encoding="utf-8")
 

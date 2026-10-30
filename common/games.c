@@ -1596,6 +1596,41 @@ GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
         }
     }
 }
+GAME_LOCAL float casino_wheel_stop(int winner) {
+    int slot = winner == 2 ? 12 : winner;
+    return -1.570796f - (slot + .5f) * 6.283185f / 13;
+}
+static void casino_wheel_art(render_ctx_t *c, float cx, float cy, float radius, float spin) {
+    static const uint32_t colors[3] = {0xda6970, 0x5ba9e8, GA_GOLD};
+    ga_ell(c, cx, cy + radius * .10f, radius * 1.10f, radius * 1.10f, 0x09212a);
+    ga_ell(c, cx, cy, radius * 1.10f, radius * 1.10f, 0x725335);
+    render_internal_annulus(c, cx, cy, radius * 1.07f, radius, 0xd5b773, 255);
+    for (int i = 0; i < 13; i++) {
+        float a = i * 6.283185f / 13 + spin, b = (i + 1) * 6.283185f / 13 + spin;
+        uint32_t color = colors[i == 12 ? 2 : i % 2];
+        float xs[3] = {cx, cx + cosf(a) * radius, cx + cosf(b) * radius};
+        float ys[3] = {cy, cy + sinf(a) * radius, cy + sinf(b) * radius};
+        render_internal_poly(c, xs, ys, 3, ga_dark(color, 55), 255);
+        xs[1] = cx + cosf(a + .025f) * radius * .88f;
+        ys[1] = cy + sinf(a + .025f) * radius * .88f;
+        xs[2] = cx + cosf(b - .025f) * radius * .88f;
+        ys[2] = cy + sinf(b - .025f) * radius * .88f;
+        render_internal_poly(c, xs, ys, 3, color, 255);
+        if (radius > 30) {
+            float mid = (a + b) * .5f;
+            ga_ell(c, cx + cosf(mid) * radius * 1.025f,
+                   cy + sinf(mid) * radius * 1.025f, 1, 1, 0xffe6a3);
+        }
+    }
+    ga_ell(c, cx, cy + radius * .025f, radius * .23f, radius * .23f, 0x654c2d);
+    ga_ell(c, cx, cy, radius * .19f, radius * .19f, 0xe7c275);
+    ga_ell(c, cx - radius * .04f, cy - radius * .04f, radius * .09f, radius * .09f, 0xffebae);
+    float px[3] = {cx - radius * .13f, cx + radius * .13f, cx};
+    float py[3] = {cy - radius * 1.20f, cy - radius * 1.20f, cy - radius * .88f};
+    render_internal_poly(c, px, py, 3, 0x654c2d, 255);
+    px[0] += 1; px[1] -= 1; py[0] += 1; py[1] += 1; py[2] -= 1;
+    render_internal_poly(c, px, py, 3, 0xffe6a3, 255);
+}
 static void casino_symbol(render_ctx_t *c, const tank_t *t, uint16_t *fb, int stride, int cx, int cy, int sym, float clock) {
     if (sym == 0) ga_shell(c, (float)cx, (float)cy + 6, 1.4f, 0xf3c7a8);
     else if (sym == 1) {
@@ -1605,26 +1640,19 @@ static void casino_symbol(render_ctx_t *c, const tank_t *t, uint16_t *fb, int st
             xs[k] = (float)cx + cosf(a) * r; ys[k] = (float)cy + 1 + sinf(a) * r;
         }
         render_internal_poly(c, xs, ys, 10, 0xffd75e, 255);
+        for (int k = 0; k < 10; k++) {
+            int next = (k + 1) % 10;
+            float facet_x[3] = {(float)cx, xs[k], xs[next]};
+            float facet_y[3] = {(float)cy + 1, ys[k], ys[next]};
+            render_internal_poly(c, facet_x, facet_y, 3, k & 1 ? 0xc28b3e : 0xffe99a, 255);
+        }
         render_internal_ellipse(c, (float)cx - 3, (float)cy - 2, 2.5f, 2.5f, 0xfff6c8, 255);
     }
     else if (sym == 2) {
         fish_t f = {0}; progression_market_preview(t, FISH_TETRA, &f);
         render_fish_portrait(fb, stride, (float)cx, (float)cy, 0.7f, &f, clock);
     } else if (sym == 3) ga_pearl(c, (float)cx, (float)cy, 13, 0xf1ebdf);
-    else if (sym == 5) {   /* the colour wheel in miniature: red/blue wedges, one gold, and a pointer */
-        static const uint32_t wedge[3] = {0xda6970, 0x5ba9e8, GA_GOLD};
-        float spin = clock * 0.6f;
-        for (int i = 0; i < 13; i++) {
-            float a = i * 6.283185f / 13 + spin, b = (i + 1) * 6.283185f / 13 + spin;
-            float xs[3] = {(float)cx, cx + cosf(a) * 15, cx + cosf(b) * 15};
-            float ys[3] = {(float)cy, cy + sinf(a) * 15, cy + sinf(b) * 15};
-            render_internal_poly(c, xs, ys, 3, wedge[i == 12 ? 2 : i % 2], 255);
-        }
-        render_internal_annulus(c, (float)cx, (float)cy, 17, 15, GA_GOLD, 255);
-        render_internal_ellipse(c, (float)cx, (float)cy, 3, 3, 0xfff6c8, 255);
-        float px[3] = {(float)cx - 4, (float)cx + 4, (float)cx}, py[3] = {(float)cy - 21, (float)cy - 21, (float)cy - 13};
-        render_internal_poly(c, px, py, 3, 0xffffff, 255);
-    }
+    else if (sym == 5) casino_wheel_art(c, (float)cx, (float)cy, 15, clock * .6f);
     else { render_doubloon(fb, stride, cx - 8, cy - 8); render_internal_annulus(c, (float)cx, (float)cy, 16, 13, GA_GOLD, 255); }
 }
 static void casino_controls(render_ctx_t *c, const char *go) {
@@ -1760,15 +1788,9 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
     }
     if (s_cas.page == CASINO_WHEEL) {
         static const uint32_t colors[3] = {0xda6970, 0x5ba9e8, GA_GOLD};
-        for (int i = 0; i < 13; i++) {
-            float spin = s_cas.running ? s_cas.t * 9 : 0;
-            float a = i * 6.283185f / 13 + spin, b = (i + 1) * 6.283185f / 13 + spin;
-            float xs[3] = {224, 224 + cosf(a) * 59, 224 + cosf(b) * 59};
-            float ys[3] = {146, 146 + sinf(a) * 59, 146 + sinf(b) * 59};
-            render_internal_poly(&c, xs, ys, 3, colors[i == 12 ? 2 : i % 2], 255);
-        }
-        render_internal_annulus(&c, 224, 146, 61, 58, GA_GOLD, 255);
-        casino_symbol(&c, t, fb, stride, 224, 146, 4, t->clock);
+        float spin = s_cas.running ? s_cas.t * 9 : 0;
+        if (s_cas.shown) spin = casino_wheel_stop(s_cas.winner);
+        casino_wheel_art(&c, 224, 146, 55, spin);
         static const char *const labels[3] = {"RED x2", "BLUE x2", "GOLD x12"};
         if (s_cas.shown) render_internal_text(&c, 294, 142, 1, colors[s_cas.winner], labels[s_cas.winner]);
         for (int i = 0; i < 3; i++) render_internal_button(&c, 24 + i * 136, 214, 128, 38,
@@ -1777,9 +1799,13 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
     }
     for (int k = 0; k < 3; k++) {
         int x = 84 + k * 100;
-        render_internal_rect_fill(&c, x, 84, 80, 88, 0x05141a);
+        render_internal_rect_fill(&c, x, 84, 80, 88, 0x5c4832);
         render_internal_rect_edge(&c, x, 84, 80, 88, GA_GOLD);
-        render_internal_rect_edge(&c, x + 2, 86, 76, 84, 0x6b5420);
+        render_internal_rect_fill(&c, x + 3, 87, 74, 82, 0x05141a);
+        render_internal_rect_edge(&c, x + 4, 88, 72, 80, 0x263e43);
+        render_internal_rect_fill(&c, x + 6, 90, 68, 7, 0x10272e);
+        render_internal_rect_fill(&c, x + 6, 160, 68, 6, 0x0b2028);
+        render_internal_rect_fill(&c, x + 1, 85, 78, 1, 0xffe6a3);
         bool spinning = s_cas.running && s_cas.t < 0.6f + 0.4f * (float)k;
         int sym = spinning ? ((int)(s_cas.t * 14) + k * 2) % 5 : s_cas.reels[k];
         casino_symbol(&c, t, fb, stride, x + 40, 128, sym, t->clock);

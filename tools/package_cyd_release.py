@@ -177,6 +177,19 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
+### New in 2.4.1: polish without more chores
+
+- Exact ornament clipping and bounded procedural sampling, one-pass sword masks and immutable art-derived seahorse grips reduce repeated work without changing pixels or adding buffers. Densely decorated tanks keep every standing piece's perches.
+- Snail eye-stalk drawing rejects out-of-bounds samples before expensive distance calculations, preserving its original animation and pixel coverage.
+- Tide Wheel gains a shaded brass-and-wood rim, studs, hub and a pointer that agrees with the winning color. Reef Reels gets recessed windows and faceted stars; bets, odds and transactional settlement are unchanged.
+- Lost Current has chapter-specific plants, jointed stonework, lanterns and crystals. All encounters, detours and endings retain their full text with clearer small-screen spacing and aligned choice targets.
+- Weather symbols have shaded clouds, warm sun highlights and clearer rain, snow, fog and lightning. Tube Sponges and Dive Helmet gain selective material detail, preserving silhouettes, positions, seahorse grips and ownership.
+- Help text fits both display sizes; unreachable retired-achievement presentation is removed while historical save fields remain intact. Updated native-renderer screenshots and website copy match the source.
+- Saves remain schema 23 / 6476 bytes. No new mechanics, save fields, framebuffer, PSRAM requirement, partition changes or factory reset. Back up before updating; do not downgrade to firmware older than 2.4.0.
+- Hardware performance and remaining save/service stalls are documented in firmware/CYD.md; native timings are not device FPS and a moving aquarium is not guaranteed 30 FPS.
+
+The following sections are historical release context, not the current menu or save-layout contract.
+
 ### New in 2.4.0: breed, trade and play
 
 - A breeding-and-trading economy built on one currency, doubloons. XP, levels, firsts, trophies and free color editors are retired; their saved data stays compatible.

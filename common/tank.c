@@ -1342,17 +1342,15 @@ static void sh_grip(const tank_t *t, int b, int i, float *x, float *y) {
     float frac = tank_veg_kind(t, b) == VEG_KIND_SWORD ? SH_GRIP_SWORD : SH_GRIP_FRAC;
     *y = TANK_BOT - 16 - segs * frac * VEG_SEG_PX;
 }
-/* the POSTS: solid parts of the decorations, at any depth - a piece IN FRONT
- * puts it in its front lane. Offsets from each piece's centre on its floor
- * line, hand-placed on the geometry in render.c. */
+/* One piece's posts at a time: four castle towers, otherwise at most three
+ * art-derived grips. No aquarium-wide cap or large stack array. */
 static tank_grip_source_t s_grip_source;
 void tank_set_grip_source(tank_grip_source_t fn) { s_grip_source = fn; }
-#define SH_POSTS_MAX 48
 #define SH_GRIPS_PER_PIECE 3
-static int sh_posts(const tank_t *t, sh_cand_t *out, int max) {
+static int sh_posts(const tank_t *t, int item, sh_cand_t *out) {
     int n = 0;
-    #define POST(it, fr, px, py, phw) do { if (n < max) { out[n].kind = SH_ANCHOR_POST; out[n].front = (fr); out[n].bed = out[n].frond = -1; out[n].item = (it); out[n].x = (px); out[n].y = (py); out[n].hw = (phw); n++; } } while (0)
-    if (t->sd_unlocks & SD_ITEM_CASTLE) {                                                /* the towers (castle_front_row / draw_castle): the coil round
+    #define POST(it, fr, px, py, phw) do { out[n].kind = SH_ANCHOR_POST; out[n].front = (fr); out[n].bed = out[n].frond = -1; out[n].item = (it); out[n].x = (px); out[n].y = (py); out[n].hw = (phw); n++; } while (0)
+    if (item == 2 && (t->sd_unlocks & SD_ITEM_CASTLE)) {                                  /* the towers (castle_front_row / draw_castle): the coil round
                                                                                           * each CONE just under its peak (Strato 10-15: on the tower's
                                                                                           * body it blended with the stone - "curled around the peak"),
                                                                                           * so the body stands over the roofline in open water; the
@@ -1364,12 +1362,12 @@ static int sh_posts(const tank_t *t, sh_cand_t *out, int max) {
         POST(2, fr, cx - 73, fy - 60, 5);                                                /* the far-left cone (peak fy - 72) */
         POST(2, fr, cx + 71, fy - 64, 10);                                               /* the far-right tower: its merlons (top fy - 70) */
     }
-    if (t->sd_unlocks & SD_ITEM_CORAL) {                                                 /* the trunk (CORAL_SEGS, 2 px cells, y scale 0.88) */
+    if (item == 3 && (t->sd_unlocks & SD_ITEM_CORAL)) {                                    /* the trunk (CORAL_SEGS, 2 px cells, y scale 0.88) */
         float cx = tank_decor_x(t, 3), fy = TANK_BOT - 14 + DECOR_SINK, g = tank_coral_growth(t); bool fr = tank_decor_z(t, 3) != DECOR_Z_BACK;
         POST(3, fr, cx + 1, fy - 18, 6);
         if (g >= 0.6f) POST(3, fr, cx + 3, fy - 47, 5);
     }
-    if (t->sd_unlocks & SD_ITEM_CLUSTER) {                                               /* the tube sponges (CL_TUBES, 2 px cells about x 36) */
+    if (item == 4 && (t->sd_unlocks & SD_ITEM_CLUSTER)) {                                  /* the tube sponges (CL_TUBES, 2 px cells about x 36) */
         float cx = tank_decor_x(t, 4), fy = TANK_BOT - 14 + DECOR_SINK; bool fr = tank_decor_z(t, 4) != DECOR_Z_BACK;
         float g = t->cluster_growth <= 0 ? 1 : t->cluster_growth > 1 ? 1 : t->cluster_growth;
         float sz = CLUSTER_SIZE_MIN + (1.0f - CLUSTER_SIZE_MIN) * g;
@@ -1377,8 +1375,8 @@ static int sh_posts(const tank_t *t, sh_cand_t *out, int max) {
     }
     /* every other standing piece: the peaks of its own art (render.c finds them: spires, masts,
      * towers, the tips of fronds), its lane its depth, mirrored with it */
-    if (s_grip_source) for (int item = 9; item < SD_ITEM_COUNT; item++) {
-        if (item == 13 || tank_decor_surface(item) || !tank_decor_movable(item) || !tank_decor_owned(t, item)) continue;
+    if (s_grip_source && item >= 9 && item < SD_ITEM_COUNT && item != 13 &&
+        !tank_decor_surface(item) && tank_decor_movable(item) && tank_decor_owned(t, item)) {
         uint8_t gx[SH_GRIPS_PER_PIECE], gy[SH_GRIPS_PER_PIECE], ghw[SH_GRIPS_PER_PIECE];
         int k = s_grip_source(item, gx, gy, ghw, SH_GRIPS_PER_PIECE);
         int w = tank_ornament_w(item), h = tank_ornament_h(item);
@@ -1403,7 +1401,7 @@ static bool sh_hold_ok(tank_t *t) {
         return true;
     }
     if (t->sh_akind == SH_ANCHOR_POST) {
-        sh_cand_t c[SH_POSTS_MAX]; int n = sh_posts(t, c, SH_POSTS_MAX);
+        sh_cand_t c[4]; int n = sh_posts(t, t->sh_aitem, c);
         for (int i = 0; i < n; i++)
             if (c[i].item == t->sh_aitem && fabsf(c[i].x - t->sh_ax) < 0.01f && fabsf(c[i].y - t->sh_ay) < 0.01f) { t->sh_front = c[i].front != 0; return true; }
         return false;
@@ -1441,11 +1439,13 @@ static bool sh_pick(tank_t *t, float from_x, float from_y) {
             if (!have || score > bs) { bs = score; best = c; have = true; }
         }
     }
-    sh_cand_t posts[SH_POSTS_MAX]; int np = sh_posts(t, posts, SH_POSTS_MAX);
-    for (int i = 0; i < np; i++) {
-        if (t->sh_akind == SH_ANCHOR_POST && fabsf(posts[i].x - t->sh_ax) < 0.01f && fabsf(posts[i].y - t->sh_ay) < 0.01f) continue;
-        float score = -tank_dist(posts[i].x, posts[i].y, from_x, from_y) + tank_randf(t, 0, 30) - (posts[i].front != t->sh_front ? 15 : 0);   /* a lane change a little later */
-        if (!have || score > bs) { bs = score; best = posts[i]; have = true; }
+    for (int item = 2; item < SD_ITEM_COUNT; item++) {
+        sh_cand_t posts[4]; int np = sh_posts(t, item, posts);
+        for (int i = 0; i < np; i++) {
+            if (t->sh_akind == SH_ANCHOR_POST && fabsf(posts[i].x - t->sh_ax) < 0.01f && fabsf(posts[i].y - t->sh_ay) < 0.01f) continue;
+            float score = -tank_dist(posts[i].x, posts[i].y, from_x, from_y) + tank_randf(t, 0, 30) - (posts[i].front != t->sh_front ? 15 : 0);   /* a lane change a little later */
+            if (!have || score > bs) { bs = score; best = posts[i]; have = true; }
+        }
     }
     if (!have) {
         best.kind = SH_ANCHOR_NONE; best.front = t->sh_front;
@@ -1459,8 +1459,9 @@ static bool sh_pick(tank_t *t, float from_x, float from_y) {
 /* anything to hold at all (a blade tall enough, a post on a piece behind)? */
 static bool sh_any_hold(const tank_t *t) {
     if (tank_kelp_anchor(t, 0, NULL, NULL)) return true;
-    sh_cand_t c[SH_POSTS_MAX];
-    if (sh_posts(t, c, SH_POSTS_MAX) > 0) return true;
+    sh_cand_t c[4];
+    for (int item = 2; item < SD_ITEM_COUNT; item++)
+        if (sh_posts(t, item, c) > 0) return true;
     for (int b = 0; b < tank_veg_beds(t); b++) {
         float bx0; int n; veg_bed_base(t, b, &bx0, &n);
         for (int i = 0; i < n; i++) if (sh_frond_ok(t, b, i)) return true;
@@ -1473,9 +1474,12 @@ static bool sh_another_hold(const tank_t *t) {
     for (int patch = 0; patch < KELP_PATCH_COUNT; patch++)
         if (tank_kelp_anchor(t, patch, NULL, NULL) &&
             !(t->sh_akind == SH_ANCHOR_KELP && t->sh_frond == patch)) return true;
-    sh_cand_t c[SH_POSTS_MAX]; int n = sh_posts(t, c, SH_POSTS_MAX);
-    for (int i = 0; i < n; i++)
-        if (!(t->sh_akind == SH_ANCHOR_POST && fabsf(c[i].x - t->sh_ax) < 0.01f && fabsf(c[i].y - t->sh_ay) < 0.01f)) return true;
+    sh_cand_t c[4];
+    for (int item = 2; item < SD_ITEM_COUNT; item++) {
+        int n = sh_posts(t, item, c);
+        for (int i = 0; i < n; i++)
+            if (!(t->sh_akind == SH_ANCHOR_POST && fabsf(c[i].x - t->sh_ax) < 0.01f && fabsf(c[i].y - t->sh_ay) < 0.01f)) return true;
+    }
     for (int b = 0; b < tank_veg_beds(t); b++) {
         float bx0; int nn; veg_bed_base(t, b, &bx0, &nn);
         for (int i = 0; i < nn; i++)

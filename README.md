@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.4.0
+# Pocket Tank CYD 2.4.1
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.4.0**. Stable firmware,
+now versioned independently. This source targets **2.4.1**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -14,14 +14,14 @@ It retains the original aquarium simulation and credits its origins, but is no
 longer just upstream Pocket Tank running on another display. Older release
 downloads and tags remain unchanged.
 Targets the **ESP32-2432S028 Cheap Yellow Display** and
-**ELEGOO ESP32-32E 2.8-inch ILI9341V**, with a development shared-image build:
+**ELEGOO ESP32-32E 2.8-inch ILI9341V**, with one application and saved hardware profiles:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
 are not included. See [LICENSE](LICENSE) for the original project license.
 
 **Take the illustrated tour:** [CYD features and screenshots](docs/CYD-FEATURES.md)
-covers named tanks, the bank, inherited creatures, mini-games,
-decorations, fish-care upgrades, desk-companion progression, optional weather,
+covers named tanks, the bank, inherited fish, mini-games,
+decorations, fish-care upgrades, optional stories and weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
@@ -56,6 +56,20 @@ dive through rock gaps rather than a lane game like Fish Slalom, and **Reef
 Architect** is a real logic puzzle: plant six corals that match every row and
 column clue without touching.
 
+**2.4.1 visual polish and exact-rendering optimization:** Tide Wheel
+has a studded brass rim, shaded wedges and a pointer that stops on the winning
+color. Reef Reels has recessed reel wells and faceted star symbols. Lost Current
+scenes add chapter-specific plants, stonework, lanterns and crystals, with better
+prompt spacing at the smaller resolution. Bets, odds, story choices and save
+formats are unchanged.
+
+The decor polish is deliberately selective: recessed mouths and pores
+for Tube Sponges, and clearer brass/glass detail on the Dive Helmet. Other decor,
+including the crystals and grand harbor/garden pieces, keeps its existing art.
+Their footprints, perches, prices and ownership are unchanged.
+Weather symbols gain shaded cloud layers, warm sun highlights and distinct
+rain, snow, fog and lightning materials without changing their bounds.
+
 **No environmental chores:** seagrass, algae, sponge, scissors, Reef Rhythm
 and the bubbler are retired. Swipes no longer activate currents or current bonuses.
 Buy **Anubias Carpet (60), Moss Cushions (85), Pearlweed (110) or
@@ -84,13 +98,14 @@ Tap a fish to open its summary directly, with its needs and breeding information
 inside the Fish menu rather than a stats/tool overlay covering the tank.
 One **Back** returns directly to the aquarium; **Menu** goes straight to the
 main menu from any fish submenu. **Help** (main menu) replaces the Fish-menu
-Care Guide: fourteen illustrated topics from Getting Started to Market Prices.
+Care Guide: sixteen illustrated topics covering every active system.
 Shared crafted glass, brass fittings and framed controls also cover submenus,
 setup, weather and network/update pages.
-The main menu groups **Fish**, **Tank**, **Market**, **Games**, **Help** and
-**Settings**. Main > Fish opens the current fish's Summary, whose six actions
-(Rename, Family, Genes, Life, Wardrobe, Fish Bank) replace the old duplicate
-Fish menu; Fish Bank and Rename return to that Summary. Rename is a full-page
+The main menu groups **Fish**, **Tank**, **Market**, **Games**, **Casino** and
+**Help**, with a **Settings** cog at the bottom right. Main > Fish opens the
+Fish hub (Summary, Rename, Family, Genes, Life, Wardrobe and Fish Bank).
+Tapping a fish opens its Summary directly; Back returns to the aquarium.
+Rename is a full-page
 QWERTY screen. **Games** is one paged list: arcade games, Stories and The Lost
 Current sit side by side, with no Arcade/Stories/RPG submenus. Tank identity
 and rename belong to Tank Summary > Name & Identity, now with thirteen
@@ -1755,10 +1770,10 @@ Normal/Hard purchases retain their listed level/coin requirements; Creative
 uses the same designs free. Ownership and colors follow each fish through
 Bank swaps and adventures.
 
-New exports use **schema 21** (schema 20 plus Reef Rhythm and creature stock);
-older schemas 1–20 and binary saves remain
+New exports use **schema 23** with progression and aquarium-local foliage;
+older schemas 1–22 and complete historical binary saves remain
 importable. The offline viewer displays the new placed/stored decorations and
-per-fish wardrobe. Older firmware cannot read schema-21 exports or the expanded
+per-fish wardrobe. Older firmware cannot read schema-23 exports or the expanded
 binary save; retain an older matching backup before deliberate downgrades.
 
 ## Fork maintenance
@@ -1766,12 +1781,13 @@ binary save; retain an older matching backup before deliberate downgrades.
 This is intentionally no longer a multi-board tree. Upstream gameplay changes
 can still be ported manually, but merges and release compatibility are not
 automatic. Preserve existing binary offsets and append new fields; the save
-is now 6464 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
+is now 6476 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
 progress, an 8-byte compatibility Creative marker, 40 more game-record bytes
 and 48 bytes of mode/starvation/unlock/refund state, plus 24 bytes of shared daily care,
 100 bytes of inventory, eight bytes of mussel state, 24 bytes of per-game income
 and four alignment bytes, then a 168-byte static-decoration tail, an 88-byte
-movable-scenery tail and 40 bytes of Reef Rhythm/creature stock), with the
+movable-scenery tail, 40 bytes of reserved Reef Rhythm/creature stock, eight
+progression bytes and four foliage bytes), with the
 previous 6424-byte prefix, 6336-byte prefix, 6168-byte prefix, 4520-byte layout and the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
@@ -1782,8 +1798,8 @@ six-bit fixed-scenery mask in the new polish tail.
 
 The first CYD cleanup pass removes the upstream filming-only prototype name
 keyboards and the bodies of permanently disabled hardware staging commands.
-Fish naming still uses the letter wheel; Wi-Fi keeps its separate QWERTY
-keyboard. Old staging commands explicitly refuse instead of modifying saves.
+Fish and tank naming now share the QWERTY helper; Wi-Fi retains its
+case-sensitive keyboard. Old staging commands explicitly refuse instead of modifying saves.
 Save migrations, frozen fields, simulator fixtures, attribution and required
 SD/network/update dependencies are retained. This pass reduces the measured
 app image from **1,769,664 to 1,766,384 bytes** (3,280 bytes saved), leaving

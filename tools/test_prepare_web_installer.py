@@ -82,7 +82,7 @@ class WebInstallerTests(unittest.TestCase):
         self.assertIn('href="./"', flasher)
         self.assertIn('href="./flash.html"', viewer)
         self.assertIn('href="#latest-features">What\'s new</a>', home)
-        self.assertIn("New in 2.4.0", home)
+        self.assertIn("2.4.1: a more polished little ocean", home)
         self.assertIn("Firmware Updates", home)
         self.assertIn("Check GitHub via Wi-Fi", home)
         for current in ("doubloons", "Creature Market", "Casino", "Contracts", "Auction", "Help"):

@@ -2,7 +2,7 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.4.0**
+**An illustrated tour of Pocket Tank CYD 2.4.1**
 
 **Latest source:** Main menu is Fish, Tank, Market, Games, **Casino**, Help;
 Settings moved to a cog in the bottom-right corner. Main > Fish is a Fish hub
@@ -21,14 +21,38 @@ describe their roles (glass cleaner calm +10%, night grazer rest +20%), the
 jellyfish has slimmer tentacles, Games uses the standard menu backdrop and the
 rename keyboard sits lower with an unobstructed preview.
 
+**2.4.1 visual-polish follow-up:** the casino's
+Tide Wheel now has a shaded brass-and-wood rim, studs and a layered hub; its
+pointer stops on the actual winning color. Reef Reels uses recessed, shaded
+windows and faceted star symbols. Lost Current scenes have shaped foliage,
+jointed stonework, hanging lanterns or crystals for each chapter, plus layered
+floors and doorways. Prompts have more line spacing at 240px; all eighteen
+encounters, detours and endings retain their full text. Odds, rewards, story
+rules and save formats are unchanged. The refreshed casino and chapter images
+below are native-renderer captures, not webcam photographs.
+
+**Selective decor polish:** Tube Sponges gain recessed oval
+mouths, lit rims and paired dark/light pores. The Dive Helmet has a clearer brass
+grille, reflected glass, crown seam and fittings. These are material changes
+inside the original silhouettes: placement, seahorse grips, price, ownership and
+the shop/live shared art are unchanged. The crystals and the newer harbor/garden
+set are intentionally left alone rather than adding texture everywhere.
+Weather symbols share shaded clouds, warm sun highlights and distinct
+rain/snow/fog/lightning materials across the live clocks and Weather pages.
+
+| Normal seabed detail | Enlarged seabed detail |
+|---|---|
+| ![Current tube sponges and brass dive helmet in the actual tank renderer](media/cyd-features/tank-crafted-seabed.png) | ![The same pieces at the enlarged display size](media/cyd-features/tank-crafted-seabed-enlarged.png) |
+
 **2.4.0 breeding-and-trading economy:** the main menu groups Fish, Tank,
 Market and Games. Tap a fish to open its summary directly, not the retired
 stats/tool overlay. Needs, names, bonds, family and genetics live inside Fish.
 Tank identity and rename live inside Tank Summary. Stories and Lost Current
 sit in the one paged Games list beside the arcade games. Main > Fish opens the
-Fish Summary, whose Rename/Family/Genes/Life/Wardrobe/Fish Bank actions replace
-the old duplicate Fish menu; **Help** on the main menu explains every system
-in fourteen topics. Each fish has hybrid **vigor** and a favorite decoration:
+Fish hub; Summary, Rename, Family, Genes, Life, Wardrobe and Fish Bank live there.
+Tapping a fish opens its Summary directly, and Back returns to the aquarium.
+**Help** on the main menu explains every system
+in sixteen topics. Each fish has hybrid **vigor** and a favorite decoration:
 both feed growth, calm and sale price. Themes are bought with doubloons.
 Market views separate buying stock, residents/sales and pair/nursery
 information rather than packing every action onto one page.
@@ -59,12 +83,12 @@ Store unused decorations rather than filling every available spot.
 |---|---|
 | ![Reef, shell, pearl and star badges above pellets, rainbow flakes and bloodworms](media/cyd-features/identity-food-details.png) | ![The Harborfin starter with forked tail and ribbed sail alongside the other varieties](media/cyd-features/fish-varieties.png) |
 
-**Why Calm often stays at 10:** it is `10 - stress`, not a separate happiness
-simulation. Undisturbed fish shed stress at 0.18 points per active second,
-0.48 while resting, with additional placed-shelter calming. Startling or
-chasing raises stress. It is normal for every settled fish to return to
-10; hunger and energy are separate needs. No random stress is introduced
-just to keep this gauge moving.
+**Calm is cultivated:** it is `10 - stress`, with recovery limited by trust.
+A newcomer settles to about 6/10; feeding and gentle holds build trust and
+raise that ceiling. A placed favorite reduces the trust-based stress floor
+by a quarter, and shelter helps recovery. A missing favorite keeps a fish
+a little restless. Startling or chasing raises stress; hunger and energy
+remain separate needs. No random stress is introduced just to move the gauge.
 
 The single active currency is **doubloons**. XP/levels and the old
 firsts/trophy/discovery/frame/object-story reward loops are retired; their
@@ -619,7 +643,7 @@ rain, snow or storms when a cached reading exists. Stale/error text remains.
 Auto Feed is one toggle, SD actions are full-width, and forgetting a city needs
 confirmation. No saved aquarium fields were added.
 
-![Simple cached-condition icons: sun, partly cloudy, cloud, fog, rain, snow and storm](media/cyd-features/weather-icons.png)
+![Shaded cached-condition icons: sun, partly cloudy, cloud, fog, rain, snow and storm](media/cyd-features/weather-icons.png)
 Updated October 24, 2026
 
 This release also separates games from aquarium rendering, names companion
@@ -1677,13 +1701,12 @@ palettes live under **Home > Tank > Sand & Water**.
 **Settings > Display > SCENE** independently selects **BALANCED**, **SIMPLE**
 or **ENHANCED**. Normal size + Balanced detail are the defaults.
 Simple works with either size; Enlarged + Simple gives larger fish with less
-visual clutter. It shows fish, food, current responses, the static sword plant
-and starter reef, placed decorations, fixed purchased scenery and floating ornaments.
-Helpers, bubbles, the trophy shelf and ambient sparkles are hidden; their
-simulation,
-ownership, benefits and progression remain unchanged. Balanced reduces
-secondary animation; Enhanced retains the full
-bubble/shrimp density. The performance goals are approximately 20 FPS Simple,
+visual clutter. It shows fish, food, the static sword plant, planted ground cover,
+placed decorations, fixed purchased scenery and floating ornaments.
+Helpers, bubbles and ambient sparkles are hidden; their simulation,
+ownership and benefits remain unchanged. Balanced reduces secondary animation;
+Enhanced keeps smoother secondary motion. Every detail level draws half a shrimp
+school to keep it visually quieter. The performance goals are approximately 20 FPS Simple,
 10 FPS Balanced and 5 FPS Enhanced at either size, not guaranteed minimums
 or artificial frame caps. Placement editors always show the complete scene.
 The CYD saves detail as a device preference,
@@ -1705,7 +1728,17 @@ CYD, both sizes draw horizontal tiles through the existing framebuffer,
 reusing its tail for a compressed static backdrop so weather still has RAM.
 Longer Normal frames use bounded simulation steps so care and idle timers
 still advance in real time rather than slowing with the animation.
-The renderer clips shape/decor work to each tile and reuses row colors;
+**Local polish follow-up (not a new published release):** the same controlled
+five-fish Normal/Balanced fixture improves from 16.19 to 17.70 FPS with clock and
+decor (+9.3%), with p95 falling from 70 to 64 ms. Day/night and dense-copy scenes
+are essentially unchanged or slightly improved. The app is 4,608 bytes smaller
+and frees 640 bytes of static RAM. All sixteen hardware fixtures, exact renderer
+comparisons, save/reboot and HTTPS weather pass. Saves still cause occasional
+visible hitches; the quiet soak includes a 334-ms frame. See the
+[hardware acceptance](../firmware/CYD.md#polish-and-space-follow-up-local-source)
+for scope, rejected trials and remaining stalls.
+
+**Earlier hardware measurements:** the renderer clips shape/decor work to each tile and reuses row colors;
 the LCD runs at 40 MHz. On the tested CYD, the
 populated Ice Cavern aquarium measured about 6.5–6.8 FPS in Normal after
 artwork/clock caching and weather radio sleep (previous builds measured

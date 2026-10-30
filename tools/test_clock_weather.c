@@ -343,12 +343,20 @@ void test_clock_weather(void) {
             memset(pixels, 0, n * sizeof *pixels);
             render_weather_icon(pixels, stride, 32, 64, 32, codes[icon]);
             int painted = 0;
+            uint16_t tones[16];
+            int tone_count = 0;
             for (int y = 0; y < TANK_H; y++) for (int x = 0; x < stride; x++) if (pixels[y * stride + x]) {
                 assert(x >= render_frame_x(32) - 1 && x <= render_frame_x(64) &&
                        y >= render_frame_y(64) - 1 && y <= render_frame_y(96));
                 painted++;
+                int k = 0;
+                while (k < tone_count && tones[k] != pixels[y * stride + x]) k++;
+                if (k == tone_count) {
+                    assert(tone_count < 16);
+                    tones[tone_count++] = pixels[y * stride + x];
+                }
             }
-            assert(painted > 10);
+            assert(painted > 10 && tone_count >= (codes[icon] == 45 ? 2 : 4));
             if (icon) assert(memcmp(pixels, reference, n * sizeof *pixels));
             memcpy(reference, pixels, n * sizeof *pixels);
         }

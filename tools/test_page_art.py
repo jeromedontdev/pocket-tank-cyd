@@ -12,6 +12,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="cc")
     parser.add_argument("--board", choices=("cyd", "elegoo"), default="cyd")
+    parser.add_argument("--dump-grips", action="store_true", help="Print immutable ornament grip initializers from the source art")
     parser.add_argument("--harbor-only", action="store_true",
                         help="Check replaced upstream fish/helpers/materials, guarded tiles and source icons only")
     parser.add_argument("--build-dir", type=Path, help="Dedicated native build directory for parallel art validation")
@@ -31,7 +32,7 @@ def main():
         if Path(args.cc).stem.lower() == "zig":
             command.append("cc")
         command += ["-std=c11", "-O1", "-Wall", "-Wextra", "-Werror",
-                    "-DRENDER_GAMES_TESTING", "-DRENDER_MENU_TESTING",
+                    "-DRENDER_GAMES_TESTING", "-DRENDER_MENU_TESTING", "-DRENDER_HELP_TESTING",
                     "-DPOP_CAP=5", "-DCYD_FLAT_EDGES=1",
                     "-I" + str(common), "-I" + str(cjson),
                     str(root / "tools" / "test_page_art.c")]
@@ -64,6 +65,7 @@ def main():
                            POCKET_TANK_SAVE=str(build / "synthetic.sav"),
                            POCKET_TANK_WIFI=str(build / "wifi.txt"),
                            POCKET_TANK_WEATHER=str(build / "weather.bin"),
+                           POCKET_TANK_DUMP_GRIPS="1" if args.dump_grips else "0",
                            POCKET_TANK_HARBOR_ART="1" if args.harbor_only else "0"))
         galleries = {path.resolve() for path in (args.gallery, args.content_gallery) if path}
         for gallery in galleries:

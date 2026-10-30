@@ -1341,13 +1341,13 @@ static uint32_t pc_row_bits(int k, int x0, int n, int y);   /* piece k's mask ov
 static uint32_t veg_row_mask(int x0, int x1, int y) {
     int n = x1 - x0 + 1;
     uint32_t full = n < 32 ? (1u << n) - 1 : UINT32_MAX;
-    uint64_t near = 0;
-    for (int k = 0; k < g_npc; k++) if (((g_veg_skip >> k) & 1) && pc_in_box(k, x0, x1, y)) near |= UINT64_C(1) << k;
     bool arch_box = g_veg_mask_cx >= 0 && y <= CASTLE_FY && y >= CASTLE_FY - CASTLE_ARCH_S - CASTLE_ARCH_R
                     && x1 >= g_veg_mask_cx - CASTLE_ARCH_R && x0 <= g_veg_mask_cx + CASTLE_ARCH_R;
     if (g_veg_arch_pass < 0 && !arch_box) return full;
     uint32_t m = 0;
-    for (int k = 0; k < g_npc; k++) if ((near >> k) & 1) m |= pc_row_bits(k, x0, n, y);
+    uint64_t skip = g_veg_skip;
+    for (int k = 0; k < g_npc && skip; k++, skip >>= 1)
+        if ((skip & 1) && pc_in_box(k, x0, x1, y)) m |= pc_row_bits(k, x0, n, y);
     if (g_veg_arch_pass && arch_box)
         for (int i = 0; i < n; i++) {
             bool a = castle_arch(x0 + i, y);
@@ -2604,6 +2604,8 @@ static const uint32_t SNAIL_RGB[SN_NONE] = {
 static inline int sn_clamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 /* within w of the segment (x0,y0)-(x1,y1); *u = 0..1 along it */
 static inline bool sn_seg(float lx, float ly, float x0, float y0, float x1, float y1, float w, float *u) {
+    if ((lx < x0 - w && lx < x1 - w) || (lx > x0 + w && lx > x1 + w) ||
+        (ly < y0 - w && ly < y1 - w) || (ly > y0 + w && ly > y1 + w)) return false;
     float vx = x1 - x0, vy = y1 - y0, l2 = vx * vx + vy * vy;
     float t = ((lx - x0) * vx + (ly - y0) * vy) / l2;
     t = t < 0 ? 0 : t > 1 ? 1 : t;
@@ -3854,10 +3856,12 @@ static uint32_t grand_pixel(int item, int x, int y) {
         float ex = dx / 38.0f, ey = (y - 71) / 42.0f, n = ex * ex + ey * ey;
         if (n < 1) {                                    /* the arch is open: ivy hangs from its crown */
             static const int strands[5] = {-21, -9, 4, 16, 27}, lengths[5] = {9, 15, 7, 12, 8};
-            float crown = 71 - 42 * sqrtf(fmaxf(0, 1 - ex * ex));
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 5; i++) {
+                if (dx != strands[i] && dx != strands[i] + 1) continue;
+                float crown = 71 - 42 * sqrtf(fmaxf(0, 1 - ex * ex));
                 if (abs(dx - strands[i] - (int)(y - crown) / 5 % 2) <= 0 && y - crown < lengths[i])
                     return (y + i) % 3 ? 0x5e8a5a : 0x8fbd78;
+            }
             return 0;
         }
         int hx = adx - 47, hy = y - 50;
@@ -4262,8 +4266,13 @@ static uint32_t harbor_garden_pixel(int item, int x, int y) {
     }
     }
 }
-static uint32_t ornament_pixel(int item, int x, int y) {
-    if (x < 0 || y < 0 || x >= tank_ornament_w(item) || y >= tank_ornament_h(item)) return 0;
+#ifdef RENDER_MENU_TESTING
+static size_t ornament_pixel_evaluations;
+#endif
+static uint32_t ornament_pixel_in_bounds(int item, int x, int y) {
+#ifdef RENDER_MENU_TESTING
+    ornament_pixel_evaluations++;
+#endif
     if (SD_IS_NEW_DECOR(item)) return harbor_garden_pixel(item, x, y);
     if (SD_IS_SCENERY(item)) return scenery_pixel(item, x, y);
     if (item >= 32 && item < SD_SCENERY_FIRST) {
@@ -4314,12 +4323,19 @@ static uint32_t ornament_pixel(int item, int x, int y) {
             return 0;
         case 25: {
             int tube = x / 13, cx = tube * 13 + 6, top = tube == 1 ? 3 : tube == 0 ? 14 : 9;
-            if (y < top || y > 37 || abs(x - cx) > 5) return 0;
-            if (y < top + 4)
-                return abs(x - cx) < 3 && y > top ? 0x6b5340 : y == top ? 0xf0d49a : 0xc19d5b;
-            if ((x + tube * 3) % 5 == 1 && (y + x / 3) % 7 < 2) return 0x9c7949;
-            if (y == 37 || x >= cx + 4) return 0xa27d49;
-            return x <= cx - 3 ? 0xe8c888 : x < cx + 1 ? 0xd8b773 : 0xbd985d;
+            int side = x - cx, rise = y - top;
+            if (rise < 0 || y > 37 || abs(side) > 5) return 0;
+            if (rise < 5) {
+                int mouth = side * side + (rise - 2) * (rise - 2) * 4;
+                if (mouth < 10) return rise < 3 ? 0x594a3d : 0x85643f;
+                if (mouth < 24) return rise < 2 ? 0xf0d49a : 0xc19d5b;
+            }
+            int pore = (side + tube * 3 + 10) % 5, row = (rise + tube * 2) % 8;
+            if (rise > 5 && pore == 1 && row == 3) return 0x85643f;
+            if (rise > 5 && pore == 1 && row == 4) return 0xf0d49a;
+            if (y == 37 || side >= 4) return 0x9c7949;
+            if (side == -4 && rise % 7 < 4) return 0xf0d49a;
+            return side <= -3 ? 0xe8c888 : side < 1 ? 0xd8b773 : 0xbd985d;
         }
         case 26: {
             int half = 12 + (y - 5) * (37 - y) / 64;
@@ -4338,10 +4354,18 @@ static uint32_t ornament_pixel(int item, int x, int y) {
             if (y >= 32 && y <= 37 && abs(dx) < 18)
                 return y == 32 ? 0xd1b879 : y == 37 ? 0x6c5b3e : x < 20 ? 0xb59b62 : 0x947e50;
             if (dx * dx + dy * dy > 225 || y < 7) return 0;
-            if (dx * dx + dy * dy < 49)
-                return dx == -3 || dy == -3 ? 0x7caaa6 : dx == 0 || dy == 0 ? 0x8e9b77 : 0x304f57;
+            if (dx * dx + dy * dy < 49) {
+                if (dx == -3 || dy == -3 || dx == 2 || dy == 2)
+                    return x < 20 ? 0xb9ba91 : 0x8e9b77;
+                if (dy == dx - 3 && dx < 2) return 0x7caaa6;
+                return dy > 2 || dx > 3 ? 0x203b46 : 0x304f57;
+            }
             if (dx * dx + dy * dy < 81) return x < 20 && y < 25 ? 0xe4cf95 : 0x96804f;
             if ((abs(dx) == 11 && abs(dy) < 2) || (abs(dy) == 11 && abs(dx) < 2)) return 0xf0dba6;
+            if (abs(dx) == 10 && abs(dy) == 7) return dy < 0 ? 0xe4cf95 : 0x725f42;
+            if (y == 12 && abs(dx) < 9) return 0xf0dba6;
+            if (y == 13 && abs(dx) < 10) return 0x96804f;
+            if (x == 8 && y > 19 && y < 28) return 0x7b9277;
             return y < 14 && x < 25 ? 0xe0c78a : x > 28 || y > 29 ? 0x8e794e : x < 18 ? 0xc7b079 : 0xb09a64;
         case 28:
             if (dx * dx * 4 + (y - 29) * (y - 29) * 16 < 1024 &&
@@ -4490,6 +4514,10 @@ static uint32_t ornament_pixel(int item, int x, int y) {
     if ((x + 2 * y) % 13 < 3) return 0x9e7c5a;
     return x < 14 ? 0xb4c6b9 : x < 16 ? 0x92aaa5 : 0x5d7a80;
 }
+static uint32_t ornament_pixel(int item, int x, int y) {
+    if (x < 0 || y < 0 || x >= tank_ornament_w(item) || y >= tank_ornament_h(item)) return 0;
+    return ornament_pixel_in_bounds(item, x, y);
+}
 static uint32_t locked_rgb(uint16_t v);
 static void ornament_select(const tank_t *t) {
     int selected = -1, most = 0;
@@ -4531,7 +4559,7 @@ static const ornament_art_t *ornament_art(int item) {
     art->item = item; art->width = w; art->height = h;
     unsigned colors = 1;
     for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
-        uint32_t rgb = ornament_pixel(item, x, y);
+        uint32_t rgb = ornament_pixel_in_bounds(item, x, y);
         unsigned tone = 0;
         while (tone < colors && art->palette[tone] != rgb) tone++;
         if (tone == colors) {
@@ -4574,23 +4602,28 @@ static void draw_ornament_flip(ctx_t *c, int item, int x0, int y0, int scale, bo
         if (y0 >= c->oy + c->h || y0 + tank_ornament_h(item) * scale <= c->oy) return;
     }
     int width = tank_ornament_w(item), flip = mirror ? width - 1 : 0, sign = mirror ? -1 : 1;
+    int first_x = 0, end_x = width;
+    if (!c->scaled) {
+        if (x0 < c->ox) first_x = (c->ox - x0) / scale;
+        if (x0 + width * scale > c->ox + c->w) end_x = (c->ox + c->w - x0 + scale - 1) / scale;
+    }
     const ornament_art_t *cached = ornament_art(item);
     bool foreground = cached && lit && scale == 1 && !c->scaled && !g_recording;
     if (foreground) ornament_foreground_palette(g_ornament_art, c->dim);
     for (int y = first; y <= last; y++) {
         if (!page_rows_in_tile(c, y0 + y * scale, y0 + y * scale + scale - 1)) continue;
-        for (int x = 0; x < width;) {
+        for (int x = first_x; x < end_x;) {
             int sx = flip + sign * x;
-            uint32_t rgb = cached ? cached->palette[cached->pixels[y * width + sx]] : ornament_pixel(item, sx, y);
+            uint32_t sample = cached ? cached->palette[cached->pixels[y * width + sx]] : ornament_pixel_in_bounds(item, sx, y);
             int start = x++;
-            if (!rgb) continue;
-            while (x < width) {
+            if (!sample) continue;
+            while (x < end_x) {
                 int nx = flip + sign * x;
-                uint32_t next = cached ? cached->palette[cached->pixels[y * width + nx]] : ornament_pixel(item, nx, y);
-                if (next != rgb) break;
+                uint32_t next = cached ? cached->palette[cached->pixels[y * width + nx]] : ornament_pixel_in_bounds(item, nx, y);
+                if (next != sample) break;
                 x++;
             }
-            rgb = shop_art_color(rgb, lit, background);
+            uint32_t rgb = shop_art_color(sample, lit, background);
             /* Opaque unscaled spans need only RGB565; recording retains full channels. */
             src_t color = foreground && !final ?
                 (src_t){0, 0, 0, cached->foreground[cached->pixels[y * width + flip + sign * start]]} :
@@ -4610,55 +4643,59 @@ static void draw_ornament_flip(ctx_t *c, int item, int x0, int y0, int scale, bo
 static void draw_ornament(ctx_t *c, int item, int x0, int y0, int scale, bool final, bool lit, uint32_t background) {
     draw_ornament_flip(c, item, x0, y0, scale, final, lit, background, false);
 }
-/* the seahorse's grips on a sprite: the highest sturdy column (solid for 6 of
- * the 8 px below, 14 px above its floor) in each third of the art, the
- * highest first, 10 px apart; found once per piece */
+/* Generated from the neutral source art; test_page_art.py --dump-grips
+ * regenerates this table and the art test checks every coordinate. */
 #define GRIPS_MAX 3
+static const struct { uint8_t count, x[GRIPS_MAX], y[GRIPS_MAX], half[GRIPS_MAX]; } ORNAMENT_GRIPS[SD_ITEM_COUNT] = {
+    [9] = {3, {8,24,40}, {3,3,3}, {10,10,10}},
+    [10] = {1, {17,0,0}, {5,0,0}, {9,0,0}},
+    [11] = {2, {16,5,0}, {4,14,0}, {2,10,0}},
+    [12] = {2, {11,26,0}, {5,26,0}, {2,3,0}},
+    [16] = {3, {31,52,10}, {3,6,35}, {2,3,10}},
+    [17] = {2, {7,23,0}, {3,3,0}, {8,8,0}},
+    [18] = {2, {23,9,0}, {3,19,0}, {2,2,0}},
+    [19] = {1, {24,0,0}, {6,0,0}, {2,0,0}},
+    [20] = {2, {29,18,0}, {3,6,0}, {10,10,0}},
+    [21] = {1, {18,0,0}, {9,0,0}, {10,0,0}},
+    [22] = {2, {18,29,0}, {7,19,0}, {7,10,0}},
+    [23] = {1, {19,0,0}, {7,0,0}, {6,0,0}},
+    [25] = {3, {19,33,6}, {6,12,17}, {5,5,5}},
+    [26] = {3, {8,19,32}, {8,8,8}, {10,10,10}},
+    [27] = {1, {20,0,0}, {10,0,0}, {9,0,0}},
+    [36] = {1, {19,0,0}, {26,0,0}, {5,0,0}},
+    [37] = {1, {20,0,0}, {24,0,0}, {10,0,0}},
+    [38] = {1, {20,0,0}, {3,0,0}, {2,0,0}},
+    [39] = {1, {18,0,0}, {29,0,0}, {10,0,0}},
+    [40] = {3, {4,31,19}, {11,14,15}, {2,2,2}},
+    [41] = {1, {19,0,0}, {16,0,0}, {6,0,0}},
+    [43] = {3, {28,16,40}, {3,28,28}, {2,2,2}},
+    [44] = {1, {19,0,0}, {6,0,0}, {2,0,0}},
+    [45] = {1, {19,0,0}, {17,0,0}, {10,0,0}},
+    [46] = {1, {19,0,0}, {3,0,0}, {7,0,0}},
+    [47] = {3, {9,19,31}, {10,10,10}, {10,10,10}},
+    [48] = {1, {18,0,0}, {5,0,0}, {2,0,0}},
+    [49] = {3, {42,67,94}, {13,13,13}, {2,2,2}},
+    [50] = {3, {43,58,28}, {3,19,20}, {3,10,10}},
+    [51] = {1, {19,0,0}, {5,0,0}, {2,0,0}},
+    [52] = {2, {22,8,0}, {6,15,0}, {7,9,0}},
+    [53] = {3, {2,110,55}, {4,4,8}, {5,5,10}},
+    [54] = {2, {12,28,0}, {9,28,0}, {2,10,0}},
+    [55] = {1, {19,0,0}, {8,0,0}, {10,0,0}},
+    [56] = {1, {19,0,0}, {8,0,0}, {10,0,0}},
+    [57] = {2, {19,6,0}, {10,21,0}, {8,8,0}},
+    [58] = {3, {20,6,33}, {7,17,17}, {2,2,2}},
+    [59] = {3, {6,19,30}, {11,11,11}, {10,10,10}},
+    [60] = {2, {32,11,0}, {7,12,0}, {4,10,0}},
+    [61] = {3, {6,19,33}, {13,13,13}, {10,10,10}},
+    [62] = {2, {21,10,0}, {7,21,0}, {5,10,0}},
+};
 static int ornament_grips(int item, uint8_t *gx, uint8_t *gy, uint8_t *ghw, int max) {
-    static uint8_t found[SD_ITEM_COUNT], px[SD_ITEM_COUNT][GRIPS_MAX], py[SD_ITEM_COUNT][GRIPS_MAX], phw[SD_ITEM_COUNT][GRIPS_MAX];
     if (item < 0 || item >= SD_ITEM_COUNT) return 0;
-    if (!found[item]) {
-        int w = tank_ornament_w(item), h = tank_ornament_h(item), n = 0;
-        int16_t top[256];
-        if (w > 256) w = 256;
-        for (int x = 0; x < w; x++) {
-            top[x] = -1;
-            for (int y = 0; y < h; y++) if (ornament_pixel(item, x, y)) { top[x] = (int16_t)y; break; }
-        }
-        /* the highest sturdy column in each third of the piece: a finial and two eaves */
-        int cx[3], cy[3], nc = 0;
-        for (int band = 0; band < 3; band++) {
-            int b0 = w * band / 3, b1 = w * (band + 1) / 3, mid = (b0 + b1) / 2, bx = -1;
-            for (int x = b0; x < b1; x++) {
-                if (top[x] < 0 || h - top[x] < 14) continue;
-                int solid = 0;
-                for (int y = top[x]; y < h && y < top[x] + 8; y++) solid += ornament_pixel(item, x, y) != 0;
-                if (solid < 6) continue;
-                if (bx < 0 || top[x] < top[bx] || (top[x] == top[bx] && abs(x - mid) < abs(bx - mid))) bx = x;
-            }
-            if (bx >= 0) { cx[nc] = bx; cy[nc] = top[bx]; nc++; }
-        }
-        while (n < GRIPS_MAX) {
-            int best = -1;
-            for (int i = 0; i < nc; i++) {
-                bool apart = true;
-                for (int j = 0; j < n; j++) if (abs(cx[i] - px[item][j]) < 10) apart = false;
-                if (apart && (best < 0 || cy[i] < cy[best])) best = i;
-            }
-            if (best < 0) break;
-            int y = cy[best] + 3 < h ? cy[best] + 3 : h - 1, l = cx[best], r = cx[best];
-            while (l > 0 && ornament_pixel(item, l - 1, y)) l--;
-            while (r < w - 1 && ornament_pixel(item, r + 1, y)) r++;
-            int half = (r - l + 1) / 2;
-            px[item][n] = (uint8_t)cx[best]; py[item][n] = (uint8_t)y;
-            phw[item][n] = (uint8_t)(half < 2 ? 2 : half > 10 ? 10 : half);
-            n++;
-        }
-        found[item] = (uint8_t)(n + 1);
-    }
-    int n = found[item] - 1;
+    int n = ORNAMENT_GRIPS[item].count;
     if (n > max) n = max;
-    for (int i = 0; i < n; i++) { gx[i] = px[item][i]; gy[i] = py[item][i]; ghw[i] = phw[item][i]; }
+    for (int i = 0; i < n; i++) {
+        gx[i] = ORNAMENT_GRIPS[item].x[i]; gy[i] = ORNAMENT_GRIPS[item].y[i]; ghw[i] = ORNAMENT_GRIPS[item].half[i];
+    }
     return n;
 }
 static void draw_pearl_mussel(ctx_t *c, float x, float y, float scale, bool ready,
@@ -4863,6 +4900,12 @@ static uint32_t pc_row_bits(int k, int x0, int n, int y) {
         const ornament_art_t *art = p->baked ? ornament_art(p->item) : NULL;
         if (art) {
             int left = x0 - p->x0;
+            if (!p->mirror) {
+                if (left >= p->w || left <= -n) return 0;
+                uint64_t row = art->mask[r];
+                uint32_t visible = (uint32_t)(left < 0 ? row << -left : row >> left);
+                return n < 32 ? visible & ((1u << n) - 1) : visible;
+            }
             for (int i = 0; i < n; i++) {
                 int lx = left + i;
                 if ((unsigned)lx >= (unsigned)p->w) continue;
@@ -8861,16 +8904,22 @@ static void weather_icon(ctx_t *c, int x, int y, int size, int code) {
         int dx = xx - (cloud ? 5 : 8), dy = yy - (cloud ? 5 : 7);
         if (sun && (dx * dx + dy * dy <= 10 ||
             ((abs(dx) <= 1 || abs(dy) <= 1 || abs(dx) == abs(dy)) && dx * dx + dy * dy <= 38)))
-            color = 0xffd46b;
+            color = dx * dx + dy * dy > 10 ? 0xd7a64e :
+                dx + dy < -1 ? 0xffedb0 : dx + dy > 2 ? 0xe9b657 : 0xffd46b;
         if (cloud && !fog && ((xx >= 2 && xx <= 13 && yy >= 7 && yy <= 10) ||
             (xx - 6) * (xx - 6) + (yy - 7) * (yy - 7) <= 13 ||
-            (xx - 11) * (xx - 11) + (yy - 8) * (yy - 8) <= 8)) color = 0xe1f1eb;
-        if (fog && yy >= 4 && yy <= 12 && yy % 3 == 1 && xx >= (yy % 2 ? 2 : 4) && xx <= 13) color = 0xb2c8ca;
-        if (rain && yy >= 12 && yy <= 15 && (xx + yy) % 5 == 0) color = 0x78caff;
+            (xx - 11) * (xx - 11) + (yy - 8) * (yy - 8) <= 8))
+            color = yy >= 10 ? 0x7497a3 : yy >= 8 ? 0xaac6ca :
+                xx < 8 && yy < 7 ? 0xf3f4df : 0xd8e8df;
+        if (fog && yy >= 4 && yy <= 12 && yy % 3 == 1 && xx >= (yy % 2 ? 2 : 4) && xx <= 13)
+            color = xx < 7 ? 0xd5e1d8 : 0x93b0b9;
+        if (rain && yy >= 12 && yy <= 15 && (xx + yy) % 5 == 0)
+            color = yy % 2 ? 0x78caff : 0xc1e9ef;
         if (snow && yy >= 12 && ((yy % 2 == 0 && (xx == 4 || xx == 11)) ||
-            (yy == 13 && ((xx >= 3 && xx <= 5) || (xx >= 10 && xx <= 12))))) color = 0xd4eeff;
+            (yy == 13 && ((xx >= 3 && xx <= 5) || (xx >= 10 && xx <= 12)))))
+            color = yy == 13 ? 0xf3f4df : 0x9ecbdc;
         if (storm && yy >= 10 && ((yy <= 12 && xx >= 8 && xx <= 10) ||
-            (yy >= 12 && xx == 7 + (15 - yy) / 2))) color = 0xffd46b;
+            (yy >= 12 && xx == 7 + (15 - yy) / 2))) color = xx == 8 ? 0xffedb0 : 0xe9b657;
         if (color) {
             int left = x + xx * size / 16, top = y + yy * size / 16;
             rect_fill(c, left, top, (xx + 1) * size / 16 - xx * size / 16,

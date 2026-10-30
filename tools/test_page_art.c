@@ -17,6 +17,11 @@ static uint16_t icon_bank[128 * 1024];
 static size_t icon_bank_bytes;
 static tank_t help_tank;
 
+void menu_test_story_prompt(int end, bool complete, int bottom) {
+    int glyph_height = (7 * PAGE_H + TANK_H - 1) / TANK_H;
+    assert(complete && glyph_height < 20 && end - 20 + glyph_height < bottom);
+}
+
 static const char *menu_screen;
 static int menu_errors, menu_screens, menu_width;
 static struct { int x, y, w, h; char text[128]; } menu_texts[160];
@@ -48,6 +53,15 @@ void menu_test_button(int x, int y, int w, int h, const char *label, int scale) 
     if (x < 0 || y < 0 || x + w > PAGE_W || y + h > PAGE_H ||
         text_w(label, scale) > w - 8 || 7 * scale > h - 4) {
         fprintf(stderr, "MENU %d %s: button label/bounds (%d,%d %dx%d): %s\n", TANK_W, menu_screen, x, y, w, h, label);
+        menu_errors++;
+    }
+}
+void menu_test_paragraph(int start, int end, bool complete) {
+    if (!menu_screen || strncmp(menu_screen, "help-topic-", 11)) return;
+    int glyph_height = (7 * PAGE_H + TANK_H - 1) / TANK_H;
+    int limit = start == 120 ? 222 : 324;
+    if (!complete || end - 16 + glyph_height > limit) {
+        fprintf(stderr, "MENU %d %s: Help paragraph exceeds %d or loses text\n", TANK_W, menu_screen, limit);
         menu_errors++;
     }
 }
@@ -116,6 +130,14 @@ static void check_menu_layout(const char *gallery) {
     menu_begin("genes-all-mutations");
     companion_render(&t, full_frame, TANK_W); menu_end(gallery);
     t.story.active[0] = lineage_before;
+    companion_open_section(COMPANION_SECTION_HELP);
+    companion_tap(&t, render_frame_x(120), render_frame_y(96));
+    assert(companion_current_section() == COMPANION_SECTION_HELP_TOPIC);
+    for (int topic = 0; topic < 16; topic++) {
+        snprintf(name, sizeof name, "help-topic-%d", topic); menu_begin(name);
+        companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+        companion_tap(&t, render_frame_x(340), render_frame_y(336));
+    }
     companion_open_section(COMPANION_SECTION_SYMBOLS);
     for (int p = 0; p < 3; p++) {
         snprintf(name, sizeof name, "symbol-guide-%d", p); menu_begin(name);
@@ -692,10 +714,42 @@ static void check_clock_replay_pixels(void) {
 }
 
 static void check_ornament_spans(void) {
-    for (int item = 9; item < SD_DECOR_FIRST + DECOR_NEW_COUNT; item++) {
+    render_work_caches(false);
+    int arch_pixels = 0, ivy_columns = 0;
+    for (int y = 0; y < 72; y++) for (int x = 0; x < 136; x++) {
+        int dx = x - 68, adx = abs(dx);
+        int top = adx <= 50 ? 10 + dx * dx / 700 : 14 + (adx - 50) * 2;
+        float ex = dx / 38.0f, ey = (y - 71) / 42.0f;
+        if (y < top || ex * ex + ey * ey >= 1) continue;
+        static const int strands[] = {-21, -9, 4, 16, 27}, lengths[] = {9, 15, 7, 12, 8};
+        float crown = 71 - 42 * sqrtf(fmaxf(0, 1 - ex * ex));
+        uint32_t expected = 0;
+        bool candidate = false;
+        for (int i = 0; i < 5; i++) {
+            candidate |= dx == strands[i] || dx == strands[i] + 1;
+            if (!expected && abs(dx - strands[i] - (int)(y - crown) / 5 % 2) <= 0 && y - crown < lengths[i])
+                expected = (y + i) % 3 ? 0x5e8a5a : 0x8fbd78;
+        }
+        assert(grand_pixel(49, x, y) == expected);
+        arch_pixels++; ivy_columns += candidate;
+    }
+    assert(arch_pixels > 2000 && ivy_columns * 5 < arch_pixels);
+    for (int cache = 0; cache < 2; cache++) for (int item = 9; item < SD_DECOR_FIRST + DECOR_NEW_COUNT; item++) {
         if (!tank_decor_placeable(item)) continue;
-        for (int mode = 0; mode < 8; mode++) {
+        assert(!ornament_pixel(item, -1, 0) && !ornament_pixel(item, 0, -1));
+        assert(!ornament_pixel(item, tank_ornament_w(item), 0));
+        assert(!ornament_pixel(item, 0, tank_ornament_h(item)));
+        render_work_caches(false);
+        if (cache) {
+            int w = tank_ornament_w(item), h = tank_ornament_h(item);
+            if (w > 64 || h > 110 || w * h > 4096) continue;
+            render_work_caches(true);
+            g_ornament_selected = item;
+            assert(ornament_art(item));
+        }
+        for (int mode = 0; mode < 16; mode++) {
             bool final = (mode & 1) != 0, lit = (mode & 2) != 0;
+            bool mirror = (mode & 8) != 0;
             int scale = mode & 4 ? 2 : 1, y0 = TANK_H / 2 - 5, x0 = -3;
             for (int i = 0; i < TANK_W * TANK_H; i++)
                 full_frame[i] = repeated[i] = replay_background(i);
@@ -704,7 +758,7 @@ static void check_ornament_spans(void) {
             ctx_t actual = ctx_full(repeated, TANK_W, expected.dim);
             for (int y = 0; y < tank_ornament_h(item); y++)
                 for (int x = 0; x < tank_ornament_w(item); x++) {
-                    uint32_t rgb = ornament_pixel(item, x, y);
+                    uint32_t rgb = ornament_pixel(item, mirror ? tank_ornament_w(item) - 1 - x : x, y);
                     if (!rgb) continue;
                     src_t source = src_color(shop_art_color(rgb, lit, 0x173942), expected.dim);
                     for (int row = 0; row < scale; row++) {
@@ -713,12 +767,21 @@ static void check_ornament_spans(void) {
                         else span(&expected, left, left + scale - 1, top, &source, 255);
                     }
                 }
-            draw_ornament(&actual, item, x0, y0, scale, final, lit, 0x173942);
+            ornament_pixel_evaluations = 0;
+            draw_ornament_flip(&actual, item, x0, y0, scale, final, lit, 0x173942, mirror);
+            int end_column = (actual.ox + actual.w - x0 + scale - 1) / scale;
+            if (end_column > tank_ornament_w(item)) end_column = tank_ornament_w(item);
+            int end_row = (actual.oy + actual.h - y0 + scale - 1) / scale;
+            if (end_row > tank_ornament_h(item)) end_row = tank_ornament_h(item);
+            size_t visible_cells = (size_t)(end_column - (actual.ox - x0) / scale) *
+                (end_row - (actual.oy - y0) / scale);
+            assert(cache ? ornament_pixel_evaluations == 0 : ornament_pixel_evaluations <= visible_cells * 2);
             assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
             render_tile(0, 0); render_region(0, 0);
         }
     }
-    puts("PASS: ornament row spans preserve per-pixel reference artwork, dim/locked colors, final lighting and clipped/scaled geometry");
+    render_work_caches(false);
+    puts("PASS: mirrored cached/live ornament spans preserve exact pixels, checked edges and bounded clipped work; bridge skips over 80% of arch square roots");
 }
 
 /* companion_ui.c's bevelled key: face, lit lip, shadowed foot */
@@ -1035,9 +1098,57 @@ static void check_kelp_forest(void) {
     puts("PASS: Kelp Forest tips taper and the entire first leaf survives every stalk height without horizontal cuts");
 }
 
+static int source_ornament_grips(int item, uint8_t *gx, uint8_t *gy, uint8_t *ghw) {
+    int w = tank_ornament_w(item), h = tank_ornament_h(item), n = 0;
+    int16_t top[256];
+    assert(w <= 256);
+    for (int x = 0; x < w; x++) {
+        top[x] = -1;
+        for (int y = 0; y < h; y++) if (ornament_pixel(item, x, y)) { top[x] = (int16_t)y; break; }
+    }
+    int cx[3], cy[3], nc = 0;
+    for (int band = 0; band < 3; band++) {
+        int b0 = w * band / 3, b1 = w * (band + 1) / 3, mid = (b0 + b1) / 2, bx = -1;
+        for (int x = b0; x < b1; x++) {
+            if (top[x] < 0 || h - top[x] < 14) continue;
+            int solid = 0;
+            for (int y = top[x]; y < h && y < top[x] + 8; y++) solid += ornament_pixel(item, x, y) != 0;
+            if (solid < 6) continue;
+            if (bx < 0 || top[x] < top[bx] || (top[x] == top[bx] && abs(x - mid) < abs(bx - mid))) bx = x;
+        }
+        if (bx >= 0) { cx[nc] = bx; cy[nc] = top[bx]; nc++; }
+    }
+    while (n < GRIPS_MAX) {
+        int best = -1;
+        for (int i = 0; i < nc; i++) {
+            bool apart = true;
+            for (int j = 0; j < n; j++) if (abs(cx[i] - gx[j]) < 10) apart = false;
+            if (apart && (best < 0 || cy[i] < cy[best])) best = i;
+        }
+        if (best < 0) break;
+        int y = cy[best] + 3 < h ? cy[best] + 3 : h - 1, l = cx[best], r = cx[best];
+        while (l > 0 && ornament_pixel(item, l - 1, y)) l--;
+        while (r < w - 1 && ornament_pixel(item, r + 1, y)) r++;
+        int half = (r - l + 1) / 2;
+        gx[n] = (uint8_t)cx[best]; gy[n] = (uint8_t)y;
+        ghw[n++] = (uint8_t)(half < 2 ? 2 : half > 10 ? 10 : half);
+    }
+    return n;
+}
+
 /* every standing piece alone with the seahorse: it finds grips on the piece's own art
  * (the large pieces several), holds one at the art's top, and names the piece */
 static void check_decor_perches(void) {
+    int sway = g_buoy_sway, bob = g_buoy_bob;
+    g_buoy_sway = g_buoy_bob = 0;
+    for (int item = 9; item < SD_ITEM_COUNT; item++) {
+        if (item == 13 || tank_decor_surface(item) || !tank_decor_movable(item)) continue;
+        uint8_t x[3] = {0}, y[3] = {0}, hw[3] = {0}, ax[3] = {0}, ay[3] = {0}, ahw[3] = {0};
+        int n = source_ornament_grips(item, x, y, hw);
+        assert(n == ornament_grips(item, ax, ay, ahw, 3));
+        assert(!memcmp(x, ax, 3) && !memcmp(y, ay, 3) && !memcmp(hw, ahw, 3));
+    }
+    g_buoy_sway = sway; g_buoy_bob = bob;
     int pieces = 0, held = 0;
     for (int item = 9; item < SD_ITEM_COUNT; item++) {
         if (item == 13 || tank_decor_surface(item) || !tank_decor_movable(item)) continue;
@@ -1073,6 +1184,28 @@ static void check_decor_perches(void) {
         }
     }
     assert(pieces > 40 && held * 10 >= pieces * 9);
+    tank_t crowded = {0};
+    tank_init(&crowded, 178); tank_new_population(&crowded);
+    crowded.sd_unlocks = UINT32_MAX;
+    crowded.polish.scenery_unlocks = 0x3f;
+    crowded.content.owned = (1u << DECOR_NEW_COUNT) - 1;
+    crowded.foliage = (foliage_state_t){0};
+    crowded.sd_unlocks &= ~SD_ITEM_PLANT;
+    render_tank(&crowded, full_frame, TANK_W);
+    for (int item = 9; item < SD_ITEM_COUNT; item++) {
+        if (item == 13 || tank_decor_surface(item) || !tank_decor_movable(item) || !tank_decor_owned(&crowded, item)) continue;
+        uint8_t x[3], y[3], hw[3];
+        int n = ornament_grips(item, x, y, hw, 3);
+        int w = tank_ornament_w(item), h = tank_ornament_h(item);
+        crowded.sh_akind = SH_ANCHOR_POST; crowded.sh_aitem = item;
+        crowded.sh_ax = (int)tank_decor_x(&crowded, item) - w / 2 + x[n - 1] + .5f;
+        crowded.sh_ay = (tank_fixed_index(item) >= 0 ? TANK_BOT - (SD_IS_SCENERY(item) ? 52 : 48) :
+                         TANK_BOT - 14 + DECOR_SINK - h) + y[n - 1];
+        crowded.sh_x = crowded.sh_tx = crowded.sh_ax; crowded.sh_y = crowded.sh_ty = crowded.sh_ay;
+        crowded.sh_mode = SH_PERCH; crowded.sh_stay = 60;
+        tank_tick(&crowded, .01f, advisor_rules);
+        assert(crowded.sh_akind == SH_ANCHOR_POST && crowded.sh_aitem == item && crowded.sh_mode == SH_PERCH);
+    }
     printf("PASS: the seahorse finds grips on %d of %d standing decorations, several on each large piece\n", held, pieces);
 }
 
@@ -1366,6 +1499,89 @@ static void capture_content_raw(const char *directory, const char *name) {
     assert(!fclose(file));
 }
 
+static void check_casino_story_art(const char *gallery) {
+    tank_t t; tank_init(&t, 799); tank_new_population(&t);
+    t.sd_balance = 100000;
+    extern float casino_wheel_stop(int winner);
+    for (int winner = 0; winner < 3; winner++) {
+        float angle = -1.570796f - casino_wheel_stop(winner);
+        int slot = (int)floorf(angle * 13 / 6.283185f);
+        assert((slot == 12 ? 2 : slot % 2) == winner);
+    }
+    for (int surface = 0; surface < 13; surface++) {
+        bool casino = surface < 7;
+        if (casino) {
+            render_casino_open();
+            if (surface) render_games_tap(&t, render_frame_x(100 + (surface - 1) % 2 * 204),
+                                         render_frame_y(110 + (surface - 1) / 2 * 76));
+        } else {
+            companion_open_section(COMPANION_SECTION_RPG);
+            t.rpg.chapter = (uint8_t)(surface - 7);
+        }
+        for (int state = 0; state < (casino ? surface ? 3 : 1 : 3); state++) {
+            if (casino && state == 1) {
+                render_games_tap(&t, render_frame_x(350), render_frame_y(285));
+                render_games_tick(.2f);
+            } else if (casino && state == 2) {
+                for (int i = 0; i < 80; i++) render_games_tick(.1f);
+            } else if (!casino) t.rpg.step = (uint8_t)state;
+            tank_t before = t;
+            render_tile(0, 0); render_region(0, 0);
+            if (casino) render_games(&t, full_frame, TANK_W);
+            else companion_render(&t, full_frame, TANK_W);
+            char name[64];
+            snprintf(name, sizeof name, "%s-art-%d-%d", casino ? "casino" : "story",
+                     casino ? surface : surface - 7, state);
+            if (gallery) capture_content_raw(gallery, name);
+            const int bands[] = {1, 17, 40};
+            for (size_t band = 0; band < sizeof bands / sizeof bands[0]; band++)
+                for (int row = 0; row < TANK_H; row += bands[band]) {
+                    int height = TANK_H - row < bands[band] ? TANK_H - row : bands[band];
+                    int length = TANK_W * height;
+                    memset(tile_frame, 0, sizeof tile_frame);
+                    tile_frame[0] = tile_frame[length + 1] = 0x96a5;
+                    render_tile(row, height);
+                    if (casino) render_games(&t, tile_frame + 1, TANK_W);
+                    else companion_render(&t, tile_frame + 1, TANK_W);
+                    assert(tile_frame[0] == 0x96a5 && tile_frame[length + 1] == 0x96a5);
+                    assert(!memcmp(tile_frame + 1, full_frame + row * TANK_W,
+                                   (size_t)length * sizeof *full_frame));
+                }
+            assert(!memcmp(&t, &before, sizeof t));
+        }
+    }
+    render_tile(0, 0); render_games_open();
+    for (int variant = 0; variant < 4; variant++) {
+        memset(&t.rpg, 0, sizeof t.rpg);
+        t.rpg.chapter = variant ? 6 : 0;
+        t.rpg.step = variant ? 0 : 1;
+        t.rpg.outcome = variant ? (uint8_t)variant : 4;
+        t.rpg.routes = variant == 3 ? 32 : 0;
+        companion_open_section(COMPANION_SECTION_RPG);
+        companion_render(&t, full_frame, TANK_W);
+    }
+    companion_polish_init(&t, true);
+    for (int choice = 0; choice < 3; choice++) {
+        memset(&t.rpg, 0, sizeof t.rpg);
+        companion_open_section(COMPANION_SECTION_RPG);
+        tank_t before = t;
+        companion_tap(&t, render_frame_x(200), render_frame_y(241));
+        companion_tap(&t, render_frame_x(200), render_frame_y(274));
+        companion_tap(&t, render_frame_x(200), render_frame_y(308));
+        assert(!memcmp(&t, &before, sizeof t));
+        companion_tap(&t, render_frame_x(200), render_frame_y(258 + choice * 34));
+        assert(companion_current_section() == COMPANION_SECTION_RPG_EVENT);
+        assert(t.rpg.step == 1 && t.rpg.skills[choice] == 1);
+        companion_render(&t, full_frame, TANK_W);
+        if (gallery) {
+            char name[32];
+            snprintf(name, sizeof name, "story-art-result-%d", choice);
+            capture_content_raw(gallery, name);
+        }
+    }
+    puts("PASS: casino idle/play/result and six chapter vignettes preserve tank state and exact 1/17/40-row pixels; wheel pointer matches every winning color; all story prompts fit and choice/gap taps agree");
+}
+
 static void capture_new_content(const char *directory) {
     static const char *const names[DECOR_NEW_COUNT] = {
         "LIGHTHOUSE", "SAILBOAT", "ROPE COIL", "WHEEL", "CARGO CRATE",
@@ -1377,11 +1593,14 @@ static void capture_new_content(const char *directory) {
     render_tile(0, 0); render_region(0, 0);
     ctx_t c = {.fb = full_frame, .stride = TANK_W, .dim = 1,
                .ox = 0, .oy = 0, .w = TANK_W, .h = TANK_H, .scaled = false};
-    for (int item = SD_DECOR_FIRST; item < SD_ITEM_COUNT; item++) {
+    for (int item = 9; item < SD_ITEM_COUNT; item++) {
+        if (!tank_decor_movable(item)) continue;
         for (int px = 0; px < TANK_W * TANK_H; px++) full_frame[px] = background;
-        draw_ornament(&c, item, (TANK_W - 40) / 2, (TANK_H - 40) / 2, 1, false, true, 0);
+        draw_ornament(&c, item, (TANK_W - tank_ornament_w(item)) / 2,
+                      (TANK_H - tank_ornament_h(item)) / 2, 1, false, true, 0);
         char title[40];
-        snprintf(title, sizeof title, "%d %s", item, names[item - SD_DECOR_FIRST]);
+        snprintf(title, sizeof title, "%d %s", item,
+                 SD_IS_NEW_DECOR(item) ? names[item - SD_DECOR_FIRST] : SD_ITEMS[item].name);
         draw_text(&c, 4, 4, 1, 0xf1e8ca, title);
         char name[32];
         snprintf(name, sizeof name, "decoration-%02d", item);
@@ -1411,8 +1630,8 @@ static void capture_new_content(const char *directory) {
                 draw_text(&sheet_ctx, x + (CELL_W - width) / 2, y + 2 + line * 10, 1,
                           line ? 0xf1e8ca : 0xf1d89b, lines[line]);
             }
-            draw_ornament(&sheet_ctx, SD_DECOR_FIRST + i, x + (CELL_W - 40) / 2, y + 23,
-                          1, false, true, 0);
+            draw_ornament_icon(&sheet_ctx, SD_DECOR_FIRST + i, x + (CELL_W - 40) / 2,
+                               y + 23, 40, true, 0);
         }
         char path[1024];
         int length = snprintf(path, sizeof path, "%s/new-decoration-contact-%dx%d.raw",
@@ -1462,6 +1681,17 @@ static void check_tank_materials(void) {
         for (int y = -1; y <= height; y++) for (int x = -1; x <= width; x++) {
             uint32_t rgb = ornament_pixel(item, x, y);
             assert(rgb == ornament_pixel(item, x, y));
+            if (x >= 0 && y >= 0 && x < width && y < height) {
+                if (item == 25) {
+                    int tube = x / 13, cx = tube * 13 + 6;
+                    int top = tube == 1 ? 3 : tube == 0 ? 14 : 9;
+                    assert(!!rgb == (y >= top && y <= 37 && abs(x - cx) <= 5));
+                } else if (item == 27) {
+                    int dx = x - 20, dy = y - 22;
+                    assert(!!rgb == ((y >= 32 && y <= 37 && abs(dx) < 18) ||
+                                     (dx * dx + dy * dy <= 225 && y >= 7)));
+                }
+            }
             if (x < 0 || y < 0 || x >= width || y >= height) assert(!rgb);
             else if (!rgb) transparent++;
             else {
@@ -1485,6 +1715,8 @@ static void check_tank_materials(void) {
     assert(ornament_pixel(9, 23, 23) != ornament_pixel(9, 21, 23)); /* Recessed latch. */
     assert(ornament_pixel(26, 11, 10) != ornament_pixel(26, 12, 10)); /* Hoop rivet. */
     static const struct { int item, x0, y0, x1, y1; } details[] = {
+        {25, 19, 5, 15, 5},  /* Recessed sponge mouth and lit lip. */
+        {27, 24, 19, 24, 18}, /* Glass reflection behind brass grille. */
         {44, 24, 13, 24, 14}, /* Sewn sail seam. */
         {45, 20, 17, 20, 18}, /* Braided rope. */
         {46, 20, 18, 23, 18}, /* Brass wheel hub. */
@@ -2665,6 +2897,23 @@ static void check_starter_refuge(const char *gallery) {
     t.sd_unlocks |= SD_ITEM_CASTLE | SD_ITEM_CORAL | SD_ITEM_CLUSTER |
                     (UINT64_C(1) << 10) | (UINT64_C(1) << 19);
     render_tank(&t, full_frame, TANK_W);
+    for (int k = 0; k < g_npc; k++) {
+        piece_t *piece = &g_pc[k];
+        bool mirrored = piece->mirror;
+        const int widths[] = {1, 21, 32};
+        for (int flip = 0; flip < 2; flip++) {
+            piece->mirror = flip != 0;
+            for (size_t w = 0; w < sizeof widths / sizeof widths[0]; w++)
+                for (int y = piece->y0 - 1; y <= piece->y0 + piece->rows; y += 3)
+                    for (int x = piece->x0 - 33; x < piece->x0 + piece->w + 33; x += 3) {
+                        uint32_t expected = 0;
+                        for (int i = 0; i < widths[w]; i++)
+                            if (pc_covers(k, x + i, y)) expected |= 1u << i;
+                        assert(pc_row_bits(k, x, widths[w], y) == expected);
+                    }
+        }
+        piece->mirror = mirrored;
+    }
     for (int pass = -1; pass <= 1; pass++) for (int subset = 0; subset < 2; subset++) {
         g_veg_arch_pass = pass;
         g_veg_mask_cx = TANK_W / 2;
@@ -2767,6 +3016,16 @@ static void check_creature_pairs(const char *gallery) {
 
 int main(int argc, char **argv) {
     assert(argc >= 2 && argc <= 4);
+    if (getenv("POCKET_TANK_DUMP_GRIPS") && !strcmp(getenv("POCKET_TANK_DUMP_GRIPS"), "1")) {
+        for (int item = 9; item < SD_ITEM_COUNT; item++) {
+            if (item == 13 || tank_decor_surface(item) || !tank_decor_movable(item)) continue;
+            uint8_t x[3] = {0}, y[3] = {0}, hw[3] = {0};
+            int n = source_ornament_grips(item, x, y, hw);
+            printf("    [%d] = {%d, {%u,%u,%u}, {%u,%u,%u}, {%u,%u,%u}},\n",
+                   item, n, x[0], x[1], x[2], y[0], y[1], y[2], hw[0], hw[1], hw[2]);
+        }
+        return 0;
+    }
     const char *gallery = argc > 2 && strcmp(argv[2], "-") ? argv[2] : NULL;
     const char *content_gallery = argc > 3 ? argv[3] : NULL;
     FILE *icons = fopen(argv[1], "rb");
@@ -2877,6 +3136,7 @@ int main(int argc, char **argv) {
         check_ornament_spans();
         check_companion_navigation();
         check_casino();
+        check_casino_story_art(gallery);
         check_ground_cover();
         check_serene_interface(gallery);
         check_kelp_forest();

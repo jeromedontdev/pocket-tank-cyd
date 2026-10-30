@@ -8,7 +8,7 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.4.0 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.4.1 is a distinct aquarium game, not just a board port.**
 
 ## 2.4.0: current trading revision
 
@@ -32,9 +32,9 @@ Fish Summary directly; tank identity/rename is under Tank Summary. Markets use
 separate stock, residents/sales and nursery pages. The obsolete tool padlock,
 firsts/collections, free fish/creature color editors and Decor-shop fry are gone.
 Stories and Lost Current are entries in the single paged Games list (no
-Arcade/Stories/RPG submenus). Main > Fish opens Fish Summary, whose six
-actions replace the duplicate Fish menu; Fish Bank and Rename return to it.
-Main > Help replaces the Care Guide with fourteen topics.
+Arcade/Stories/RPG submenus). Main > Fish opens the Fish hub; tapping a fish
+opens its Summary directly with one Back to the aquarium.
+Main > Help replaces the Care Guide with sixteen topics.
 
 Casino revision: Main is Fish/Tank/Market/Games/Casino/Help with a Settings
 cog at the bottom right. Main > Fish is a hub (Summary, Rename, Family, Genes,
@@ -65,7 +65,9 @@ Sale value = stage worth x (100% + 20%/market tier) x care (60-100%) x genes;
 genes = 100% + 4%/vigor + 15%/shown trait + 25%/mutation + 10% rare marking.
 Vigor (tank_line_vigor) counts heterozygous loci, 0-10, and adds up to 10%
 growth. Each fish's favorite decor gives +30% calm recovery and +10% growth
-when placed; missing, calm floors at stress 2.5 (2 after sleep) and growth -10%.
+when placed; missing, stress tends toward at least 2.5 (2 after sleep) and
+growth is 10% slower. Cultivated calm also follows the trust-based stress floor:
+`(10 - trust) * 0.7`, reduced by a quarter when the favorite is present.
 Tetra is the first market tier; Harborfin keeps FISH_CLASSIC's frozen ID.
 Game rounds pay min(score,10)+2 doubloons, five rounds per game per day.
 Permanent Pellets/Flakes/Bloodworms food has distinct live art and growth multipliers
@@ -102,8 +104,12 @@ scanning and avoids resampling divisions; a shared 16-color dimmed palette
 adds about 268 bytes of static storage, not another heap/frame buffer.
 Planted kelp provides real seahorse perches; storing it releases the grip.
 Standing decor also offers perches: render.c registers `ornament_grips()`
-through `tank_set_grip_source()`, which finds up to three sturdy art tops per
-piece (at least two on large pieces). The seahorse card names the held piece.
+through `tank_set_grip_source()`, which reads up to three sturdy art tops per
+piece (at least two on large pieces). The immutable table is regenerated with
+`tools/test_page_art.py --dump-grips` and verified against neutral source art;
+it needs no runtime cache or first-use scan. Perch candidates are visited one
+piece at a time, so dense tanks do not truncate the list or need a large stack
+array. The seahorse card names the held piece.
 Lighthouse, Stone Bridge, Pagoda and Torii Gate are large live-drawn pieces
 (castle scale, up to 136x132). Every movable piece, fixed scenery included,
 has REMOVE on the move screen; stored pieces show PLACE in Decor & Storage.
@@ -123,6 +129,232 @@ aquarium-local foliage bytes. JSON adds `foliage`. Never erase/repartition to in
 this revision; preserve touch calibration, residents and the shared wallet.
 Latest-revision acceptance and hardware measurements must be recorded separately
 from the earlier local image below.
+
+### Polish and space follow-up (local source)
+
+This follow-up to `4473656` preserves artwork, mechanics and schema 23 / 6476-byte
+saves. It clips ornament source columns before sampling, avoids repeated catalog
+width/height searches inside already-bounded pixel loops, combines sword-piece
+filtering and mask extraction in one pass, and extracts unmirrored cached masks
+with bounded word operations. The bridge's ivy skips square roots outside its
+ten possible strand columns; native reference pixels are identical and more than
+80% of arch square-root candidates disappear. The standard device fixtures do
+not contain that bridge, so their FPS gains must not be attributed to it.
+
+The seahorse uses a 630-byte immutable art-derived grip table instead of mutable
+first-use discovery. Candidate scratch is four posts for one piece, rather than
+48 posts for the whole aquarium; densely decorated tanks no longer lose later
+pieces' perches. Historical save fields, enum IDs and compatibility redirects
+remain intact when removing unreachable Object Stories, Keepsakes, Discovery
+Hints, Life Firsts and Display Rewards presentation.
+
+The final unified app is **1,800,816 bytes**, leaving **165,264 bytes** in its
+unchanged OTA slot: **4,608 bytes smaller** than the preceding COM4 image.
+Linked `.bss` falls from **63,478 to 62,838 bytes** (640 bytes freed); the grip
+table is flash-resident. No new framebuffer, persistent cache bank or PSRAM
+requirement was added.
+
+COM4 / `cyd2432s028` received an app-only update to the positively detected
+`ota_0` slot, after the fresh full recovery backup
+`identity-polish-com4-20261030-085923-backup.bin`. Full app readback matches SHA256
+`645d2b313e32dd9e985f8766e2eb7cd0749b7614df0ddbca68c62760df2da661`.
+No reset of aquarium data, repartition, factory write, commit or publication was
+performed for this follow-up.
+
+All sixteen controlled fixtures completed before and after the change:
+Normal scale (320x240), Balanced detail, five seeded fish, 40-row tiles,
+240 measured frames per fixture and a 5-ms service reserve. Real care is paused
+and fixtures never save or replace the keeper's aquarium. Default adaptive
+mode 3 results:
+
+| Fixture | Before FPS | After FPS | Change | p95 ms | p99 ms | Maximum ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Day | 23.29 | 23.39 | +0.43% | 50 -> 50 | 52 -> 52 | 53 -> 53 |
+| Night | 23.01 | 23.04 | +0.13% | 50 -> 50 | 52 -> 52 | 53 -> 53 |
+| Clock and decor | 16.19 | 17.70 | +9.33% | 70 -> 64 | 74 -> 68 | 77 -> 69 |
+| Dense copies | 20.14 | 20.30 | +0.79% | 58 -> 56 | 60 -> 58 | 60 -> 59 |
+
+All four adaptive fixtures have zero frames over 80 ms. Clock/decor render work
+falls from 49.32 to 43.78 ms; other default scenes are essentially unchanged.
+Clock/decor FPS improves 6.56%, 8.69% and 12.23% in modes 0, 1 and 2 respectively.
+Results are not uniformly faster: mode-2 day/night change -0.20%/-0.55%.
+Earlier carried-color and indexed-run trials regressed clock/decor performance
+and were discarded; reduced operation counts alone were not accepted as a
+hardware speedup.
+
+Explicit save, reboot/reload and Bank JSON verification preserve Bolt, Pip, Kelp,
+Odie and Mira, wallet 5691, ownership and clock preferences. HTTPS weather passes
+on both boots, starting with 30,344 free internal bytes / 29,696 largest block,
+then releasing the radio. A separate two-minute quiet soak runs about
+18.4-19.4 FPS, but includes a **274-ms save / 334-ms maximum frame**. The explicit
+state/Bank/save burst blocks the tank task for 526 ms and produces a 599-ms frame;
+boot/network warm-up also has a 486-ms maximum. These service stalls remain;
+this is not hitch-free animation or a controlled live-roster FPS comparison.
+
+The 28-group native matrix passes. Final renderer changes additionally pass
+both-board page art (537 screens each, both scales, all sixteen Help topics),
+checked-edge and cached/live mirrored ornament reference tests, all 41
+standing-piece grips including crowded-tank hold retention, and a 180-second
+stress sweep of **9,476 cases / 66,332 full/tile/retained frame sets**. All 48
+sampled animation hashes match the preceding renderer with identical fixtures.
+The rebuilt Emscripten 4.0.18 / cJSON 1.7.19 game passes the pinned Node 22.16.0 /
+Playwright 1.56.1 Chromium input, markets, reload and storage-failure suite.
+Help paragraph checks reproduced and then fixed the 240px Market Prices and
+Creatures overflows; the Creatures screenshot is refreshed.
+
+### Casino and story visual polish (local source)
+
+The next visual pass adds a brass-and-wood Tide Wheel rim, shaded wedges, rim
+studs, a layered hub and a fixed pointer aligned to the revealed winner. Reef
+Reels has recessed windows and faceted star symbols. Lost Current retains its
+small landmark sprites, with static shaped foliage, jointed columns, lanterns,
+crystals and layered floors/doorways. Prompt pitch is 20 page units; completed
+stories may use a fourth line, and choice hitboxes follow the adjusted buttons.
+There are no new mechanics, save fields, image buffers or aquarium animations.
+
+The unified app is **1,802,080 bytes**, leaving **164,000 bytes** per OTA slot.
+This adds **1,264 bytes** to the optimization-only image and is still **3,344
+bytes smaller** than the preceding baseline. `.bss` remains **62,838 bytes**.
+SHA256: `3e14881af07a0f658871f53aa8785cd830bf900dc46714a5baefb27efad59fed`.
+
+Both CYD and ELEGOO page-art builds pass at both framebuffer sizes. Added checks
+cover all casino idle/play/result pages, all eighteen chapter encounters,
+detours/endings without lost text, all three choice targets and ignored gaps,
+unchanged tank state during rendering and exact guarded 1/17/40-row pixels.
+Independent angle checks cover every wheel result color. The existing casino
+house-edge, transactional settlement and failure checks remain enabled.
+RPG, companion feedback, simulator smoke and the rebuilt pinned Chromium suite
+pass. The renderer stress pass covers **1,229 cases / 8,603 full/tile/retained
+frame sets** in 30 seconds. Installer staging passes nine tests, with its one
+optional external browser check skipped. Refreshed casino and chapter images
+come from the actual native renderer; no webcam proof is implied.
+
+This follow-up is local/uncommitted, not a new release or Pages deployment.
+
+COM4 / `cyd2432s028` received the app in its positively detected `ota_0` slot
+after the full 4-MiB recovery backup
+`identity-polish-com4-20261030-102106-backup.bin`; exact app readback matches
+the SHA256 above. The original Bolt/Pip/Kelp/Odie/Mira roster, clock settings,
+Bank JSON, explicit save and reboot/reload pass. Real HTTPS weather succeeds
+on both acceptance boots, starting with 30,344 free internal bytes / 29,696
+largest block, then switching the radio off. No factory write, partition
+change or aquarium staging was performed.
+
+All sixteen controlled fixtures completed with the same five-fish, Normal /
+Balanced, 240-frame, 40-row-tile and 5-ms-reserve setup as above. Default adaptive
+mode 3 shows a **3.1-4.6% regression** against the optimization-only image:
+
+| Fixture | Optimization-only FPS | Art-polish FPS | Change | p95 ms | p99 ms | Maximum ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Day | 23.39 | 22.45 | -4.02% | 50 -> 52 | 52 -> 54 | 53 -> 55 |
+| Night | 23.04 | 21.98 | -4.60% | 50 -> 52 | 52 -> 54 | 53 -> 55 |
+| Clock and decor | 17.70 | 17.15 | -3.11% | 64 -> 66 | 68 -> 70 | 69 -> 72 |
+| Dense copies | 20.30 | 19.44 | -4.24% | 56 -> 60 | 58 -> 62 | 59 -> 62 |
+
+All four adaptive fixtures still have zero frames over 80 ms. These are
+aquarium fixtures, not casino rendering measurements; the new menu art does
+not run in them. Binary layout/cache sensitivity is a possible cause, not a
+proven attribution. Do not describe this visual pass as FPS-neutral or faster.
+The separate quiet live soak runs about 17.4-19.0 FPS and includes a 211-ms
+automatic save / 273-ms maximum frame. Explicit saving takes 203 ms. Service
+stalls remain, so this is not hitch-free acceptance.
+
+### Selective decor and snail-rendering follow-up
+
+The art-pass timing breakdown isolates most of its regression to the snail:
+about 1.3-1.5 ms became 3.5-3.9 ms, while fish-only, urchin and seahorse drawing
+stay close. The aquarium gained no new objects or menu-art calls. A changed
+binary layout can affect flash execution, but instruction-cache conflicts have
+not been directly measured; that remains a possible mechanism, not a proven
+root cause.
+
+The follow-up rejects points outside a snail eye-stalk segment's padded bounds
+before its projection/division calculation. The surviving distance and
+along-segment calculations are unchanged. Independent scalar tests cover all
+four stalk segments, 64 sways/rotations and quarter-pixel samples; both coverage
+and hit coordinates agree exactly. No pose cache, persistent state, buffer,
+IRAM pinning or reduced animation cadence is added.
+
+Only two decor materials are changed: Tube Sponges get recessed mouths, lit
+rims and paired pore highlights; the Dive Helmet gets a brass grille, reflected
+glass, crown seam and fittings. Exhaustive silhouette checks preserve every
+occupied/transparent pixel, so the existing art-derived grip table remains
+valid. The crystal-detail trial was discarded as visually busier; other decor
+retains its art. Shop previews and live rendering still share the same source.
+The decor capture tool now includes older movable ornaments, centers native
+captures by their actual dimensions and fits grand pieces in the contact sheet.
+
+The unified app is **1,803,424 bytes**, with **162,656 bytes** free per OTA slot.
+`.bss` stays **62,838 bytes**. SHA256:
+`71f1e879009fbcc40a5d169d911a6e306064d5464369472590a9e42ffc4a93e3`.
+Both hardware-profile page-art builds, the rebuilt pinned Chromium suite and a
+60-second renderer stress pass (**2,696 cases / 18,872 full/tile/retained frame
+sets**) pass. The synthetic gallery captures **222 scenes per scale**; the
+seabed screenshots are refreshed at both resolutions.
+
+This pre-weather candidate passed a fresh full 4 MiB backup, detected `ota_0`
+app-only write, exact readback, both real HTTPS requests, save/Bank JSON,
+reboot/original roster and the separate two-minute quiet soak. All sixteen
+RAM-only fixtures completed. Default adaptive FPS recovered to
+**23.44 / 23.15 / 17.86 / 20.30** (day/night/clock-decor/dense), compared with
+22.45 / 21.98 / 17.15 / 19.44 for the casino/story image and
+23.39 / 23.04 / 17.70 / 20.30 for the optimization-only image.
+The regression is recovered in these fixtures; this is not a universal FPS
+guarantee. The snail takes about 1.17-1.97 ms here. The exact backup is
+`identity-polish-com4-20261030-120328-backup.bin` in the session evidence.
+
+### 2.4.1 final weather-symbol polish
+
+The existing bounded 16x16 condition symbols gain material shading: layered
+clouds, warm sun highlights, cool rain/snow, alternating fog tones and lit
+lightning. Settings and live/cached clock art use the same function. Their
+silhouettes, meanings, unavailable-code behavior and draw bounds are unchanged;
+there is no animation, new buffer, persistent field or mechanics change.
+Clock tests assert distinct conditions, multiple material tones, padded-stride
+bounds and all existing both-scale layouts/cache paths. The documentation and
+homepage clock/Weather screenshots are refreshed from synthetic renderer scenes.
+
+The final versioned local unified app is **1,803,760 bytes**, leaving
+**162,320 bytes (8.26%)** per OTA slot, SHA256
+`82be06f384797f6c078e2a52a225d66b33e980b618ac7b06f4d37fac08bb250b`.
+Total `.bss` remains 62,838 bytes (including RTC scratch); internal DRAM
+`.bss` is 55,792 and `.data` is 19,379 bytes. No new framebuffer or PSRAM is
+required. Fresh full recovery backup
+`identity-polish-com4-20261030-122559-backup.bin`, detected `ota_0` app-only
+write and exact full-app readback passed. This local identity is separate
+from the CI release binary and its build metadata.
+
+All 28 native/simulator validation groups passed, including both hardware
+profiles' page-art audits and the 180-second embedded-icon renderer sweep.
+The final clock-only test additionally checks the new material tones, every
+size/detail/position, both resolutions, cache/tile equality and guards.
+The rebuilt pinned Chromium game passes input, buying, durable saves/reload,
+exclusive-tab and corrupt/quota recovery checks. Python discovery passes
+44 tests with one environment-dependent skip. The gallery has 222 scenes
+per scale; these are synthetic renderer captures, not webcam photographs.
+
+The final versioned COM4 image passes both real HTTPS requests (30,404 internal
+bytes free / 29,696 largest at request start), radio shutdown, five original
+residents and clock settings, Bank JSON, explicit save/reboot/reload and the
+separate two-minute quiet soak. All sixteen RAM-only fixtures complete without
+altering the real aquarium. Normal 320x240 / Balanced / five seeded fish /
+240 frames / 5-ms reserve, default adaptive mode:
+
+| Fixture | Optimization-only FPS | Casino/story FPS | Final 2.4.1 FPS | Final p95 / p99 / max ms |
+| --- | ---: | ---: | ---: | --- |
+| Day | 23.39 | 22.45 | 22.85 | 52 / 54 / 54 |
+| Night | 23.04 | 21.98 | 22.49 | 52 / 54 / 54 |
+| Clock/decor | 17.70 | 17.15 | 17.82 | 64 / 68 / 68 |
+| Dense | 20.30 | 19.44 | 19.78 | 58 / 60 / 61 |
+
+All four final adaptive fixtures have zero intervals over 80 ms. The final
+weather/version build does **not** fully retain the pre-weather candidate's
+FPS: day/night/dense are about 2.3-2.6% below the optimization-only image;
+clock/decor is 0.7% above it. It recovers part of the casino/story regression,
+not an FPS-neutral pass. Snail cost again varies (about 1.39-3.07 ms), consistent
+with layout sensitivity but not proof of an instruction-cache mechanism.
+Keep this mixed result rather than promising that unrelated art is free.
+Normal saves and console diagnostics remain separate service stalls.
 
 ### Identity, keyboard and gauge acceptance
 
