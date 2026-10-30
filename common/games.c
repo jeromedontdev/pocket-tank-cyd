@@ -22,6 +22,7 @@ static int game_index(int kind) {
 }
 GAME_LOCAL game_state_t g_game;
 static int g_game_menu;
+#define GAME_MENU_PAGES 4                   /* three pages of six games, then the story games */
 GAME_LOCAL const int game_kinds[18] = {GAME_BUBBLES, GAME_MATCH, GAME_SLALOM, GAME_CAST, GAME_FRENZY, GAME_REEF,
     GAME_DEFENDER, GAME_RUNNER, GAME_BREAKER, GAME_TACTICS, GAME_ARCHITECT, GAME_EXPEDITION,
     GAME_LIGHTHOUSE, GAME_SLIDE, GAME_SONAR, GAME_MERGE, GAME_STACK, GAME_ECHO};
@@ -36,6 +37,188 @@ static uint32_t game_random(void) {
     g_game_rng ^= g_game_rng << 13; g_game_rng ^= g_game_rng >> 17; g_game_rng ^= g_game_rng << 5;
     return g_game_rng;
 }
+/* ---- Casino: Main Menu > Casino, fixed-odds doubloon games ----
+ * Stakes and returns share one wallet transaction. Dive holds its stake until
+ * bust or surface; BACK surfaces too, never discarding an unsettled wager. */
+enum { CASINO_LOBBY, CASINO_RACES, CASINO_REELS, CASINO_HILO, CASINO_SHELLS, CASINO_DIVE, CASINO_WHEEL };
+GAME_LOCAL const int casino_bets[4] = {5, 10, 25, 50};
+GAME_LOCAL const int casino_odds[4] = {2, 4, 5, 6};
+GAME_LOCAL const int casino_reel_weight[5] = {6, 5, 4, 2, 1};
+GAME_LOCAL const int casino_triple_pay[5] = {3, 6, 10, 20, 50};
+/* Even tenths keep every advertised Dive payout exact, including a 5 bet. */
+GAME_LOCAL const int casino_depth_pay[5] = {14, 16, 20, 26, 34};
+static const char *const casino_titles[7] = {"CASINO", "FISH RACES", "REEF REELS", "PEARL HI-LO", "SHELL GAME", "TREASURE DIVE", "TIDE WHEEL"};
+static struct {
+    bool active, running, shown, diving, pending_end;
+    int page, bet, pick, winner, delta, pearl, next, depth, stake, payout;
+    float t, finish[4];
+    int racer[4];
+    uint8_t reels[3];
+    char msg[72];
+} s_cas;
+static void casino_close(void) { memset(&s_cas, 0, sizeof s_cas); }
+void render_casino_open(void) { render_games_open(); s_cas.active = true; s_cas.bet = 1; }
+bool render_casino_active(void) { return s_cas.active; }
+GAME_LOCAL int casino_reel_symbol(uint32_t r) {
+    int roll = (int)(r % 18u);
+    for (int i = 0; i < 5; i++) { if (roll < casino_reel_weight[i]) return i; roll -= casino_reel_weight[i]; }
+    return 0;
+}
+GAME_LOCAL int casino_reel_pay(const uint8_t r[3]) {
+    if (r[0] == r[1] && r[1] == r[2]) return casino_triple_pay[r[0] % 5];
+    int pair = r[0] == r[1] || r[0] == r[2] ? r[0] : r[1] == r[2] ? r[1] : -1;
+    return pair < 0 ? 0 : pair == 4 ? 2 : 1;
+}
+GAME_LOCAL int casino_race_winner(uint32_t r) {
+    int roll = (int)(r % 10000u), acc = 0;
+    for (int i = 0; i < 4; i++) { acc += 8950 / casino_odds[i]; if (roll < acc) return i; }
+    return 3;
+}
+/* Hi-Lo odds follow the visible value, so picking the easier side cannot
+ * beat the house. 1222/1300 = 94%; whole-doubloon returns round down. */
+GAME_LOCAL int casino_hilo_pay(int stake, int pearl, int higher, int next) {
+    int wins = higher ? 13 - pearl : pearl - 1;
+    return (higher ? next > pearl : next < pearl) && wins > 0 ? stake * 1222 / (wins * 100) : 0;
+}
+GAME_LOCAL int casino_shell_pay(int stake, int pick, uint32_t roll) {
+    return pick == (int)(roll % 3u) ? stake * 28 / 10 : 0;
+}
+GAME_LOCAL bool casino_dive_survive(int depth, uint32_t roll) {
+    int previous = depth ? casino_depth_pay[depth - 1] * 1000 : 9400;
+    return (int)(roll % 10000u) < previous * 10 / casino_depth_pay[depth];
+}
+GAME_LOCAL int casino_wheel_color(uint32_t roll) {
+    int r = (int)(roll % 10000u);
+    return r < 4615 ? 0 : r < 9230 ? 1 : 2;
+}
+GAME_LOCAL int casino_wheel_pay(int stake, int pick, uint32_t roll) {
+    return pick == casino_wheel_color(roll) ? stake * (pick == 2 ? 12 : 2) : 0;
+}
+static void casino_new_field(void) {
+    int v = (int)(game_random() % FISH_VARIETY_COUNT);
+    static const int step[4] = {0, 2, 5, 7};
+    for (int i = 0; i < 4; i++) s_cas.racer[i] = (v + step[i]) % FISH_VARIETY_COUNT;
+    s_cas.pick = 0; s_cas.running = false; s_cas.shown = false; s_cas.t = 0;
+}
+static bool casino_can_bet(tank_t *t, int bet) {
+    if (progression_creative(t)) { snprintf(s_cas.msg, sizeof s_cas.msg, "CREATIVE MODE HAS NO BETS."); return false; }
+    if (t->sd_balance < bet) { snprintf(s_cas.msg, sizeof s_cas.msg, "YOU NEED %d DOUBLOONS TO BET.", bet); return false; }
+    return true;
+}
+static bool casino_settle(tank_t *t, int stake, int payout) {
+    if (!casino_can_bet(t, stake)) return false;
+    if (!progression_wallet_settle(t, payout - stake)) { snprintf(s_cas.msg, sizeof s_cas.msg, "SAVE FAILED. TRY AGAIN."); return false; }
+    s_cas.delta = payout - stake; s_cas.msg[0] = 0;
+    return true;
+}
+static void casino_result(void) {
+    s_cas.running = false; s_cas.shown = true;
+    if (s_cas.delta > 0) snprintf(s_cas.msg, sizeof s_cas.msg, "A WIN! +%d DOUBLOONS", s_cas.delta);
+    else if (!s_cas.delta) snprintf(s_cas.msg, sizeof s_cas.msg, "YOUR STAKE COMES BACK.");
+    else snprintf(s_cas.msg, sizeof s_cas.msg, "NO LUCK. %d DOUBLOONS", s_cas.delta);
+}
+static bool casino_surface(tank_t *t) {
+    if (!s_cas.pending_end) { s_cas.payout = s_cas.stake * casino_depth_pay[s_cas.depth - 1] / 10; s_cas.pending_end = true; }
+    if (!casino_settle(t, s_cas.stake, s_cas.payout)) return false;
+    s_cas.diving = false; s_cas.pending_end = false; casino_result(); return true;
+}
+static void casino_tick(float dt) {
+    if (!s_cas.running) return;
+    s_cas.t += dt;
+    float end = 1.9f;
+    if (s_cas.page == CASINO_RACES) for (int i = 0; i < 4; i++) if (s_cas.finish[i] + 0.2f > end) end = s_cas.finish[i] + 0.2f;
+    if (s_cas.t >= end) casino_result();
+}
+static bool casino_tap(tank_t *t, float x, float y) {
+    if (x >= 326 && x < 438 && y >= 8 && y < 44) {
+        if (s_cas.page == CASINO_LOBBY) { casino_close(); return true; }
+        /* BACK is a cash-out, not an escape from a live Dive stake. */
+        if (s_cas.diving && !casino_surface(t)) return false;
+        s_cas.page = CASINO_LOBBY; s_cas.running = false; s_cas.msg[0] = 0; return false;
+    }
+    if (s_cas.page == CASINO_LOBBY) {
+        for (int i = 0; i < 6; i++) {
+            int cx = 24 + i % 2 * 204, cy = 84 + i / 2 * 76;
+            if (x < cx || x >= cx + 196 || y < cy || y >= cy + 70) continue;
+            s_cas.page = i + 1; s_cas.msg[0] = 0; s_cas.shown = false; s_cas.pick = 0;
+            s_cas.pearl = 2 + (int)(game_random() % 11u); s_cas.next = 0; s_cas.depth = 0;
+            if (s_cas.page == CASINO_RACES) casino_new_field();
+            else { s_cas.reels[0] = 0; s_cas.reels[1] = 1; s_cas.reels[2] = 2; }
+        }
+        return false;
+    }
+    if (s_cas.running) return false;
+    if (s_cas.page == CASINO_DIVE && s_cas.diving && x >= 236 && x < 424 && y >= 214 && y < 252) {
+        casino_surface(t); return false;
+    }
+    if (y >= 268 && y < 302) {
+        if (!s_cas.diving) for (int k = 0; k < 4; k++) if (x >= 24 + k * 64 && x < 82 + k * 64) { s_cas.bet = k; return false; }
+        if (x >= 290 && x < 424) {
+            int bet = casino_bets[s_cas.bet & 3];
+            if (!casino_can_bet(t, bet)) return false;
+            g_game_rng ^= (uint32_t)(t->clock * 1000.0f) * 2654435761u;
+            if (!g_game_rng) g_game_rng = 0x7a5b193du;
+            if (s_cas.page == CASINO_DIVE) {
+                if (s_cas.pending_end) { casino_surface(t); return false; }
+                if (!s_cas.diving) { s_cas.stake = bet; s_cas.depth = 0; s_cas.diving = true; s_cas.shown = false; }
+                if (!casino_dive_survive(s_cas.depth, game_random())) {
+                    s_cas.payout = 0; s_cas.pending_end = true; casino_surface(t);
+                } else {
+                    s_cas.depth++; s_cas.msg[0] = 0;
+                    if (s_cas.depth == 5) casino_surface(t);
+                }
+                return false;
+            }
+            int payout = 0, winner = 0, next = 0;
+            uint8_t r[3] = {0};
+            if (s_cas.page == CASINO_RACES) {
+                if (s_cas.shown) casino_new_field();
+                winner = casino_race_winner(game_random());
+                payout = winner == s_cas.pick ? bet * casino_odds[s_cas.pick] : 0;
+            } else if (s_cas.page == CASINO_REELS) {
+                for (int k = 0; k < 3; k++) r[k] = (uint8_t)casino_reel_symbol(game_random());
+                payout = bet * casino_reel_pay(r);
+            } else if (s_cas.page == CASINO_HILO) {
+                next = 1 + (int)(game_random() % 13u);
+                payout = casino_hilo_pay(bet, s_cas.pearl, s_cas.pick == 0, next);
+            } else if (s_cas.page == CASINO_SHELLS) {
+                uint32_t roll = game_random(); winner = (int)(roll % 3u);
+                payout = casino_shell_pay(bet, s_cas.pick, roll);
+            } else if (s_cas.page == CASINO_WHEEL) {
+                uint32_t roll = game_random(); winner = casino_wheel_color(roll);
+                payout = casino_wheel_pay(bet, s_cas.pick, roll);
+            }
+            if (!casino_settle(t, bet, payout)) return false;
+            s_cas.winner = winner; s_cas.next = next; memcpy(s_cas.reels, r, 3);
+            if (s_cas.page == CASINO_RACES) for (int i = 0; i < 4; i++)
+                s_cas.finish[i] = i == winner ? 3.4f : 3.7f + (float)(game_random() % 90) / 100.0f;
+            s_cas.running = true; s_cas.shown = false; s_cas.t = 0;
+        }
+        return false;
+    }
+    if (s_cas.page == CASINO_RACES && x >= 24 && x < 424 && y >= 84 && y < 260) {
+        if (s_cas.shown) casino_new_field();
+        s_cas.pick = (int)(y - 84) / 44; if (s_cas.pick > 3) s_cas.pick = 3;
+    } else if (s_cas.page == CASINO_HILO && x >= 24 && x < 424 && y >= 208 && y < 252) {
+        s_cas.pick = x < 224 ? 0 : 1;
+    } else if ((s_cas.page == CASINO_SHELLS || s_cas.page == CASINO_WHEEL) && x >= 24 && x < 424 && y >= 100 && y < 252) {
+        s_cas.pick = (int)(x - 24) / 136; if (s_cas.pick > 2) s_cas.pick = 2;
+    }
+    return false;
+}
+#ifdef RENDER_GAMES_TESTING
+/* Read the revealed outcome independently of the wallet delta. */
+int casino_test_return(void) {
+    int bet = casino_bets[s_cas.bet];
+    switch (s_cas.page) {
+    case CASINO_HILO: return casino_hilo_pay(bet, s_cas.pearl, s_cas.pick == 0, s_cas.next);
+    case CASINO_SHELLS: return casino_shell_pay(bet, s_cas.pick, (uint32_t)s_cas.winner);
+    case CASINO_DIVE: return s_cas.payout;
+    case CASINO_WHEEL: return s_cas.pick == s_cas.winner ? bet * (s_cas.pick == 2 ? 12 : 2) : 0;
+    default: return 0;
+    }
+}
+#endif
 static void game_lights_toggle(int cell) {
     for (int i = 0; i < 16; i++)
         if (abs(i % 4 - cell % 4) + abs(i / 4 - cell / 4) <= 1) g_game.board[i] ^= 1;
@@ -87,7 +270,9 @@ static void game_practice_start(int kind) {
 }
 void render_games_open(void) {
     memset(&g_game, 0, sizeof g_game); g_game.first = g_game.second = -1;
+    casino_close();
 }
+int render_games_menu_page(void) { return g_game_menu; }
 GAME_LOCAL void game_start(int kind) {
     int fish = g_game.fish;
     render_games_open(); g_game.fish = fish; g_game.page = g_game.kind = kind; g_game.left = 30;
@@ -246,6 +431,7 @@ static void game_practice_tick(float dt) {
 void render_games_tick(float dt) {
     if (!isfinite(dt) || dt <= 0) return;
     if (dt > 0.25f) dt = 0.25f;
+    if (s_cas.active) { casino_tick(dt); return; }
     if (g_game.paused || g_game.help) return;
     if (g_game.page >= GAME_LIGHTHOUSE) { game_practice_tick(dt); return; }
     if (g_game.page >= GAME_DEFENDER) { game_extra_tick(dt); return; }
@@ -479,6 +665,7 @@ static bool game_result_pending(const tank_t *t) {
 }
 bool render_games_tap(tank_t *t, float x, float y) {
     x = render_page_x(x); y = render_page_y(y);
+    if (s_cas.active) return casino_tap(t, x, y);
     if (x >= 326 && x < 438 && y >= 8 && y < 44) {
         if (g_game.page == GAME_MENU) return true;
         if (g_game.page == GAME_RESULT && game_result_pending(t) && g_game.discard != 1) {
@@ -495,18 +682,23 @@ bool render_games_tap(tank_t *t, float x, float y) {
         if (g_game.page >= GAME_DEFENDER) { game_extra_tap(x, y); return false; }
     }
     if (g_game.page == GAME_MENU) {
-        if (x >= 280 && x < 424 && y >= 60 && y < 102) { g_game_menu = (g_game_menu + 1) % 3; return false; }
+        if (x >= 280 && x < 424 && y >= 60 && y < 102) { g_game_menu = (g_game_menu + 1) % GAME_MENU_PAGES; return false; }
         if (y >= 316 && y < 352) {
             if (x >= 24 && x < 220) g_game_relaxed = !g_game_relaxed;
-            else if (x >= 228 && x < 424) g_game.page = GAME_RECORDS;
+            else if (x >= 228 && x < 424) { g_game.page = GAME_RECORDS; g_game_menu %= 3; }
             return false;
         }
         if (x >= 32 && x < 272 && y >= 60 && y < 102 && t->n_fish)
             g_game.fish = (g_game.fish + 1) % t->n_fish;
         if (x >= 24 && x < 424 && y >= 116 && y < 308) {
             int col = x >= 228, row = (int)(y - 116) / 64;
-            if (x >= (col ? 228 : 24) && x < (col ? 424 : 220) && y < 116 + row * 64 + 56)
-                game_start(game_kinds[g_game_menu * 6 + row * 2 + col]);
+            if (x >= (col ? 228 : 24) && x < (col ? 424 : 220) && y < 116 + row * 64 + 56) {
+                if (g_game_menu < 3) game_start(game_kinds[g_game_menu * 6 + row * 2 + col]);
+                else if (row == 0) {             /* the story games open in the companion pages */
+                    render_life_story_open(col == 1, g_game.fish);
+                    return true;
+                }
+            }
         }
     } else if (g_game.page == GAME_RECORDS && x >= 280 && x < 424 && y >= 54 && y < 86) {
         g_game_menu = (g_game_menu + 1) % 3;
@@ -1235,10 +1427,192 @@ GAME_LOCAL void game_thumb(render_ctx_t *c, int x, int y, int game) {
         }
     }
 }
-void render_games(const tank_t *t, uint16_t *fb, int stride) {
+static void casino_symbol(render_ctx_t *c, const tank_t *t, uint16_t *fb, int stride, int cx, int cy, int sym, float clock) {
+    if (sym == 0) ga_shell(c, (float)cx, (float)cy + 6, 1.4f, 0xf3c7a8);
+    else if (sym == 1) {
+        float xs[10], ys[10];
+        for (int k = 0; k < 10; k++) {
+            float a = -1.5708f + (float)k * 0.6283f, r = k & 1 ? 6.5f : 15.0f;
+            xs[k] = (float)cx + cosf(a) * r; ys[k] = (float)cy + 1 + sinf(a) * r;
+        }
+        render_internal_poly(c, xs, ys, 10, 0xffd75e, 255);
+        render_internal_ellipse(c, (float)cx - 3, (float)cy - 2, 2.5f, 2.5f, 0xfff6c8, 255);
+    }
+    else if (sym == 2) {
+        fish_t f = {0}; progression_market_preview(t, FISH_TETRA, &f);
+        render_fish_portrait(fb, stride, (float)cx, (float)cy, 0.7f, &f, clock);
+    } else if (sym == 3) ga_pearl(c, (float)cx, (float)cy, 13, 0xf1ebdf);
+    else { render_doubloon(fb, stride, cx - 8, cy - 8); render_internal_annulus(c, (float)cx, (float)cy, 16, 13, GA_GOLD, 255); }
+}
+static void casino_controls(render_ctx_t *c, const char *go) {
+    char text[16];
+    for (int k = 0; k < 4; k++) {
+        snprintf(text, sizeof text, "%d", casino_bets[k]);
+        bool on = s_cas.bet == k;
+        render_internal_button(c, 24 + k * 64, 268, 58, 34, on ? 0x3a3112 : 0x1c2f36, on ? GA_GOLD : MSP_DIM, text, 2);
+    }
+    render_internal_button(c, 290, 268, 134, 34, s_cas.running ? 0x10282e : 0x1c3a2a,
+                           s_cas.running ? MSP_DIM : 0x8ed9a5, s_cas.running ? "..." : go, 2);
+}
+static void casino_footer(render_ctx_t *c) {
+    const char *go = s_cas.page == CASINO_RACES ? "RACE" : s_cas.page == CASINO_HILO ? "PLAY" :
+        s_cas.page == CASINO_SHELLS ? "SHUFFLE" : s_cas.page == CASINO_DIVE ? (s_cas.pending_end ? "RETRY" : "DIVE") : "SPIN";
+    casino_controls(c, go);
+    if (s_cas.msg[0]) {
+        render_internal_text(c, 24, 318, 1, s_cas.delta > 0 && s_cas.shown ? 0xffe29a : 0xa7c4ba, s_cas.msg);
+        return;
+    }
+    static const char *const hints[7][2] = {
+        {"", ""}, {"TAP A LANE, PICK A BET, RACE.", "LONG SHOTS PAY MORE."},
+        {"PICK A BET, THEN SPIN.", "ANY PAIR RETURNS THE STAKE."},
+        {"HIGH OR LOW? TIES LOSE.", "ODDS FOLLOW THE PEARL VALUE."},
+        {"PICK A SHELL. WIN x2.8.", "THE PEARL HIDES IN ONE OF THREE."},
+        {"DIVE DEEPER OR SURFACE.", "SHARKS LOSE ALL. BACK CASHES OUT."},
+        {"RED / BLUE x2. GOLD x12.", "PICK A COLOR, THEN SPIN."}};
+    render_internal_text(c, 24, 314, 1, 0x8c9f9a, hints[s_cas.page][0]);
+    render_internal_text(c, 24, 334, 1, 0x8c9f9a, hints[s_cas.page][1]);
+}
+static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
     render_ctx_t c = render_internal_page_ctx(fb, stride);
-    if (g_game.page != GAME_RESULT && g_game.page != GAME_MENU && g_game.page != GAME_RECORDS &&
-        (g_game.help || g_game.paused)) {
+    char text[72];
+    render_menu_backdrop(fb, stride, 0, 0, PAGE_W, PAGE_H);
+    const char *title = casino_titles[s_cas.page];
+    render_internal_page_stamp(&c, 22, 12, STAMP_DICE, GA_GOLD);
+    render_internal_text(&c, 54, 14, 2, 0xffffff, title);
+    render_internal_button(&c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
+    render_doubloon(fb, stride, 24, 52);
+    if (progression_creative(t)) snprintf(text, sizeof text, "CREATIVE MODE - BETS ARE OFF");
+    else snprintf(text, sizeof text, "%ld DOUBLOONS", (long)t->sd_balance);
+    render_internal_text(&c, 48, 56, 1, 0xffe29a, text);
+    if (s_cas.page == CASINO_LOBBY) {
+        static const char *const subs[6] = {"PICK A FISH", "MATCH THREE", "HIGH OR LOW", "FIND PEARL", "PUSH LUCK", "PICK COLOR"};
+        static const int symbols[6] = {2, 4, 3, 0, 1, 4};
+        for (int i = 0; i < 6; i++) {
+            int x = 24 + i % 2 * 204, y = 84 + i / 2 * 76;
+            render_internal_button(&c, x, y, 196, 70, 0x10282e, GA_GOLD, "", 1);
+            render_internal_text(&c, x + 10, y + 7, 1, 0xffffff, casino_titles[i + 1]);
+            render_internal_text(&c, x + 10, y + 44, 1, MSP_TEAL, subs[i]);
+            casino_symbol(&c, t, fb, stride, x + 172, y + 45, symbols[i], t->clock);
+        }
+        render_internal_text(&c, 24, 326, 1, 0xa7c4ba, "BETS 5-50. SMALL HOUSE EDGE.");
+        return;
+    }
+    if (s_cas.page == CASINO_RACES) {
+        for (int i = 0; i < 4; i++) {
+            int y = 84 + i * 44;
+            bool pick = s_cas.pick == i, won = s_cas.shown && s_cas.winner == i;
+            render_internal_rect_fill(&c, 24, y, 400, 40, pick ? 0x1e2a18 : 0x10282e);
+            render_internal_rect_edge(&c, 24, y, 400, 40, won ? 0xffffff : pick ? GA_GOLD : MSP_DIM);
+            for (int d = 0; d < 40; d += 8) render_internal_rect_fill(&c, 380, y + d, 4, 4, 0xffffff);
+            snprintf(text, sizeof text, "%s%s", pick ? "> " : "", FISH_VARIETY_NAMES[s_cas.racer[i]]);
+            render_internal_text(&c, 30, y + 4, 1, pick ? 0xffe29a : 0xe7f4dc, text);
+            snprintf(text, sizeof text, "x%d", casino_odds[i]);
+            render_internal_text(&c, 392, y + 15, 1, GA_GOLD, text);
+            float p = 0;
+            if (s_cas.running || s_cas.shown) {
+                p = s_cas.t / s_cas.finish[i];
+                if (p > 1) p = 1;
+                p = p * p * (3 - 2 * p);
+                if (p < 1) p += 0.015f * sinf(s_cas.t * 7 + (float)i * 1.7f);
+            }
+            fish_t f = {0}; progression_market_preview(t, s_cas.racer[i], &f);
+            render_fish_portrait(fb, stride, 50 + p * 318, (float)(y + 29), 0.42f, &f, t->clock);
+        }
+        casino_footer(&c);
+        return;
+    }
+    if (s_cas.page == CASINO_HILO) {
+        render_internal_text(&c, 66, 88, 1, MSP_TEAL, "PEARL");
+        render_internal_text(&c, 280, 88, 1, MSP_TEAL, "NEXT");
+        casino_symbol(&c, t, fb, stride, 112, 132, 3, t->clock);
+        casino_symbol(&c, t, fb, stride, 320, 132, 3, t->clock);
+        snprintf(text, sizeof text, "%d", s_cas.pearl);
+        render_internal_text(&c, 100, 160, 2, GA_GOLD, text);
+        if (s_cas.shown) snprintf(text, sizeof text, "%d", s_cas.next);
+        else snprintf(text, sizeof text, "%s", s_cas.running ? "..." : "?");
+        render_internal_text(&c, 308, 160, 2, GA_GOLD, text);
+        for (int i = 0; i < 2; i++) {
+            int wins = i ? s_cas.pearl - 1 : 13 - s_cas.pearl;
+            int pay = casino_bets[s_cas.bet] * 1222 / (wins * 100);
+            snprintf(text, sizeof text, "PAYS %d", pay);
+            render_internal_text(&c, 42 + i * 204, 190, 1, MSP_TEAL, text);
+            render_internal_button(&c, 24 + i * 204, 214, 196, 38, 0x10282e,
+                s_cas.pick == i ? GA_GOLD : MSP_DIM, i ? "LOWER" : "HIGHER", 1);
+        }
+        casino_footer(&c); return;
+    }
+    if (s_cas.page == CASINO_SHELLS) {
+        render_internal_text(&c, 66, 88, 1, MSP_TEAL, "WHICH SHELL HIDES THE PEARL?");
+        for (int i = 0; i < 3; i++) {
+            int x = 24 + i * 136, cx = x + 64;
+            if (s_cas.running) cx += (int)(sinf(s_cas.t * 12 + i * 2.1f) * 18);
+            casino_symbol(&c, t, fb, stride, cx, 142, 0, t->clock);
+            if (s_cas.shown && s_cas.winner == i) casino_symbol(&c, t, fb, stride, cx, 182, 3, t->clock);
+            snprintf(text, sizeof text, "SHELL %d", i + 1);
+            render_internal_button(&c, x, 214, 128, 38, 0x10282e,
+                s_cas.pick == i ? GA_GOLD : MSP_DIM, text, 1);
+        }
+        casino_footer(&c); return;
+    }
+    if (s_cas.page == CASINO_DIVE) {
+        for (int i = 0; i < 5; i++) {
+            int x = 24 + i * 82;
+            render_internal_rect_fill(&c, x, 94, 72, 54, i < s_cas.depth ? 0x244d50 : 0x10282e);
+            render_internal_rect_edge(&c, x, 94, 72, 54, i < s_cas.depth ? GA_GOLD : MSP_DIM);
+            snprintf(text, sizeof text, "%d.%d", casino_depth_pay[i] / 10, casino_depth_pay[i] % 10);
+            render_internal_text(&c, x + 12, 114, 1, GA_GOLD, text);
+        }
+        if (s_cas.shown && s_cas.delta < 0) {
+            fish_t shark = {0}; progression_market_preview(t, FISH_SHARK, &shark);
+            render_fish_portrait(fb, stride, 62, 184, 0.7f, &shark, t->clock);
+        } else casino_symbol(&c, t, fb, stride, 62, 184, 3, t->clock);
+        int pot = s_cas.depth ? (s_cas.diving ? s_cas.stake : casino_bets[s_cas.bet]) * casino_depth_pay[s_cas.depth - 1] / 10 : 0;
+        if (s_cas.shown && s_cas.delta < 0) pot = 0;
+        snprintf(text, sizeof text, "POT %d DOUBLOONS", pot);
+        render_internal_text(&c, 104, 178, 1, GA_GOLD, text);
+        render_internal_text(&c, 24, 226, 1, MSP_TEAL, s_cas.diving ? "STAKE HELD" : "SHARKS AHEAD");
+        render_internal_button(&c, 236, 214, 188, 38, 0x10282e,
+            s_cas.diving ? GA_GOLD : MSP_DIM, "SURFACE", 1);
+        casino_footer(&c); return;
+    }
+    if (s_cas.page == CASINO_WHEEL) {
+        static const uint32_t colors[3] = {0xda6970, 0x5ba9e8, GA_GOLD};
+        for (int i = 0; i < 13; i++) {
+            float spin = s_cas.running ? s_cas.t * 9 : 0;
+            float a = i * 6.283185f / 13 + spin, b = (i + 1) * 6.283185f / 13 + spin;
+            float xs[3] = {224, 224 + cosf(a) * 59, 224 + cosf(b) * 59};
+            float ys[3] = {146, 146 + sinf(a) * 59, 146 + sinf(b) * 59};
+            render_internal_poly(&c, xs, ys, 3, colors[i == 12 ? 2 : i % 2], 255);
+        }
+        render_internal_annulus(&c, 224, 146, 61, 58, GA_GOLD, 255);
+        casino_symbol(&c, t, fb, stride, 224, 146, 4, t->clock);
+        static const char *const labels[3] = {"RED x2", "BLUE x2", "GOLD x12"};
+        if (s_cas.shown) render_internal_text(&c, 294, 142, 1, colors[s_cas.winner], labels[s_cas.winner]);
+        for (int i = 0; i < 3; i++) render_internal_button(&c, 24 + i * 136, 214, 128, 38,
+            s_cas.pick == i ? 0x353126 : 0x10282e, s_cas.pick == i ? GA_GOLD : colors[i], labels[i], 1);
+        casino_footer(&c); return;
+    }
+    for (int k = 0; k < 3; k++) {
+        int x = 84 + k * 100;
+        render_internal_rect_fill(&c, x, 84, 80, 88, 0x05141a);
+        render_internal_rect_edge(&c, x, 84, 80, 88, GA_GOLD);
+        render_internal_rect_edge(&c, x + 2, 86, 76, 84, 0x6b5420);
+        bool spinning = s_cas.running && s_cas.t < 0.6f + 0.4f * (float)k;
+        int sym = spinning ? ((int)(s_cas.t * 14) + k * 2) % 5 : s_cas.reels[k];
+        casino_symbol(&c, t, fb, stride, x + 40, 128, sym, t->clock);
+    }
+    static const char *const pays[8] = {"3 SHELLS x3", "3 STARS x6", "3 FISH x10", "3 PEARLS x20",
+                                        "3 COINS x50", "COIN PAIR x2", "ANY PAIR x1", "(STAKE BACK)"};
+    for (int i = 0; i < 8; i++)
+        render_internal_text(&c, 24 + (i % 2) * 212, 184 + (i / 2) * 20, 1, i >= 5 ? 0xa7c4ba : 0xe7f4dc, pays[i]);
+    casino_footer(&c);
+}
+void render_games(const tank_t *t, uint16_t *fb, int stride) {
+    if (s_cas.active) { render_casino(t, fb, stride); return; }
+    render_ctx_t c = render_internal_page_ctx(fb, stride);
+    if (g_game.page == GAME_MENU || g_game.page == GAME_RECORDS) {
+        render_menu_backdrop(fb, stride, 0, 0, PAGE_W, PAGE_H);
+    } else if (g_game.page != GAME_RESULT && (g_game.help || g_game.paused)) {
         render_internal_rect_fill(&c, 0, 0, PAGE_W, PAGE_H, MSP_INK);  /* help hides the playfield */
     } else {
         int deep = g_game.page == GAME_EXPEDITION ? g_game.depth * 26 : 0;
@@ -1260,13 +1634,31 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
             "SWITCH OFF", "SLIDE TILES", "SONAR HUNT", "MERGE TILES",
             "TIME STACK", "COPY NOTES"
         };
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 6 && g_game_menu < 3; i++) {
             int x = 24 + i % 2 * 204, y = 116 + i / 2 * 64, game = g_game_menu * 6 + i;
             render_internal_button(&c, x, y, 196, 56, 0x10282e, MSP_DIM, "", 1);
             game_thumb(&c, x + 6, y + 12, game);
             render_internal_text_wrap(&c, x + 54, y + 5, 136, 0xffffff, game_names[game]);
             render_internal_text(&c, x + 54, y + 40, 1, MSP_TEAL, genres[game]);
         }
+        if (g_game_menu == 3) {
+            static const char *const names[] = {"STORIES", "THE LOST CURRENT"};
+            static const char *const kinds[] = {"SAFE TRIPS", "STORY RPG"};
+            for (int i = 0; i < 2; i++) {
+                int x = 24 + i * 204;
+                uint32_t accent = i ? 0xffdc73 : MSP_TEAL;
+                render_internal_button(&c, x, 116, 196, 56, 0x10282e, MSP_DIM, "", 1);
+                render_internal_rect_fill(&c, x + 6, 124, 40, 40, 0x092027);
+                render_internal_rect_edge(&c, x + 6, 124, 40, 40, ga_mix(accent, 0x092027, 128));
+                render_internal_page_stamp(&c, x + 11, 132, i ? STAMP_BOOK : STAMP_MAP, accent);
+                render_internal_text_wrap(&c, x + 54, 121, 136, 0xffffff, names[i]);
+                render_internal_text(&c, x + 54, 156, 1, MSP_TEAL, kinds[i]);
+            }
+            render_internal_text_wrap(&c, 24, 196, 400, 0xa7c4ba,
+                                      "Stories send your fish on calm trips. The Lost Current is a chaptered RPG. Both use the fish chosen above.");
+        }
+        snprintf(text, sizeof text, "PAGE %d/%d", g_game_menu + 1, GAME_MENU_PAGES);
+        render_internal_text(&c, 300, 104, 1, MSP_TEAL, text);
         render_internal_button(&c, 24, 314, 196, 32, 0x1c2f36, MSP_TEAL, g_game_relaxed ? "RELAXED" : "CHALLENGE", 2);
         render_internal_button(&c, 228, 314, 196, 32, 0x1c2f36, MSP_TEAL, "RECORDS", 2);
     } else if (g_game.page == GAME_RECORDS) {
@@ -1440,22 +1832,22 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
         bool puzzle = g_game.kind == GAME_LIGHTHOUSE || g_game.kind == GAME_SLIDE;
         bool solved = g_game.kind == GAME_MATCH || g_game.kind == GAME_REEF || (puzzle && g_game.reward);
         snprintf(text, sizeof text, solved ? "SOLVED IN %d MOVES" : "SCORE: %d", solved ? g_game.moves : g_game.score);
-        if (puzzle && !solved) snprintf(text, sizeof text, "UNSOLVED - NO COINS OR XP");
+        if (puzzle && !solved) snprintf(text, sizeof text, "UNSOLVED - NO REWARD");
         render_internal_text(&c, 32, 126, 2, MSP_TEAL, text);
-        snprintf(text, sizeof text, "WALLET: %ld SAND DOLLARS", (long)t->sd_balance);
+        snprintf(text, sizeof text, "WALLET: %ld DOUBLOONS", (long)t->sd_balance);
         render_internal_text(&c, 32, 164, 2, MSP_TEAL, text);
         int payout = progression_game_payout(t, game_index(g_game.kind), g_game.reward);
-        snprintf(text, sizeof text, g_game.claimed ? "SAVED +%d SAND DOLLARS" :
-                 payout ? "SAVE RESULT +%d DOLLAR" : "SAVE RESULT - NO BONUS",
+        snprintf(text, sizeof text, g_game.claimed ? "SAVED +%d DOUBLOONS" :
+                 payout ? "SAVE RESULT +%d DOUBLOONS" : "SAVE RESULT - NO BONUS",
                  g_game.claimed ? g_game.paid : payout);
         if (g_game.kind >= GAME_LIGHTHOUSE && !g_game.reward)
             snprintf(text, sizeof text, g_game.claimed ? "RESULT SAVED - NO REWARD" : "SAVE RESULT - NO REWARD");
         if (progression_creative(t)) snprintf(text, sizeof text, "CREATIVE - PRACTICE ONLY");
         render_internal_button(&c, 32, 196, 396, 44, 0x1c2f36, MSP_TEAL, text, 2);
         render_internal_button(&c, 32, 278, 396, 44, 0x1c2f36, MSP_TEAL, "PLAY AGAIN", 2);
-        snprintf(text, sizeof text, "THIS GAME %d/5 TODAY - NO XP",
+        snprintf(text, sizeof text, "PAID ROUNDS TODAY: %d/5",
                  t->game_income.paid[game_index(g_game.kind)] + t->game_income.legacy);
-        if (progression_creative(t)) snprintf(text, sizeof text, "NO COINS, XP OR RECORDS");
+        if (progression_creative(t)) snprintf(text, sizeof text, "PRACTICE - NO PAY OR RECORDS");
         render_internal_text(&c, 32, 248, 2, MSP_TEAL, text);
     }
     if (g_game.page != GAME_MENU && g_game.page != GAME_RECORDS && g_game.page != GAME_RESULT) {
@@ -1463,7 +1855,7 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
         render_internal_button(&c, 164, 8, 72, 36, 0x1c2f36, MSP_TEAL, "HELP", 1);
         if (g_game.help || g_game.paused) {
             static const char *const help[18][5] = {
-                {"Tap rising bubbles.", "Gold bubbles score three.", "Challenge lasts 30 seconds.", "Practice shares this game cap.", "+1/round; 5/game/day; no XP."},
+                {"Tap rising bubbles.", "Gold bubbles score three.", "Challenge lasts 30 seconds.", "Practice shares this game cap.", "+1 doubloon; max 5/game/day."},
                 {"Tap two cards to reveal.", "Match all six pearl pairs.", "Fewer moves earn medals.", "Mismatch hides after a moment.", "No timer."},
                 {"Use LEFT / RIGHT to swim.", "Follow the gold open gate.", "Twelve gates per round.", "Each clear gate scores two.", "Relaxed gates move slower."},
                 {"Tap CAST over the treasure.", "Watch the moving hook.", "Five casts per round.", "Each accurate cast scores two.", "Relaxed hook moves slower."},
@@ -1493,8 +1885,8 @@ void render_games(const tank_t *t, uint16_t *fb, int stride) {
     if (!g_game.help && !g_game.paused && g_game_relaxed && (g_game.page == GAME_BUBBLES || g_game.page == GAME_FRENZY))
         render_internal_button(&c, 280, 54, 144, 34, 0x1c2f36, MSP_TEAL, "FINISH", 2);
     if (g_game.page == GAME_MENU) {
-        if (progression_creative(t)) snprintf(text, sizeof text, "CREATIVE: NO COINS, XP OR RECORDS");
-        else snprintf(text, sizeof text, "+1/ROUND, MAX 5/GAME/DAY");
+        if (progression_creative(t)) snprintf(text, sizeof text, "CREATIVE: PRACTICE ONLY");
+        else snprintf(text, sizeof text, "UP TO 12 PER ROUND, 5/GAME/DAY");
         render_internal_text(&c, 24, 350, 1, MSP_TEAL, text);
     } else render_internal_text(&c, 24, 340, 2,
                     g_game.save_failed ? 0xff8173 : MSP_TEAL,

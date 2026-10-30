@@ -15,6 +15,8 @@ APP = "pocket-tank-cyd-app.bin"
 BOARD_MARKER = b"PTBOARD\0" + b"cyd2432s028".ljust(24, b"\0")
 SLOT_SIZE = 0x1e0000
 FEATURE_IMAGES = (
+    "v240-market-hub.png", "v240-creature-market.png", "v240-contract.png",
+    "v240-auction.png", "v240-casino.png", "v240-tide-wheel.png",
     "fish-interaction-feedback.png", "fish-life-feedback.png",
     "harbor-garden-decorations.png", "jellyfish-wardrobe.png",
     "tank-normal.png", "family-tree.png", "rpg-story.png",

@@ -1,6 +1,7 @@
 #include "progression.h"
 #include "companion.h"
 #include "setup.h"
+#include "weather.h"
 #include "cJSON.h"
 #ifdef NDEBUG
 #undef NDEBUG
@@ -9,6 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+bool weather_location_south(bool *south) { (void)south; return false; }
 
 static unsigned char saved[8192], slots[AQUARIUM_CAP][AQUARIUM_SAVE_BYTES];
 static size_t saved_size, slot_sizes[AQUARIUM_CAP];
@@ -23,6 +26,12 @@ bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size)
     if (reject_slot_read || !slot_sizes[slot]) return false;
     memset(data, 0, size);
     memcpy(data, slots[slot], slot_sizes[slot]);
+    return true;
+}
+bool aquarium_port_read_sized(const uint32_t id[2], int slot, void *data, size_t size, size_t *got) {
+    if (got) *got = 0;
+    if (!aquarium_port_read(id, slot, data, size)) return false;
+    if (got) *got = slot_sizes[slot];
     return true;
 }
 bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_t size) {
@@ -96,15 +105,16 @@ int main(void) {
     assert(progression_aquarium_summary(&t, 0, &summary) && summary.creative);
     wallet(&t, 37, 59, 0);
     char *creative_json = progression_backup_json(&t); assert(creative_json);
-    assert(strstr(creative_json, "\"schema\":20") && strstr(creative_json, "\"creative\":"));
+    assert(strstr(creative_json, "\"schema\":23") && strstr(creative_json, "\"creative\":") &&
+           strstr(creative_json, "\"progression\":"));
     reload(&t); assert(progression_creative(&t)); wallet(&t, 37, 59, 0);
     assert(!t.companion.collections && !t.companion.active[0].bond);
     assert(companion_cosmetic(&t, 3));
     assert(!companion_valid(&t.companion) && companion_valid_mode(&t.companion, true));
-    for (int i = 0; i < 3; i++) assert(companion_trick(&t, 0, i));
-    assert(!t.companion.active[0].bond && t.companion.active[0].tricks == 7);
+    for (int i = 0; i < 3; i++) assert(companion_trick(&t, 0, i) == (i != 1));
+    assert(!t.companion.active[0].bond && t.companion.active[0].tricks == 5);
     reload(&t);
-    assert(t.companion.cosmetic == 3 && t.companion.active[0].tricks == 7);
+    assert(t.companion.cosmetic == 3 && t.companion.active[0].tricks == 5);
     for (int i = 0; i < 3; i++) {
         assert(companion_collection_ready(&t, i));
         assert(companion_collection_claim(&t, i));
@@ -150,13 +160,29 @@ int main(void) {
     wallet(&t, 37, 59, 0);
 
     for (int i = 0; i < SD_ITEM_COUNT; i++) {
-        if (i == 8) {
+        if (i == 8 || i == 30 || i == 31) {
             assert(!progression_item_unlocked(&t, i) && !progression_buy(&t, i));
             continue;
         }
         if (progression_item_owned(&t, i)) continue;
-        assert(progression_buy(&t, i));
+        bool bought = progression_buy(&t, i);
+        if (!bought) fprintf(stderr, "Creative item %d (%s): %s\n", i, SD_ITEMS[i].name, progression_shop_notice());
+        assert(bought);
         assert(progression_item_owned(&t, i));
+        wallet(&t, 37, 59, 0);
+    }
+    for (int species = CREATURE_SNAIL; species <= CREATURE_SEAHORSE; species++) {
+        int item = species == CREATURE_SNAIL ? 1 : species == CREATURE_URCHIN ? 6 : 7;
+        assert(progression_creature_adults(&t, species) == 1);
+        before = t; reject_write = true;
+        assert(!progression_buy(&t, item)); unchanged(&before, &t); /* One per tank, even in Creative. */
+        reject_write = false;
+        assert(progression_creature_adults(&t, species) == 1 && !progression_buy(&t, item));
+        assert(!t.creatures.paid_adults[species - CREATURE_SNAIL]);
+        creature_sale_t quote;
+        assert(!progression_creature_sale_quote(&t, species, false, &quote));
+        assert(!progression_creature_sale_quote(&t, species, true, &quote));
+        assert(!progression_creature_buy(&t, species)); /* Cash market is not a sandbox loophole. */
         wallet(&t, 37, 59, 0);
     }
     for (int i = 0; i < JOURNAL_THEME_COUNT; i++) assert(journal_set_theme(&t, i));
@@ -182,7 +208,9 @@ int main(void) {
     t.inventory.stored[tank_decor_slot(8)] = t.inventory.paid[tank_decor_slot(8)] = 1;
     assert(progression_save(&t));
     char *json = progression_backup_json(&t); assert(json);
-    assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+    bool restored = progression_restore_json(json, strlen(json), true, error, sizeof error);
+    if (!restored) fprintf(stderr, "Creative backup restore failed: %s\n", error);
+    assert(restored);
     reload(&t); wallet(&t, 37, 59, 0); assert(progression_creative(&t));
     assert(!(t.sd_unlocks & SD_ITEM_PUMPKIN) && !t.inventory.stored[tank_decor_slot(8)]);
     free(json);
@@ -223,6 +251,10 @@ int main(void) {
     cJSON_DeleteItemFromObjectCaseSensitive(root, "games_extra");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "content");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "fixed");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "reef");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "creatures");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "progression");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "foliage");
     cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(root, "schema"), 14);
     json = cJSON_PrintUnformatted(root); cJSON_Delete(root);
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);

@@ -47,6 +47,7 @@ static void tracked_json_free(void *memory) {
 }
 static unsigned char slots[AQUARIUM_CAP][AQUARIUM_SAVE_BYTES];
 static bool slot_exists[AQUARIUM_CAP], card_ready = true, reject_slot_read, reject_slot_write;
+static size_t slot_sizes[AQUARIUM_CAP];
 static int slot_write_count, reject_slot_number;
 bool aquarium_port_ready(void) { return card_ready; }
 void aquarium_port_id(uint32_t id[2]) { id[0] = 0x12345678; id[1] = 0x87654321; }
@@ -55,10 +56,19 @@ bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size)
     if (reject_slot_read || !slot_exists[slot]) return false;
     assert(size == AQUARIUM_SAVE_BYTES); memcpy(data, slots[slot], size); return true;
 }
+bool aquarium_port_read_sized(const uint32_t id[2], int slot, void *data, size_t size, size_t *got) {
+    if (got) *got = 0;
+    if (!aquarium_port_read(id, slot, data, size)) return false;
+    size_t length = slot_sizes[slot] ? slot_sizes[slot] : size;
+    assert(length <= size);
+    memset((unsigned char *)data + length, 0, size - length);
+    if (got) *got = length;
+    return true;
+}
 bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_t size) {
     (void)id; slot_write_count++;
     if (reject_slot_write || slot_write_count == reject_slot_number) return false;
-    assert(size == AQUARIUM_SAVE_BYTES); memcpy(slots[slot], data, size); slot_exists[slot] = true; return true;
+    assert(size == AQUARIUM_SAVE_BYTES); memcpy(slots[slot], data, size); slot_exists[slot] = true; slot_sizes[slot] = size; return true;
 }
 bool persist_port_load(void *buf, size_t max, size_t *got) {
     if (require_json_released_before_load) {
@@ -101,6 +111,16 @@ static float boot_enlarged(tank_t *t) {
 }
 /* Narrow hook for test_decor_scenery.c: boot a fresh tank from the harness's persisted bytes. */
 size_t test_decor_scenery_reload(tank_t *t, uint32_t seed) { tank_init(t, seed); boot_enlarged(t); return saved_size; }
+/* Comfort: a fish missing its favorite piece keeps a calm floor, so cap tests supply it. */
+static void give_favorite(tank_t *t, int fish) {
+    int item = tank_fish_favorite_item(t, fish);
+    if (item < 0) return;
+    if (SD_IS_FOLIAGE(item)) { t->foliage.version = 1; t->foliage.planted |= 1u << (item - SD_FOLIAGE_FIRST); }
+    else if (SD_IS_SCENERY(item)) t->polish.scenery_unlocks |= (uint8_t)(1u << (item - SD_SCENERY_FIRST));
+    else if (SD_IS_NEW_DECOR(item)) t->content.owned |= 1u << (item - SD_DECOR_FIRST);
+    else t->sd_unlocks |= 1u << item;
+    assert(tank_fish_comfort(t, fish) > 0);
+}
 
 static void test_normal_default(void) {
     tank_t tank;
@@ -122,6 +142,69 @@ static void test_normal_default(void) {
     assert(TANK_W == 320 && tank.companion.display_compact);
     saved_size = 0;
     tank_resolution(false);
+}
+
+static void test_retired_achievements(void) {
+    for (int compact = 0; compact < 2; compact++) {
+        tank_t t;
+        saved_size = 0; tank_init(&t, 789); boot_enlarged(&t);
+        assert(progression_setup_done(&t));
+        tank_reframe(&t, compact != 0);
+        assert(!t.tank_ms_bits && !t.fish[0].ms_bits);
+        t.fish[0].ms_bits = MS_FIRST_FOLLOW;
+        t.tank_ms_bits = TMS_FIRST_FEEDING;
+        t.sd_balance = 321; t.sd_earned = 654;
+        t.sd_paid_fish[0] = 0;
+        progression_set_age(&t, 0, STAGE_ELDER_AGE);
+        t.fish[0].trust = 10;
+        t.fish[0].hunger = 8;
+        t.light_override = t.light_on = true; t.ui_cover = false;
+        t.fish[0].x = TANK_W * .5f; t.fish[0].y = TANK_H * .5f;
+        memset(t.food, 0, sizeof t.food);
+        int eaten = t.fish[0].eaten_player;
+        tank_feed(&t, t.fish[0].x, 1);
+        t.food[0].x = t.fish[0].x; t.food[0].y = t.fish[0].y;
+        tank_tick(&t, .01f, advisor_rules);
+        assert(t.fish[0].eaten_player == eaten + 1);
+        static const int goals[] = {GOAL_DART_PLAY, GOAL_VISIT_BUBBLES, GOAL_REST,
+                                   GOAL_FOLLOW_FRIEND, GOAL_INSPECT_REEF};
+        for (size_t g = 0; g < sizeof goals / sizeof *goals; g++) {
+            t.fish[0].goal.id = goals[g]; t.fish[0].goal_age = 3;
+            progression_tick(&t, .01f);
+        }
+        progression_slept(&t, FULL_NIGHT_S);
+        assert(t.fish[0].stage == STAGE_ELDER && t.fish[0].ms_bits == MS_FIRST_FOLLOW);
+        assert(t.tank_ms_bits == TMS_FIRST_FEEDING && !t.sd_paid_fish[0]);
+        assert(t.sd_balance == 321 && t.sd_earned == 654 && !progression_sd_take_award());
+        notice_sync(&t);
+        for (unsigned bit = 0; bit < 32; bit++) {
+            t.fish[0].ms_bits |= UINT32_C(1) << bit;
+            t.tank_ms_bits |= UINT32_C(1) << bit;
+            t.fish[0].stage = (stage_t)(bit % 4);
+            notice_tick(&t, .1f, bit % 2 != 0);
+            assert(!notice_current() && !notice_pending());
+        }
+        size_t bytes = (size_t)TANK_W * TANK_H * sizeof(uint16_t);
+        uint16_t *fb = malloc(bytes); assert(fb);
+        memset(fb, 0x5a, bytes);
+        for (int kind = NOTICE_MILESTONE; kind <= NOTICE_STAGE; kind++) {
+            render_notice(&t, fb, TANK_W, kind, 0, MS_FIRST_MEAL_FROM_YOU, 1);
+            for (size_t i = 0; i < bytes / sizeof *fb; i++) assert(fb[i] == 0x5a5a);
+        }
+        free(fb);
+        t.fish[0].ms_bits = MS_FIRST_FOLLOW; t.tank_ms_bits = TMS_FIRST_FEEDING;
+        assert(progression_save(&t));
+        tank_t loaded; tank_init(&loaded, 790); boot_enlarged(&loaded);
+        assert(loaded.fish[0].ms_bits == MS_FIRST_FOLLOW && loaded.tank_ms_bits == TMS_FIRST_FEEDING);
+        assert(loaded.sd_balance == 321 && loaded.sd_earned == 654);
+        notice_sync(&loaded); notice_tick(&loaded, .1f, false);
+        assert(!notice_current() && !notice_pending());
+        notice_updated(); notice_tick(&loaded, .1f, false);
+        assert(notice_current() && notice_current()->kind == NOTICE_UPDATED);
+        notice_sync(&loaded);
+    }
+    saved_size = 0; tank_resolution(false);
+    puts("PASS: real meals, growth, trust, goals and nights create no achievements or firsts income; every legacy bit/stage stays silent, retired modals paint nothing, history survives reload and update notices remain");
 }
 
 static void test_mode_care_notices(void) {
@@ -186,6 +269,12 @@ static void invalid_object(cJSON *root) {
 }
 static void replace_number(cJSON *object, const char *key, double value) {
     assert(cJSON_ReplaceItemInObjectCaseSensitive(object, key, cJSON_CreateNumber(value)));
+    if (!strcmp(key, "schema") && value < 21) {
+        cJSON_DeleteItemFromObjectCaseSensitive(object, "reef");
+        cJSON_DeleteItemFromObjectCaseSensitive(object, "creatures");
+    }
+    if (!strcmp(key, "schema") && value < 22) cJSON_DeleteItemFromObjectCaseSensitive(object, "progression");
+    if (!strcmp(key, "schema") && value < 23) cJSON_DeleteItemFromObjectCaseSensitive(object, "foliage");
     if (!strcmp(key, "schema") && value < 20) cJSON_DeleteItemFromObjectCaseSensitive(object, "fixed");
     if (!strcmp(key, "schema") && value < 19) cJSON_DeleteItemFromObjectCaseSensitive(object, "content");
     if (!strcmp(key, "schema") && value < 18) cJSON_DeleteItemFromObjectCaseSensitive(object, "inventory");
@@ -212,7 +301,8 @@ static void remove_journal_fields(cJSON *obj) {
     for (size_t i = 0; i < sizeof fields / sizeof fields[0]; i++) cJSON_DeleteItemFromObjectCaseSensitive(obj, fields[i]);
 }
 static int add_bank_candidate(tank_t *t, int number) {
-    int slot = tank_add_fish(t, 0, 1); assert(slot >= 0);
+    uint8_t parent_variety = t->fish[1].variety; t->fish[1].variety = t->fish[0].variety; /* strict same-variety births */
+    int slot = tank_add_fish(t, 0, 1); t->fish[1].variety = parent_variety; assert(slot >= 0);
     char name[8]; snprintf(name, sizeof name, "fish%02d", number);
     memset(t->fish[slot].name, 0, sizeof t->fish[slot].name);
     tank_set_name(t, slot, name); progression_set_age(t, slot, (24.0f + number) * 3600);
@@ -460,12 +550,20 @@ static void test_aquariums(void) {
     render_aquariums_open(&t); render_aquariums(&t, pixels, TANK_W);
     render_aquariums_tap(&t, render_frame_x(80), render_frame_y(338));
     render_aquariums(&t, pixels, TANK_W);
-    render_aquariums_tap(&t, render_frame_x(140), render_frame_y(250));
-    render_aquariums_tap(&t, render_frame_x(350), render_frame_y(250));
-    assert(!strcmp(t.aquariums.name, "UANK 1")); /* T -> U through the actual editor. */
+    render_aquariums_tap(&t, render_frame_x(120), render_frame_y(130)); /* identity: rename */
+    for (int i = 0; i < 6; i++)
+        render_aquariums_tap(&t, render_frame_x(359), render_frame_y(341)); /* delete old name */
+    const struct { int x, y; } keys[] = {
+        {278, 205}, {80, 239}, {296, 273}, {332, 239}, /* UANK */
+        {157, 341}, {96, 307},                            /* space, 1 */
+    };
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+        render_aquariums_tap(&t, render_frame_x(keys[i].x), render_frame_y(keys[i].y));
+    render_aquariums_tap(&t, render_frame_x(328), render_frame_y(107)); /* save */
+    assert(!strcmp(t.aquariums.name, "UANK 1")); /* Name edited through identity's actual keyboard. */
     before = t; old_writes = writes;
     render_shop_leave();
-    assert(render_shop_tap(&t, render_frame_x(250), render_frame_y(326)) == SHOP_TAP_TANKS);
+    render_aquariums_open(&t); /* Main > TANK > SUMMARY; the shop has no TANKS footer */
     render_aquariums_tap(&t, render_frame_x(350), render_frame_y(160));
     render_aquariums(&t, pixels, TANK_W);
     render_aquariums_tap(&t, render_frame_x(120), render_frame_y(250));
@@ -491,6 +589,14 @@ static void test_aquariums(void) {
     assert(aquarium_store_read(directory, id, 0, readback, sizeof readback) && !memcmp(readback, second, sizeof second));
     assert(!aquarium_store_read(directory, id, 1, readback, sizeof readback));
     assert(!aquarium_store_read(directory, id, 0, readback, sizeof readback - 1));
+    unsigned char legacy_v21[6464], current[AQUARIUM_SAVE_BYTES];
+    memset(legacy_v21, 0x5c, sizeof legacy_v21);
+    memset(current, 0xa5, sizeof current);
+    assert(aquarium_store_write(directory, id, 2, legacy_v21, sizeof legacy_v21));
+    size_t stored_size = 0;
+    assert(aquarium_store_read_sized(directory, id, 2, current, sizeof current, &stored_size));
+    assert(stored_size == sizeof legacy_v21 && !memcmp(current, legacy_v21, sizeof legacy_v21));
+    for (size_t i = stored_size; i < sizeof current; i++) assert(current[i] == 0);
     puts("PASS: 500-sand-dollar aquarium purchases, global wallet, persistent names and editor, eight-slot cap, paused saves, SD/NVS rollback and interrupted SD recovery");
 }
 static void assert_shop_icon_colors(const uint16_t *locked, const uint16_t *owned,
@@ -521,19 +627,23 @@ static void assert_shop_row_colorful(const uint16_t *fb, int item, int x0, int y
 static void test_shop_expansion(void) {
     tank_t t, loaded;
     saved_size = 0; tank_init(&t, 17); boot_enlarged(&t); progression_setup_done(&t);
-    bool seen[SD_ITEM_COUNT] = {false}; int previous = -1;
+    bool seen[SD_CATALOG_COUNT] = {false}; int previous = -1;
     for (int row = 0; row < progression_shop_count(&t); row++) {
         int item = progression_shop_item(&t, row);
-        assert(item >= 0 && item < SD_ITEM_COUNT && !seen[item]);
+        assert(item >= 0 && item < SD_CATALOG_COUNT && !seen[item]);
         assert(SD_ITEMS[item].price >= previous);
         seen[item] = true; previous = SD_ITEMS[item].price;
     }
-    assert(progression_shop_item(&t, -1) == -1 && progression_shop_item(&t, SD_ITEM_COUNT) == -1);
-    assert(SHOP_TAP_BUY + SD_ITEM_COUNT <= SHOP_TAP_MOVE);
-    assert(SHOP_TAP_MOVE + SD_ITEM_COUNT <= SHOP_TAP_SELL);
-    assert(SHOP_TAP_SELL + SD_ITEM_COUNT <= SHOP_TAP_FRY);
+    assert(progression_shop_item(&t, -1) == -1 && progression_shop_item(&t, SD_CATALOG_COUNT) == -1);
+    assert(SHOP_TAP_BUY + SD_CATALOG_COUNT <= SHOP_TAP_MOVE);
+    assert(SHOP_TAP_MOVE + SD_CATALOG_COUNT <= SHOP_TAP_SELL);
+    assert(SHOP_TAP_SELL + SD_CATALOG_COUNT <= SHOP_TAP_FRY);
     int total = 0;
     for (int item = 22; item < SD_DECOR_FIRST; item++) {
+        if (item == 30 || item == 31) {
+            assert(!progression_buy(&t, item) && !progression_item_unlocked(&t, item));
+            continue;
+        }
         assert(!tank_decor_placeable(item) && tank_ornament_index(item) == -1);
         assert(SD_ITEMS[item].bit == (item < 32 ? (UINT32_C(1) << item) : 0));
         assert(render_text_w(SD_ITEMS[item].name, 3) <= SHP_MODAL_W - 16);
@@ -551,15 +661,16 @@ static void test_shop_expansion(void) {
             assert(!progression_sell(&t, item) && !memcmp(&before, &t, sizeof t)); reject_write = false;
             assert(progression_sell(&t, item) && !progression_item_owned(&t, item));
             assert(t.sd_balance == SD_ITEMS[item].price / 5);
+            assert(!progression_item_unlocked(&t, item));
             t.sd_balance = SD_ITEMS[item].price;
-            assert(progression_buy(&t, item) && t.sd_balance == SD_ITEMS[item].price);
-            assert(progression_sell_value_for(&t, item) == 0);
+            assert(progression_buy(&t, item) && t.sd_balance == 0);
+            assert(progression_sell_value_for(&t, item) == progression_sell_value(item));
         } else assert(!progression_sell(&t, item));
         total += SD_ITEMS[item].price;
     }
-    assert(total == 2340 + SD_PRICE_MUSSEL);
+    assert(total == 2000 + SD_PRICE_MUSSEL);
     tank_init(&loaded, 1); boot_enlarged(&loaded);
-    assert(loaded.sd_unlocks == t.sd_unlocks && (loaded.sd_unlocks & SD_ITEM_GARDEN));
+    assert(loaded.sd_unlocks == t.sd_unlocks && !(loaded.sd_unlocks & (SD_ITEM_FILTER | SD_ITEM_GARDEN)));
     assert(loaded.aquariums.stat_upgrades == STAT_MASK);
     assert(loaded.polish.scenery_unlocks == SD_SCENERY_MASK);
     char *json = progression_backup_json(&loaded); assert(json);
@@ -592,7 +703,7 @@ static void test_shop_expansion(void) {
         normal.algae_acc = upgraded.algae_acc = sleep ? 179.25f : 239.25f;
         if (sleep) { tank_tick_sleep(&normal, 1); tank_tick_sleep(&upgraded, 1); }
         else { tank_tick(&normal, 1, advisor_rules); tank_tick(&upgraded, 1, advisor_rules); }
-        assert(normal.algae_acc < 1 && upgraded.algae_acc == (sleep ? 179.75f : 239.75f));
+        assert(normal.algae_acc == upgraded.algae_acc); /* Retired upgrades no longer affect simulation. */
     }
     uint16_t *base = calloc(TANK_W * TANK_H, sizeof *base);
     uint16_t *art = calloc(TANK_W * TANK_H, sizeof *art);
@@ -624,17 +735,21 @@ static void test_shop_expansion(void) {
     render_set_decor_scratch(NULL); render_set_scene_cache(NULL); render_set_dirty_mask(NULL);
     tank_t shop = t;
     shop.sd_unlocks = 0; shop.aquariums.stat_upgrades = 0; shop.sd_balance = 1000;
+    shop.content.owned = 0; shop.polish.scenery_unlocks = 0; shop.mussel.owned = 0; /* every row starts unowned */
     for (int row = 0; row < progression_shop_count(&shop); row++) {
         int item = progression_shop_item(&shop, row);
         tank_t owned = shop;
         if (item == SD_SHOP_MUSSEL) {
             owned.mussel.version = 2;
             owned.mussel.owned = (uint8_t)(1u << owned.aquariums.active);
+        } else if (SD_IS_FOLIAGE(item)) {
+            owned.foliage = (foliage_state_t){1, (uint8_t)(1u << (item - SD_FOLIAGE_FIRST)),
+                                               (uint8_t)(1u << (item - SD_FOLIAGE_FIRST)), 0};
         } else if (item < 32) owned.sd_unlocks |= SD_ITEMS[item].bit;
         else if (SD_IS_SCENERY(item)) owned.polish.scenery_unlocks |= (uint8_t)(1u << (item - SD_SCENERY_FIRST));
         else if (SD_IS_NEW_DECOR(item)) owned.content.owned |= 1u << (item - SD_DECOR_FIRST);
         else owned.aquariums.stat_upgrades |= (uint8_t)(1u << (item - 32));
-        int display_row = row + progression_fry_for_sale(&shop);
+        int display_row = row;   /* the FRY row is retired from the decor shop */
         render_shop_leave();
         for (int page = 0; page < display_row / SHP_PER_PAGE; page++)
             render_shop_tap(&shop, render_frame_x(SHP_ARROW_X1 + 12), render_frame_y(SHP_ARROW_Y + 8));
@@ -643,8 +758,13 @@ static void test_shop_expansion(void) {
         assert_shop_row_colorful(base, item, 24, top, 66, top + 40);
         render_shop_tap(&shop, render_frame_x(150), render_frame_y(top + 16));
         render_shop(&shop, base, TANK_W); render_shop(&owned, art, TANK_W);
-        assert_shop_icon_colors(base, art, item, PAGE_W / 2 - 40, SHP_MODAL_Y + 8,
-                                PAGE_W / 2 + 40, SHP_MODAL_Y + 80);
+        if (SD_IS_FOLIAGE(item)) {
+            assert_shop_row_colorful(base, item, PAGE_W / 2 - 40, SHP_MODAL_Y + 8,
+                                    PAGE_W / 2 + 40, SHP_MODAL_Y + 80);
+            assert_shop_row_colorful(art, item, PAGE_W / 2 - 40, SHP_MODAL_Y + 8,
+                                    PAGE_W / 2 + 40, SHP_MODAL_Y + 80);
+        } else assert_shop_icon_colors(base, art, item, PAGE_W / 2 - 40, SHP_MODAL_Y + 8,
+                                       PAGE_W / 2 + 40, SHP_MODAL_Y + 80);
     }
     render_shop_leave();
     free(base); free(art); free(scene); free(dirty); free(scratch);
@@ -686,6 +806,7 @@ static void test_shop_expansion(void) {
         tank_init(&capped, 372); tank_new_population(&capped); capped.n_fish = 1;
         capped.sd_unlocks = SD_ITEM_PLANT; capped.aquariums.stat_upgrades = STAT_MASK;
         for (int bed = 0; bed < VEG_BEDS_MAX; bed++) tank_veg_set(&capped, bed, 0.2f);
+        give_favorite(&capped, 0);
         fish_t *f = &capped.fish[0];
         f->energy = f->curiosity = 9.9999f; f->stress = 0.0001f;
         f->goal.id = goal ? GOAL_EXPLORE : GOAL_REST;
@@ -708,7 +829,7 @@ static void test_shop_expansion(void) {
         float before = f->energy;
         tank_tick(&resting, 0.1f, NULL); tank_tick(&boosted, 0.1f, NULL);
         assert(fabsf((boosted.fish[0].energy - before) - 1.25f * (f->energy - before)) < 0.000001f);
-        f->energy = 4; tank_tick(&resting, 0.1f, NULL);
+        f->energy = 4.1f; tank_tick(&resting, 0.1f, NULL);
         assert(!f->breather && f->goal.id == GOAL_EXPLORE);
         boosted.fish[0].breather = 2; tank_tick_sleep(&boosted, 60);
         assert(!boosted.fish[0].breather);
@@ -726,7 +847,7 @@ static void test_shop_expansion(void) {
     assert(!loaded.aquariums.stat_upgrades);
     loaded.aquariums.stat_upgrades = STAT_MASK; assert(progression_reset(&loaded, 123));
     assert(!loaded.aquariums.stat_upgrades);
-    puts("PASS: 36 sorted shop IDs, atomic purchases, per-tank stat upgrades, binary/JSON/legacy persistence, exact 25% recovery/trust, seahorse attribution, scenery and upkeep");
+    puts("PASS: sorted stable shop IDs excluding retired upgrades, atomic purchases, per-tank stat upgrades, binary/JSON/legacy persistence, exact 25% recovery/trust, seahorse attribution and scenery");
 }
 static int clock_tap(tank_t *t, int x, int y) {
     int value;
@@ -805,12 +926,17 @@ static void test_clock(void) {
                     size_t i = 0; while (i < count && old[i] != expected) i++;
                     assert(i < count);
                 }
-                assert((old[by * (TANK_W + 3) + bx] == 0) == !!(t.aquariums.clock_flags & CLOCK_HIDE_PANEL));
+                /* Analog/orbit keep a square brass panel; the other faces are rounded sea glass,
+                 * so probe the middle of their top rim and find the secondary ink on the divider knob. */
+                bool dial = theme == CLOCK_ANALOG || theme == CLOCK_ORBIT;
+                int probe = by * (TANK_W + 3) + (dial ? bx : bx + w / 2);
+                assert((old[probe] == 0) == !!(t.aquariums.clock_flags & CLOCK_HIDE_PANEL));
                 if (secondary && !(t.aquariums.clock_flags & CLOCK_HIDE_PANEL)) {
                     static const uint32_t inks[] = {0, 0xffffff, 0xffdc73, 0x89ffb1, 0x73e5ff, 0xffa3cf, 0xc5adff, 0xff8173};
                     uint32_t rgb = inks[secondary];
                     uint16_t expected = (uint16_t)(((rgb >> 8) & 0xf800) | ((rgb >> 5) & 0x07e0) | ((rgb >> 3) & 0x001f));
-                    assert(old[by * (TANK_W + 3) + bx] == expected);
+                    if (dial) assert(old[probe] == expected);
+                    else { size_t i = 0; while (i < count && old[i] != expected) i++; assert(i < count); }
                 }
                 memset(fb + 1, 0, count * sizeof *fb);
                 render_clock_overlay(&t, fb + 1, TANK_W + 3, now + 1);
@@ -1021,7 +1147,7 @@ static void test_creature_targeting(void) {
         assert(render_creature_card_hit(&t, t.shrimp[0].x, t.shrimp[0].y) == RENDER_CARD_SHRIMP);
         assert(render_creature_card_hit(&t, t.shrimp[1].x, t.shrimp[1].y) == -1);
         device.scene_detail = SCENE_ENHANCED; render_set_device(&device);
-        assert(render_creature_card_hit(&t, t.shrimp[1].x, t.shrimp[1].y) == RENDER_CARD_SHRIMP);
+        assert(render_creature_card_hit(&t, t.shrimp[1].x, t.shrimp[1].y) == -1);   /* half the school at every detail */
         t.sd_unlocks = SD_ITEM_SEAHORSE; t.sh_x = TANK_W * .6f; t.sh_y = TANK_H * .5f;
         t.sh_facing = 1; t.sh_hidden = false;
         assert(render_creature_card_hit(&t, t.sh_x + 4, t.sh_y - SH_BODY_UP) == RENDER_CARD_SEAHORSE);
@@ -1050,8 +1176,8 @@ static void test_fish_card_next(void) {
     const size_t pixels = TANK_W * TANK_H;
     uint16_t *fb = calloc(pixels, sizeof *fb); assert(fb);
     render_stats_card(&t, 0, fb, TANK_W);
-    int px = (RENDER_CARD_NEXT_X + 4) * TANK_W / PAGE_W, py = (RENDER_CARD_NEXT_Y + 4) * TANK_H / PAGE_H;   /* inside the bevelled corner */
-    assert(fb[py * TANK_W + px]);
+    for (size_t i = 0; i < pixels; i++) assert(!fb[i]);   /* fish details live in FISH > SUMMARY, never a tank overlay */
+    int px = (RENDER_CARD_NEXT_X + 4) * TANK_W / PAGE_W, py = (RENDER_CARD_NEXT_Y + 4) * TANK_H / PAGE_H;
     t.n_fish = 1;
     assert(!render_stats_next_hit(&t, 0, render_frame_x(x), render_frame_y(y)));
     memset(fb, 0, pixels * sizeof *fb); render_stats_card(&t, 0, fb, TANK_W);
@@ -1172,13 +1298,13 @@ static void test_journal(void) {
     journal_tick(&t);
     assert(t.journal.xp == 0 && t.journal.initialized);
     assert((t.journal.seen & (1u << FISH_SHARK)) && (t.journal.grown & (1u << FISH_SHARK)));
-    t.player_feedings++; t.algae_colonies++; t.trim_px += 10 * PX_PER_CM; t.hold_approaches++;
-    journal_tick(&t); assert(t.journal.xp == 0 && (t.care.ready & 5) == 5);
+    t.player_feedings++; t.reef_currents++; t.reef_visits++; t.hold_approaches++;
+    journal_tick(&t); assert(t.journal.xp == 0 && (t.care.ready & 5) == 1);
     journal_tick(&t); assert(t.journal.xp == 0);
     tank_feed(&t, TANK_W / 2, 1); journal_tick(&t); assert(t.journal.xp == 0); /* Not eaten yet. */
     for (int level = 1; level <= 15; level++) {
-        t.journal.xp = journal_level_xp(level); assert(journal_level(&t) == level);
-        if (level > 1) { t.journal.xp--; assert(journal_level(&t) == level - 1); }
+        t.journal.xp = journal_level_xp(level); assert(journal_level(&t) == 1);
+        if (level > 1) { t.journal.xp--; assert(journal_level(&t) == 1); }
     }
     t.journal.xp = 0; assert(!journal_set_theme(&t, 1) && !journal_set_theme(&t, -1));
     t.sd_unlocks = SD_ITEM_MASK;
@@ -1191,18 +1317,22 @@ static void test_journal(void) {
     unsigned xp = 0, coins = 0;
     for (int goal = 0; goal < JOURNAL_GOAL_N; goal++) {
         assert(journal_progress(&t, goal) == JOURNAL_GOALS[goal].target);
-        assert(journal_claim(&t, goal)); xp += JOURNAL_GOALS[goal].xp; coins += JOURNAL_GOALS[goal].coins;
+        assert(journal_claim(&t, goal)); coins += JOURNAL_GOALS[goal].coins;
         assert(!journal_claim(&t, goal) && t.journal.xp == xp && t.sd_balance == (int)coins);
     }
     assert(journal_active(&t, 0) == -1);
-    t.journal.xp = journal_level_xp(10);
-    reject_write = true; assert(!journal_set_theme(&t, 3) && t.journal.theme == 0); reject_write = false;
+    t.sd_balance = 500;
+    reject_write = true;
+    assert(!journal_theme_buy(&t, 3) && t.journal.theme == 0 && t.sd_balance == 500);
+    reject_write = false;
+    assert(!journal_theme_unlocked(&t, 3) && journal_theme_price(3) == 260);
+    assert(journal_theme_buy(&t, 3) && t.sd_balance == 240);
     assert(journal_set_theme(&t, 3));
     tank_init(&reloaded, 8); boot_enlarged(&reloaded);
     assert(reloaded.journal.claimed == t.journal.claimed && reloaded.journal.theme == 3 &&
            reloaded.journal.seen == t.journal.seen && reloaded.sd_balance == t.sd_balance);
     unsigned old_xp = reloaded.journal.xp; reloaded.sd_balance = 0;
-    assert(journal_level(&reloaded) == 10); journal_tick(&reloaded); assert(reloaded.journal.xp == old_xp);
+    assert(journal_level(&reloaded) == 1); journal_tick(&reloaded); assert(reloaded.journal.xp == old_xp);
     reloaded.n_fish = 1; journal_tick(&reloaded);
     assert(reloaded.journal.seen == t.journal.seen && reloaded.journal.grown == t.journal.grown);
     char *json = progression_backup_json(&t); assert(json);
@@ -1210,14 +1340,16 @@ static void test_journal(void) {
     cJSON *root = cJSON_Parse(json), *obj = cJSON_GetObjectItemCaseSensitive(root, "tank");
     replace_number(obj, "journal_seen", 0); invalid_object(root);
     root = cJSON_Parse(json); obj = cJSON_GetObjectItemCaseSensitive(root, "tank");
-    replace_number(obj, "journal_xp", 0); invalid_object(root);
+    replace_number(obj, "journal_xp", JOURNAL_XP_MAX + 1u); invalid_object(root);
     root = cJSON_Parse(json); obj = cJSON_GetObjectItemCaseSensitive(root, "tank");
     remove_journal_fields(obj); replace_number(root, "schema", 3);
     char *old_json = cJSON_PrintUnformatted(root); cJSON_Delete(root); assert(old_json);
+    saved_size = 0; /* Legacy imports migrate into empty storage, not over current livestock provenance. */
     assert(progression_restore_json(old_json, strlen(old_json), true, error, sizeof error));
     saved_size = 2000; tank_init(&reloaded, 8); boot_enlarged(&reloaded);
     assert(!reloaded.journal.xp && !reloaded.journal.seen && !reloaded.journal.initialized);
-    assert(reloaded.fish[0].variety == FISH_SHARK && reloaded.sd_unlocks == (t.sd_unlocks & ~SD_ITEM_PUMPKIN));
+    assert(reloaded.fish[0].variety == FISH_SHARK &&
+           reloaded.sd_unlocks == (t.sd_unlocks & ~(SD_ITEM_PUMPKIN | SD_ITEM_FILTER | SD_ITEM_GARDEN)));
     journal_tick(&reloaded); assert(!reloaded.journal.xp && (reloaded.journal.seen & (1u << FISH_SHARK)));
     free(json); free(old_json);
     size_t pixels = TANK_W * TANK_H;
@@ -1225,13 +1357,15 @@ static void test_journal(void) {
     uint32_t *dirty = calloc(RENDER_DIRTY_WORDS, sizeof *dirty); assert(frames && cache && dirty);
     frames[0] = frames[JOURNAL_THEME_COUNT * pixels + 1] = 0xbeef;
     t.n_fish = 0; t.journal.xp = journal_level_xp(15); t.sd_unlocks = 0;
+    t.progression.theme_unlocks = (1u << JOURNAL_THEME_COUNT) - 1u;
     for (int cached = 0; cached < 2; cached++) {
         render_set_scene_cache(cached ? cache : NULL); render_set_dirty_mask(cached ? dirty : NULL);
         for (int theme = 0; theme < JOURNAL_THEME_COUNT; theme++) {
             t.journal.theme = (uint8_t)theme;
             render_tank(&t, frames + 1 + theme * pixels, TANK_W);
-            for (int previous = 0; previous < theme; previous++)
+            for (int previous = 0; previous < theme; previous++) {
                 assert(memcmp(frames + 1 + theme * pixels, frames + 1 + previous * pixels, pixels * 2));
+            }
             if (theme) {
                 size_t different = 0;
                 for (size_t p = 0; p < pixels; p++) different += frames[1 + theme * pixels + p] != frames[1 + p];
@@ -1249,6 +1383,8 @@ static void test_journal(void) {
             }
         }
     }
+    assert(memcmp(frames + 1, frames + 1 + pixels, pixels * 2));
+    assert(memcmp(frames + 1 + pixels, frames + 1 + 2 * pixels, pixels * 2));
     render_journal_open(); render_journal(&t, frames + 1, TANK_W);
     for (int tab = 0; tab < 3; tab++) {
         render_journal_open_section(tab);
@@ -1261,21 +1397,24 @@ static void test_journal(void) {
         assert(!memcmp(frames + 1 + tab * pixels, again, pixels * 2));
         free(again);
     }
-    assert(memcmp(frames + 1, frames + 1 + pixels, pixels * 2));
-    assert(memcmp(frames + 1 + pixels, frames + 1 + 2 * pixels, pixels * 2));
     assert(frames[0] == 0xbeef && frames[JOURNAL_THEME_COUNT * pixels + 1] == 0xbeef);
     assert(render_journal_tap(&t, render_frame_x(SET_CLOSE_X + 4), render_frame_y(SET_CLOSE_Y + 4)) == 1);
     render_set_scene_cache(NULL); render_set_dirty_mask(NULL);
     free(frames); free(cache); free(dirty);
     t.n_fish = N_FISH_START;
+    t.sd_balance = 10000;
+    t.progression.theme_unlocks = 1u;
     assert(!journal_theme_unlocked(&t, -1) && !journal_theme_unlocked(&t, JOURNAL_THEME_COUNT));
     for (int theme = 0; theme < JOURNAL_THEME_COUNT; theme++) {
-        t.journal.xp = journal_level_xp(JOURNAL_THEME_LEVELS[theme]);
-        assert(journal_theme_unlocked(&t, theme));
         if (theme) {
-            t.journal.xp--;
-            assert(!journal_set_theme(&t, theme));
-            t.journal.xp++;
+            assert(!journal_theme_unlocked(&t, theme));
+            reject_write = true;
+            int balance = t.sd_balance;
+            assert(!journal_theme_buy(&t, theme) && t.sd_balance == balance);
+            reject_write = false;
+            assert(journal_theme_buy(&t, theme) && journal_theme_unlocked(&t, theme));
+        } else {
+            assert(journal_theme_unlocked(&t, theme));
         }
         reject_write = true;
         uint8_t old_theme = t.journal.theme;
@@ -1283,7 +1422,8 @@ static void test_journal(void) {
         reject_write = false;
         assert(journal_set_theme(&t, theme));
         tank_init(&reloaded, 8); boot_enlarged(&reloaded);
-        assert(reloaded.journal.theme == theme && reloaded.journal.xp == t.journal.xp);
+        assert(reloaded.journal.theme == theme && reloaded.journal.xp == t.journal.xp &&
+               journal_theme_unlocked(&reloaded, theme));
         char *theme_json = progression_backup_json(&t); assert(theme_json);
         assert(progression_restore_json(theme_json, strlen(theme_json), true, error, sizeof error));
         cJSON *theme_root = cJSON_Parse(theme_json); assert(theme_root);
@@ -1297,30 +1437,31 @@ static void test_journal(void) {
     int previous_writes = writes;
     assert(!journal_claim(&t, 0) && !t.journal.claimed && writes == previous_writes);
     assert(progression_reset(&t, 9) && !t.journal.claimed && !t.journal.xp && !t.journal.theme && !t.journal.seen);
-    puts("PASS: Journal XP thresholds/deltas, 15 rewards, failure rollback, album, schema 3/2000 migration, themes and UI");
+    puts("PASS: frozen XP history, no active XP rewards/levels, Doubloons theme rollback, journal claims and schema 3/2000 migration");
 }
 static void test_variety_unlocks(void) {
     tank_t t, loaded; saved_size = 0; tank_init(&t, 42); boot_enlarged(&t);
     assert(!journal_variety_unlocked(&t, -1) && !journal_variety_unlocked(&t, FISH_VARIETY_COUNT));
     for (int level = 1; level <= JOURNAL_LEVEL_MAX; level++) {
         t.journal.xp = journal_level_xp(level);
+        assert(journal_level(&t) == 1);
         for (int v = 0; v < FISH_VARIETY_COUNT; v++)
-            assert(journal_variety_unlocked(&t, v) == (level >= JOURNAL_VARIETY_LEVELS[v]));
-        for (int roll = 0; roll < 30; roll++) {
-            progression_fry_roll(&t);
-            for (int k = 0; k < FRY_OFFER_N; k++) {
-                fry_offer_t offer; progression_fry_offer(&t, k, &offer);
-                assert(journal_variety_unlocked(&t, offer.variety));
-            }
-        }
-        setup_begin_customize(&t, 0);
-        for (int step = 0; step < FISH_VARIETY_COUNT; step++) setup_activate(&t, SETUP_HIT_CUSTOM0);
-        setup_activate(&t, SETUP_HIT_NEXT); setup_take_renamed();
-        assert(JOURNAL_VARIETY_LEVELS[t.fish[0].variety] <= level);
-        /* Test level gating independently of discoveries from customization. */
-        t.fish[0].variety = FISH_CLASSIC; t.journal.seen = 0;
+            assert(journal_variety_unlocked(&t, v) == (v == FISH_TETRA || v == FISH_CLASSIC));  /* starters + base stock */
     }
     t.journal.xp = 0;
+    for (int roll = 0; roll < 30; roll++) {
+        progression_fry_roll(&t);
+        for (int k = 0; k < FRY_OFFER_N; k++) {
+            fry_offer_t offer; progression_fry_offer(&t, k, &offer);
+            assert(journal_variety_unlocked(&t, offer.variety));
+        }
+        tank_t blocked = t;
+        setup_begin_customize(&t, 0);
+        assert(!setup_active());
+        for (int step = 0; step < FISH_VARIETY_COUNT; step++) setup_activate(&t, SETUP_HIT_CUSTOM0);
+        setup_activate(&t, SETUP_HIT_NEXT);
+        assert(!memcmp(&blocked, &t, sizeof t)); /* Normal looks are inherited or bought. */
+    }
     t.fish[0].variety = FISH_SHARK;
     t.bank_count = 1; t.bank[0].fish.pad = FISH_JELLYFISH;
     assert(journal_variety_unlocked(&t, FISH_SHARK) && journal_variety_unlocked(&t, FISH_JELLYFISH));
@@ -1332,15 +1473,17 @@ static void test_variety_unlocks(void) {
     tank_init(&loaded, 43); boot_enlarged(&loaded);
     assert(journal_variety_unlocked(&loaded, FISH_JELLYFISH) && !journal_variety_unlocked(&loaded, FISH_STINGRAY));
     t.journal.seen = 0; t.fish[0].variety = FISH_SHARK;
+    tank_t owned = t;
     setup_begin_customize(&t, 0); setup_activate(&t, SETUP_HIT_CUSTOM0);
     reject_write = true; setup_activate(&t, SETUP_HIT_NEXT);
-    assert(setup_active() && !t.journal.seen && t.fish[0].variety == FISH_SHARK);
-    reject_write = false; setup_activate(&t, SETUP_HIT_NEXT); setup_take_renamed();
-    assert(t.fish[0].variety == FISH_CLASSIC && journal_variety_unlocked(&t, FISH_SHARK));
+    assert(!setup_active() && !memcmp(&owned, &t, sizeof t));
+    reject_write = false;
+    journal_tick(&t);
+    assert(t.fish[0].variety == FISH_SHARK && journal_variety_unlocked(&t, FISH_SHARK));
     assert(progression_save(&t));
     tank_init(&loaded, 43); boot_enlarged(&loaded);
     assert(journal_variety_unlocked(&loaded, FISH_SHARK));
-    puts("PASS: ten level-gated varieties, fresh Classic-only tanks, unlocked shop offers, customization, owned/seen/Bank grandfathering and save persistence");
+    puts("PASS: no XP variety gates, fresh Tetra/Harborfin-only tanks, paid stock offers, blocked Normal free edits and owned/seen/Bank grandfathering");
 }
 static void test_daily_care(void) {
     tank_t t, loaded;
@@ -1354,13 +1497,19 @@ static void test_daily_care(void) {
     reject_write = true;
     assert(!progression_care_claim(&t, 0) && !t.care.claimed && !t.sd_balance && !t.journal.xp);
     reject_write = false;
-    assert(progression_care_claim(&t, 0) && t.sd_balance == 30 && t.journal.xp == 12);
+    assert(progression_care_claim(&t, 0) && t.sd_balance == 30 && t.journal.xp == 0);
     assert(!progression_care_claim(&t, 0));
     care_state_t before = t.care;
     reject_write = true;
     assert(!companion_greet(&t, 0) && !memcmp(&before, &t.care, sizeof before));
     reject_write = false;
-    assert(companion_greet(&t, 0) && (t.care.ready & 2));
+    assert(!companion_greet(&t, 0) && !memcmp(&before, &t.care, sizeof before));
+    t.hold_active = true; t.hold_time = 3;
+    t.hold_x = t.fish[0].x; t.hold_y = t.fish[0].y;
+    progression_tick(&t, CARE_CALM_SECONDS);
+    t.hold_active = false;
+    t.care.viewed_s = 0;
+    assert(t.care.ready & 2);
     t.fish[0].hunger = 0; t.fish[0].stress = 0;
     t.ui_cover = true;
     progression_tick(&t, 300); assert(!t.care.viewed_s && !(t.care.ready & 4));
@@ -1369,18 +1518,18 @@ static void test_daily_care(void) {
     progression_tick(&t, 1); assert(t.care.ready == 7);
     int coins = t.sd_balance; uint32_t xp = t.journal.xp;
     assert(progression_care_claim(&t, 1) && progression_care_claim(&t, 2));
-    assert(t.sd_balance == coins + 95 && t.journal.xp == xp + 38 && t.care.claimed == 7);
+    assert(t.sd_balance == coins + 95 && t.journal.xp == xp && t.care.claimed == 7);
     for (int i = 0; i < 100; i++) {
         t.player_feedings++; t.algae_colonies++; t.trim_px += 10 * PX_PER_CM;
         journal_tick(&t);
         assert(!progression_care_claim(&t, 0));
     }
-    assert(t.journal.xp == xp + 38);
+    assert(t.journal.xp == xp);
     for (int game = 0; game < 18; game++) {
         int reward = game < 12 ? 10 : companion_game_reward(game, game == 12 ? 16 : game == 13 ? 8 : 2048, 8);
         assert(companion_game_claim(&t, game, game == 12 ? 16 : game == 13 ? 8 : 2048, 8, reward, false));
     }
-    assert(t.care.game_paid == 18 && t.journal.xp == xp + 38);
+    assert(t.care.game_paid == 18 && t.journal.xp == xp);
     assert(progression_save(&t));
     tank_init(&loaded, 43); boot_enlarged(&loaded);
     assert(loaded.care.claimed == 7 && loaded.care.game_paid == 18 && loaded.journal.xp == t.journal.xp);
@@ -1389,7 +1538,7 @@ static void test_daily_care(void) {
     assert(progression_storage_ready() && loaded.sd_balance == t.sd_balance && loaded.journal.xp == t.journal.xp);
     assert(loaded.care.version == 1 && !loaded.care.claimed && !loaded.care.game_paid);
     for (size_t partial = 6009; partial < AQUARIUM_SAVE_BYTES; partial++) {
-        if (partial == 6032 || partial == 6168 || partial == 6336) continue; /* complete frozen prefixes remain loadable */
+        if (partial == 6032 || partial == 6168 || partial == 6336 || partial == 6424 || partial == 6464 || partial == 6472) continue; /* complete frozen prefixes remain loadable */
         saved_size = partial;
         tank_init(&loaded, 43); boot_enlarged(&loaded);
         assert(!progression_storage_ready() && saved_size == partial);
@@ -1440,30 +1589,35 @@ static void test_daily_care(void) {
     progression_care_refresh(&loaded);
     assert(!loaded.care.fallback && loaded.care.claimed == 7 && loaded.care.game_paid == 5);
     t = loaded;
-    /* Alternative connection and maintenance routes need no bought helpers or games. */
+    /* Quiet connection and viewing need no bought helpers or games. */
     test_unix += 86400; progression_care_refresh(&t);
     t.hold_active = true; t.hold_time = 3;
     t.hold_x = t.fish[0].x; t.hold_y = t.fish[0].y;
     t.night = false; t.ui_cover = false; t.fish[0].stress = 0;
     progression_tick(&t, 59); assert(!(t.care.ready & 2));
     progression_tick(&t, 1); assert(t.care.ready & 2);
-    t.algae_colonies++; journal_tick(&t); assert(t.care.ready & 4);
-    unsigned goal_xp = 0, goal_coins = 0, shop = 0;
-    for (int g = 0; g < JOURNAL_GOAL_N; g++) { goal_xp += JOURNAL_GOALS[g].xp; goal_coins += JOURNAL_GOALS[g].coins; }
+    t.reef_currents++; t.reef_visits++; journal_tick(&t); assert(!(t.care.ready & 4));
+    t.fish[0].hunger = 0;
+    progression_tick(&t, CARE_VIEW_SECONDS); assert(t.care.ready & 4);
+    unsigned goal_coins = 0, shop = 0;
+    for (int g = 0; g < JOURNAL_GOAL_N; g++) goal_coins += JOURNAL_GOALS[g].coins;
     for (int i = 0; i < SD_ITEM_COUNT; i++) shop += SD_ITEMS[i].price;
     unsigned earned = 0, earned_xp = 0;
     for (int day = 1; day <= 84; day++) {
         test_unix += 86400; progression_care_refresh(&t);
         t.player_feedings++; journal_tick(&t);
-        progression_care_greet(&t);
+        t.hold_active = true; t.hold_time = 3;
+        t.hold_x = t.fish[0].x; t.hold_y = t.fish[0].y;
+        t.night = false; t.ui_cover = false;
+        t.fish[0].hunger = t.fish[0].stress = 0;
+        progression_tick(&t, CARE_CALM_SECONDS);
         t.hold_active = false; t.fish[0].hunger = 0; t.fish[0].stress = 0;
         progression_tick(&t, 300);
         int start_coins = t.sd_balance; uint32_t start_xp = t.journal.xp;
         for (int task = 0; task < CARE_TASK_COUNT; task++) assert(progression_care_claim(&t, task));
         earned += t.sd_balance - start_coins; earned_xp += t.journal.xp - start_xp;
-        assert(earned == (unsigned)day * 125 && earned_xp == (unsigned)day * 50);
-        if (day == 28) assert(earned_xp + goal_xp < journal_level_xp(15));
-        if (day == 56) assert(earned_xp + goal_xp >= journal_level_xp(15) && earned + goal_coins >= shop);
+        assert(earned == (unsigned)day * 125 && earned_xp == 0);
+        if (day == 56) assert(earned + goal_coins >= shop);
         if (day == 84) assert(earned + goal_coins >= shop + 7 * AQUARIUM_PRICE);
     }
     test_unix = original_time;
@@ -1480,7 +1634,7 @@ static void test_game_rewards(void) {
         int balance = t.sd_balance; uint32_t xp = t.journal.xp;
         uint32_t goals = t.journal.claimed;
         assert(progression_game_reward(&t, 0, reward));
-        assert(t.sd_balance == balance + (reward <= CARE_GAME_LIMIT) && t.sd_earned == t.sd_balance);
+        assert(t.sd_balance == balance + (reward <= CARE_GAME_LIMIT ? reward + 2 : 0) && t.sd_earned == t.sd_balance);
         assert(t.journal.xp == xp && t.journal.claimed == goals);
         tank_init(&loaded, 43); boot_enlarged(&loaded);
         assert(loaded.sd_balance == t.sd_balance && loaded.journal.xp == t.journal.xp);
@@ -1529,15 +1683,18 @@ static void test_companion(void) {
     uint32_t powered = t.companion.powered_s;
     progression_slept(&t, 3600);
     assert(t.fish[0].hunger <= 6 && t.companion.powered_s == powered);
-    assert(companion_greet(&t, 0)); assert(!companion_greet(&t, 0));
-    assert(t.companion.active[0].bond == 5 && t.companion.active[0].greetings == 1);
-    companion_tick(&t, 30); assert(companion_greet(&t, 0));
+    companion_state_t ungreeted = t.companion;
+    assert(!companion_greet(&t, 0));
+    assert(!memcmp(&ungreeted, &t.companion, sizeof ungreeted));
+    companion_tick(&t, 30); assert(!companion_greet(&t, 0));
+    t.companion.active[0].bond = 10;
     t.fish[0].dart_x = -999; t.fish[0].dart_y = -999; t.fish[0].dart_timer = 2;
     assert(companion_trick(&t, 0, 0) && !companion_trick(&t, 0, 1));
     assert(t.fish[0].dart_timer == 0);
     tank_tick(&t, .1f, advisor_rules);
     assert(t.fish[0].dart_x >= 0 && t.fish[0].dart_y >= 0);
     assert(t.companion.active[0].tricks == 1 && t.companion.active[0].bond == 10);
+    t.companion.discoveries |= 1u << 6; /* An imported historical greeting, not new gameplay. */
     assert(companion_collection_ready(&t, 1) && companion_collection_claim(&t, 1));
     assert(!companion_collection_claim(&t, 1));
     assert(t.companion.cosmetic == 2);
@@ -1575,7 +1732,7 @@ static void test_companion(void) {
             assert(strstr(label, seen && companion_favorite(&t, 0) != GOAL_EXPLORE ? "(SEEN)" : "(NATURE)"));
             assert((14 + render_text_w(label, 1)) * TANK_W / PAGE_W <= TANK_W - 12);
         }
-        assert(found == ((1u << GOAL_VISIT_BUBBLES) | (1u << GOAL_FOLLOW_FRIEND) | (1u << GOAL_EXPLORE) |
+        assert(found == ((1u << GOAL_FOLLOW_FRIEND) | (1u << GOAL_EXPLORE) |
                          (1u << GOAL_REST) | (1u << GOAL_DART_PLAY) | (1u << GOAL_INSPECT_REEF)));
         assert((14 + render_text_w("Bonds never fade. Hello: every 30s.", 1)) * TANK_W / PAGE_W <= TANK_W - 4);        t = before; t.greet_timer = 0; t.companion.last_discovery = 0; assert(t.n_fish >= 2);
         t.fish[0].goal.id = GOAL_FOLLOW_FRIEND;
@@ -1683,10 +1840,11 @@ static void test_companion(void) {
     loaded.fish[0].goal.id = GOAL_VISIT_BUBBLES; loaded.fish[0].at_bubbles = true;
     companion_tick(&loaded, 0.1f); assert(loaded.companion.discoveries & 1u);
     loaded.fish[0].goal.id = GOAL_REST;
-    float x0, x1, top; int fronds; tank_veg_bed(&loaded, 0, &x0, &x1, &top, &fronds);
-    loaded.fish[0].x = (x0 + x1) / 2; loaded.fish[0].y = TANK_BOT - 10;
+    uint32_t rest_unlocks = loaded.sd_unlocks; loaded.sd_unlocks |= SD_ITEM_CASTLE;   /* calm rest is reef shelter, not grass */
+    float rest_x, rest_y; tank_reef_spot(&loaded, &rest_x, &rest_y);
+    loaded.fish[0].x = rest_x; loaded.fish[0].y = TANK_BOT - 10;
     assert(tank_in_grass(&loaded, loaded.fish[0].x, loaded.fish[0].y));
-    companion_tick(&loaded, 0.1f);
+    companion_tick(&loaded, 0.1f); loaded.sd_unlocks = rest_unlocks;
     loaded.fish[0].goal.id = GOAL_FOLLOW_FRIEND; companion_tick(&loaded, 0.1f);
     loaded.fish[0].goal.id = GOAL_DART_PLAY; companion_tick(&loaded, 0.1f);
     loaded.fish[0].goal.id = GOAL_INSPECT_REEF; loaded.fish[0].ms_bits |= MS_INSPECTED;
@@ -1701,8 +1859,10 @@ static void test_companion(void) {
     for (int g = 0; g < 6; g++) assert(loaded.companion.game_rounds[g] == 1 && loaded.companion.game_medals[g] == 3);
     assert(loaded.companion.game_best[1] == 16 && loaded.companion.game_best[5] == 18);
     state = loaded.companion; coins = loaded.sd_balance;
+    int payout = progression_game_payout(&loaded, 0, 1);   /* earned reward plus the 2-doubloon round bonus */
+    assert(payout == 0 || payout == 3);
     assert(companion_game_claim(&loaded, 0, 100, 0, 1, true));
-    assert(!memcmp(&state, &loaded.companion, sizeof state) && loaded.sd_balance == coins + 1);
+    assert(!memcmp(&state, &loaded.companion, sizeof state) && loaded.sd_balance == coins + payout);
     reject_write = true; coins = loaded.sd_balance; xp = loaded.journal.xp;
     assert(!companion_game_claim(&loaded, 0, 200, 0, 2, false));
     assert(!memcmp(&state, &loaded.companion, sizeof state) && coins == loaded.sd_balance && xp == loaded.journal.xp);
@@ -1915,15 +2075,17 @@ static void test_wearables(void) {
     tank_init(&t, 93); boot_enlarged(&t); progression_setup_done(&t);
     assert(!t.fish[0].wearable && !t.companion.active[0].wearables);
     t.sd_balance = 1000; t.journal.xp = 0;
-    assert(!companion_wearable(&t, 0, WEAR_CROWN));
-    t.journal.xp = 10000;
+    assert(companion_wearable(&t, 0, WEAR_CROWN));
+    assert(t.sd_balance == 1000 - WEAR_PRICES[WEAR_CROWN]);
+    assert(companion_wearable(&t, 0, WEAR_NONE));
     t.sd_balance = 0; assert(!companion_wearable(&t, 0, WEAR_TOP_HAT)); t.sd_balance = 1000;
     companion_state_t before = t.companion;
     reject_write = true; assert(!companion_wearable(&t, 0, WEAR_TOP_HAT)); reject_write = false;
     assert(t.sd_balance == 1000 && !t.fish[0].wearable && !memcmp(&before, &t.companion, sizeof before));
     for (int i = 1; i < WEAR_COUNT; i++) {
         int32_t wallet = t.sd_balance;
-        assert(companion_wearable(&t, 0, i) && t.sd_balance == wallet - WEAR_PRICES[i]);
+        int32_t price = companion_wearables(&t.companion.active[0]) & (1u << (i - 1)) ? 0 : WEAR_PRICES[i];
+        assert(companion_wearable(&t, 0, i) && t.sd_balance == wallet - price);
         assert(t.fish[0].wearable == i && (companion_wearables(&t.companion.active[0]) & (1u << (i - 1))));
         wallet = t.sd_balance;
         assert(companion_wearable(&t, 0, WEAR_NONE) && !t.fish[0].wearable);
@@ -1993,12 +2155,15 @@ static void test_wearables(void) {
             }
         }
     free(portraits);
-    puts("PASS: twelve per-fish wearables, level/funds gates, single-charge purchases, free equip/remove, failure rollback, binary/schema-19 JSON/schema-7 migration, Bank/swap/adventure/portraits and unequipped newborns");
+    puts("PASS: twelve per-fish wearables, Doubloons-only gates, no XP requirement, single-charge purchases, free equip/remove, failure rollback, binary/schema-19 JSON/schema-7 migration, Bank/swap/adventure/portraits and unequipped newborns");
 }
 static void test_cosmetic_colors(void) {
     tank_t t, loaded; saved_size = 0; test_unix = 2000000000;
     tank_init(&t, 95); boot_enlarged(&t); progression_setup_done(&t);
     t.sd_balance = 1000; t.journal.xp = 10000;
+    /* Legacy colors are data to preserve, not an editor route. */
+    for (int i = 0; i < CREATURE_MUSSEL; i++) t.companion.creature_colors[i] = (uint8_t)(0x31 + i);
+    t.companion.mussel_colors = 0x35;
     companion_state_t before = t.companion;
     reject_write = true; assert(!companion_colors(&t, false, CREATURE_SHRIMP, 0x3b)); reject_write = false;
     assert(!memcmp(&before, &t.companion, sizeof before));
@@ -2008,7 +2173,6 @@ static void test_cosmetic_colors(void) {
     before = t.companion; reject_write = true;
     assert(!companion_colors(&t, true, 0, 0xff)); reject_write = false;
     assert(t.fish[0].wear_colors == 0x93 && !memcmp(&before, &t.companion, sizeof before));
-    for (int i = 0; i < CREATURE_COUNT; i++) assert(companion_colors(&t, false, i, (uint8_t)(0x31 + i)));
     before = t.companion; reject_write = true;
     assert(!companion_colors(&t, false, CREATURE_MUSSEL, 0x93)); reject_write = false;
     assert(!memcmp(&before, &t.companion, sizeof before));
@@ -2037,7 +2201,8 @@ static void test_cosmetic_colors(void) {
     old_json = cJSON_PrintUnformatted(old_root); cJSON_Delete(old_root); assert(old_json);
     assert(progression_restore_json(old_json, strlen(old_json), true, error, sizeof error)); free(old_json);
     tank_init(&t, 97); boot_enlarged(&t); assert(!t.companion.mussel_colors);
-    assert(companion_colors(&t, false, CREATURE_MUSSEL, 0x35));
+    t.companion.mussel_colors = 0x35;
+    assert(progression_save(&t));
     json = progression_backup_json(&t); cJSON *bad = cJSON_Parse(json); free(json); assert(bad);
     cJSON *bad_colors = cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(bad, "companion"), "creature_colors");
     assert(cJSON_ReplaceItemInArray(bad_colors, 0, cJSON_CreateNumber(256))); invalid_object(bad);
@@ -2053,6 +2218,7 @@ static void test_cosmetic_colors(void) {
     assert(progression_save(&t)); tank_init(&loaded, 98); boot_enlarged(&loaded);
     test_unix += 7200; companion_tick(&loaded, .25f);
     assert(loaded.fish[loaded.n_fish - 1].wear_colors == 0x93 && loaded.companion.portrait_colors == 0x93);
+    loaded.fish[1].variety = loaded.fish[0].variety;
     int fry = tank_add_fish(&loaded, 0, 1); assert(fry >= 0 && !loaded.fish[fry].wear_colors);
     saved_size = 0; tank_init(&t, 99); boot_enlarged(&t); t.companion.version = 3;
     assert(progression_save(&t)); assert(saved_size == AQUARIUM_SAVE_BYTES);
@@ -2103,18 +2269,54 @@ static void test_cosmetic_colors(void) {
         t.shrimp[0].x = 110; t.shrimp[0].y = 100; t.shrimp[0].yaw = 1;
         t.snail_x = 110; t.snail_y = 80; t.snail_heading = 0;
         t.urchin_x = 110; t.sh_x = 110; t.sh_y = 100; t.sh_mode = SH_DRIFT; t.sh_hidden = false;
-        render_tank(&t, frames, TANK_W);
+        render_creature_portrait(frames, TANK_W, 224, 165, type, 0, 1);
         if (type == CREATURE_MUSSEL) t.companion.mussel_colors = 0x3b;
         else t.companion.creature_colors[type] = 0x3b;
-        render_tank(&t, frames + TANK_W * TANK_H, TANK_W);
+        memset(frames + TANK_W * TANK_H, 0, bytes);
+        render_creature_portrait(frames + TANK_W * TANK_H, TANK_W, 224, 165, type,
+                                 type == CREATURE_MUSSEL ? t.companion.mussel_colors : t.companion.creature_colors[type], 1);
         assert(memcmp(frames, frames + TANK_W * TANK_H, bytes));
-        if (type == CREATURE_MUSSEL) t.companion.mussel_colors = 0;
-        else t.companion.creature_colors[type] = 0;
-        render_tank(&t, frames + 2 * TANK_W * TANK_H, TANK_W);
-        assert(!memcmp(frames, frames + 2 * TANK_W * TANK_H, bytes));
     }
+    static const int stock_items[CREATURE_COUNT] = {5, 1, 6, 7, SD_SHOP_MUSSEL};
+    for (int species = CREATURE_SHRIMP; species < CREATURE_COUNT; species++) {
+        saved_size = 0; tank_init(&t, 300 + species); boot_enlarged(&t); progression_setup_done(&t);
+        t.sd_balance = 10000;
+        tank_t before = t;
+        reject_write = true;
+        assert(!progression_buy(&t, stock_items[species]) && !memcmp(&t, &before, sizeof t));
+        reject_write = false;
+        assert(progression_buy(&t, stock_items[species]));
+        uint8_t palette = companion_creature_colors(&t.companion, species);
+        for (int k = 0; !palette && k < 64; k++) { /* Colors roll at purchase; reroll until tinted. */
+            if (species == CREATURE_MUSSEL) break;
+            creature_sale_t sale;
+            assert(progression_creature_sale_quote(&t, species, false, &sale) && progression_creature_sale_confirm(&t, &sale));
+            assert(progression_buy(&t, stock_items[species]));
+            palette = companion_creature_colors(&t.companion, species);
+        }
+        if (species == CREATURE_MUSSEL && !palette) continue;
+        assert(palette && progression_creature_rarity(palette) > 0);
+        memset(frames, 0, bytes);
+        render_creature_portrait(frames, TANK_W, 224, 165, species, 0, 1);
+        memset(frames + TANK_W * TANK_H, 0, bytes);
+        render_creature_portrait(frames + TANK_W * TANK_H, TANK_W, 224, 165, species, palette, 1);
+        assert(memcmp(frames, frames + TANK_W * TANK_H, bytes));
+    }
+    saved_size = 0; tank_init(&t, 399); boot_enlarged(&t); progression_setup_done(&t);
+    t.sd_balance = 10000; t.companion.version = COMPANION_VERSION;
+    t.companion.creature_colors[CREATURE_SNAIL] = 0xa5;
+    assert(progression_buy(&t, 1)); /* Purchase always rolls fresh colors; a stale palette is not kept. */
     free(frames);
-    puts("PASS: free primary/detail colors on five actual creatures and twelve accessories; all 15 tints render distinctly, Natural restores exactly, rollback/Bank/adventure/portraits/newborns, legacy migration");
+    for (int mode = GAME_MODE_NORMAL; mode <= GAME_MODE_HARD; mode++) {
+        tank_t probe;
+        saved_size = 0; tank_init(&probe, 950 + mode); progression_boot(&probe);
+        assert(!progression_mode_select(&probe, mode));
+        companion_state_t locked = probe.companion;
+        for (int i = 0; i < CREATURE_COUNT; i++)
+            assert(!companion_colors(&probe, false, i, (uint8_t)(0x31 + i)));
+        assert(!memcmp(&locked, &probe.companion, sizeof locked));
+    }
+    puts("PASS: no free creature palette API in any mode; legacy creature colors persist and accessory colors retain rollback/Bank/adventure/portraits/newborns coverage");
 }
 static void compact_draw(tank_t *t, uint16_t *fb, int stride, int kind) {
     if (kind == 0) render_tank(t, fb, stride);
@@ -2138,6 +2340,7 @@ static void test_theme_edges(void) {
         tank_init(&t, 123);
         t.night = false;
         t.journal.xp = journal_level_xp(15);
+        t.progression.theme_unlocks = (1u << JOURNAL_THEME_COUNT) - 1;
         t.n_fish = 0;
         for (int i = 0; i < MAX_BUBBLE; i++) t.bubble[i].y = TANK_H / 2;
         memset(t.algae, 0, sizeof t.algae);
@@ -2281,29 +2484,17 @@ static void test_swim_extent(void) {
             fprintf(stderr, "Explore extent mode %d: %.1f..%.1f width %d\n", compact, left, right, TANK_W);
             assert(false);
         }
-        int n; tank_veg_bed(&t, 1, NULL, NULL, NULL, &n);
-        float last; tank_veg_frond(&t, 1, n - 1, &last);
-        assert(last <= TANK_W - 8 && TANK_W - last < 20);
-        assert(last == TANK_W - 12);
         for (int lush = 0; lush <= 4; lush++) {
             t.tank_ms_bits = (uint8_t)((1u << lush) - 1);
             t.reef_x = compact ? 48 : 36;
-            float root; tank_veg_frond(&t, 0, 0, &root);
-            assert(root >= 12);
-            for (int bed = 0; bed < tank_veg_beds(&t); bed++) {
+            for (int bed = 0; bed < VEG_BEDS; bed++) {
                 int count; float start, end;
                 tank_veg_bed(&t, bed, &start, &end, NULL, &count);
-                assert(count > 0);
-                if (tank_veg_kind(&t, bed) == VEG_KIND_GRASS)
-                    assert(end <= TANK_W * .44f || start >= TANK_W * .56f);
-                for (int frond = 0; frond < count; frond++) {
-                    tank_veg_frond(&t, bed, frond, &root);
-                    assert(root >= 12 && root <= TANK_W - 12);
-                }
+                assert(count == 0 && start == end);
+                assert(tank_veg_frond(&t, bed, 0, NULL) == 0);
+                tank_veg_set(&t, bed, 1);
+                assert(t.veg_growth[bed] == 0);
             }
-            for (int bed = 0; bed < VEG_BEDS; bed++) tank_veg_set(&t, bed, 1);
-            for (int x = (int)ceilf(TANK_W * .44f); x < TANK_W * .56f; x++)
-                assert(!tank_in_grass(&t, x, TANK_BOT - 20));
         }
         t.fish[0].goal.id = GOAL_DART_PLAY; t.fish[0].goal.urgency = 9;
         t.fish[0].speed = 0; t.fish[0].bold = .95f; t.fish[0].dart_timer = 0;
@@ -2314,7 +2505,7 @@ static void test_swim_extent(void) {
         }
     }
     tank_resolution(false);
-    puts("PASS: Enlarged/Normal explorers reach both glass bands, grass leaves a real central clearing at every lushness, right grass retains its edge slot, and dart speed is bounded");
+    puts("PASS: Enlarged/Normal explorers reach both glass bands, retired grass stays absent at every historical lushness, and dart speed is bounded");
 }
 static void test_collision_turns(void) {
     for (int compact = 0; compact < 2; compact++) {
@@ -2448,7 +2639,8 @@ static void test_compact_activity(void) {
         assert(tank_shrimp_display_count(&t) == n);
         t.companion.display_compact = 1;
     }
-    for (int b = 0; b < VEG_BEDS_MAX; b++) for (int i = 0; i < VEG_FRONDS_MAX; i++) t.veg_h[b][i] = 0.8f;
+    t.sd_unlocks |= SD_ITEM_PLANT;
+    tank_veg_sync(&t);
     for (int i = 0; i < MAX_BUBBLE; i++) t.bubble[i].x = t.bubble[i].y = -1000;
     t.clock = .05f;
     damage_area(&t, true); damage_area(&t, false); damage_area(&t, false);
@@ -2457,7 +2649,7 @@ static void test_compact_activity(void) {
     int sway = damage_area(&t, false);
     assert(still < TANK_W * TANK_H / 3 && sway > still * 2);
     int settled = damage_area(&t, false);
-    assert(settled == still); /* No redundant second grass repaint. */
+    assert(settled == still); /* No redundant second sword repaint. */
     size_t pixels = (size_t)TANK_W * TANK_H;
     uint16_t *a = malloc(pixels * sizeof *a), *b = malloc(pixels * sizeof *b);
     assert(a && b);
@@ -2467,6 +2659,9 @@ static void test_compact_activity(void) {
     render_tank(&t, b, TANK_W);
     assert(!memcmp(a, b, pixels * sizeof *a));
     t.bubble[0].x = 100; t.bubble[0].y = 80;
+    render_tank(&t, b, TANK_W);
+    assert(!memcmp(a, b, pixels * sizeof *a)); /* Retired bubbler columns never draw. */
+    t.bubble[0].column = false;
     render_tank(&t, b, TANK_W);
     assert(memcmp(a, b, pixels * sizeof *a));
     free(a); free(b);
@@ -2539,7 +2734,8 @@ static void test_static_backdrop(void) {
 }
 static void test_solid_clock(void) {
     tank_resolution(true);
-    tank_t t; tank_init(&t, 43); tank_new_population(&t); setup_cancel(&t);
+    tank_t t; tank_init(&t, 43); progression_fresh(&t);
+    assert(!progression_mode_select(&t, GAME_MODE_NORMAL)); setup_cancel(&t);
     t.companion.display_compact = 1; t.companion.lively = 0; t.companion.captions = 1;
     t.companion.version = COMPANION_VERSION;
     t.companion.collections = 7; t.companion.game_challenges = 63; t.companion.decor = 1;
@@ -2628,7 +2824,8 @@ static void test_solid_clock(void) {
 static void test_social_and_preview(void) {
     for (int compact = 0; compact < 2; compact++) {
         tank_resolution(compact != 0);
-        tank_t t; tank_init(&t, 54); tank_new_population(&t);
+        tank_t t; tank_init(&t, 54); progression_fresh(&t);
+        assert(!progression_mode_select(&t, GAME_MODE_NORMAL));
         t.companion.display_compact = (uint8_t)compact;
         t.fish[0].stress = t.fish[1].stress = 0;
         t.fish[0].x = t.fish[1].x = TANK_W / 2;
@@ -2711,13 +2908,13 @@ static void test_social_and_preview(void) {
         const int cards[] = {RENDER_CARD_SHRIMP, RENDER_CARD_SNAIL, RENDER_CARD_URCHIN, RENDER_CARD_SEAHORSE};
         for (int kind = 0; kind < 4; kind++) {
             float x = 224.0f * TANK_W / PAGE_W, y = 300.0f * TANK_H / PAGE_H;
-            assert(render_creature_colors_hit(&t, cards[kind], x, y) == kind);
+            assert(render_creature_colors_hit(&t, cards[kind], x, y) == -1);
             assert(render_creature_colors_hit(&t, cards[kind], 0, 0) == -1);
         }
         assert(render_creature_colors_hit(&t, 0, 224, 300) == -1);
     }
     tank_resolution(false);
-    puts("PASS: calm friendships, bounded pair leisure, stable favorite decor, transactional placement/autosaves/cancel/retry/sale and creature shortcuts at both scales");
+    puts("PASS: calm friendships, bounded pair leisure, stable favorite decor, transactional placement/autosaves/cancel/retry/sale and no free creature palette shortcuts");
 }
 
 static void test_care_feedback_damage(void) {
@@ -2857,6 +3054,12 @@ static void test_tank_polish(void) {
     replace_number(cJSON_GetObjectItemCaseSensitive(root, "polish"), "version", 2);
     invalid_object(root);
     root = cJSON_Parse(json); replace_number(root, "schema", 10);
+    static const char *const later_sections[] = {
+        "profile", "games_extra", "care", "inventory", "mussel", "game_income",
+        "content", "fixed", "reef", "creatures", "progression", "foliage"
+    };
+    for (size_t i = 0; i < sizeof later_sections / sizeof later_sections[0]; i++)
+        cJSON_DeleteItemFromObjectCaseSensitive(root, later_sections[i]);
     char *legacy = cJSON_PrintUnformatted(root); cJSON_Delete(root); assert(legacy);
     assert(progression_restore_json(legacy, strlen(legacy), true, error, sizeof error));
     free(legacy); free(json);
@@ -2880,8 +3083,7 @@ static void test_tank_polish(void) {
         uint16_t *fb = calloc(pixels + 2, sizeof *fb); assert(fb);
         uint16_t *edge = calloc(pixels, sizeof *edge); assert(edge);
         loaded.companion.cosmetic = 0;
-        render_rect(edge, TANK_W, 0, 0, PAGE_W, PAGE_H, 0x102b36);
-        render_rect_edge(edge, TANK_W, 3, 3, PAGE_W - 6, PAGE_H - 6, 0x83b8ac);
+        render_menu_backdrop(edge, TANK_W, 0, 0, PAGE_W, PAGE_H);
         fb[0] = fb[pixels + 1] = 0xa55a;
         for (int page = 8; page <= 23; page++) {
             if (page == 17) continue;
@@ -2995,7 +3197,7 @@ static void test_story(void) {
     assert(progression_save(&t));
     tank_init(&loaded, 5); progression_boot(&loaded);
     assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
-    char *json = progression_backup_json(&t);     assert(json && strstr(json, "\"schema\":20") && strstr(json, "\"story\":{") && strstr(json, "\"games\":{") && strstr(json, "\"rpg\":{") && strstr(json, "\"creative\":{") && strstr(json, "\"profile\":{") && strstr(json, "\"games_extra\":{") && strstr(json, "\"care\":{") && strstr(json, "\"inventory\":{"));
+    char *json = progression_backup_json(&t);     assert(json && strstr(json, "\"schema\":23") && strstr(json, "\"foliage\":{") && strstr(json, "\"reef\":{") && strstr(json, "\"progression\":{") && strstr(json, "\"story\":{") && strstr(json, "\"games\":{") && strstr(json, "\"rpg\":{") && strstr(json, "\"creative\":{") && strstr(json, "\"profile\":{") && strstr(json, "\"games_extra\":{") && strstr(json, "\"care\":{") && strstr(json, "\"inventory\":{"));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     tank_init(&loaded, 6); progression_boot(&loaded);
     assert(!memcmp(&loaded.story, &t.story, sizeof t.story));
@@ -3036,7 +3238,7 @@ static void test_genetics(void) {
         int kid = tank_add_fish(&u, 0, 1); assert(kid == 2);
         const fish_lineage_t *l = &u.story.active[kid];
         assert(u.fish[kid].pattern < FISH_PATTERN_COUNT && l->pattern2 <= FISH_PATTERN_COUNT && l->color2 <= FISH_COLOR_N);
-        assert(!(l->mutation & ~3u) && u.fish[kid].traits == (l->traits & 15));
+        assert(!(l->mutation & ~7u) && u.fish[kid].traits == (l->traits & 15));
         assert(companion_story_valid(&u.story, u.n_fish, u.bank_count, false, u.polish.next_id));
         spots += u.fish[kid].pattern == PATTERN_SPOTS; mutants += l->mutation != 0;
         if (l->mutation & GENE_MUTANT_PATTERN) assert(u.fish[kid].pattern >= PATTERN_SADDLE);
@@ -3064,7 +3266,7 @@ static void test_genetics(void) {
     assert(!companion_story_valid(&bad, t.n_fish, t.bank_count, false, t.polish.next_id));
     bad = t.story; bad.active[0].color2 = FISH_COLOR_N + 1;
     assert(!companion_story_valid(&bad, t.n_fish, t.bank_count, false, t.polish.next_id));
-    bad = t.story; bad.active[0].mutation = 4;
+    bad = t.story; bad.active[0].mutation = 8;
     assert(!companion_story_valid(&bad, t.n_fish, t.bank_count, false, t.polish.next_id));
     /* every trait and every marking changes the portrait */
     size_t px = (size_t)TANK_W * TANK_H * sizeof(uint16_t);
@@ -3091,11 +3293,42 @@ static void test_genetics(void) {
     free(a); free(c);
     puts("PASS: 1.3 genetics - hidden markings resurface, recessive traits show ~1 in 4, bounded mutations, saved genes and rendered traits/markings");
 }
+static void test_collection_economy(void) {
+    tank_t t, loaded; char error[96];
+    saved_size = 0; tank_init(&t, 611); boot_enlarged(&t); setup_cancel(&t);
+    t.sd_balance = 50;
+    assert(!progression_wallet_settle(&t, -51) && t.sd_balance == 50);           /* never below zero */
+    reject_write = true;
+    assert(!progression_wallet_settle(&t, -10) && t.sd_balance == 50);           /* failed save rolls back */
+    reject_write = false;
+    assert(progression_wallet_settle(&t, -10) && t.sd_balance == 40);
+    assert(progression_wallet_settle(&t, 30) && t.sd_balance == 70);
+    assert(progression_wallet_settle(&t, 0) && t.sd_balance == 70);
+    assert(!progression_collection_complete(&t, 3) && !progression_statue_show(&t, 3));
+    t.story.collection |= 3u << 9;
+    assert(!progression_collection_complete(&t, 3));
+    t.story.collection |= 4u << 9;
+    assert(progression_collection_complete(&t, 3) && !progression_collection_complete(&t, 2));
+    assert(!progression_statue_show(&t, FISH_VARIETY_COUNT) && t.story.statue == 0);
+    assert(progression_statue_show(&t, 3) && t.story.statue == 4);
+    tank_init(&loaded, 612); boot_enlarged(&loaded);
+    assert(loaded.story.collection == t.story.collection && loaded.story.statue == 4);
+    char *json = progression_backup_json(&t); assert(json && strstr(json, "\"statue\""));
+    assert(progression_statue_show(&t, -1) && t.story.statue == 0);
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error)); free(json);
+    tank_init(&loaded, 613); boot_enlarged(&loaded);
+    assert(loaded.story.collection == (7u << 9) && loaded.story.statue == 4);
+    int d = progression_demand_variety(&loaded);
+    assert(d >= 0 && d < FISH_VARIETY_COUNT);
+    for (int i = 0; i < loaded.n_fish; i++) assert(progression_fish_pedigree_pct(&loaded, i) >= 0 &&
+                                                   progression_fish_pedigree_pct(&loaded, i) <= 30);
+    puts("PASS: casino wallet settles atomically, variety collections unlock and persist the champion statue through saves and JSON");
+}
 static void test_home_navigation(void) {
     const struct { int action; home_destination_t destination; } routes[] = {
         {HOME_BANK, HOME_DEST_BANK}, {HOME_JOURNAL, HOME_DEST_JOURNAL},
         {HOME_ALBUM, HOME_DEST_JOURNAL}, {HOME_THEMES, HOME_DEST_JOURNAL},
-        {HOME_GAMES, HOME_DEST_GAMES}, {HOME_SETTINGS, HOME_DEST_SETTINGS},
+        {HOME_GAMES, HOME_DEST_GAMES}, {HOME_CASINO, HOME_DEST_GAMES}, {HOME_SETTINGS, HOME_DEST_SETTINGS},
         {HOME_RECOVERY, HOME_DEST_SETTINGS}, {HOME_KEEPER, HOME_DEST_KEEPER},
         {HOME_SHOP, HOME_DEST_SHOP}, {HOME_TANKS, HOME_DEST_TANKS},
         {HOME_NONE, HOME_DEST_NONE}, {HOME_CLOSE, HOME_DEST_NONE}
@@ -3119,6 +3352,8 @@ static void test_home_navigation(void) {
         float x = render_frame_x(390), y = render_frame_y(24);
         assert(home_open(&t, HOME_GAMES) == HOME_DEST_GAMES);
         assert(render_games_tap(&t, x, y));
+        assert(home_open(&t, HOME_CASINO) == HOME_DEST_GAMES && render_casino_active());
+        assert(render_games_tap(&t, x, y) && !render_casino_active());
         assert(home_open(&t, HOME_BANK) == HOME_DEST_BANK);
         assert(render_bank_tap(&t, x, y) == 1);
         assert(home_open(&t, HOME_JOURNAL) == HOME_DEST_JOURNAL);
@@ -3135,7 +3370,7 @@ static void test_home_navigation(void) {
     }
     puts("PASS: shared Home routes, BACK, both scales, no profile mutation or writes");
 }
-static void test_name_wheel(void) {
+static void test_name_keyboard(void) {
     tank_t t, loaded;
     for (int compact = 0; compact < 2; compact++) {
         saved_size = 0; tank_resolution(compact != 0); tank_init(&t, 19); boot_enlarged(&t);
@@ -3157,7 +3392,7 @@ static void test_name_wheel(void) {
         assert(setup_hit(render_frame_x(SETUP_TOP_NEXT_X + SETUP_TOP_BTN_W / 2),
                          render_frame_y(SETUP_TOP_BTN_Y + SETUP_BTN_H / 2)) == SETUP_HIT_NEXT);
         setup_activate(&t, SETUP_HIT_NEXT);
-        assert(setup_page() == SETUP_PG_LOOK_A);
+        assert(setup_page() == SETUP_PG_NAME_B);
         setup_cancel(&t);
         setup_begin_birth(&t, 1); setup_activate(&t, SETUP_HIT_NEXT);
         assert(setup_page() == SETUP_PG_NAME_NEW);
@@ -3167,30 +3402,60 @@ static void test_name_wheel(void) {
         tank_set_name(&t, 0, "abc"); assert(progression_save(&t));
         setup_begin_rename(&t, 0);
         assert(setup_page() == SETUP_PG_RENAME && setup_slot() == 0);
-        /* Retired prototype key IDs must never edit the wheel's name. */
+        /* Retired prototype key IDs must never edit the name. */
         for (int id = 100; id < 128; id++) setup_activate(&t, id);
         assert(!strcmp(t.fish[0].name, "abc"));
-        float x = render_frame_x(SETUP_SLOT_X + SETUP_SLOT_W / 2);
-        float y = render_frame_y(SETUP_SLOT_Y + SETUP_SLOT_H / 2);
-        assert(setup_hit(x, y) == SETUP_HIT_SLOT0);
+        float x = render_frame_x(SETUP_NAME_KB_X + 22 + 16);
+        float y = render_frame_y(SETUP_RENAME_KB_Y + 15);
+        assert(setup_hit(x, y) == 'Q');
         setup_touch(&t, x, y, true);
-        setup_touch(&t, x, y - SETUP_SPIN_PX - 1, true);
-        setup_touch(&t, x, y - SETUP_SPIN_PX - 1, false);
-        assert(!strcmp(t.fish[0].name, "bbc"));
+        setup_touch(&t, x, y, false);
+        assert(!strcmp(t.fish[0].name, "abcq"));
+        x = render_frame_x(24 + 266 + 4 + 30);
+        y = render_frame_y(SETUP_RENAME_KB_Y + 3 * 34 + 15);
+        assert(setup_hit(x, y) == '\b');
+        setup_activate(&t, setup_hit(x, y));
+        assert(!strcmp(t.fish[0].name, "abc"));
         setup_activate(&t, SETUP_HIT_BACK);
         assert(!setup_active() && !strcmp(t.fish[0].name, "abc"));
         setup_take_renamed();
+        tank_set_name(&t, 0, "a?b");
         setup_begin_rename(&t, 0);
-        setup_activate(&t, SETUP_HIT_SLOT0 + 1);
-        setup_activate(&t, SETUP_HIT_UP);
-        assert(!strcmp(t.fish[0].name, "acc"));
+        setup_activate(&t, 'Q');
+        setup_activate(&t, 'W');
+        setup_activate(&t, '\b');
+        assert(!strcmp(t.fish[0].name, "a?bq"));
+        for (int i = 0; i < FISH_NAME_MAX; i++) setup_activate(&t, 'R');
+        assert(strlen(t.fish[0].name) == FISH_NAME_MAX);
+        setup_activate(&t, 'T');
+        assert(strlen(t.fish[0].name) == FISH_NAME_MAX);
         reject_write = true; setup_activate(&t, SETUP_HIT_NEXT);
         assert(setup_active());
         reject_write = false; setup_activate(&t, SETUP_HIT_NEXT);
         assert(!setup_active() && setup_take_renamed() == 0);
         tank_init(&loaded, 20); boot_enlarged(&loaded);
-        assert(!strcmp(loaded.fish[0].name, "acc"));
+        assert(!strcmp(loaded.fish[0].name, "a?bqrrr"));
+        char aquarium_name[16] = "TANK";
+        assert(setup_name_keyboard_hit(24 + (400 - (11 * 28 + 10 * 4)) / 2 + 5 * 32 + 30,
+                                      116 + 3 * 34 + 15, 24, 116, 400, true) == 0);
+        assert(setup_name_keyboard_hit(24 + (400 - (11 * 28 + 10 * 4)) / 2 + 5 * 32 + 14,
+                                      116 + 3 * 34 + 15, 24, 116, 400, true) == '5');
+        assert(setup_name_keyboard_hit(24 + (400 - (11 * 28 + 10 * 4)) / 2 + 10 * 32 + 14,
+                                      116 + 3 * 34 + 15, 24, 116, 400, true) == '-');
+        assert(setup_name_keyboard_apply(aquarium_name, sizeof aquarium_name, '5'));
+        assert(setup_name_keyboard_apply(aquarium_name, sizeof aquarium_name, '-'));
+        assert(!strcmp(aquarium_name, "TANK5-"));
+        char aquarium_max[16] = {0};
+        for (int i = 0; i < 15; i++) assert(setup_name_keyboard_apply(aquarium_max, sizeof aquarium_max, 'R'));
+        assert(!setup_name_keyboard_apply(aquarium_max, sizeof aquarium_max, 'S'));
+        assert(strlen(aquarium_max) == 15);
         assert(!progression_setup_pending());
+        for (int i = 0; i < 2; i++) {
+            loaded.fish[i].stage = STAGE_ADULT;
+            loaded.fish[i].variety = FISH_CLASSIC;
+            loaded.fish[i].trust = 5; loaded.fish[i].energy = 8;
+            loaded.fish[i].hunger = loaded.fish[i].stress = 0;
+        }
         progression_force_arrival(&loaded);
         int newborn = progression_newborn();
         assert(newborn >= 0 && loaded.fish[newborn].stage == STAGE_FRY);
@@ -3388,13 +3653,135 @@ static void inventory_reload(tank_t *t) {
     tank_init(t, 710); boot_enlarged(t);
     assert(progression_storage_ready());
 }
+static void test_foliage(void) {
+    tank_t t, loaded, before;
+    saved_size = 0; memset(slot_exists, 0, sizeof slot_exists);
+    memset(&t, 0xa5, sizeof t); tank_init(&t, 719); boot_enlarged(&t);
+    assert(progression_setup_done(&t));
+    assert(t.foliage.version == 1 && !t.foliage.owned && !t.foliage.planted && !t.foliage.reserved);
+    assert(SD_ITEM_COUNT == 63 && SD_CATALOG_COUNT == 67 && AQUARIUM_SAVE_BYTES == 6476);
+    uint64_t owned = t.profile.owned_items, paid = t.profile.paid_items;
+    t.sd_balance = 350;
+    int total = 0, found = 0, last_price = -1;
+    for (int row = 0; row < progression_shop_count(&t); row++) {
+        int item = progression_shop_item(&t, row);
+        assert(item >= 0 && item < SD_CATALOG_COUNT && SD_ITEMS[item].price >= last_price);
+        last_price = SD_ITEMS[item].price;
+        if (SD_IS_FOLIAGE(item)) found |= 1 << (item - SD_FOLIAGE_FIRST);
+    }
+    assert(found == 15 && progression_shop_count(&t) == SD_CATALOG_COUNT - 8);
+    for (int i = 0; i < FOLIAGE_COUNT; i++) {
+        int item = SD_FOLIAGE_FIRST + i, wallet = t.sd_balance;
+        assert(strlen(SD_ITEMS[item].words) <= 28 && strlen(SD_ITEMS[item].words2) <= 28);
+        assert(!progression_item_owned(&t, item) && !progression_item_unlocked(&t, item));
+        assert(!progression_foliage_planted(&t, item));
+        assert(progression_item_price_for(&t, item) == SD_ITEMS[item].price);
+        assert(progression_buy(&t, item) && t.sd_balance == wallet - SD_ITEMS[item].price);
+        total += SD_ITEMS[item].price;
+        assert(progression_item_owned(&t, item) && progression_item_unlocked(&t, item));
+        assert(progression_foliage_planted(&t, item) && !progression_item_price_for(&t, item));
+        wallet = t.sd_balance;
+        assert(progression_buy(&t, item) && !progression_foliage_planted(&t, item));
+        assert(progression_item_owned(&t, item) && progression_buy(&t, item));
+        assert(progression_foliage_planted(&t, item) && t.sd_balance == wallet);
+        before = t;
+        assert(!progression_sell(&t, item) && !progression_sell_value(item) &&
+               !progression_sell_value_for(&t, item) && !memcmp(&t, &before, sizeof t));
+        assert(!progression_inventory_buy(&t, item) && !progression_inventory_store(&t, item, -1) &&
+               !progression_inventory_place(&t, item) && !progression_inventory_duplicate(item));
+    }
+    assert(total == 350 && !t.sd_balance && t.foliage.owned == 15 && t.foliage.planted == 15);
+    assert(t.profile.owned_items == owned && t.profile.paid_items == paid);
+    assert(!progression_foliage_planted(&t, -1) && !progression_foliage_planted(&t, SD_ITEM_COUNT - 1) &&
+           !progression_foliage_planted(&t, SD_CATALOG_COUNT) && !progression_foliage_planted(NULL, SD_FOLIAGE_FIRST));
+    before = t; reject_write = true;
+    assert(!progression_buy(&t, SD_FOLIAGE_FIRST) && !memcmp(&before, &t, sizeof t));
+    assert(progression_shop_notice() && strstr(progression_shop_notice(), "SAVE FAILED"));
+    reject_write = false;
+    assert(progression_buy(&t, SD_FOLIAGE_FIRST + 1) && t.foliage.planted == 13);
+    inventory_reload(&loaded);
+    assert(!memcmp(&loaded.foliage, &t.foliage, sizeof t.foliage));
+    char *json = progression_backup_json(&loaded); assert(json && strstr(json, "\"schema\":23"));
+    cJSON *root = cJSON_Parse(json); assert(root && cJSON_GetArraySize(root) == 26); cJSON_Delete(root);
+    assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
+    inventory_reload(&t); assert(t.foliage.owned == 15 && t.foliage.planted == 13);
+    static const char *const keys[] = {"version", "owned", "planted", "reserved"};
+    static const int bad[] = {0, 16, 16, 1};
+    for (int i = 0; i < 4; i++) {
+        root = cJSON_Parse(json); replace_number(cJSON_GetObjectItemCaseSensitive(root, "foliage"), keys[i], bad[i]);
+        invalid_object(root);
+    }
+    root = cJSON_Parse(json);
+    replace_number(cJSON_GetObjectItemCaseSensitive(root, "foliage"), "owned", 1); invalid_object(root);
+    root = cJSON_Parse(json); cJSON_DeleteItemFromObjectCaseSensitive(root, "foliage"); invalid_object(root);
+    root = cJSON_Parse(json);
+    cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(root, "schema"), 22); invalid_object(root);
+    root = cJSON_Parse(json); replace_number(root, "schema", 24); invalid_object(root);
+    unsigned char good[AQUARIUM_SAVE_BYTES]; memcpy(good, saved, sizeof good);
+    for (int i = 0; i < 4; i++) {
+        memcpy(saved, good, sizeof good); saved[6472 + i] = (unsigned char)bad[i];
+        saved_size = sizeof good;
+        tank_init(&loaded, 720); boot_enlarged(&loaded);
+        assert(!progression_storage_ready() && !memcmp(saved, good, 6472));
+    }
+    memcpy(saved, good, sizeof good); saved[6473] = 1;
+    tank_init(&loaded, 720); boot_enlarged(&loaded); assert(!progression_storage_ready());
+    for (size_t length = 6473; length < sizeof good; length++) {
+        memcpy(saved, good, sizeof good); saved_size = length;
+        tank_init(&loaded, 720); boot_enlarged(&loaded); assert(!progression_storage_ready() && saved_size == length);
+    }
+    memcpy(saved, good, sizeof good); saved_size = 6472;
+    inventory_reload(&loaded);
+    assert(loaded.foliage.version == 1 && loaded.foliage.owned == 1 && loaded.foliage.planted == 1);
+    assert(!progression_sell(&loaded, SD_FOLIAGE_FIRST));
+    assert(progression_save(&loaded) && saved_size == 6476);
+    root = cJSON_Parse(json); replace_number(root, "schema", 22);
+    char *legacy = cJSON_PrintUnformatted(root); cJSON_Delete(root); assert(legacy);
+    assert(progression_restore_json(legacy, strlen(legacy), true, error, sizeof error)); free(legacy);
+    inventory_reload(&t); assert(t.foliage.owned == 1 && t.foliage.planted == 1);
+    /* A set is aquarium-local, unlike the wallet and ordinary decor storage. */
+    t.sd_balance = 10000;
+    assert(!progression_aquarium_move(&t, 1)); assert(progression_setup_done(&t));
+    assert(t.foliage.version == 1 && !t.foliage.owned && !t.foliage.planted);
+    before = t; t.sd_balance = 0;
+    assert(!progression_buy(&t, SD_FOLIAGE_FIRST + 2));
+    assert(progression_shop_notice() && strstr(progression_shop_notice(), "DOUBLOONS"));
+    t = before; before = t; reject_write = true;
+    assert(!progression_buy(&t, SD_FOLIAGE_FIRST + 2) && !memcmp(&t, &before, sizeof t));
+    reject_write = false;
+    assert(progression_buy(&t, SD_FOLIAGE_FIRST + 2) && t.foliage.owned == 4 && t.foliage.planted == 4);
+    assert(!progression_aquarium_move(&t, 0) && t.foliage.owned == 1 && t.foliage.planted == 1);
+    before = t; reject_write = true;
+    assert(progression_aquarium_move(&t, 1) && !memcmp(&t, &before, sizeof t)); reject_write = false;
+    for (size_t length = 6473; length <= 6475; length++) {
+        slot_sizes[1] = length;
+        assert(progression_aquarium_move(&t, 1) && !memcmp(&t, &before, sizeof t));
+    }
+    slot_sizes[1] = 6476;
+    slots[1][6472] = 0;
+    assert(progression_aquarium_move(&t, 1) && !memcmp(&t, &before, sizeof t));
+    slots[1][6472] = 1;
+    assert(!progression_aquarium_move(&t, 1) && t.foliage.owned == 4 && t.foliage.planted == 4);
+    assert(!progression_aquarium_move(&t, 0));
+    slot_sizes[1] = 6472;
+    assert(!progression_aquarium_move(&t, 1) && t.foliage.owned == 1 && t.foliage.planted == 1);
+    free(json);
+    saved_size = 0; tank_init(&t, 721); progression_boot(&t);
+    assert(!progression_mode_select(&t, GAME_MODE_CREATIVE)); assert(progression_setup_done(&t));
+    int wallet = t.sd_balance;
+    for (int item = SD_FOLIAGE_FIRST; item < SD_CATALOG_COUNT; item++)
+        assert(!progression_item_price_for(&t, item) && progression_buy(&t, item));
+    assert(t.foliage.owned == 15 && t.foliage.planted == 15 && t.sd_balance == wallet);
+    inventory_reload(&loaded); assert(loaded.foliage.owned == 15 && loaded.foliage.planted == 15);
+    puts("PASS: three local floor sets, paid/free purchases, store/replant, rollback, strict schema-23/6476 persistence, legacy migration and aquarium isolation");
+}
 static void test_inventory(void) {
     tank_t t, loaded, before;
     saved_size = 0; memset(slot_exists, 0, sizeof slot_exists);
     tank_init(&t, 710); boot_enlarged(&t); progression_setup_done(&t);
     t.sd_balance = 10000; assert(progression_save(&t));
     int slot = tank_decor_slot(9), earned = t.sd_earned;
-    assert(AQUARIUM_SAVE_BYTES == 6424);
+    assert(AQUARIUM_SAVE_BYTES == 6476);
     before = t;
     assert(!progression_inventory_buy(&t, 9) && !memcmp(&before, &t, sizeof t));
     assert(progression_buy(&t, 9));
@@ -3472,7 +3859,9 @@ static void test_inventory(void) {
     }
     assert(loaded.coral_growth == 0.42f && loaded.coral_rgb == 0x123456);
     assert(loaded.cluster_growth == 0.57f && tank_cluster_scheme(&loaded) == 2);
-    for (int i = 0; i < VEG_FRONDS_MAX; i++) assert(fabsf(loaded.veg_h[3][i] - 0.63f) < 0.00001f);
+    int sword_fronds; tank_veg_bed(&loaded, 3, NULL, NULL, NULL, &sword_fronds);
+    for (int i = 0; i < sword_fronds; i++)
+        assert(fabsf(loaded.veg_h[3][i] - (0.44f + (float)((i * 13 + 7) % 17) / 170.0f)) < 0.00001f);
     t = loaded;
     assert(progression_inventory_buy(&t, 9) && progression_inventory_place(&t, 9));
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
@@ -3500,7 +3889,7 @@ static void test_inventory(void) {
     before = t;
     assert(!progression_inventory_buy(&t, 9) && !memcmp(&before, &t, sizeof t));
     assert(!progression_inventory_store(&t, 9, -1) && !memcmp(&before, &t, sizeof t));
-    char *json = progression_backup_json(&t); assert(json && strstr(json, "\"schema\":20"));
+    char *json = progression_backup_json(&t); assert(json && strstr(json, "\"schema\":23"));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     inventory_reload(&loaded); assert(!memcmp(&t.inventory, &loaded.inventory, sizeof t.inventory));
     /* Reject aggregate overcapacity and paid provenance exceeding ownership. */
@@ -3604,18 +3993,21 @@ static void test_per_game_income(void) {
     tank_init(&t, 930); boot_enlarged(&t); progression_setup_done(&t);
     assert(GAME_INCOME_COUNT == 18 && GAME_DAILY_TOTAL == 90 && CARE_GAME_LIMIT == 5);
     char *stale = progression_backup_json(&t); assert(stale);
+    int paid_total = 0;
     for (int game = 0; game < GAME_INCOME_COUNT; game++) {
         for (int round = 0; round < 7; round++) {
             int wallet = t.sd_balance; uint32_t xp = t.journal.xp;
             int score = game == 12 ? 16 : game == 13 ? 8 : 2048;
             int reward = game >= 12 ? companion_game_reward(game, score, 8) : 8;
-            assert(progression_game_payout(&t, game, 8) == (round < 5));
+            assert(progression_game_payout(&t, game, 8) == (round < 5 ? 10 : 0));
+            int expected = round < 5 && reward ? (reward > 10 ? 10 : reward) + 2 : 0;
             assert(companion_game_claim(&t, game, score, 8, reward, (round & 1) != 0));
-            assert(t.sd_balance == wallet + (round < 5) && t.journal.xp == xp);
+            assert(t.sd_balance == wallet + expected && t.journal.xp == xp);
+            paid_total += expected;
         }
         assert(t.game_income.paid[game] == 5);
     }
-    assert(t.care.game_paid == 90 && t.sd_balance == 90 && t.sd_earned == 90);
+    assert(t.care.game_paid == 90 && t.sd_balance == paid_total && t.sd_earned == paid_total);
     assert(progression_restore_json(stale, strlen(stale), false, error, sizeof error));
     assert(progression_restore_json(stale, strlen(stale), true, error, sizeof error)); free(stale);
     inventory_reload(&loaded); t = loaded;
@@ -3666,7 +4058,7 @@ static void test_mussel(void) {
     int64_t now = test_unix;
     tank_init(&t, 920); boot_enlarged(&t); progression_setup_done(&t);
     assert(CARE_COINS[0] == 30 && CARE_COINS[1] == 30 && CARE_COINS[2] == 65);
-    assert(CARE_XP[0] + CARE_XP[1] + CARE_XP[2] == 50 && CARE_GAME_LIMIT == 5);
+    assert(CARE_XP[0] + CARE_XP[1] + CARE_XP[2] == 0 && CARE_GAME_LIMIT == 5);
     t.care.ready = 7;
     int wallet = t.sd_balance, earned = t.sd_earned; uint32_t xp = t.journal.xp;
     assert(progression_care_claim(&t, 0) && progression_care_claim(&t, 1));
@@ -3674,7 +4066,7 @@ static void test_mussel(void) {
     reject_write = true; assert(!progression_care_claim(&t, 2)); reject_write = false;
     assert(!t.mussel.owned && t.care.claimed == 3);
     assert(progression_care_claim(&t, 2) && !t.mussel.owned);
-    assert(t.sd_balance == wallet + 125 && t.sd_earned == earned + 125 && t.journal.xp == xp + 50);
+    assert(t.sd_balance == wallet + 125 && t.sd_earned == earned + 125 && t.journal.xp == xp);
     t.sd_balance = SD_PRICE_MUSSEL - 1;
     tank_t before = t;
     assert(!progression_buy(&t, SD_SHOP_MUSSEL) && !memcmp(&before, &t, sizeof t));
@@ -3855,7 +4247,8 @@ static void test_backup_validation(void) {
     assert(progression_restore_json(reordered, strlen(reordered), false, error, sizeof error));
     static const char *const sections[] = {
         "tank", "companion", "polish", "story", "games", "rpg", "creative",
-        "games_extra", "profile", "care", "inventory", "content", "fixed", "mussel", "game_income"
+        "games_extra", "profile", "care", "inventory", "content", "fixed", "mussel", "game_income",
+        "reef", "creatures", "progression", "foliage"
     };
     cJSON *canonical = cJSON_Parse(json); assert(canonical);
     for (int order = 0; order < 2; order++) {
@@ -3938,7 +4331,7 @@ int main(int argc, char **argv) {
                (migrated.sd_unlocks & SD_ITEM_CHEST));
         assert(progression_save(&migrated));
         for (size_t partial = 6169; partial < AQUARIUM_SAVE_BYTES; partial++) {
-            if (partial == 6336) continue;   /* the complete schema-19 prefix, before the movable-scenery tail */
+            if (partial == 6336 || partial == 6424 || partial == 6464 || partial == 6472) continue; /* complete schema-19/20/21/22 prefixes */
             saved_size = partial;
             tank_init(&old, 894); boot_enlarged(&old);
             assert(!progression_storage_ready() && saved_size == partial);
@@ -3946,10 +4339,19 @@ int main(int argc, char **argv) {
         saved_size = AQUARIUM_SAVE_BYTES;
         tank_init(&migrated, 895); boot_enlarged(&migrated);
         assert(progression_storage_ready() && !migrated.content.owned);
-        puts("PASS: schema-18 binary prefix migrates empty content; every partial schema-19/20 tail is refused without writes");
+        puts("PASS: schema-18 binary prefix migrates empty content; every partial schema-19/20/21 tail is refused without writes");
+        return 0;
+    }
+    if (argc >= 2 && !strcmp(argv[1], "--reef-care-only")) {
+        test_journal();
+        test_daily_care();
+        test_shop_expansion();
+        test_retired_achievements();
+        test_mode_care_notices();
         return 0;
     }
     if (argc >= 2 && !strcmp(argv[1], "--inventory-only")) {
+        test_foliage();
         test_inventory();
         test_mussel();
         test_per_game_income();
@@ -3958,6 +4360,7 @@ int main(int argc, char **argv) {
             saved_size = fread(saved, 1, sizeof saved, f); fclose(f);
             tank_t t; inventory_reload(&t);
             inventory_state_t empty = {0}; assert(!memcmp(&t.inventory, &empty, sizeof empty));
+            assert(t.foliage.version == 1 && t.foliage.owned == 1 && t.foliage.planted == 1 && !t.foliage.reserved);
         }
         puts("PASS: all historical binary save fixtures migrate with empty inventory");
         return 0;
@@ -3966,6 +4369,7 @@ int main(int argc, char **argv) {
     test_tank_polish();
     test_story();
     test_genetics();
+    test_collection_economy();
     test_social_and_preview();
     test_theme_detail_damage();
     test_care_feedback_damage();
@@ -3986,10 +4390,13 @@ int main(int argc, char **argv) {
     uint32_t *word_guard = malloc((word_count + 2) * sizeof *word_guard); assert(word_guard);
     word_guard[0] = word_guard[word_count + 1] = 0xa5a5a5a5u;
     render_set_mask_scratch(word_guard + 1);
-    tank_t tank; memset(&tank, 0xa5, sizeof tank); tank_init(&tank, 1234); boot_enlarged(&tank);
+    tank_t tank; memset(&tank, 0xa5, sizeof tank); tank_init(&tank, 1234);
+    progression_state_t empty_progression = {0};
+    assert(!memcmp(&tank.progression, &empty_progression, sizeof empty_progression));
+    boot_enlarged(&tank);
     assert(tank.pumpkin_x == 0 && tank.chest_x == 0 && tank.decor_rank[5] == 0);
     progression_sd_grant(&tank, SD_PRICE_CHEST + 20);
-    assert(!progression_buy(&tank, -1) && !progression_buy(&tank, SD_ITEM_COUNT));
+    assert(!progression_buy(&tank, -1) && !progression_buy(&tank, SD_CATALOG_COUNT));
     assert(progression_buy(&tank, 9) && tank.sd_balance == 20);
     assert(!progression_buy(&tank, 9));
     assert(tank.sd_unlocks & SD_ITEM_CHEST);
@@ -4015,7 +4422,7 @@ int main(int argc, char **argv) {
     assert(restored.tools_locked && restored.autofeed_off);
     assert(restored.fish[0].trust == 7.25f && restored.fish[0].eaten == 11);
     assert(restored.sd_paid_fish[0] == 3 && restored.sd_colonies_paid == 2);
-    assert(restored.algae[0] == 123 && restored.veg_h[0][0] == 0.45f);
+    assert(restored.algae[0] == 0 && restored.veg_h[0][0] == 0);
     assert(restored.chest_x == tank.chest_x && restored.chest_z == DECOR_Z_FRONT);
     assert(restored.decor_rank[5] == tank.decor_rank[5]);
     reject_write = true;
@@ -4089,10 +4496,11 @@ int main(int argc, char **argv) {
     uint16_t *fb = calloc(TANK_W * TANK_H, sizeof *fb); assert(fb);
     tank_t shop_tank = tank;
     shop_tank.sd_unlocks &= ~SD_ITEM_CHEST; shop_tank.sd_balance = SD_PRICE_CHEST;
+    shop_tank.profile.owned_items &= ~(UINT64_C(1) << 9);
     render_shop_leave();
     int chest_row = 0;
-    while (progression_shop_item(&shop_tank, chest_row) != 9) chest_row++;
-    chest_row += progression_fry_for_sale(&shop_tank);
+    while (chest_row < progression_shop_count(&shop_tank) && progression_shop_item(&shop_tank, chest_row) != 9) chest_row++;
+    assert(chest_row < progression_shop_count(&shop_tank));
     for (int i = 0; i < chest_row / SHP_PER_PAGE; i++) assert(render_shop_tap(&shop_tank, render_frame_x(SHP_ARROW_X1 + 12), render_frame_y(40)) == SHOP_TAP_KEPT);
     int row = chest_row % SHP_PER_PAGE;
     assert(render_shop_tap(&shop_tank, render_frame_x(150), render_frame_y(SHP_ROW_Y0 + row * SHP_ROW_DY + 16)) == SHOP_TAP_KEPT);
@@ -4319,8 +4727,9 @@ int main(int argc, char **argv) {
     assert((a[blue_row] & 31) > ((a[blue_row] >> 11) & 31) * 2);
     empty.sd_unlocks |= SD_ITEM_SAND; empty.sand_style = SAND_STYLE_RAINBOW;
     render_tank(&empty, a, TANK_W);
-    uint16_t red_sand = scene[170 * TANK_W + 30], green_sand = scene[170 * TANK_W + 120];
-    uint16_t blue_sand = scene[170 * TANK_W + 200];
+    /* Sample exposed sand below the new ground-cover leaves. */
+    uint16_t red_sand = scene[(TANK_H - 1) * TANK_W + 30], green_sand = scene[(TANK_H - 1) * TANK_W + 120];
+    uint16_t blue_sand = scene[(TANK_H - 1) * TANK_W + 200];
     assert(((red_sand >> 11) & 31) > (red_sand & 31) * 2);
     assert(((green_sand >> 5) & 63) > ((green_sand >> 11) & 31) * 2);
     assert((blue_sand & 31) > ((blue_sand >> 11) & 31) * 2);
@@ -4340,10 +4749,13 @@ int main(int argc, char **argv) {
         assert(tank.sand_style == (i + 1) % SAND_STYLE_COUNT);
     }
     for (int item = 10; item < SD_ITEM_COUNT; item++) {
+        if (item == 30 || item == 31 || item == SD_SHOP_MUSSEL) continue; /* mussel: Creature Market */
         tank_t shop = tank; shop.sd_unlocks = 0; shop.polish.scenery_unlocks = 0; shop.sd_balance = SD_ITEMS[item].price;
+        shop.profile.owned_items = 0;
+        shop.mussel.owned = 0;
         int row_index = 0;
-        while (progression_shop_item(&shop, row_index) != item) row_index++;
-        row_index += progression_fry_for_sale(&shop);
+        while (row_index < progression_shop_count(&shop) && progression_shop_item(&shop, row_index) != item) row_index++;
+        assert(row_index < progression_shop_count(&shop));
         render_shop_leave();
         for (int page = 0; page < row_index / SHP_PER_PAGE; page++)
             render_shop_tap(&shop, render_frame_x(SHP_ARROW_X1 + 12), render_frame_y(SHP_ARROW_Y + 8));
@@ -4364,36 +4776,49 @@ int main(int argc, char **argv) {
     int card_fish, rename_x, sell_x, button_y;
     render_milestones_show_fish(&edits, 0); render_milestones(&edits, a, TANK_W);
     assert(render_milestones_card(&edits, &card_fish, &rename_x, &sell_x, &button_y) && card_fish == 0);
-    assert(render_milestones_tap(&edits, render_frame_x(224), button_y - render_frame_y(44)) == MS_TAP_CUSTOM);
+    assert(render_milestones_tap(&edits, render_frame_x(224), button_y - render_frame_y(44)) != MS_TAP_CUSTOM);
+    setup_begin_customize(&edits, 0);
+    assert(!setup_active());
+    tank_t identity_before = edits;
+    for (int row = 0; row < 4; row++) setup_activate(&edits, SETUP_HIT_CUSTOM0 + row);
+    assert(!memcmp(&edits, &identity_before, sizeof edits));
     render_milestones_show_fish(&edits, 0);
     assert(render_milestones_tap(&edits, rename_x, button_y) == MS_TAP_RENAME);
+    render_milestones_leave();
+    unsigned char identity_save[sizeof saved];
+    size_t identity_save_size = saved_size;
+    memcpy(identity_save, saved, saved_size);
+    assert(progression_reset(&edits, 222));
+    assert(!progression_mode_select(&edits, GAME_MODE_HARD));
+    assert(progression_setup_done(&edits));
+    tank_reframe(&edits, false); edits.companion.display_compact = 0;
+    assert(progression_save(&edits));
+    setup_begin_customize(&edits, 0);
+    assert(!setup_active());
+    identity_before = edits;
+    for (int row = 0; row < 4; row++) setup_activate(&edits, SETUP_HIT_CUSTOM0 + row);
+    assert(!memcmp(&edits, &identity_before, sizeof edits));
+    assert(progression_reset(&edits, 222));
+    assert(!progression_mode_select(&edits, GAME_MODE_CREATIVE));
+    assert(progression_setup_done(&edits));
+    tank_reframe(&edits, false); edits.companion.display_compact = 0;
+    assert(progression_save(&edits));
+    render_milestones_show_fish(&edits, 0); render_milestones(&edits, a, TANK_W);
+    assert(render_milestones_card(&edits, &card_fish, &rename_x, &sell_x, &button_y));
+    assert(render_milestones_tap(&edits, render_frame_x(224), button_y - render_frame_y(44)) != MS_TAP_CUSTOM);
     render_milestones_leave();
     edits.journal.xp = journal_level_xp(JOURNAL_LEVEL_MAX);
     uint32_t old_body = edits.fish[0].color, old_accent = edits.fish[0].accent;
     setup_begin_customize(&edits, 0);
-    assert(setup_active() && setup_fish() == 0 && setup_page() == SETUP_PG_CUSTOM);
-    for (int row = 0; row < 4; row++)
-        assert(setup_hit(render_frame_x(220), render_frame_y(SETUP_CUSTOM_Y + row * SETUP_CUSTOM_DY + 18)) == SETUP_HIT_CUSTOM0 + row);
-    setup_activate(&edits, SETUP_HIT_CUSTOM0);
-    setup_activate(&edits, SETUP_HIT_CUSTOM0 + 1);
-    setup_activate(&edits, SETUP_HIT_CUSTOM0 + 2);
-    setup_activate(&edits, SETUP_HIT_CUSTOM0 + 3);
-    assert(edits.fish[0].variety == 0 && edits.fish[0].pattern == 0 && edits.fish[0].color == old_body);
-    assert(progression_save(&edits));
-    tank_init(&restored, 222); boot_enlarged(&restored);
-    assert(restored.fish[0].variety == 0 && restored.fish[0].color == old_body);
-    render_setup(&edits, a, TANK_W, 0);
-    setup_activate(&edits, SETUP_HIT_BACK);
-    assert(!setup_active() && edits.fish[0].variety == 0 && edits.fish[0].pattern == 0);
+    assert(!setup_active());
+    identity_before = edits;
+    for (int row = 0; row < 4; row++) setup_activate(&edits, SETUP_HIT_CUSTOM0 + row);
+    setup_activate(&edits, SETUP_HIT_NEXT);
+    assert(!memcmp(&edits, &identity_before, sizeof edits));
     assert(edits.fish[0].color == old_body && edits.fish[0].accent == old_accent);
-    setup_take_renamed();
-    setup_begin_customize(&edits, 0);
-    for (int i = 0; i < 4; i++) setup_activate(&edits, SETUP_HIT_CUSTOM0);
-    for (int i = 0; i < 2; i++) setup_activate(&edits, SETUP_HIT_CUSTOM0 + 1);
-    reject_write = true; setup_activate(&edits, SETUP_HIT_NEXT);
-    assert(setup_active());
-    reject_write = false; setup_activate(&edits, SETUP_HIT_NEXT);
-    assert(!setup_active() && setup_take_renamed() == 0);
+    /* Looks still persist when acquired through stock or inheritance. */
+    edits.fish[0].variety = FISH_PUFFER; edits.fish[0].pattern = PATTERN_BAND;
+    assert(progression_save(&edits));
     tank_init(&restored, 222); boot_enlarged(&restored);
     assert(restored.fish[0].variety == FISH_PUFFER && restored.fish[0].pattern == PATTERN_BAND);
     char *custom_json = progression_backup_json(&edits); assert(custom_json);
@@ -4428,13 +4853,6 @@ int main(int argc, char **argv) {
             portrait.variety = (uint8_t)other; render_fish_portrait(b, TANK_W, 224, 180, 2, &portrait, 0);
             assert(memcmp(a, b, TANK_W * TANK_H * sizeof *a));
         }
-        setup_begin_customize(&edits, 0);
-        for (int step = 0; edits.fish[0].variety != style && step < FISH_VARIETY_COUNT; step++) {
-            setup_activate(&edits, SETUP_HIT_CUSTOM0);
-            setup_activate(&edits, SETUP_HIT_NEXT); setup_take_renamed();
-            if (edits.fish[0].variety != style) setup_begin_customize(&edits, 0);
-        }
-        setup_cancel(&edits);
         edits.fish[0].variety = (uint8_t)style;
         assert(progression_save(&edits));
         tank_init(&restored, 222); boot_enlarged(&restored);
@@ -4477,6 +4895,9 @@ int main(int argc, char **argv) {
             assert(guarded[0] == 0xabcd && guarded[TANK_W * TANK_H + 1] == 0xdcba);
         }
     free(guarded);
+    puts("PASS: Normal/Hard/Creative names-only identity, no free fish styling, all varieties/patterns and JSON persistence");
+    memcpy(saved, identity_save, identity_save_size); saved_size = identity_save_size;
+    edits.profile = tank.profile; edits.creative = tank.creative;
     edits.fish[0].variety = edits.fish[1].variety = FISH_ANGEL;
     edits.fish[0].pattern = edits.fish[1].pattern = PATTERN_SPOTS;
     int baby = tank_add_fish(&edits, 0, 1); assert(baby >= 0);
@@ -4562,20 +4983,16 @@ int main(int argc, char **argv) {
     assert(writes == update_writes);
     net_port_creds_forget(); net_port_off();
     tank_t colors = restored;
+    assert(progression_reset(&colors, 9876));
+    assert(!progression_mode_select(&colors, GAME_MODE_CREATIVE));
+    assert(progression_setup_done(&colors));
     colors.fish[0].color = FISH_BODY_COLORS[0]; colors.fish[0].accent = 0x123456;
-    for (int color = 0; color < FISH_COLOR_N; color++) {
+    for (int row = 2; row < 4; row++) {     /* no free body/marking palette, even in Creative */
         setup_begin_customize(&colors, 0);
-        setup_activate(&colors, SETUP_HIT_CUSTOM0 + 2); setup_activate(&colors, SETUP_HIT_NEXT);
-        assert(colors.fish[0].color == FISH_BODY_COLORS[(color + 1) % FISH_COLOR_N]);
-        assert(colors.fish[0].fin == tank_fin_for(colors.fish[0].color));
-        setup_take_renamed();
-    }
-    colors.fish[0].color = 0x123456; colors.fish[0].accent = FISH_MARKING_COLORS[0];
-    for (int color = 0; color < FISH_COLOR_N; color++) {
-        setup_begin_customize(&colors, 0);
-        setup_activate(&colors, SETUP_HIT_CUSTOM0 + 3); setup_activate(&colors, SETUP_HIT_NEXT);
-        assert(colors.fish[0].accent == FISH_MARKING_COLORS[(color + 1) % FISH_COLOR_N]);
-        setup_take_renamed();
+        assert(!setup_active());
+        setup_activate(&colors, SETUP_HIT_CUSTOM0 + row); setup_activate(&colors, SETUP_HIT_NEXT);
+        assert(colors.fish[0].color == FISH_BODY_COLORS[0] && colors.fish[0].accent == 0x123456);
+        assert(setup_take_renamed() < 0);
     }
     uint32_t before_color = colors.fish[0].color; int before_fish = colors.n_fish;
     reject_erase = true;
@@ -4586,7 +5003,7 @@ int main(int argc, char **argv) {
     assert(progression_setup_pending() && colors.n_fish == 2 && colors.sd_balance == 0 && colors.sd_unlocks == 0);
     assert(colors.sand_style == 0 && colors.water_style == 0 && !colors.autofeed_off);
     for (int i = 0; i < colors.n_fish; i++)
-        assert(colors.fish[i].stage == STAGE_FRY && colors.fish[i].variety == FISH_CLASSIC && colors.fish[i].pattern == PATTERN_STRIPES);
+        assert(colors.fish[i].stage == STAGE_FRY && colors.fish[i].variety == FISH_TETRA && colors.fish[i].pattern == PATTERN_STRIPES);
     tank_init(&restored, 1); boot_enlarged(&restored);
     assert(progression_setup_pending() && restored.n_fish == 2 && restored.sd_unlocks == 0 && restored.sd_balance == 0);
     reject_write = true;
@@ -4597,8 +5014,9 @@ int main(int argc, char **argv) {
     test_journal();
     test_home_navigation();
     test_simple_scene();
-    test_name_wheel();
+    test_name_keyboard();
     test_normal_default();
+    test_retired_achievements();
     test_mode_care_notices();
     test_companion();
     test_adventure_traveler();

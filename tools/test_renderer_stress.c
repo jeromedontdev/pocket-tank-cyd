@@ -259,8 +259,9 @@ static void check_motion_cache(void) {
                                   0xf25b65, f.stress / 10.0f * .18f), 0x5a6a6e, pale));
         assert(m.tail == sinf(f.swim_phase + f.wander) * (.32f + f.speed * .007f));
         const float *offsets = jelly_strands(clock);
-        for (int s = 0; s < 5; s++) for (int seg = 1; seg <= 6; seg++)
-            assert(offsets[s * 6 + seg - 1] == sinf(clock * 3 + seg * .65f + s) * seg * .55f);
+        for (int s = 0; s < JELLY_STRANDS; s++) for (int seg = 1; seg <= JELLY_SEGMENTS; seg++)
+            assert(offsets[s * JELLY_SEGMENTS + seg - 1] ==
+                   sinf(clock * (s < 6 ? 2.2f : 1.6f) + seg * 0.58f + s * 1.3f) * seg * (s < 6 ? 0.5f : 0.32f));
     }
     const float *ridge = snail_foot_ridge();
     for (int x = -16; x <= 20; x++) assert(ridge[x + 16] == snail_foot_top(x));
@@ -557,7 +558,7 @@ static void check_scenery_cadence(void) {
     tank_t t = {0};
     render_work_caches(false); render_work_caches(true);
     fail_render_calloc = true;
-    assert(veg_cached_sway(&t, 0, false, 0, VEG_SEED[0]) == veg_sway(&t, false, 0, VEG_SEED[0], t.clock));
+    assert(veg_cached_sway(&t, 0, VEG_SEED[3]) == veg_sway(&t, 0, VEG_SEED[3], t.clock));
     assert(!g_veg_poses);
     fail_render_calloc = false;
     render_work_caches(false); render_work_caches(true);
@@ -572,21 +573,16 @@ static void check_scenery_cadence(void) {
         assert(secondary_clock(&t) == held);
         t.clock = 1 / rate + .01f;
         assert(secondary_clock(&t) > held);
-        float grass_rate = detail == SCENE_ENHANCED ? 4 : 2;
-        float initial[VEG_BEDS_MAX];
-        for (int b = 0; b < VEG_BEDS_MAX; b++) initial[b] = veg_clock(&t, 0, VEG_SEED[b]);
+        float sword_rate = detail == SCENE_ENHANCED ? 4 : 2;
+        float initial = veg_clock(&t, 0, VEG_SEED[3]);
         for (int step = 0; step < 20; step++) {
             t.clock = step * .017f;
-            for (int b = 0; b < VEG_BEDS_MAX; b++)
-                for (int i = 0; i < VEG_FRONDS_MAX; i++)
-                    for (int sword = 0; sword < 2; sword++)
-                        assert(veg_cached_sway(&t, b, sword != 0, i, VEG_SEED[b]) ==
-                               veg_sway(&t, sword != 0, i, VEG_SEED[b], t.clock));
+            for (int i = 0; i < VEG_FRONDS_MAX; i++)
+                assert(veg_cached_sway(&t, i, VEG_SEED[3]) ==
+                       veg_sway(&t, i, VEG_SEED[3], t.clock));
         }
-        int changed = 0;
-        for (int b = 0; b < VEG_BEDS_MAX; b++)
-            changed += initial[b] != veg_clock(&t, 1 / grass_rate * .4f, VEG_SEED[b]);
-        assert(changed > 0 && changed < VEG_BEDS_MAX);
+        assert(initial == veg_clock(&t, .1f / sword_rate, VEG_SEED[3]));
+        assert(initial < veg_clock(&t, 2 / sword_rate, VEG_SEED[3]));
         fish_t f = {0}; f.speed = 35; f.yaw = f.yaw_tail = 1;
         f.swim_phase = .01f * (8 + 35 * .055f);
         fish_motion_t a = fish_motion(&f);
@@ -598,7 +594,7 @@ static void check_scenery_cadence(void) {
     render_work_caches(false);
     assert(!g_veg_poses && !render_work_cache_bytes());
     render_work_caches(true);
-    fprintf(stderr, "PASS: background holds at independent cadence, beds stagger updates, fish tails keep full-rate motion\n");
+    fprintf(stderr, "PASS: one sword pose cache preserves independent scenery cadence and allocation fallback; fish tails keep full-rate motion\n");
 }
 static void check_damage_cost_plan(void) {
     int saved_policy = g_damage_policy;
@@ -730,6 +726,9 @@ static void fixture(tank_t *t, bool normal, int group) {
     tank_resolution(normal);
     memset(t, 0, sizeof *t);
     tank_init(t, 0x5167);
+#ifndef RENDER_BASELINE
+    t->foliage = (foliage_state_t){1, (1u << FOLIAGE_COUNT) - 1, (1u << FOLIAGE_COUNT) - 1, 0};
+#endif
     tank_new_population(t);
     while (t->n_fish < 5) assert(tank_add_fish(t, 0, 1) >= 0);
     t->companion.display_compact = normal;
@@ -746,10 +745,10 @@ static void fixture(tank_t *t, bool normal, int group) {
     t->night = false;
     tank_snail_place(t);
     t->snail_x = TANK_W * .2f;
-    if (group) { t->snail_cell = 1; t->snail_y = TANK_H * .6f; t->snail_heading = .8f; }
+    if (group) t->snail_heading = 3.14159f;
     t->urchin_x = TANK_W * .7f;
-    t->urchin_frond = group ? 0 : -1;
-    t->urchin_chew = group ? 1 : 0;
+    t->urchin_frond = -1;
+    t->urchin_chew = 0;
     tank_seahorse_place(t);
     t->sh_x = TANK_W * .8f; t->sh_y = TANK_H * .7f;
     t->sh_mode = SH_PERCH; t->sh_akind = SH_ANCHOR_SAND; t->sh_land = SH_LAND_S;
@@ -813,6 +812,31 @@ static void draw_tiles(const tank_t *t, uint16_t *fb, int height) {
 }
 
 #ifndef RENDER_BASELINE
+static void check_retired_environment(void) {
+    for (int normal = 0; normal < 2; normal++)
+        for (int detail = 0; detail < SCENE_DETAIL_COUNT; detail++)
+            for (int night = 0; night < 2; night++) {
+                tank_t t;
+                fixture(&t, normal != 0, 1);
+                render_device_t device = {0, 0, false, -1, (uint8_t)detail};
+                render_set_device(&device);
+                t.night = t.light_manual_off = night != 0;
+                render_tank(&t, frame, TANK_W);
+                memset(t.algae, 255, sizeof t.algae);
+                for (int b = 0; b < VEG_BEDS; b++) {
+                    t.veg_growth[b] = 100;
+                    for (int i = 0; i < VEG_FRONDS_MAX; i++) t.veg_h[b][i] = 100;
+                }
+                tank_t before = t;
+                render_tank(&t, fish_frame, TANK_W);
+                draw_tiles(&t, tiled, 7);
+                assert(!memcmp(frame, fish_frame, (size_t)TANK_W * TANK_H * 2));
+                assert(!memcmp(frame, tiled, (size_t)TANK_W * TANK_H * 2));
+                assert(!memcmp(&before, &t, sizeof t));
+            }
+    fprintf(stderr, "PASS: retired raw algae/grass never draw or mutate, full/tile pixel parity at both scales, all details and day/night\n");
+}
+
 static int64_t tick_test_clock;
 static int64_t tick_test_now(void) { tick_test_clock += 7; return tick_test_clock; }
 static void check_tick_profile(void) {
@@ -837,6 +861,7 @@ static void benchmark(int frames) {
     check_packed_spans();
     check_frame_clock();
     check_tick_profile();
+    check_retired_environment();
     check_motion_cache();
     check_castle_cache();
     check_foreground_art();
@@ -991,6 +1016,8 @@ static void soak(int seconds) {
         tank_t t;
         fixture(&t, checks % 2 != 0, (int)(checks / 2 % 2));
 #ifndef RENDER_BASELINE
+        t.progression.food_tier = (uint8_t)(checks % PROGRESSION_FOOD_TIER_COUNT);
+        t.foliage = (foliage_state_t){1, (1u << FOLIAGE_COUNT) - 1, checks % (1u << FOLIAGE_COUNT), 0};
         static const float stage_sizes[] = {.55f, .78f, 1.04f, 1.23f};
         for (int i = 0; i < t.n_fish; i++) {
             t.fish[i].stage = (uint8_t)((checks + i) % 4);
@@ -1025,12 +1052,21 @@ static void soak(int seconds) {
         render_tank(&t, frame, TANK_W);
         for (int step = 0; step < 7; step++) {
 #ifndef RENDER_BASELINE
+            t.foliage.planted = (uint8_t)((checks + step) % (1u << FOLIAGE_COUNT));
             if (step == 3) memset(&t.inventory.extra[0], 0, sizeof t.inventory.extra[0]);
             if (step == 4 && t.inventory.extra[1].item) t.inventory.extra[1].x += 12;
             if (step == 2) t.mussel.bank = 1;
             t.mussel_glint = step < 4 ? 1.6f - step * .4f : 0;
             if (step == 5) t.mussel.owned = 0;
             if (step == 5) t.content.owned = 0;
+            if (step == 1) {
+                tank_touch_drag(&t, TANK_W * .15f, TANK_H * .4f);
+                tank_touch_drag(&t, TANK_W * .85f, TANK_H * .4f);
+                uint32_t currents = t.reef_currents;
+                for (int attempt = 0; attempt < 5; attempt++)
+                    assert(!tank_reef_current(&t, 20, 50, TANK_W - 20, 50));
+                assert(t.reef_currents == currents);
+            }
 #endif
             tank_tick(&t, 0.04f, advisor_rules);
             pose(&t, (int)(checks % 1000) + step);
@@ -1100,7 +1136,7 @@ static void soak(int seconds) {
         }
     }
     fprintf(stderr, "PASS: %d-second stress, %" PRIu64 " cases / %" PRIu64
-            " full/tile/retained frame sets; five fish, both scales, all details, day/night, palettes and clock layouts; no tank mutation\n",
+            " full/tile/retained frame sets; five fish, current gestures/cooldown spam, eight extra ornaments, both scales, all details, day/night, palettes and clock layouts; no tank mutation\n",
             seconds, checks, checks * 7);
 }
 

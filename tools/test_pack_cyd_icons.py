@@ -5,6 +5,8 @@ import tempfile
 import unittest
 import zlib
 from pack_cyd_icons import pack
+from gen_icons import cname
+from PIL import Image
 
 
 class IconBankTests(unittest.TestCase):
@@ -52,8 +54,9 @@ class IconBankTests(unittest.TestCase):
                 for name, body in re.findall(r"static const \w+ (\w+)\[\d+\] = \{(.*?)\};", text, re.S)
             }
             entries = re.findall(r"const icon_t (\w+) = \{\s*(\d+),\s*(\d+),\s*(\w+),\s*(\w+)\s*(?:,\s*(\d+)\s*)?\};", text)
-            self.assertEqual(len(entries), 47)
-            self.assertEqual(zlib.crc32(data), 0xb3de6773)
+            sources = {cname(path.name): path for path in
+                       (source.parent.parent / "assets" / "icons").glob("*.png")}
+            self.assertEqual({entry[0] for entry in entries}, set(sources))
             metadata = (root / "icons_sd.c").read_text()
             for name, w, h, rgb, alpha, flags in entries:
                 offset = int(re.search(rf"const icon_t {name} = \{{ \d+, \d+, 0, 0, (\d+) \}};", metadata)[1])
@@ -73,6 +76,12 @@ class IconBankTests(unittest.TestCase):
                     plane = [value for i in range(0, len(plane), 2)
                              for value in [plane[i + 1]] * plane[i]]
                 self.assertEqual(list(data[offset + n * 2:offset + n * 3]), plane)
+                with Image.open(sources[name]) as image:
+                    self.assertEqual(image.size, (int(w), int(h)))
+                    rgba = list(image.convert("RGBA").getdata())
+                self.assertEqual(colors, [((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
+                                          for r, g, b, _ in rgba])
+                self.assertEqual(plane, [a for _, _, _, a in rgba])
 
     def test_invalid_compressed_alpha_rejected(self):
         for plane in ("0, 255", "2", "1, 255"):

@@ -152,6 +152,15 @@ void render_stats_card(const tank_t *t, int fish_idx, uint16_t *fb, int stride);
 int render_creature_colors_hit(const tank_t *t, int selected, float x, float y);
 int render_creature_card_hit(const tank_t *t, float x, float y);
 void render_life_creature_open(int creature);
+/* Direct fish-card entry; BACK returns to the aquarium, not another hub. */
+void render_life_fish_open(int fish);
+/* after a rename: back to the Summary it came from, keeping where Back leads */
+void render_life_fish_return(int fish);
+/* Games > Stories / The Lost Current: the companion page, whose BACK returns HOME_GAMES */
+void render_life_story_open(bool rpg, int fish);
+bool render_life_take_story(void);          /* true once after Games opened a story page */
+void render_life_market_open(int fish);
+int render_life_companion_section(void); /* -1 on a category hub */
 #define RENDER_CARD_NEXT_X 154
 #define RENDER_CARD_NEXT_Y 8
 #define RENDER_CARD_NEXT_W 44
@@ -164,13 +173,8 @@ int render_stats_next(const tank_t *t, int selected);
 #define RENDER_CARD_X 14
 #define RENDER_CARD_Y 8
 #define RENDER_CARD_W 124
-#define RENDER_CARD_H 258       /* includes the HOME button strip */
-/* the card's tap hit box (touch ports): the card itself plus slop, most of
- * it BELOW the HOME button - fingers aiming at a button by the foot land
- * low and wide (Strato, 2026-09-16: "I'm not tapping it reliably"). Since
- * the toolbox (2026-10-01) the slop below is the gap down to it: 56 px of
- * it was for the panel's stretched report, which the calibration (09-30)
- * took out. RENDER_CARD_HIT(x, y) is the test. */
+#define RENDER_CARD_H 258
+/* Fish details plus side slop and the gap above the menu buttons. */
 #define RENDER_TOOLS_GAP 14
 #define RENDER_CARD_HIT_BELOW RENDER_TOOLS_GAP
 #define RENDER_CARD_HIT_SIDE  12
@@ -179,34 +183,23 @@ int render_stats_next(const tank_t *t, int selected);
 #define RENDER_CARD_HIT(x, y) (RENDER_CARD_HIT_X(x) >= RENDER_CARD_X - RENDER_CARD_HIT_SIDE && RENDER_CARD_HIT_X(x) < RENDER_CARD_X + RENDER_CARD_W + RENDER_CARD_HIT_SIDE && \
                                RENDER_CARD_HIT_Y(y) >= RENDER_CARD_Y && RENDER_CARD_HIT_Y(y) < RENDER_CARD_Y + RENDER_CARD_H + RENDER_CARD_HIT_BELOW)
 void render_set_card_cache(uint16_t *buf);
-/* The TOOLBOX (2026-10-01): under a fish's card, a little apart from it so
- * HOME keeps its own ground, a box in the card's dress with two big buttons
- * - the SPONGE and the SCISSORS (tank.h TOOL_*). render_stats_card draws it
- * with a fish's card; the one in hand is lit (a white double edge on a
- * lighter fill - brightness, not hue). render_tools_hit(x, y) is the tap
- * test while a fish's card is up: TOOL_SPONGE / TOOL_SCISSORS, or -1 (the
- * box's half, from its top edge down to the bezel, plus side slop). */
+/* The old tool panel's footprint now holds FISH MENU and MAIN MENU.
+ * Legacy render_tools_hit always returns -1; no hidden tool targets. */
 #define RENDER_TOOLS_X RENDER_CARD_X
 #define RENDER_TOOLS_Y (RENDER_CARD_Y + RENDER_CARD_H + RENDER_TOOLS_GAP)
 #define RENDER_TOOLS_W RENDER_CARD_W
 #define RENDER_TOOLS_H 70
 int  render_tools_hit(float x, float y);
-/* the LOCK (0.3.5): a small box of its own just right of the toolbox, the
- * padlock open (bare fingers wipe and cut, as before) or shut (only the
- * tools do: tank_lock_tools). Shut is lit like a tool in hand - a white
- * double edge on a lighter fill - and the shackle's shape says it too,
- * never the hue alone. render_lock_hit is its tap test while a fish's card
- * is up: its column, from the toolbox's top edge down to the bezel. */
+enum { RENDER_CARD_MENU_NONE, RENDER_CARD_MENU_FISH, RENDER_CARD_MENU_MAIN };
+/* Frame coordinates; fish details and the two labelled navigation buttons. */
+int render_card_menu_hit(float x, float y);
+/* Retained lock preference target beside the navigation buttons. */
 #define RENDER_LOCK_X (RENDER_TOOLS_X + RENDER_TOOLS_W + RENDER_CARD_HIT_SIDE)
 #define RENDER_LOCK_W 44
 #define RENDER_LOCK_H 44
 #define RENDER_LOCK_Y (RENDER_TOOLS_Y + (RENDER_TOOLS_H - RENDER_LOCK_H) / 2)
 bool render_lock_hit(float x, float y);
-/* With a tool in hand and no fish card up, a chip at the top left says so:
- * the tool and DONE. A tap on it (render_tool_chip_hit) puts the tool back
- * in the box. render_tool_chip draws nothing with TOOL_HAND, when
- * fish_idx is a fish (its card shows the box instead), or while a stroke is
- * on the glass (0.3.5: the film under it shows as it is wiped). */
+/* Compatibility no-ops for callers predating tool retirement. */
 void render_tool_chip(const tank_t *t, int fish_idx, uint16_t *fb, int stride);
 bool render_tool_chip_hit(const tank_t *t, float x, float y);
 
@@ -248,8 +241,11 @@ void render_milestones(const tank_t *t, uint16_t *fb, int stride);
  * brightness row). */
 enum { MS_TAP_NONE = 0, MS_TAP_KEPT = 1, MS_TAP_CLOSE = 2, MS_TAP_SETTINGS = 3,   /* SETTINGS: the button bottom left (2026-09-15) opens the settings page */
        MS_TAP_SHOP = 4,                                                            /* the sand dollar left of the TANK row opens the shop */
-       MS_TAP_JOURNAL = 5, MS_TAP_BANK = 6, MS_TAP_GAMES = 7, MS_TAP_LIFE = 8, MS_TAP_RENAME = 16, MS_TAP_SELL = 32, MS_TAP_CUSTOM = 64 };
+       MS_TAP_JOURNAL = 5, MS_TAP_BANK = 6, MS_TAP_GAMES = 7, MS_TAP_LIFE = 8, MS_TAP_MARKET = 9, MS_TAP_RENAME = 16, MS_TAP_SELL = 32, MS_TAP_CUSTOM = 64 };
 void render_games_open(void);
+void render_casino_open(void);             /* the Games page, showing the Casino lobby */
+bool render_casino_active(void);
+int render_games_menu_page(void);          /* 0..2 game pages, 3 = the story games */
 void render_games_tick(float dt);
 bool render_games_tap(tank_t *t, float x, float y);
 void render_games(const tank_t *t, uint16_t *fb, int stride);
@@ -267,7 +263,7 @@ int render_journal_tap(tank_t *t, float x, float y); /* 1 closes; 0 keeps page *
 void render_life_open(void);
 void render_life(const tank_t *t, uint16_t *fb, int stride);
 enum { HOME_NONE, HOME_CLOSE, HOME_BANK, HOME_SHOP, HOME_JOURNAL, HOME_GAMES, HOME_SETTINGS, HOME_TANKS, HOME_KEEPER,
-       HOME_ALBUM, HOME_THEMES, HOME_RECOVERY };
+       HOME_ALBUM, HOME_THEMES, HOME_RECOVERY, HOME_CASINO };
 int render_life_tap(tank_t *t, float x, float y);
 #define JOURNAL_TAB_Y 312
 #define JOURNAL_GOAL_Y 94
@@ -302,13 +298,14 @@ void render_milestones_leave(void);
  * to the milestones page, 2026-09-16),
  * SHOP_TAP_KEPT when a modal opened or closed. Page state is render-local;
  * render_shop_leave clears it when the page closes. */
-enum { SHOP_TAP_NONE = 0, SHOP_TAP_KEPT = 1, SHOP_TAP_CLOSE = 2, SHOP_TAP_TANKS = 3, SHOP_TAP_BUY = 16, SHOP_TAP_MOVE = 80, SHOP_TAP_SELL = 144,
-       SHOP_TAP_FRY = 256, SHOP_TAP_INVENTORY = 512 };
+enum { SHOP_TAP_NONE = 0, SHOP_TAP_KEPT = 1, SHOP_TAP_CLOSE = 2, SHOP_TAP_TANKS = 3, SHOP_TAP_BUY = 16, SHOP_TAP_MOVE = 96, SHOP_TAP_SELL = 192,
+       SHOP_TAP_FRY = 320, SHOP_TAP_INVENTORY = 512 };
 /* Inventory actions execute transactionally; placement opens setup on success. */
 bool render_shop_inventory_action(tank_t *t, int action);
 void render_aquariums_open(const tank_t *t);
 void render_aquariums(const tank_t *t, uint16_t *fb, int stride);
-/* 1 closes to shop, 2 means a different tank was loaded. */
+/* 1 closes to shop, 2 means a different tank was loaded, 3 opens Main Menu
+ * from the tank-identity MENU button. */
 int render_aquariums_tap(tank_t *t, float x, float y);
 /* THE FRY (0.3.5, progression_fry_*): once a fish has been sold the shop's
  * first row is FRY - the first fry still for sale at its left, the price,
@@ -402,6 +399,10 @@ void render_rect_blend(uint16_t *fb, int stride, int x, int y, int w, int h, uin
 void render_rect_edge(uint16_t *fb, int stride, int x, int y, int w, int h, uint32_t rgb);
 void render_ring(uint16_t *fb, int stride, float cx, float cy, float r, uint32_t rgb);   /* the card's selection ring */
 void render_button(uint16_t *fb, int stride, int x, int y, int w, int h, uint32_t fill, uint32_t edge, const char *label, int scale);
+void render_menu_backdrop(uint16_t *fb, int stride, int x, int y, int w, int h);
+void render_doubloon(uint16_t *fb, int stride, int x, int y);
+void render_food_sample(uint16_t *fb, int stride, int x, int y, unsigned tier);
+void render_fish_meter(uint16_t *fb, int stride, int y, unsigned kind, float value);
 /* one 5x7 glyph from any table (rows: 5 bits, high bit left) at scale - the case-sensitive font in update.c draws with it */
 void render_glyph(uint16_t *fb, int stride, int x, int y, int scale, uint32_t rgb, const uint8_t *rows);
 /* an adult fish facing right at (x,y), body length ~42 x size px, tail
@@ -505,7 +506,7 @@ void render_decor_thumbnail(uint16_t *fb, int stride, int x, int y, int size, in
 #define SHP_TWO_X0  (SHP_MODAL_X + (SHP_MODAL_W - 2 * MSP_HOW_W - SHP_TWO_GAP) / 2)
 #define SHP_TWO_X1  (SHP_TWO_X0 + MSP_HOW_W + SHP_TWO_GAP)
 #define SHP_PER_PAGE 4
-#define SHP_PAGES    ((SD_ITEM_COUNT + SHP_PER_PAGE - 1) / SHP_PER_PAGE)   /* without the FRY row (render.c: shp_pages) */
+#define SHP_PAGES    ((SD_CATALOG_COUNT + SHP_PER_PAGE - 1) / SHP_PER_PAGE)
 #define SHP_FRY_BOX_W  114            /* full-size variety captions in all three boxes */
 #define SHP_FRY_BOX_H  94
 #define SHP_FRY_BOX_GAP 2

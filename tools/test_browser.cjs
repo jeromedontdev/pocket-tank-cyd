@@ -72,14 +72,18 @@ async function main() {
       .match(/const sd_item_t SD_ITEMS\[[^\]]+\] = \{([\s\S]*?)\n\};/)[1];
     const catalog = [...catalogSource.matchAll(/\{\s*[^,]+,\s*"[^"]*",\s*"[^"]*",\s*"[^"]*",\s*(\w+)\s*\}/g)]
       .map(([, price], item) => ({item, price: prices.has(price) ? prices.get(price) : Number(price)}))
-      .filter(entry => entry.item !== 8)
+      .filter(entry => ![1, 5, 6, 7, 8, 30, 31, 42].includes(entry.item)) // creatures trade in the Creature Market
       .sort((a, b) => a.price - b.price);
-    assert.equal(catalog.length, 62);
+    assert.equal(catalog.length, 59);
+    async function openCreatureMarket(kind) {
+      await native("game._sim_action(7)"); await tap(100, 180); await tap(224, 340);
+      assert.equal(await native("return game._sim_companion_section()"), 29);
+      for (let k = 0; k < kind; k++) await tap(400, 116);
+    }
     async function openShopItem(item) {
       await page.locator('[data-action="0"]').click();
       await page.locator('[data-action="3"]').click();
-      const save = await snapshot();
-      const row = catalog.findIndex(entry => entry.item === item) + ((save.tank.tank_ms_bits & (1 << 14)) ? 1 : 0);
+      const row = catalog.findIndex(entry => entry.item === item);
       assert.ok(row >= 0);
       for (let p = 0; p < Math.floor(row / 4); p++) await tap(400, 50);
       await tap(120, 108 + row % 4 * 56);
@@ -190,7 +194,7 @@ async function main() {
     await page.locator("#fullscreen").click();
     assert.ok((await page.locator("#game-message").textContent()).includes("not supported"));
     await page.evaluate(() => { delete document.querySelector("#game-panel").requestFullscreen; });
-    for (const [action, expected] of [[1, 1], [2, 2], [3, 3], [7, 9], [0, 0]]) {
+    for (const [action, expected] of [[1, 9], [2, 2], [3, 3], [0, 0]]) {
       await page.locator(`[data-action="${action}"]`).click();
       assert.equal(await native("return game._sim_page()"), expected);
     }
@@ -199,44 +203,59 @@ async function main() {
       for (let y = 65; y < 310; y += 40) {
         for (let x = 40; x < 430; x += 40) {
           await tap(x, y);
-          if (await native("return game._sim_selected() >= 0 && game._sim_selected() < 20")) return;
+          if (await native("return game._sim_page() === 9 && game._sim_companion_section() === 33")) return;
           if (await native("return game._sim_page() !== 0 || game._sim_selected() >= 20"))
             await page.locator('[data-action="0"]').click();
         }
       }
-      assert.fail("A real tank tap must open a fish card");
+      assert.fail("A real tank tap must open a fish summary");
     }
     for (let scale = 0; scale < 2; scale++) {
       await selectFish();
-      const selected = await native("return game._sim_selected()");
+      const selected = await native("return game._sim_selected_fish()");
       const locked = (await snapshot()).tank.tools_locked;
-      await tap(172, 315);
-      assert.equal((await snapshot()).tank.tools_locked, locked ? 0 : 1, "Padlock must toggle");
-      assert.equal(await native("return game._sim_selected()"), selected, "Lock must leave the card open");
-      await tap(172, 315);
-      assert.equal((await snapshot()).tank.tools_locked, locked, "Padlock must unlock again");
-      await tap(45, 315);
-      assert.equal(await native("return game._sim_tool()"), 1, "Sponge must be selectable");
-      assert.equal(await native("return game._sim_selected()"), -1);
-      await tap(230, 130);
-      assert.equal(await native("return game._sim_tool()"), 1, "Tool owns the tank until DONE");
-      await tap(60, 28);
-      assert.equal(await native("return game._sim_tool()"), 0, "DONE must return to bare hands");
-      await selectFish();
-      await tap(105, 315);
-      assert.equal(await native("return game._sim_tool()"), 2, "Scissors must be selectable");
-      await tap(60, 28);
+      assert.equal(await native("return game._sim_page()"), 9, "Fish tap opens the fish menu, not an aquarium overlay");
+      assert.equal(await native("return game._sim_companion_section()"), 33, "Fish tap opens its actual summary");
+      const summaryImage = await menuImage(`fish-summary-${scale}`);
+      await tap(370, 102);
+      assert.equal(await native("return game._sim_selected_fish()"), (selected + 1) % (await snapshot()).tank.n_fish,
+        "Summary arrow cycles actual residents");
+      await tap(380, 24);
+      assert.equal(await native("return game._sim_page()"), 0, "One Back closes direct fish Summary");
+      await page.locator('[data-action="1"]').click();
+      await tap(100, 180);
+      assert.equal(await native("return game._sim_companion_section()"), 26, "Main Market opens stock");
+      assert.notEqual(await menuImage(`fish-stock-${scale}`), summaryImage);
+      await tap(224, 100);
+      assert.equal(await native("return game._sim_companion_section()"), 31, "Residents have their own roomy page");
+      await menuImage(`fish-residents-${scale}`);
+      await tap(370, 100);
+      assert.equal(await native("return game._sim_companion_section()"), 27, "Nursery has its own page");
+      await menuImage(`fish-nursery-${scale}`);
+      await tap(75, 100);
+      await tap(224, 340);
+      assert.equal(await native("return game._sim_companion_section()"), 29, "Creature stock has a dedicated market");
+      await tap(400, 116);
+      assert.equal(await native("return game._sim_companion_section()"), 29, "Creature market cycles kinds in place, no nursery");
+      await menuImage(`creature-market-${scale}`);
+      await page.locator('[data-action="0"]').click();
+      assert.equal(await native("return game._sim_page()"), 0);
       assert.equal(await native("return game._sim_tool()"), 0);
+      assert.equal((await snapshot()).tank.tools_locked, locked, "Reserved old tool lock is not changed by navigation");
+      await page.locator('[data-action="0"]').click();
+      await native(`const w = game._sim_width(), h = game._sim_height();
+        game._sim_touch(w * .15, h * .4, 1); game._sim_frame(.04);
+        for (let step = 1; step <= 20; step++) {
+          game._sim_touch(w * (.15 + .7 * step / 20), h * .4, 1);
+          game._sim_frame(.04);
+        }
+        game._sim_touch(w * .85, h * .4, 0); game._sim_frame(.04);`);
+      assert.equal(await native("return game._sim_tool()"), 0, "A current gesture never selects a retired tool");
+      assert.equal(await native("return game._sim_page()"), 0, "Swiping remains in the aquarium");
       await page.locator('[data-action="2"]').click();
       await tap(100, 100); await tap(200, 138);
       await page.locator('[data-action="0"]').click();
     }
-    await selectFish();
-    const savedLock = (await snapshot()).tank.tools_locked;
-    await tap(172, 315);
-    await page.reload(); await ready();
-    assert.equal((await snapshot()).tank.tools_locked, savedLock ? 0 : 1, "Lock must survive reload");
-    await selectFish(); await tap(172, 315);
     await page.locator('[data-action="0"]').click();
     async function menuImage(name) {
       await page.waitForTimeout(60);
@@ -277,22 +296,17 @@ async function main() {
         const pointer = game._malloc(bytes.length);
         try { game.HEAPU8.set(bytes, pointer); return game._sim_restore(pointer, bytes.length); }
         finally { game._free(pointer); }`), 1);
-      await page.locator('[data-action="7"]').click();
+      await page.locator('[data-action="1"]').click();
       const home = await menuImage(`art-home-${scale}`);
-      for (const [name, x, y] of [["fish",100,100], ["tank",330,100], ["collections",330,180], ["adventures",100,180]]) {
+      for (const [name, x, y] of [["fish",100,100], ["tank",330,100], ["market",100,180], ["games",330,180]]) {
         await tap(x,y);
         assert.notEqual(await menuImage(`art-${name}-${scale}`), home);
         await checkArtHeader();
-        if (name === "fish") {
-          await tap(350,335);
-          await menuImage(`art-fish-more-${scale}`);
-          await checkArtHeader();
-          await tap(350,335);
-        }
         await tap(375,25);
-        assert.equal(await menuImage(`art-home-back-${scale}`), home);
+        assert.equal(await native("return game._sim_companion_section()"), -1, `${name} returns to Main`);
+        await menuImage(`art-home-back-${scale}`);
       }
-      await tap(100,260);
+      await tap(330,180); await tap(100,100);
       for (let gamePage = 0; gamePage < 3; gamePage++) {
         await menuImage(`art-games-${scale}-${gamePage}`);
         await tap(350,80);
@@ -301,33 +315,31 @@ async function main() {
       await menuImage(`art-records-${scale}`);
       await checkArtHeader();
       await tap(375,25);
-      await tap(375,25);
-      await tap(330,180); await tap(100,100);
-      const daily = await menuImage(`daily-care-${scale}`);
-      const beforeCare = await snapshot();
-      const balance = beforeCare.tank.sd_balance, xp = beforeCare.tank.journal_xp;
-      const remainingReward = rewards => rewards.reduce((sum, reward, task) =>
-        sum + (beforeCare.care.claimed & (1 << task) ? 0 : reward), 0);
-      await tap(350,330);
-      assert.notEqual(await menuImage(`milestones-${scale}`), daily);
-      await tap(350,330);
-      for (const y of [123,187,251]) { await tap(350,y); await tap(350,y); }
-      const careSaved = await snapshot();
-      assert.equal(careSaved.care.claimed, 7);
-      assert.equal(careSaved.care.game_paid, 5);
-      assert.equal(careSaved.tank.sd_balance, balance + remainingReward([30,30,65]));
-      assert.equal(careSaved.tank.journal_xp, xp + remainingReward([12,13,25]));
-      assert.equal(careSaved.mussel.owned, beforeCare.mussel.owned, "Daily care does not grant a shop creature");
-      await menuImage(`daily-care-saved-${scale}`);
+      await page.locator('[data-action="1"]').click();
+      await tap(330,100); await tap(100,180);
+      assert.equal(await native("return game._sim_companion_section()"), 34);
+      const beforeFood = await snapshot();
+      const oldTier = beforeFood.progression.food_tier;
+      if (oldTier < 2) await tap(224, oldTier === 0 ? 276 : 328);
+      const afterFood = await snapshot();
+      assert.equal(afterFood.progression.food_tier, Math.min(2, oldTier + 1));
+      assert.equal(afterFood.tank.journal_xp, beforeFood.tank.journal_xp, "Food upgrades do not require or award XP");
+      if (oldTier < 2) assert.ok(afterFood.tank.sd_balance < beforeFood.tank.sd_balance,
+        "A permanent food upgrade is bought with doubloons");
+      await tap(224, afterFood.progression.food_tier === 1 ? 276 : 328);
+      assert.equal((await snapshot()).tank.sd_balance, afterFood.tank.sd_balance,
+        "Buying an already-owned food tier cannot charge twice");
+      await menuImage(`permanent-food-${scale}`);
       await page.locator("#save").click(); await page.reload(); await ready();
-      assert.equal((await snapshot()).care.claimed, 7, "Daily care allowance survives browser reload");
+      assert.equal((await snapshot()).progression.food_tier, afterFood.progression.food_tier,
+        "Permanent food tier survives browser reload");
       assert.equal((await snapshot()).care.game_paid, 5, "Games share a persistent profile allowance");
       if (!(await snapshot()).mussel.owned) {
         const beforeBuy = await snapshot();
-        await openShopItem(42);
-        await menuImage(`mussel-shop-buy-${scale}`);
-        await tap(220, 260);
-        assert.equal((await snapshot()).mussel.owned, 1, "Mussel is bought in the ordinary shop");
+        await openCreatureMarket(4);
+        await menuImage(`mussel-market-buy-${scale}`);
+        await tap(224, 260);
+        assert.equal((await snapshot()).mussel.owned, 1, "Mussel is bought in the Creature Market");
         assert.equal((await snapshot()).tank.sd_balance, beforeBuy.tank.sd_balance - 120);
       }
       const pearlFixture = await snapshot();
@@ -342,8 +354,12 @@ async function main() {
       assert.equal(afterIncome.tank.sd_balance, beforeIncome.tank.sd_balance + 1);
       assert.equal(afterIncome.tank.journal_xp, beforeIncome.tank.journal_xp);
       await menuImage(`mussel-income-glint-${scale}`);
+      if (!((await snapshot()).tank.sd_unlocks & 2)) {
+        await openCreatureMarket(1);
+        await tap(224, 260);
+        assert.ok((await snapshot()).tank.sd_unlocks & 2, "Snail is bought in the Creature Market");
+      }
       const cardFixture = await snapshot();
-      cardFixture.tank.sd_unlocks |= 2;
       cardFixture.tank.snail_x = 30;
       cardFixture.tank.snail_y = 100;
       await restoreFixture(cardFixture);
@@ -359,32 +375,17 @@ async function main() {
       assert.equal(await native("return game._sim_selected()"), 95, "Tapping the resident mussel opens its information card");
       await menuImage(`mussel-info-${scale}`);
       const beforeColors = await snapshot();
-      const colorEdge = await canvasPoint(127 / 448, 307 / 368);
-      const colorOutside = await canvasPoint(119 / 448, 307 / 368);
-      await page.mouse.move(colorEdge.x, colorEdge.y);
-      await page.mouse.down();
-      await page.mouse.move(colorOutside.x, colorOutside.y);
-      await page.mouse.up();
-      assert.equal(await native("return game._sim_page()"), 0, "Sliding off COLORS cancels instead of opening the editor");
-      assert.equal(await native("return game._sim_selected()"), 95, "A cancelled COLORS press keeps the creature card");
-      assert.equal((await snapshot()).tank.sd_balance, beforeColors.tank.sd_balance);
       await tap(224, 307);
-      assert.equal(await native("return game._sim_page()"), 9, "Mussel COLORS opens the shared creature editor");
-      const naturalMussel = await menuImage(`mussel-colors-natural-${scale}`);
-      await tap(220, 235);
-      await tap(220, 270);
-      assert.notEqual(await menuImage(`mussel-colors-draft-${scale}`), naturalMussel);
-      assert.equal((await snapshot()).companion.mussel_colors || 0, beforeColors.companion.mussel_colors || 0, "Preview is not saved implicitly");
-      await tap(110, 309);
-      const savedColors = (await snapshot()).companion.mussel_colors;
-      assert.ok(savedColors > 0, "Primary/detail mussel colors save");
-      assert.equal((await snapshot()).tank.sd_balance, beforeColors.tank.sd_balance, "Mussel colors are free");
+      assert.equal(await native("return game._sim_page()"), 0, "Retired COLORS tap does not open a free palette editor");
+      assert.equal((await snapshot()).companion.mussel_colors || 0, beforeColors.companion.mussel_colors || 0);
+      assert.equal((await snapshot()).tank.sd_balance, beforeColors.tank.sd_balance);
       await page.locator("#save").click(); await page.reload(); await ready();
-      assert.equal((await snapshot()).companion.mussel_colors, savedColors, "Mussel colors survive reload");
+      assert.equal((await snapshot()).companion.mussel_colors || 0, beforeColors.companion.mussel_colors || 0,
+        "Existing creature colors survive reload without free editing");
       await page.locator('[data-action="0"]').click();
       await tap(448 * musselX, 368 * (frameHeight - 11) / frameHeight);
       assert.equal(await native("return game._sim_selected()"), 95);
-      await menuImage(`mussel-info-colored-${scale}`);
+      await menuImage(`mussel-info-preserved-${scale}`);
       const cardState = await snapshot();
       await tap(362, 69);
       assert.equal(await native("return game._sim_selected()"), 99, "Visible creature arrow selects the owned snail");
@@ -464,6 +465,34 @@ async function main() {
       assert.equal(Buffer.from((await snapshot()).content.stored, "hex")[19], submarineStored + 1, "New decoration copies use extended shared storage");
       await page.locator("#save").click(); await page.reload(); await ready();
       assert.equal(Buffer.from((await snapshot()).content.stored, "hex")[19], submarineStored + 1, "Extended ownership and storage survive browser reload");
+      const foliageFixture = await snapshot();
+      foliageFixture.foliage = {version:1, owned:0, planted:0, reserved:0};
+      foliageFixture.tank.sd_balance = Math.max(foliageFixture.tank.sd_balance, 500);
+      await restoreFixture(foliageFixture);
+      let foliageWallet = (await snapshot()).tank.sd_balance;
+      for (let kind = 0; kind < 4; kind++) {
+        await openShopItem(63 + kind);
+        await menuImage(`foliage-buy-${scale}-${kind}`);
+        await tap(224, 260);
+        foliageWallet -= [60,85,110,95][kind];
+        const state = await snapshot();
+        assert.equal(await native("return game._sim_page()"), 3, "Ground cover buys a floor set without opening movement");
+        assert.equal(state.foliage.owned, (1 << (kind + 1)) - 1);
+        assert.equal(state.foliage.planted, state.foliage.owned);
+        assert.equal(state.tank.sd_balance, foliageWallet);
+      }
+      for (let kind = 0; kind < 4; kind++) {
+        await openShopItem(63 + kind);
+        await menuImage(`foliage-manage-${scale}-${kind}`);
+        await tap(224, 260);
+        assert.equal((await snapshot()).foliage.planted, 15 & ~(1 << kind), "STORE removes only this foliage variety");
+        await openShopItem(63 + kind); await tap(224, 260);
+        assert.equal((await snapshot()).foliage.planted, 15, "PLANT restores a purchased plant set for free");
+        assert.equal((await snapshot()).tank.sd_balance, foliageWallet);
+      }
+      await page.locator("#save").click(); await page.reload(); await ready();
+      assert.deepEqual((await snapshot()).foliage, {version:1, owned:15, planted:15, reserved:0},
+        "All four purchased and planted varieties survive reload");
       const gearFixture = await snapshot();
       const gear = Buffer.from(gearFixture.companion.active, "hex");
       gear[8] |= 0x40; // Scarf ownership uses frozen bond trick bit6, not a truncated byte shift.
@@ -486,7 +515,8 @@ async function main() {
         buffer: Buffer.from(JSON.stringify(viewerSave))});
       await viewer.waitForSelector("#out:not([hidden])");
       assert.equal(await viewer.locator("#error").textContent(), "");
-      const viewerFact = name => viewer.locator("#overview tr").filter({hasText: name}).locator("td").textContent();
+      const viewerFact = name => viewer.locator("#overview tr")
+        .filter({has: viewer.locator("th").filter({hasText: new RegExp(`^${name}$`)})}).locator("td").textContent();
       assert.equal(await viewerFact("Shared decoration storage"),
         `${[...Buffer.from(viewerSave.inventory.stored, "hex"), ...Buffer.from(viewerSave.content?.stored || "", "hex")].reduce((sum, n) => sum + n, 0)}/64 pieces`);
       assert.equal(await viewerFact("Extra ornaments here"),
@@ -494,11 +524,16 @@ async function main() {
       assert.equal(await viewerFact("Pearl mussel"),
         `${viewerSave.mussel.owned.toString(2).replace(/0/g, "").length} aquarium resident(s); ${viewerSave.mussel.generated}/15 earned today; ${viewerSave.mussel.bank} pending automatic payout`);
       assert.equal(await viewerFact("Game bonus today"),
-        `${viewerSave.care.game_paid}/90 sand dollars; up to 5 per game; no XP`);
+        `${viewerSave.care.game_paid}/90 doubloons; up to 5 per game`);
+      assert.equal(await viewerFact("Doubloons"), String(viewerSave.tank.sd_balance));
+      assert.equal(await viewer.locator("#overview th").filter({hasText: /^Journal XP$/}).count(), 0,
+        "Retired XP is not presented as an active currency");
       assert.match(await viewer.locator("#decorations").textContent(), new RegExp(`SUBMARINE.*${submarineStored + 1} stored`));
       assert.match(await viewer.locator("#home .card").first().textContent(), /Wearing: SCARF/);
       assert.match(await viewer.locator("#home .card").first().textContent(), /Wardrobe:.*SCARF/);
-      assert.equal(viewerSave.schema, 20);
+      assert.equal(viewerSave.schema, 23);
+      assert.equal(await viewerFact("Permanent food"),
+        `${["Pellets", "Flakes", "Bloodworms"][viewerSave.progression.food_tier]}; ${[1, 1.25, 1.5][viewerSave.progression.food_tier]}x growth`);
       await viewer.close();
       await page.locator('[data-action="2"]').click();
       await menuImage(`settings-${scale}`);
@@ -585,8 +620,8 @@ async function main() {
       await tap(380,28); await tap(100,100); await tap(200,138);
       await page.locator('[data-action="0"]').click();
     }
-    // Launch a real mini-game from the visible Life hub, then pop rendered bubbles.
-    await page.locator('[data-action="7"]').click(); await tap(100, 260);
+    // Launch a real mini-game from the consolidated Games category.
+    await page.locator('[data-action="1"]').click(); await tap(330, 180); await tap(100, 100);
     assert.equal(await native("return game._sim_page()"), 8);
     await tap(110, 140);
     await page.waitForTimeout(800);
@@ -808,7 +843,7 @@ async function main() {
       fs.rmSync(profile, {recursive: true, force: true});
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: 62-item shop with retired ID8 excluded, highest ID62 purchases, extended copies/place/store/reload and schema20 viewer facts at both scales; normal mussel/first-decoration purchases, automatic healthy income, care125 with unchanged XP, per-game5/day caps, Settings/Clock/Weather, fish tools, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
+    console.log("PASS: 59-item decor shop excludes retired IDs8/30/31, creatures (Creature Market) and the old FRY row; all four foliage purchases/store/replant/reload without aliased MOVE actions; ID62 placement, extended copies/storage, schema23 viewer at both scales; Creature Market mussel/snail and paid decor purchases, healthy income without XP, permanent food purchases/reload, per-game5/day caps, Settings/Clock/Weather, direct fish summaries and separate stock/residents/nursery routes, no free creature palette, fullscreen/mobile, all modes, durable saves, exclusive tabs and corruption/quota recovery.");
   } finally {
     await browser.close();
   }

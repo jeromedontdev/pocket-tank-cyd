@@ -164,6 +164,7 @@ Only install trusted downloads; these images are not publisher-signed.
         instructions += "\nSelect ELEGOO in the web installer. Do not use the original CYD image.\nReplace YOUR_PORT with the verified ELEGOO port; never guess another aquarium's port.\nIf the board already has the wrong CYD identity/white LCD, use the documented backed-up app-only board conversion, not factory reset.\nGPIO34 is battery sensing, not room light; audio and battery charging are not game features.\n"
     instructions += "\n2.3.10 SAVE COMPATIBILITY: back up before updating. The version-6 companion\nrecord stores mussel colors in a reserved byte; save size/offsets are unchanged.\nOlder firmware cannot read this record. Do not downgrade after saving with 2.3.10.\n"
     instructions += "\n2.3.19 SAVE COMPATIBILITY: back up before updating. Saves grow to schema 20 /\n6424 bytes to remember where movable scenery stands. Older saves load unchanged;\nfirmware before 2.3.19 cannot read the new save. Do not downgrade after saving.\n"
+    instructions += "\n2.4.0 SAVE COMPATIBILITY: back up before updating. Saves become schema 23 /\n6476 bytes and migrate once; firmware before 2.4.0 cannot read them. Do not downgrade.\n"
     (output / f"{asset_prefix}INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
@@ -176,7 +177,18 @@ Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
 
-### New in 2.3.20: fish-first identity and quieter presentation
+### New in 2.4.0: breed, trade and play
+
+- A breeding-and-trading economy built on one currency, doubloons. XP, levels, firsts, trophies and free color editors are retired; their saved data stays compatible.
+- Main menu: Fish, Tank, Market, Games, Casino and Help, with Settings on a corner cog. Tapping a fish opens its summary directly, and Help explains every system.
+- Fish Market: buy tiered stock, breed same-variety pairs and sell with confirmed quotes. Price depends on genes, vigor, care, a favorite decoration, pedigree and the daily demand variety.
+- Market hub: Collections (a statue for every variety you complete), breeding Contracts every three days (quote x1.6 + 50) and a Saturday Auction with five rival bids.
+- Creature Market: shrimp school, snail, urchin, seahorse and pearl mussel in one place. Creatures do not breed, each tank keeps one of each, and colors roll at purchase (Natural, Tinted, Two-tone, Prized), with rarer colors reselling for more.
+- Casino: Fish Races, Reef Reels, Pearl Hi-Lo, Shell Game, Treasure Dive and Tide Wheel, with 5-50 doubloon bets and a small house edge. Betting is disabled in Creative.
+- Ground cover and kelp, pellet/flake/bloodworm diets, buyable themes, redesigned clock and weather glass, a QWERTY keyboard for names and quieter scenery.
+- Saves are now schema 23 / 6476 bytes. Older saves load and migrate once, with a refund for retired creature stock. Back up first and do not downgrade after saving with 2.4.0.
+
+### Retained from 2.3.20: fish-first identity and quieter presentation
 
 - Names & Looks is the first Home tile; Life & Care retains fish menus and Symbol Guide explains needs, personality and tools. Fish cards label their bars and traits, retaining sponge/scissors/lock controls.
 - All seven clock faces have cleaner static framing and detail, preserving sizes, colors, layout and saved preferences without adding glow or buffers.

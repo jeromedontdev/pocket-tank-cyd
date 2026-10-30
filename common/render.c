@@ -1,6 +1,5 @@
-/* render.c — porthole look: deep gradient water, AMOLED-black floor, procedural
- * fish (body polygon + animated tail + earned markings), bubbles, seagrass
- * the keeper trims. Everything is drawn
+/* render.c — harbor instruments, mineral sand and procedural reef residents.
+ * Fish, ceramic diffuser beads and authored static scenery are drawn
  * into a bare RGB565 buffer; night dims the palette. */
 #include "render.h"
 #include "render_internal.h"
@@ -13,6 +12,7 @@
 #include "notice.h"
 #include "version.h"
 #include "board_hardware.h"
+#include "ground_cover_art.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -80,7 +80,7 @@ static uint8_t *g_castle_art;
 typedef struct {
     float clock, sway[VEG_FRONDS_MAX];
     int detail, seed;
-    bool valid, sword;
+    bool valid;
 } veg_pose_t;
 static veg_pose_t *g_veg_poses;
 typedef struct {
@@ -161,7 +161,7 @@ size_t render_work_cache_bytes(void) {
     size_t bytes = (g_snail_art ? 8 * 37 * 19 : 0) + (g_urchin_art ? 16 * URCHIN_POSE_BYTES : 0);
     if (g_frame_clock_key) bytes += sizeof *g_frame_clock_key;
     if (g_castle_art) bytes += CASTLE_FRONT_BYTES;
-    if (g_veg_poses) bytes += VEG_BEDS_MAX * sizeof *g_veg_poses;
+    if (g_veg_poses) bytes += sizeof *g_veg_poses;
     if (g_crown_poses) bytes += sizeof *g_crown_poses;
     if (g_ornament_art) bytes += sizeof *g_ornament_art +
         (size_t)g_ornament_art->width * g_ornament_art->height;
@@ -545,14 +545,17 @@ static void draw_wearable(ctx_t *c, const fish_t *f, float yh, float yt, float c
  *   elder -> a longer tail and a dorsal crest. All procedural, zero flash. */
 /* `mark` scales the accent stripes: 1 in the tank (every stage wears the
  * same 2 x 5 px marks), the preview's size so they read on a big fish */
+enum { JELLY_STRANDS = 9, JELLY_SEGMENTS = 7 };
+/* Strands 0..5 are hairline marginal tentacles; 6 and 8 the two oral arms. */
 static const float *jelly_strands(float clock) {
-    static float previous, offsets[30];
+    static float previous, offsets[JELLY_STRANDS * JELLY_SEGMENTS];
     static bool valid;
     if (!valid || previous != clock) {
-        for (int strand = 0; strand < 5; strand++)
-            for (int segment = 1; segment <= 6; segment++)
-                offsets[strand * 6 + segment - 1] =
-                    sinf(clock * 3 + segment * 0.65f + strand) * segment * 0.55f;
+        for (int strand = 0; strand < JELLY_STRANDS; strand++)
+            for (int segment = 1; segment <= JELLY_SEGMENTS; segment++)
+                offsets[strand * JELLY_SEGMENTS + segment - 1] =
+                    sinf(clock * (strand < 6 ? 2.2f : 1.6f) + segment * 0.58f + strand * 1.3f) *
+                    segment * (strand < 6 ? 0.5f : 0.32f);
         previous = clock; valid = true;
     }
     return offsets;
@@ -591,6 +594,21 @@ static fish_motion_t fish_motion(const fish_t *f) {
     }
     return *m;
 }
+static void draw_shark_tail(ctx_t *c, const fish_t *f, const fish_motion_t *motion,
+                            uint32_t fin) {
+    /* Per-vertex yaw folded a scalloped fan across itself during turns.
+     * The filled caudal web is one plane with a legible edge-on thickness. */
+    float yaw = yaw_at(motion->yh, motion->yt, -26);
+    float minimum = 1.6f / fmaxf(1, 20 * f->size);
+    if (fabsf(yaw) < minimum) yaw = yaw < 0 ? -minimum : minimum;
+    float lx[3] = {-12, -32, -29};
+    float ly[3] = {0, -15 + motion->tail * 3, 10 + motion->tail * 3}, xs[3], ys[3];
+    for (int i = 0; i < 3; i++) {
+        xs[i] = f->x + yaw * (lx[i] * motion->cp - ly[i] * motion->sp) * f->size;
+        ys[i] = f->y + (lx[i] * motion->sp + ly[i] * motion->cp) * f->size;
+    }
+    fill_fish_material(c, xs, ys, 3, fin, .32f);
+}
 static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, float mark) {
     fish_motion_t motion = fish_motion(f);
     float tail = motion.tail;
@@ -606,6 +624,7 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
     float tail_len = elder ? 1.22f : 1.0f;
     bool shark = f->variety == FISH_SHARK, ray = f->variety == FISH_STINGRAY;
     bool betta = f->variety == FISH_BETTA, clown = f->variety == FISH_CLOWNFISH;
+    bool harbor = f->variety == FISH_CLASSIC;
     float body_x = shark ? 1.4f : f->variety == FISH_TETRA ? 1.15f : f->variety == FISH_PUFFER ? 0.85f : clown ? 0.9f : 1;
     float body_y = f->variety == FISH_ANGEL ? 1.55f : f->variety == FISH_TETRA ? 0.65f : f->variety == FISH_PUFFER ? 1.35f : shark ? 0.7f : clown ? 1.15f : 1;
     if (f->variety == FISH_GUPPY) tail_len *= 1.3f;
@@ -617,23 +636,55 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
         float pulse = sinf(clock * 3 + f->wander), width = 1 + pulse * 0.07f;
         /* Identical across jellyfish and DMA tiles; retain the exact sinf result. */
         const float *offsets = jelly_strands(clock);
-        for (int strand = 0; strand < 5; strand++) {
-            float base = (strand - 2) * 5, last_x = base, last_y = 1;
-            for (int segment = 1; segment <= 6; segment++) {
-                float y = segment * (strand % 2 ? 3.0f : 3.6f);
-                float x = base + offsets[strand * 6 + segment - 1];
-                float lx[4] = {last_x - 0.6f, last_x + 0.6f, x + 0.6f, x - 0.6f};
+        uint32_t veil = mix(mix(body, fin, .5f), 0xf2fbff, .38f), arm = mix(body, f->accent, .38f);
+        for (int strand = 0; strand < 6; strand++) {
+            /* fine marginal tentacles hang from the scalloped rim and taper */
+            float base = -13.5f + strand * 5.4f, last_x = base, last_y = 2;
+            for (int segment = 1; segment <= JELLY_SEGMENTS; segment++) {
+                float y = 2 + segment * (strand % 3 == 1 ? 2.85f : 2.7f);
+                float x = base * (1 - segment * .035f) + offsets[strand * JELLY_SEGMENTS + segment - 1];
+                float w0 = .5f - (segment - 1) * .05f, w1 = .5f - segment * .05f;
+                float lx[4] = {last_x - w0, last_x + w0, x + w1, x - w1};
                 float ly[4] = {last_y, last_y, y, y}, xs[4], ys[4];
                 for (int i = 0; i < 4; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
-                fill_poly(c, xs, ys, 4, strand % 2 ? fin : f->accent);
+                fill_poly(c, xs, ys, 4, veil);
                 last_x = x; last_y = y;
             }
         }
-        static const float bx[11] = {-16, -15, -11, -6, 0, 6, 11, 15, 16, 8, -8};
-        static const float by[11] = {1, -5, -11, -15, -17, -15, -11, -5, 1, 3, 3};
-        float xs[11], ys[11];
-        for (int i = 0; i < 11; i++) { xs[i] = TX(bx[i] * width, by[i]); ys[i] = TY(bx[i] * width, by[i]); }
-        fill_fish_material(c, xs, ys, 11, body, 0.28f);
+        uint32_t arm_dark = mix(arm, 0x1a2a4a, .3f), frill = mix(arm, 0xffffff, .35f);
+        for (int strand = 6; strand < JELLY_STRANDS; strand += 2) {
+            /* two slim oral arms that splay apart: distinct even at 240 px */
+            float side = strand == 6 ? -1.f : 1.f, last_x = side * 2.2f, last_y = 2;
+            for (int segment = 1; segment <= 5; segment++) {
+                float y = 2 + segment * 3.3f;
+                float x = side * (2.2f + segment * .62f) + offsets[strand * JELLY_SEGMENTS + segment - 1] * .6f;
+                float w0 = 1.25f - (segment - 1) * .17f, w1 = 1.25f - segment * .17f;
+                float lx[4] = {last_x - w0, last_x + w0, x + w1, x - w1};
+                float ly[4] = {last_y, last_y, y, y}, xs[4], ys[4];
+                for (int i = 0; i < 4; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
+                fill_poly(c, xs, ys, 4, segment % 2 ? arm : arm_dark);
+                if (segment % 2 == 0) {
+                    float fx = x + side * (w1 + .5f);
+                    fill_ellipse(c, TX(fx, y - 1.2f), TY(fx, y - 1.2f), .7f * f->size, .9f * f->size, frill, 210);
+                }
+                last_x = x; last_y = y;
+            }
+        }
+        static const float bx[13] = {-16, -14, -10, -5, 1, 7, 12, 16, 13, 8, 3, -3, -10};
+        static const float by[13] = {1, -6, -12, -16, -17, -14, -9, 1, 3, 1, 3, 1, 3};
+        float xs[13], ys[13];
+        for (int i = 0; i < 13; i++) { xs[i] = TX(bx[i] * width, by[i]); ys[i] = TY(bx[i] * width, by[i]); }
+        fill_fish_material(c, xs, ys, 13, body, 0.28f);
+        for (int lobe = 0; lobe < 8; lobe++) {
+            float rx = (-14 + lobe * 4) * width;
+            fill_ellipse(c, TX(rx, 1.5f), TY(rx, 1.5f), 1.9f * f->size, 1.2f * f->size, veil, 170);
+        }
+        for (int rib = -1; rib <= 1; rib++) {
+            float lx[3] = {rib * 2.0f, rib * 9.0f - .5f, rib * 9.0f + .5f};
+            float ly[3] = {-14, 0, 0}, rx[3], ry[3];
+            for (int i = 0; i < 3; i++) { rx[i] = TX(lx[i] * width, ly[i]); ry[i] = TY(lx[i] * width, ly[i]); }
+            fill_poly(c, rx, ry, 3, mix(body, 0xe7f0d7, .27f));
+        }
         float jw = f->size * fabsf(yh);
         if (f->stage >= STAGE_JUV && f->pattern >= PATTERN_SADDLE) {
             static const float sx[7] = {-9, -4, 2, 8, -6, 5, 0}, sy[7] = {-4, -9, -12, -6, -13, -1, -5};
@@ -667,24 +718,46 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
     }
     if (ray) {
         float flap = sinf(clock * 4 + f->wander) * 4;
-        float lx[8] = {15, 2, -9, -15, -9, 2, 15, 7};
-        float ly[8] = {0, -24 + flap, -16, 0, 16 - flap, 24 - flap, 0, 0}, xs[8], ys[8];
+        float lx[8] = {15, 4, -5, -15, -10, 0, 10, 7};
+        float ly[8] = {0, -24 + flap, -19, -3, 12 - flap, 24 - flap, 10, 3}, xs[8], ys[8];
         for (int i = 0; i < 8; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
         fill_fish_material(c, xs, ys, 8, fin, 0.28f);
         float tx[3] = {-10, -38, -12}, ty[3] = {-1, tail * 3, 2};
         for (int i = 0; i < 3; i++) { xs[i] = TX(tx[i], ty[i]); ys[i] = TY(tx[i], ty[i]); }
         fill_fish_material(c, xs, ys, 3, fin, 0.24f);
+        for (int side = -1; side <= 1; side += 2) {
+            float rx[3] = {0, 2, -7}, ry[3] = {0, side * (19 - flap), side * 12.0f};
+            for (int i = 0; i < 3; i++) { xs[i] = TX(rx[i], ry[i]); ys[i] = TY(rx[i], ry[i]); }
+            fill_poly(c, xs, ys, 3, mix(fin, body, .55f));
+        }
     }
-    /* tail fin (triangle, flaps with tail phase) */
-    if (!ray) {
+    /* Scalloped caudal web and four structural rays share the fish transform. */
+    if (shark) {
+        draw_shark_tail(c, f, &motion, fin);
+    } else if (!ray) {
         float spread = f->variety == FISH_GUPPY ? 17 : f->variety == FISH_PUFFER ? 6 : 10;
         if (shark) spread = 15;
         if (betta) spread = 20;
-        float lx[3] = {-11, -26 * tail_len, -26 * tail_len}, ly[3] = {0, -spread - tail * 8, spread + tail * 8};
-        if (shark) { lx[1] = -32; lx[2] = -30; ly[2] = 10 + tail * 4; }
-        float xs[3], ys[3];
-        for (int i = 0; i < 3; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
-        fill_fish_material(c, xs, ys, 3, fin, 0.24f);
+        float reach = 26 * tail_len, fan = spread + tail * 8;
+        float lx[7] = {-11, -reach, -reach + 3, -reach + 1, -reach + 3, -reach, -14};
+        float ly[7] = {0, -fan, -fan * .45f, 0, fan * .45f, fan, 2};
+        if (harbor) {
+            lx[1] = lx[5] = -29 * tail_len;
+            lx[2] = lx[4] = -24 * tail_len;
+            lx[3] = -19 * tail_len;
+            ly[1] = -fan * .85f; ly[5] = fan * .85f;
+        }
+        if (shark) { lx[1] = -32; lx[5] = -30; ly[5] = 10 + tail * 4; }
+        float xs[7], ys[7];
+        for (int i = 0; i < 7; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
+        fill_fish_material(c, xs, ys, 7, fin, 0.24f);
+        for (int rib = 0; rib < 4; rib++) {
+            int edge = rib < 2 ? rib + 1 : rib + 2;
+            float rx[3] = {-13, lx[edge] + 1, lx[edge] + 2};
+            float ry[3] = {0, ly[edge] * .9f - .3f, ly[edge] * .9f + .3f};
+            for (int i = 0; i < 3; i++) { xs[i] = TX(rx[i], ry[i]); ys[i] = TY(rx[i], ry[i]); }
+            fill_poly(c, xs, ys, 3, mix(fin, 0xf3dbac, .28f));
+        }
     }
     if (betta) {
         float lx[6] = {8, -3, -24, -22, -8, 4}, ly[6] = {6, 22 + tail * 2, 25, 11, 7, 5};
@@ -703,21 +776,30 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
         fill_fish_material(c, xs, ys, 3, fin, 0.24f);
     }
     /* dorsal crest: adults a small fin, elders a taller one */
-    if (!ray && (grown || shark || betta || clown)) {
+    if (!ray && !harbor && (grown || shark || betta || clown)) {
         float h = f->variety == FISH_ANGEL ? -27 : shark ? -23 : betta ? -21 : elder ? -17 : -13;
         float lx[3] = {6, -2, -9}, ly[3] = {-8, h, -8};
         float xs[3], ys[3];
         for (int i = 0; i < 3; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
         fill_fish_material(c, xs, ys, 3, fin, 0.24f);
     }
-    /* body: sampled outline of the prototype's quadratic silhouette */
+    /* Distinct muzzle/shoulder/peduncle silhouettes, not the upstream oval. */
     {
-        static const float blx[10] = { 16, 10, 2, -8, -15, -18, -15, -8, 2, 10 };
-        static const float shark_x[10] = {20, 9, 0, -9, -17, -21, -17, -9, 0, 12};
-        static const float ray_x[10] = {13, 9, 2, -5, -10, -13, -10, -5, 2, 9};
-        static const float bly[10] = { 0, -7, -10, -9, -6, 0, 6, 9, 10, 7 };
+        static const float blx[10] = {16, 13, 5, -5, -12, -17, -12, -4, 5, 13};
+        static const float shark_x[10] = {20, 13, 1, -10, -17, -21, -16, -7, 5, 16};
+        static const float ray_x[10] = {13, 10, 5, -4, -9, -13, -9, -3, 5, 11};
+        static const float tetra_x[10] = {16, 11, 3, -7, -13, -18, -12, -5, 5, 13};
+        static const float round_x[10] = {15, 12, 4, -6, -13, -15, -12, -4, 6, 13};
+        static const float harbor_x[10] = {18, 12, 3, -7, -13, -17, -12, -5, 6, 14};
+        static const float harbor_y[10] = {0, -4, -8, -8, -4, 0, 3, 7, 7, 3};
+        static const float bly[10] = {0, -5, -9, -10, -6, 0, 4, 8, 9, 5};
+        static const float round_y[10] = {0, -6, -10, -9, -5, 0, 6, 10, 9, 5};
+        const float *outline = harbor ? harbor_x : shark ? shark_x : ray ? ray_x :
+            f->variety == FISH_TETRA ? tetra_x :
+            f->variety == FISH_PUFFER || clown ? round_x : blx;
+        const float *height = harbor ? harbor_y : f->variety == FISH_PUFFER || clown ? round_y : bly;
         float xs[10], ys[10];
-        for (int i = 0; i < 10; i++) { float lx = (shark ? shark_x[i] : ray ? ray_x[i] : blx[i]) * body_x, ly = bly[i] * body_y; xs[i] = TX(lx, ly); ys[i] = TY(lx, ly); }
+        for (int i = 0; i < 10; i++) { float lx = outline[i] * body_x, ly = height[i] * body_y; xs[i] = TX(lx, ly); ys[i] = TY(lx, ly); }
         fill_fish_material(c, xs, ys, 10, body, 0.3f);
         /* its thickness: the cross-section at the deepest point, widening as
          * the fish turns toward the glass (sin of the yaw angle) */
@@ -735,9 +817,8 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
                                         2.6f * body_y * f->size, mix(body, 0xf6f1e4, 0.55f), 170);
         }
         if (f->stage >= STAGE_JUV && f->pattern == PATTERN_FADE) {
-            const float *ox = shark ? shark_x : ray ? ray_x : blx;
             float fx[5], fy[5];
-            for (int i = 0; i < 5; i++) { float lx = ox[3 + i] * body_x, ly = bly[3 + i] * body_y; fx[i] = TX(lx, ly); fy[i] = TY(lx, ly); }
+            for (int i = 0; i < 5; i++) { float lx = outline[3 + i] * body_x, ly = height[3 + i] * body_y; fx[i] = TX(lx, ly); fy[i] = TY(lx, ly); }
             fill_poly(c, fx, fy, 5, f->accent);
         }
     }
@@ -789,6 +870,34 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
         if (s > 0.25f) fill_ellipse(c, TX(lx, -5 * body_y), TY(lx, -5 * body_y), 4 * mark * s, 1.3f * mark,
                                     mix(body, 0xffffff, 0.6f), 150);
     }
+    /* The operculum and paired fin remain visible underneath genetic markings. */
+    if (harbor) {
+        float lx[6] = {10, 3, -4, -12, -9, 5};
+        float ly[6] = {-5, -17, -19, -10, -7, -7}, xs[6], ys[6];
+        for (int i = 0; i < 6; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
+        fill_fish_material(c, xs, ys, 6, fin, .3f);
+        for (int rib = 0; rib < 3; rib++) {
+            float rx[3] = {4 - rib * 4.0f, 2 - rib * 4.0f, 3 - rib * 4.0f};
+            float ry[3] = {-7, -15.0f - rib, -15.0f - rib};
+            for (int i = 0; i < 3; i++) { xs[i] = TX(rx[i], ry[i]); ys[i] = TY(rx[i], ry[i]); }
+            fill_poly(c, xs, ys, 3, mix(fin, 0xf1dfb2, .4f));
+        }
+    }
+    if (!ray) {
+        float lx[4] = {3, 1, 2, 4}, ly[4] = {-4 * body_y, -1, 4 * body_y, 3 * body_y};
+        float xs[4], ys[4];
+        for (int i = 0; i < 4; i++) { xs[i] = TX(lx[i], ly[i]); ys[i] = TY(lx[i], ly[i]); }
+        fill_poly(c, xs, ys, 4, mix(body, 0x193b45, .35f));
+        float px[3] = {1, -6, -2}, py[3] = {1, 5 * body_y, 6 * body_y};
+        for (int i = 0; i < 3; i++) { xs[i] = TX(px[i], py[i]); ys[i] = TY(px[i], py[i]); }
+        fill_fish_material(c, xs, ys, 3, fin, .2f);
+        if (grown && fabsf(yh) > .4f) for (int scale = 0; scale < 6; scale++) {
+            float x = -8 + (scale % 3) * 3, y = scale < 3 ? -3 : 1;
+            float sx[3] = {x, x + .8f, x + 1.5f}, sy[3] = {y, y + .8f, y};
+            for (int i = 0; i < 3; i++) { xs[i] = TX(sx[i], sy[i]); ys[i] = TY(sx[i], sy[i]); }
+            fill_poly(c, xs, ys, 3, mix(body, 0xeff1d5, .25f));
+        }
+    }
     if (shark) for (int gill = 0; gill < 3; gill++) {
         float lx = 3 + gill * 2;
         fill_ellipse(c, TX(lx, 2), TY(lx, 2), 0.6f * f->size, 2 * f->size, fin, 230);
@@ -797,8 +906,9 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
     if (asleep) {
         fill_ellipse(c, TX(9, -3), TY(9, -3), 2.2f, 0.7f, 0x9fb4b8, 200);
     } else {
-        fill_ellipse(c, TX(9, -3), TY(9, -3), 2.2f, 2.2f, f->traits & TRAIT_GOLD_EYE ? 0xffd25e : 0xffffff, 255);
-        fill_ellipse(c, TX(9.7f, -3), TY(9.7f, -3), 1.1f, 1.1f, 0x031015, 255);
+        fill_ellipse(c, TX(9, -3), TY(9, -3), 2.2f, 2.2f, mix(body, 0x193b45, .6f), 255);
+        fill_ellipse(c, TX(9, -3.2f), TY(9, -3.2f), 1.6f, 1.6f, f->traits & TRAIT_GOLD_EYE ? 0xffd25e : 0xe5e8cb, 255);
+        fill_ellipse(c, TX(9.6f, -3), TY(9.6f, -3), .9f, 1.1f, 0x031015, 255);
     }
     draw_wearable(c, f, yh, yt, cp, sp);
 #undef TX
@@ -851,20 +961,20 @@ static void draw_fish(ctx_t *c, const tank_t *t, const fish_t *f) {
  * light, s a glint, e the eye, a antenna, l legs, t tail fan. */
 #define SHRIMP_TONES 8
 static const char SHRIMP_KEYS[SHRIMP_TONES + 1] = "orhsealt";
-static const uint32_t SHRIMP_RGB[SHRIMP_TONES]  = { 0x6e0f1c, 0xd0262e, 0xff5a4a, 0xffb8a0, 0x100408, 0xff7a70, 0xc0303a, 0xff7060 };
-static const uint8_t  SHRIMP_ALPHA[SHRIMP_TONES] = { 255, 255, 255, 255, 255, 140, 190, 205 };
+static const uint32_t SHRIMP_RGB[SHRIMP_TONES]  = { 0x713b36, 0xda6048, 0xf4a46a, 0xffe6b5, 0x122d37, 0xf3d4a0, 0xb68970, 0xe9ba83 };
+static const uint8_t  SHRIMP_ALPHA[SHRIMP_TONES] = { 255, 255, 255, 255, 255, 220, 230, 245 };
 static const char *const SHRIMP_IDLE_A[8] = {
-    "..................", "......ohhs......aa", "....ohrrrhhhs..a..", "..ohrrrrrrrrrea...",
-    ".trrrrrrrrrrrrrr..", "tto..oorrrrrroo...", "t......l.l.l.l.aa.", "................a." };
+    "............a...a.", ".......ss....a.a..", "..t..hhrhhhr..a...", ".tthhrorororhhea..",
+    "tttororororrrreo..", ".tt.ororororo.aa..", "......l.l.l.l..a..", ".....l.l.l.l......" };
 static const char *const SHRIMP_IDLE_B[8] = {
-    "................a.", "......ohhs......a.", "....ohrrrhhhs..a..", "..ohrrrrrrrrrea...",
-    ".trrrrrrrrrrrrrr..", "tto..oorrrrrroo...", "t.....l.l.l.l..aa.", ".................." };
+    ".............a..a.", ".......ss.....aa..", "..t..hhrhhhr..a...", ".tthhrorororhhea..",
+    "tttororororrrreo..", ".tt.ororororo.aa..", ".....l.l.l.l...a..", "......l.l.l.l....." };
 static const char *const SHRIMP_PECK[8] = {      /* nose to the sand */
-    "..................", "......ohhs........", "....ohrrrhhhs.....", "..ohrrrrrrrrrr.aa.",
-    ".trrrrrrrrrrrrea..", "tto..oorrrrrrrrr..", "t......l.l.l.lo.a.", "................a." };
+    "..................", "..t....ss.........", ".tt..hhrhhhr......", "ttthhrorororhh.aa.",
+    ".ttrorrrorrrrhea..", "..to.oroororrrro..", ".....l.l.l.l.o.a..", "......l.l.l.....a." };
 static const char *const SHRIMP_DART[8] = {      /* the escape: tail snapped under, antennae streaming back */
-    "..................", "aaaa..ohhs........", "....ohrrrhhhs.....", "...orrrrrrrrrea...",
-    "...ttrrrrrrrrrr...", "...tt.oorrrroo....", "..................", ".................." };
+    "aaaaaa............", "......ass.........", ".....hhrhhhr......", "....hrorororhhea..",
+    "...ttorororrrreo..", "...tttorororo.....", "....ttt.ll.ll.....", ".....tt..........." };
 static void draw_shrimp(ctx_t *c, const shrimp_t *q, const src_t *pal) {
     if (q->x + 11 < c->ox || q->x - 11 >= c->ox + c->w ||
         q->y + 6 < c->oy || q->y - 6 >= c->oy + c->h ||
@@ -894,34 +1004,20 @@ static void draw_shrimp(ctx_t *c, const shrimp_t *q, const src_t *pal) {
  * (alternating), so a fish that dips into a canopy swims woven through it
  * instead of floating on top. */
 
-/* algae film on the glass, drawn over everything: dappled blobs per covered
- * grid cell, thicker film = bigger and greener. The keeper wipes it off. */
-static void draw_algae(ctx_t *c, const tank_t *t) {
-    for (int cy = 0; cy < ALGAE_ROWS; cy++)
-        for (int cx = 0; cx < ALGAE_COLS; cx++) {
-            if ((cx + 1) * ALGAE_CELL + 8 < c->ox || cx * ALGAE_CELL - 8 >= c->ox + c->w ||
-                (cy + 1) * ALGAE_CELL + 8 < c->oy || cy * ALGAE_CELL - 8 >= c->oy + c->h) continue;
-            int cov = t->algae[cy * ALGAE_COLS + cx];
-            if (!cov) continue;
-            uint32_t h = (uint32_t)((cx * 73856093u) ^ (cy * 19349663u));
-            float bx = cx * ALGAE_CELL, by = cy * ALGAE_CELL;
-            for (int b = 0; b < 3; b++) {
-                uint32_t hb = h ^ (b * 2654435761u);
-                float ox = (float)(hb % ALGAE_CELL);
-                float oy = (float)((hb >> 5) % ALGAE_CELL);
-                float r = (1.5f + (float)((hb >> 10) % 3)) * (0.55f + 0.45f * cov / 255.0f)
-                        + 2.2f * cov / 255.0f;
-                fill_ellipse(c, bx + ox, by + oy, r, r * 0.85f,
-                             (hb & 4) ? 0x3f7a45 : 0x35663d, 34 + cov * 96 / 255);
-            }
-        }
-}
-
 /* the snail: drawn procedurally (2026-09-16), defined after the castle
  * block below - it shares the castle's position hash */
 static void draw_snail(ctx_t *c, const tank_t *t, bool upright_pass);
 static uint32_t creature_tone_rgb(int creature, int tone, uint8_t colors);
 static void draw_creature_portrait(ctx_t *c, float x, float y, float scale, int creature, uint8_t colors, float clock);
+static float secondary_clock(const tank_t *t);
+static void draw_creature_partner(ctx_t *c, const tank_t *t, int creature) {
+    float x, y;
+    if (!tank_creature_partner_pose(t, creature, &x, &y)) return;
+    if (x + 25 < c->ox || x - 25 >= c->ox + c->w ||
+        y + 25 < c->oy || y - 25 >= c->oy + c->h) return;
+    uint8_t colors = t->companion.creature_colors[creature];
+    draw_creature_portrait(c, x, y, 1, creature, colors, secondary_clock(t));
+}
 
 /* optional per-stage frame profiling (render.h) */
 int64_t (*render_clock_us)(void) = NULL;
@@ -1123,7 +1219,7 @@ static const uint32_t RAINBOW_STOPS[] = {
     0xe63b52, 0xf38c27, 0xe6cc32, 0x26c985, 0x21aecb, 0x4166e8, 0x843ee8
 };
 static const uint32_t SAND_PALETTE[SAND_STYLE_COUNT][4] = {
-    {0x2e3b2c, 0x22301f, 0x1a2418, 0x101a12},
+    {0xcac1a3, 0x948b70, 0x6a6454, 0x45473f},
     {0xc7a76b, 0x9e804c, 0x75603b, 0x51412b},
     {0xe7dfc5, 0xbfbba9, 0x938f81, 0x66665e},
     {0x555665, 0x373947, 0x262935, 0x171b25},
@@ -1162,15 +1258,15 @@ static inline uint32_t water_rgb(int y) {
  * frond covers OTHER than water changes: a fish behind a front-layer frond
  * no longer shows through at 14%. */
 #define VEG_ALPHA 220
-static uint16_t g_veg_row[4][TANK_MAX_H];   /* grass pair, then the sword plant's yellow-green pair */
+static uint16_t g_veg_row[2][TANK_MAX_H];   /* the sword plant's preserved folded leaf material */
 static float    g_veg_row_dim = -1;
 static void veg_tint_fill(float dim) {
-    static const uint32_t frond[4] = { 0x419568, 0x2d7d59, 0xaac67a, 0x70974e };
+    static const uint32_t frond[2] = { 0x82b39a, 0x356f62 };
     if (g_veg_row_dim == dim) return;
     for (int y = 0; y < TANK_H; y++) {
         uint32_t w = water_rgb(y);
         float depth = (float)y / TANK_BOT;
-        for (int k = 0; k < 4; k++) {
+        for (int k = 0; k < 2; k++) {
             uint32_t leaf = mix(frond[k], 0x315e4a, 0.22f * depth * depth);
             g_veg_row[k][y] = rgb565(mix(w, leaf, VEG_ALPHA / 255.0f), dim);
         }
@@ -1240,38 +1336,36 @@ static uint64_t g_veg_skip;
 static bool pc_covers(int k, int x, int y);
 static bool pc_in_box(int k, int x0, int x1, int y);
 static uint32_t pc_row_bits(int k, int x0, int n, int y);   /* piece k's mask over n (<= 32) pixels from x0 on row y */
-static inline void veg_span(ctx_t *c, int x0, int x1, int y, const src_t *s, bool final) {
+/* A sword row is at most 21 pixels wide, including its root flare.
+ * Resolve occlusion once for all its folds, ribs and vein strokes. */
+static uint32_t veg_row_mask(int x0, int x1, int y) {
+    int n = x1 - x0 + 1;
+    uint32_t full = n < 32 ? (1u << n) - 1 : UINT32_MAX;
     uint64_t near = 0;
     for (int k = 0; k < g_npc; k++) if (((g_veg_skip >> k) & 1) && pc_in_box(k, x0, x1, y)) near |= UINT64_C(1) << k;
     bool arch_box = g_veg_mask_cx >= 0 && y <= CASTLE_FY && y >= CASTLE_FY - CASTLE_ARCH_S - CASTLE_ARCH_R
                     && x1 >= g_veg_mask_cx - CASTLE_ARCH_R && x0 <= g_veg_mask_cx + CASTLE_ARCH_R;
-    if (g_veg_arch_pass < 0 && !arch_box) return;      /* the early arch pass: nothing outside the arch */
-    if (!near && !(g_veg_arch_pass && arch_box)) {      /* the usual frond: one span */
+    if (g_veg_arch_pass < 0 && !arch_box) return full;
+    uint32_t m = 0;
+    for (int k = 0; k < g_npc; k++) if ((near >> k) & 1) m |= pc_row_bits(k, x0, n, y);
+    if (g_veg_arch_pass && arch_box)
+        for (int i = 0; i < n; i++) {
+            bool a = castle_arch(x0 + i, y);
+            if (g_veg_arch_pass > 0 ? a : !a) m |= 1u << i;
+        }
+    return m;
+}
+static inline void veg_span(ctx_t *c, int x0, int x1, int y, const src_t *s, bool final,
+                            int row_x, uint32_t blocked) {
+    int n = x1 - x0 + 1;
+    uint32_t m = (blocked >> (x0 - row_x)) & ((1u << n) - 1);
+    if (!m) {
         if (final) span_final(c, x0, x1, y, s, 255); else span(c, x0, x1, y, s, 255);
         return;
     }
-    /* near a piece: the pieces' bits over the span, one look per piece
-       (a frond is a few px wide: one or two mask words), then the runs they
-       leave. A span over 32 px (none today) goes pixel by pixel. */
-    int n = x1 - x0 + 1;
-    uint32_t m = 0, full = n < 32 ? (1u << n) - 1 : 0xffffffffu;
-    if (n <= 32) {
-        for (int k = 0; k < g_npc; k++) if ((near >> k) & 1) m |= pc_row_bits(k, x0, n, y);
-        if (g_veg_arch_pass && arch_box)                 /* the arch: the early pass draws only it, the late one skips it */
-            for (int i = 0; i < n; i++) { bool a = castle_arch(x0 + i, y); if (g_veg_arch_pass > 0 ? a : !a) m |= 1u << i; }
-        if (!m) { if (final) span_final(c, x0, x1, y, s, 255); else span(c, x0, x1, y, s, 255); return; }
-        if (m == full) return;
-    }
     int run = -1;
     for (int i = 0; i <= n; i++) {
-        bool in = i == n;
-        if (!in) {
-            if (n <= 32) in = (m >> i) & 1;
-            else {
-                for (int k = 0; k < g_npc && !in; k++) if (((near >> k) & 1) && pc_covers(k, x0 + i, y)) in = true;
-                if (!in && g_veg_arch_pass && arch_box) { bool a = castle_arch(x0 + i, y); if (g_veg_arch_pass > 0 ? a : !a) in = true; }
-            }
-        }
+        bool in = i == n || ((m >> i) & 1);
         if (!in) { if (run < 0) run = x0 + i; }
         else if (run >= 0) {
             if (final) span_final(c, run, x0 + i - 1, y, s, 255); else span(c, run, x0 + i - 1, y, s, 255);
@@ -1291,52 +1385,58 @@ static float veg_clock(const tank_t *t, float clock, int seed) {
     float phase = (seed % 8) / (8 * rate);
     return render_simple_scene() ? 0 : floorf((clock + phase) * rate) / rate - phase;
 }
-static float veg_sway(const tank_t *t, bool sword, int i, int seed, float clock) {
-    float amp = render_simple_scene() ? 0 : render_scene_detail() == SCENE_ENHANCED ? (sword ? 2.5f : 4.0f) : (sword ? 0.75f : 1.2f);
-    return fast_sin(veg_clock(t, clock, seed) * (sword ? 0.6f : 0.9f) + (i + seed) * 1.7f) * amp;
+static float veg_sway(const tank_t *t, int i, int seed, float clock) {
+    float amp = render_simple_scene() ? 0 : render_scene_detail() == SCENE_ENHANCED ? 2.5f : .75f;
+    return fast_sin(veg_clock(t, clock, seed) * .6f + (i + seed) * 1.7f) * amp;
 }
 static float veg_spine(const tank_t *t, float bx, float sway, int seg, int segs, int i, int seed, float clock) {
     (void)t;
     float curve = render_scene_detail() == SCENE_ENHANCED ? fast_sin(seg * 0.4f + veg_clock(t, clock, seed) * 0.6f + i + seed) : 1;
     return bx + sway * seg / (float)segs * curve;
 }
+static float sword_half(float u) {
+    return .8f + 7.5f * (u < .36f ? u / .36f : (1 - u) / .64f);
+}
 static int bubble_step(const tank_t *t) { (void)t; return render_scene_detail() == SCENE_ENHANCED ? 1 : 2; }
-static int shrimp_step(void) { return render_scene_detail() == SCENE_ENHANCED ? 1 : 2; }
+/* Every detail level draws half of a school: the full school reads as clutter
+ * and costs frame time; the simulated count and income stay complete. */
+static int shrimp_step(void) { return 2; }
 static int shrimp_draw_count(const tank_t *t) { return (t->shrimp_n + shrimp_step() - 1) / shrimp_step(); }
-static float veg_cached_sway(const tank_t *t, int b, bool sword, int i, int seed) {
+static float veg_cached_sway(const tank_t *t, int i, int seed) {
     static unsigned epoch;
     static bool failed;
     if (epoch != g_work_epoch) { epoch = g_work_epoch; failed = false; }
     if (g_work_enabled && !g_veg_poses && !failed) {
-        g_veg_poses = calloc(VEG_BEDS_MAX, sizeof *g_veg_poses);
-        if (!g_veg_poses) { fprintf(stderr, "Grass pose cache unavailable; calculating live\n"); failed = true; }
+        g_veg_poses = calloc(1, sizeof *g_veg_poses);
+        if (!g_veg_poses) { fprintf(stderr, "Sword pose cache unavailable; calculating live\n"); failed = true; }
     }
-    if (!g_work_enabled || !g_veg_poses) return veg_sway(t, sword, i, seed, t->clock);
-    veg_pose_t *pose = &g_veg_poses[b];
+    if (!g_work_enabled || !g_veg_poses) return veg_sway(t, i, seed, t->clock);
+    veg_pose_t *pose = g_veg_poses;
     float clock = veg_clock(t, t->clock, seed);
     int detail = render_scene_detail();
     if (!pose->valid || pose->clock != clock || pose->detail != detail ||
-        pose->seed != seed || pose->sword != sword) {
+        pose->seed != seed) {
         pose->clock = clock; pose->detail = detail;
-        pose->seed = seed; pose->sword = sword; pose->valid = true;
+        pose->seed = seed; pose->valid = true;
         for (int frond = 0; frond < VEG_FRONDS_MAX; frond++)
-            pose->sway[frond] = veg_sway(t, sword, frond, seed, t->clock);
+            pose->sway[frond] = veg_sway(t, frond, seed, t->clock);
     }
     return pose->sway[i];
 }
 static void draw_veg(ctx_t *c, const tank_t *t, int b, int seed, int layer, bool final) {
+    if (b != 3 || !(t->sd_unlocks & SD_ITEM_PLANT)) return;
     veg_tint_fill(c->dim);
     int n; tank_veg_bed(t, b, NULL, NULL, NULL, &n);
+    src_t rib = src_color(0xc4d2aa, c->dim);
+    src_t crease = src_color(0x244e48, c->dim);
+    src_t vein_shadow = src_color(0x589581, c->dim);
+    src_t rim = src_color(0x9fc8ad, c->dim);
     /* the sword plant (bed 3, the shop): broad lanceolate leaves - a narrow
        stem, 7 px half-width at 40% of the way up, a point at the tip - a
        lazier sway, its own yellow-green pair */
-    bool sword = tank_veg_kind(t, b) == VEG_KIND_SWORD;
-    float root = 2.4f, tip = 0.4f;
     for (int i = 0; i < n; i++) {
         if (layer >= 0 && (i & 1) != layer) continue;
         float bx;
-        /* each frond's own height (tank_t.veg_h): what the keeper cut is
-           exactly what shows - no render-side variation on top */
         int segs = tank_veg_frond(t, b, i, &bx);
         if (bx + 12 < c->ox || bx - 12 >= c->ox + c->w) continue;
         if (g_veg_arch_pass < 0 && (bx + 14 < g_veg_mask_cx - CASTLE_ARCH_R || bx - 14 > g_veg_mask_cx + CASTLE_ARCH_R)) continue;   /* the early arch pass: only the fronds that can reach the arch (sway + a leaf's half width) */
@@ -1348,26 +1448,16 @@ static void draw_veg(ctx_t *c, const tank_t *t, int b, int seed, int layer, bool
         if (scene_box_hidden((int)bx - 12, y_top, (int)bx + 12, y_bot)) continue;
         if (y_bot >= c->oy + c->h) y_bot = c->oy + c->h - 1;
         if (y_top < c->oy) y_top = c->oy;
-        float sway = veg_cached_sway(t, b, sword, i, seed);
+        float sway = veg_cached_sway(t, i, seed);
         int spine_k = -1;
         float spine0 = 0, spine1 = 0;
-        /* one span per pixel row, centred on the spine, half-width tapering
-         * toward the tip: the same silhouette the old chain of overlapping
-         * ellipses drew (their union was a 5 px ribbon), at ~a quarter fewer
-         * pixels and without a sqrt per row. Full canopy = ~1000 segments. */
-        const uint16_t *pal = g_veg_row[(sword ? 2 : 0) + ((i + seed) & 1)];
+        const uint16_t *pal = g_veg_row[(i + seed) & 1];
         for (int y = y_bot; y >= y_top; y--) {
             float sp = (TANK_BOT - 16 - y) / VEG_SEG_DY;          /* fractional segment */
             if (sp < 0) sp = 0;
             if (sp > segs - 1) sp = (float)(segs - 1);
-            /* taper relative to the frond's own length (2.4 px at the root,
-             * 0.4 at the tip): the old fixed 0.07/segment thinned every frond
-             * to nothing at 29 segments, a hidden height cap now that fronds
-             * grow to the ceiling (VEG_SEGS_FULL) */
             float u = sp / (segs > 1 ? segs - 1 : 1);
-            float half = sword ? 1.2f + 6.0f * (u < 0.4f ? u / 0.4f : (1 - u) / 0.6f)
-                               : root - (root - tip) * u;
-            if (half < tip) half = tip;
+            float half = sword_half(u);
             int k = (int)sp; float fr = sp - k;
             if (k != spine_k) {
                 spine0 = veg_spine(t, bx, sway, k, segs, i, seed, t->clock);
@@ -1375,15 +1465,37 @@ static void draw_veg(ctx_t *c, const tank_t *t, int b, int seed, int layer, bool
                 spine_k = k;
             }
             float cx = spine0 + (spine1 - spine0) * fr;
+            int row_x = (int)(cx - half) - 1;
+            uint32_t blocked = veg_row_mask(row_x, (int)(cx + half) + 1, y);
             src_t s; s.v = pal[y];                              /* opaque: only .v is read */
-            if (sword && half >= 2) {
+            if (half >= 2) {
                 int vein = (int)cx;
-                s.v = g_veg_row[2][y];
-                veg_span(c, (int)(cx - half), vein, y, &s, final);
-                s.v = g_veg_row[3][y];
-                veg_span(c, vein + 1, (int)(cx + half), y, &s, final);
+                s.v = g_veg_row[0][y];
+                veg_span(c, (int)(cx - half), vein, y, &s, final, row_x, blocked);
+                s.v = g_veg_row[1][y];
+                veg_span(c, vein + 1, (int)(cx + half), y, &s, final, row_x, blocked);
+                veg_span(c, (int)(cx + half), (int)(cx + half), y, &crease, final, row_x, blocked);
+                if (half >= 3)
+                    veg_span(c, (int)(cx - half) + 1, (int)(cx - half) + 1, y, &rim, final, row_x, blocked);
+                veg_span(c, vein, vein, y, &rib, final, row_x, blocked);
+                if (half >= 3) {
+                    /* Opposed oblique veins meet a continuous pale midrib. */
+                    int branch = (y + i * 2) % 10;
+                    int reach = branch / 2 + 1;
+                    if (reach < half - .5f) {
+                        veg_span(c, vein - reach, vein - reach, y, &rib, final, row_x, blocked);
+                        veg_span(c, vein + reach, vein + reach, y, &vein_shadow, final, row_x, blocked);
+                        if (reach > 2)
+                            veg_span(c, vein + reach - 1, vein + reach - 1, y, &crease, final, row_x, blocked);
+                    }
+                    if (u < .25f) veg_span(c, vein + 1, vein + 1, y, &crease, final, row_x, blocked);
+                }
             } else {
-                veg_span(c, (int)(cx - half), (int)(cx + half), y, &s, final);
+                veg_span(c, (int)(cx - half), (int)(cx + half), y, &s, final, row_x, blocked);
+            }
+            if (u < .06f && (y + i) % 3 == 0) {
+                veg_span(c, (int)(cx - half) - 1, (int)(cx + half) + 1, y, &crease, final, row_x, blocked);
+                veg_span(c, (int)cx - 1, (int)cx, y, &rib, final, row_x, blocked);
             }
         }
     }
@@ -1408,8 +1520,8 @@ static void draw_veg(ctx_t *c, const tank_t *t, int b, int seed, int layer, bool
 /* CASTLE_FY (the floor line the keep stands on) and CASTLE_ROWS (rows above
  * it the palette covers) are defined with veg_span above */
 static const uint32_t CASTLE_RGB[CT_N] = {
-    0xd9c58c, 0xa99b7b, 0x87795f, 0x5d5446, 0x6a6151, 0x7aa33c, 0x527f2e,
-    0xe08a58, 0xc25f38, 0x8b3d24, 0xe4cd8a, 0xc4a95e, 0x8f7a42, 0x061219 };
+    0xd5dcc6, 0x9cae9c, 0x748f86, 0x435f61, 0x536e6c, 0x79a69a, 0x477b77,
+    0xf0d49b, 0xc3a36a, 0x7d6950, 0xa0c0b1, 0x537b80, 0x314f60, 0x142d38 };
 /* [keep | gate][tone][row], row 0 = CASTLE_FY - CASTLE_ROWS */
 static float    g_castle_dim = -1;
 /* the castle's silhouette, one bit per pixel in local coords (x - cx + 112,
@@ -1459,7 +1571,7 @@ static int castle_tone(int mode, int lx, int y, float u) {
         int t = pick[chash(lx >> 1, y) & 7] + (lit < 0 ? -1 : 0);
         return t < CT_MID ? CT_MID : t;
     }
-    int pitch = mode == 1 ? 4 : 5, len = mode == 1 ? 6 : 9;
+    int pitch = mode == 1 ? 5 : 6, len = mode == 1 ? 8 : 13;
     int course = d / pitch;
     if (d % pitch == 0) return mode == 3 ? CT_BRICK_D : mode == 1 ? CT_ROOF_D : CT_MORTAR;
     int bx = lx + 4096 + ((course & 1) ? len / 2 : 0);
@@ -1471,10 +1583,14 @@ static int castle_tone(int mode, int lx, int y, float u) {
     }
     if (mode == 1) {
         static const int8_t pick[4] = { CT_ROOF, CT_ROOF, CT_ROOF_L, CT_ROOF_D };
+        if (d % pitch == 1) return lit > 0 ? CT_ROOF : CT_ROOF_L;
         int t = pick[chash(course, bx / len) & 3] + lit;
         return t < CT_ROOF_L ? CT_ROOF_L : t > CT_ROOF_D ? CT_ROOF_D : t;
     }
     int m = castle_moss(lx, y, 0); if (m >= 0) return m;
+    if (d % pitch == 1 && bx % len > 1) return lit > 0 ? CT_MIDDK : CT_LIGHT;
+    if ((chash(bx / len, course) & 3) == 0 && bx % len == 3 && d % pitch > 2)
+        return CT_MIDDK;
     static const int8_t pick[8] = { CT_MID, CT_MID, CT_MID, CT_MIDDK, CT_MID, CT_MIDDK, CT_LIGHT, CT_MIDDK };
     int t = pick[chash(course, bx / len) & 7] + lit;
     return t < CT_LIGHT ? CT_LIGHT : t > CT_DARK ? CT_DARK : t;
@@ -1622,18 +1738,28 @@ static void castle_gate_wall(const cst_t *k) {
 static void castle_front_row(const cst_t *k) {
     int FY = CASTLE_FY;
     castle_gate_wall(k);
-    /* the left tower, pointed */
-    castle_rect(k, -62, -34, FY - 78, FY, 0);
-    castle_cone(k, -48, 18, FY - 78, FY - 108);
-    castle_window(k, -48, 7, FY - 62, FY - 48);
-    /* the short far-left tower */
-    castle_rect(k, -86, -60, FY - 46, FY, 0);
-    castle_cone(k, -73, 17, FY - 46, FY - 72);
-    castle_window(k, -73, 6, FY - 30, FY - 19);
-    /* the open far-right tower, crenellated */
-    castle_rect(k, 56, 86, FY - 70, FY, 0);
-    castle_merlons(k, 56, 86, FY - 70);
-    castle_window(k, 71, 7, FY - 44, FY - 30);
+    /* A narrow harbor watchtower, low storehouse, and capped signal house. */
+    castle_rect(k, -60, -35, FY - 79, FY, 0);
+    castle_cone(k, -48, 17, FY - 79, FY - 101);
+    castle_rect(k, -62, -33, FY - 80, FY - 77, 3);
+    castle_rect(k, -61, -34, FY - 45, FY - 43, 3);
+    castle_window(k, -48, 8, FY - 66, FY - 52);
+    castle_rect(k, -85, -61, FY - 39, FY, 0);
+    castle_cone(k, -73, 16, FY - 39, FY - 55);
+    castle_rect(k, -87, -59, FY - 40, FY - 38, 3);
+    castle_window(k, -73, 7, FY - 27, FY - 15);
+    castle_rect(k, 56, 84, FY - 65, FY, 0);
+    castle_cone(k, 70, 17, FY - 65, FY - 82);
+    castle_rect(k, 54, 86, FY - 66, FY - 63, 3);
+    castle_rect(k, 55, 85, FY - 21, FY - 19, 3);
+    castle_window(k, 65, 5, FY - 53, FY - 40);
+    castle_window(k, 76, 5, FY - 53, FY - 40);
+    for (int side = -1; side <= 1; side += 2) {
+        int x = side < 0 ? -39 : 39;
+        castle_rect(k, x - 2, x + 2, FY - 21, FY - 13, 3);
+        castle_put(k, k->cx + x - 1, FY - 19, CT_LIGHT);
+        castle_put(k, k->cx + x, FY - 17, CT_DARK);
+    }
 }
 static void castle_front_cached(const cst_t *k) {
     static unsigned epoch;
@@ -1680,10 +1806,13 @@ static void draw_castle(ctx_t *c, int cx, int front, bool final) {
         int half = (int)(92 * w);
         castle_span(&k, -half, half, y, 2, (float)-half, (float)half);
     }
-    /* the rear tower, tallest, right of centre: behind the wall */
-    castle_rect(&k, 24, 54, FY - 108, FY, 0);
-    castle_cone(&k, 39, 19, FY - 108, FY - 142);
-    castle_window(&k, 39, 7, FY - 92, FY - 78);
+    castle_rect(&k, 25, 53, FY - 103, FY, 0);
+    castle_cone(&k, 39, 18, FY - 103, FY - 132);
+    castle_rect(&k, 23, 55, FY - 104, FY - 101, 3);
+    castle_rect(&k, 24, 54, FY - 73, FY - 71, 3);
+    castle_window(&k, 34, 5, FY - 94, FY - 80);
+    castle_window(&k, 44, 5, FY - 94, FY - 80);
+    castle_window(&k, 39, 7, FY - 59, FY - 45);
     /* the curtain wall behind the gate's opening, then the courtyard's dark */
     castle_back_wall(&k);                    /* the arch is OPEN (2026-10-17): the tank behind shows through it */
     k.layer = 1;
@@ -1768,19 +1897,19 @@ typedef struct { float x0, y0, x1, y1, r; uint8_t tip; float g0, g1; } coral_seg
  * where its parent's closes, so the fan comes in trunk first, low branches,
  * then the crown over the month. */
 static const coral_seg_t CORAL_SEGS[] = {
-    { 16, 0, 17, 20, 3.0f, 0, 0.00f, 0.30f },   /* the trunk: thick, like the art's */
-    { 17, 20, 18, 33, 2.7f, 0, 0.30f, 0.60f },
-    { 18, 33, 18, 41, 2.3f, 1, 0.60f, 0.85f },  /* its tip */
-    { 16, 7, 6, 15, 2.5f, 0, 0.12f, 0.40f },    /* left, low */
-    { 6, 15, 3, 22, 2.2f, 1, 0.40f, 0.62f },
-    { 17, 12, 26, 18, 2.4f, 0, 0.20f, 0.48f },  /* right, low */
-    { 26, 18, 29, 25, 2.1f, 1, 0.48f, 0.70f },
-    { 17, 20, 9, 28, 2.4f, 0, 0.36f, 0.62f },   /* left, mid */
-    { 9, 28, 7, 35, 2.1f, 1, 0.62f, 0.82f },
-    { 18, 26, 25, 33, 2.3f, 0, 0.45f, 0.72f },  /* right, mid */
-    { 25, 33, 27, 40, 2.0f, 1, 0.72f, 0.92f },
-    { 18, 31, 12, 39, 2.2f, 1, 0.62f, 1.00f },  /* left, high: the last to finish */
-    { 17, 3, 22, 7, 1.9f, 1, 0.05f, 0.20f },    /* a nub */
+    { 16, 0, 15, 18, 3.1f, 0, 0.00f, 0.30f },
+    { 15, 18, 18, 31, 2.6f, 0, 0.30f, 0.60f },
+    { 18, 31, 18, 41, 2.0f, 1, 0.60f, 0.85f },
+    { 15, 7, 7, 12, 2.5f, 0, 0.12f, 0.40f },
+    { 7, 12, 3, 23, 1.8f, 1, 0.40f, 0.62f },
+    { 15, 11, 24, 15, 2.4f, 0, 0.20f, 0.48f },
+    { 24, 15, 29, 26, 1.8f, 1, 0.48f, 0.70f },
+    { 15, 18, 8, 24, 2.3f, 0, 0.36f, 0.62f },
+    { 8, 24, 5, 35, 1.7f, 1, 0.62f, 0.82f },
+    { 17, 25, 25, 29, 2.2f, 0, 0.45f, 0.72f },
+    { 25, 29, 28, 39, 1.7f, 1, 0.72f, 0.92f },
+    { 18, 31, 11, 39, 1.9f, 1, 0.62f, 1.00f },
+    { 16, 3, 23, 6, 1.7f, 1, 0.05f, 0.20f },
 };
 #define CORAL_NSEG ((int)(sizeof CORAL_SEGS / sizeof CORAL_SEGS[0]))
 /* signed distance to the skeleton AT growth g, in cells; *tip = within a
@@ -1844,8 +1973,10 @@ static void coral_build(float g) {
                 if (tip) t = (out_r || out_d) && !(out_l || out_u) ? CO_RIM : CO_TIP;
                 else if (edge) t = (out_r || out_d) ? CO_RIM : CO_LIT;
                 else {
-                    uint32_t h = chash(i, j) % 100;
-                    t = h < 22 ? CO_SHADE : h < 28 ? CO_LIT : CO_BODY;
+                    /* Limestone cups in staggered rows, with a lit upper lip. */
+                    int cup = (i + ((j / 3) & 1)) % 3;
+                    t = j % 3 == 1 && cup == 1 ? CO_SHADE :
+                        j % 3 == 0 && cup == 1 ? CO_LIT : CO_BODY;
                 }
             }
             ds()->co_sprite[j][i] = t;
@@ -1889,7 +2020,8 @@ static void coral_tint_fill(uint32_t rgb, float dim) {
 static void crown_point(float ox, float oy, float a, float sway, int k, int n_t, float len,
                         int i, int n, int *x, int *y) {
     float s = (float)i / n;
-    float ang = a + sway * s + (k - (n_t - 1) * 0.5f) * 0.05f * s;
+    float ang = a + sway * s + (k - (n_t - 1) * .5f) * .035f * s +
+                (k & 1 ? .12f : -.12f) * s * s;
     *x = (int)(ox + cosf(ang) * len * s + 0.5f);
     *y = (int)(oy + sinf(ang) * len * s + 0.5f);
 }
@@ -1935,6 +2067,7 @@ static void draw_crown(ctx_t *c, float ox, float oy, int n_t, float a0, float a1
     if (n_t < 1) return;
     uint32_t bead = mix(pale, 0xffffff, 0.55f);
     src_t stem_color = src_color(pale, c->dim), bead_color = src_color(bead, c->dim);
+    src_t joint_color = src_color(mix(pale, 0x254953, .35f), c->dim);
     const crown_pose_t *pose = crown_pose(ox, oy, n_t, a0, a1, len, seed, clock);
     int point = pose ? pose->offset : 0;
     for (int k = 0; k < n_t; k++) {
@@ -1952,7 +2085,13 @@ static void draw_crown(ctx_t *c, float ox, float oy, int n_t, float a0, float a1
             } else crown_point(ox, oy, a, sway, k, n_t, len, i, n, &ix, &iy);
             if (ix == lx && iy == ly) continue;
             if (g_clip_k >= 0 && pc_covered_above(g_clip_k, ix, iy)) continue;   /* under a piece above its own */
-            px_blend_s(c, ix, iy, i == n ? &bead_color : &stem_color, i == n ? 255 : 190);
+            px_blend_s(c, ix, iy, i == n ? &bead_color : i % 3 == 0 ? &joint_color : &stem_color, 255);
+            if (i > 2 && i < n && i % 3 == 1) {
+                int fx = ix + (abs(iy - ly) >= abs(ix - lx) ? (k & 1 ? 1 : -1) : 0);
+                int fy = iy + (abs(iy - ly) < abs(ix - lx) ? -1 : 0);
+                if (g_clip_k < 0 || !pc_covered_above(g_clip_k, fx, fy))
+                    px_blend_s(c, fx, fy, &bead_color, 255);
+            }
             if (ix < *bx0) *bx0 = ix;
             if (ix > *bx1) *bx1 = ix;
             if (iy < *by0) *by0 = iy;
@@ -2310,7 +2449,7 @@ static void pk_casts(const tank_t *t, int pkx) {
     g_pk_cast_n = 0;
     int px0 = pkx - PUMPKIN_HALF_W, px1 = pkx + PUMPKIN_HALF_W;      /* the lantern's own patch of sand: lit, a 5 px half step either side */
     bool grass_above = g_pk_k >= 0 && tank_decor_z(t, 8) == DECOR_Z_BACK;   /* the grass beds stand in front of a lantern BEHIND */
-    for (int b = 0; b < tank_veg_beds(t); b++) {
+    for (int b = 3; b < tank_veg_beds(t); b++) {
         if (b == 3 ? !tank_decor_above(t, 0, 8) : !grass_above) continue;    /* (the sword plant: by its own rank) */
         float x0, x1; tank_veg_bed(t, b, &x0, &x1, NULL, NULL);
         int a = (int)x0, z = (int)x1;
@@ -2456,9 +2595,9 @@ static void draw_pumpkin(ctx_t *c, int cx, bool night, float clock, bool steady,
  * sprite was; ~22 x 25 px. The tone rule runs over ~750 px per pose. */
 enum { SN_S0, SN_S1, SN_S2, SN_S3, SN_S4, SN_F0, SN_F1, SN_F2, SN_F3, SN_TIP, SN_EYE, SN_NONE };
 static const uint32_t SNAIL_RGB[SN_NONE] = {
-    0xf8c868, 0xe6953c, 0xc4641e, 0x8c3d16, 0x4a2010,      /* the shell: lit .. the groove */
-    0xf2ebe4, 0xd8cec6, 0xb3a7a6, 0x847a80,                /* the foot: lit .. its edge */
-    0x1a1c34, 0x0a0c18 };                                  /* stalk tips; the eye and the mouth */
+    0xf3dcaa, 0xc7a065, 0xa07850, 0x645442, 0x303d3b,
+    0xc4d8c6, 0x8faf9e, 0x628b84, 0x3e666b,
+    0x283e45, 0x102e38 };
 #define SNAIL_SOLE_DY   6.0f                               /* the sole below snail_y (the sprite's centre) */
 #define SNAIL_TINT_FLOOR 0.84f
 #define SNAIL_TINT_GLASS 0.90f
@@ -2492,16 +2631,24 @@ static int snail_upright_tone(int lx, int ly, float top, float clock, const sn_s
     if (sn_seg(lx, ly, 12.5f, -7.5f, 17.5f + sw1, -13.5f, 0.7f, &u)) return u > 0.78f ? SN_TIP : SN_F1;
     if (sn_seg(lx, ly, 13.5f, -6.5f, 18.5f + sw2, -9.5f, 0.7f, &u)) return u > 0.78f ? SN_TIP : SN_F1;
     /* the shell: a disc, the whorl a spiral about an apex left of centre */
-    const float cx = -3.5f, cy = -9.5f + heave, R = 8.6f;
+    const float cx = -3.0f, cy = -9.1f + heave, R = 9.0f;
     float dx = lx - cx, dy = ly - cy;
-    float r = sqrtf(dx * dx + dy * dy * 1.0816f);
-    if (r <= R) {
+    float r = sqrtf(dx * dx * .94f + dy * dy * 1.25f);
+    float shell_y = ly + 18 - heave;
+    float shell_w = shell_y < 5 ? 2 + shell_y * .75f :
+                    shell_y < 10 ? 6 + (shell_y - 5) * .6f : 9 - (shell_y - 10) * .5f;
+    if (shell_y >= 0 && shell_y < 15 && fabsf(dx + (15 - shell_y) * .16f) < shell_w) {
         float ax = lx - (cx - 1.5f), ay = ly - (cy + 0.5f);
         float ar = sqrtf(ax * ax + ay * ay), th = atan2f(ay, ax);
-        const float pitch = 2.25f;                                 /* ~4 turns: Strato asked for one more groove */
+        const float pitch = 4.1f;
         float w = fmodf(ar - th / TAU * pitch, pitch); if (w < 0) w += pitch; w /= pitch;
         int tone = sn_shell_tone(w < 0.5f ? 1 : w < 0.74f ? 2 : 3, (-dx * 0.55f - dy * 0.83f) / R, r > R - 1.3f);
-        if (ar < 2.2f) tone = 3;                                   /* the apex whorl is tight and dark */
+        /* Nerite-style radial ink ribbons cross the raised amber whorl. */
+        int ribbon = ((int)floorf((th + 3.141593f) * 4.8f + ar * .32f)) % 4;
+        if (ar > 2.2f && ribbon == 0) tone = r > R - 1 ? 4 : 3;
+        else if (w < .18f && tone > 0) tone--;
+        if (((int)shell_y + 1) % 5 == 0) tone = dx < 0 ? 1 : 4;
+        if (shell_y < 3) tone = dx < -1 ? 0 : 3;
         { float gx = (dx + 3.4f) * 0.8f, gy = dy + 4.6f; if (gx * gx + gy * gy < 4.0f) tone = 0; }   /* a wet gleam */
         return SN_S0 + sn_clamp(tone, 0, 4);
     }
@@ -2552,11 +2699,12 @@ static int snail_glass_body(float lx, float ly, float sx, float sy, float clock,
         }
     }
     /* the shell behind: a crescent of whorl lobes round the top and sides */
-    float qx = lx / 11.0f, qy = (ly + 2.5f) / 10.6f;
+    float qx = lx / 12.2f, qy = (ly + 3.5f) / 11.4f;
     float sr = sqrtf(qx * qx + qy * qy);
-    if (sr <= 1 && ly < 6.5f) {
-        float lobe = fast_sin(atan2f(ly + 2.5f, lx) * 5.0f - 0.3f + 8 * TAU);
-        int tone = sn_shell_tone(lobe > 0.15f ? 1 : 2, lit, sr > 0.88f);
+    if (sr <= 1 - ((int)(ly + 20) % 5 == 0 ? .08f : 0) && ly < 6.5f) {
+        float angle = atan2f(ly + 2.5f, lx);
+        int band = (int)floorf((angle + 3.141593f) * 3.4f + sr * 3);
+        int tone = sn_shell_tone(band % 4 == 0 ? 3 : 1, lit, sr > 0.88f);
         if (sr < 0.78f) tone++;                                    /* shadow where the foot meets it */
         { float gx = sx + 5.0f, gy = sy + 7.8f; if (gx * gx + gy * gy < 2.9f) tone = 0; }   /* gleam */
         return SN_S0 + sn_clamp(tone, 0, 4);
@@ -2614,6 +2762,7 @@ static void draw_snail(ctx_t *c, const tank_t *t, bool upright_pass) {
     if (!(t->sd_unlocks & SD_ITEM_SNAIL) || t->snail_x < 0) return;
     bool upright = tank_snail_upright(t);
     if (upright != upright_pass) return;
+    draw_creature_partner(c, t, CREATURE_SNAIL);
     int ox = (int)t->snail_x, oy = (int)(t->snail_y + SNAIL_SOLE_DY);
     if (!c->scaled && (oy + 18 < c->oy || oy - 24 >= c->oy + c->h ||
         ox + 24 < c->ox || ox - 24 >= c->ox + c->w)) return;
@@ -2694,11 +2843,11 @@ static void draw_snail(ctx_t *c, const tank_t *t, bool upright_pass) {
  * URCHIN_FLOOR_Y); its flat base sits on the root line, UR_BASE below. */
 enum { UR_T0, UR_T1, UR_T2, UR_T3, UR_T4, UR_T5, UR_NONE };
 _Static_assert(UR_NONE < 16, "urchin tones fit lossless four-bit cache");
-static const uint32_t URCHIN_RGB[UR_NONE] = { 0x320746, 0x66107d, 0x9732b1, 0xbe53bc, 0xf88ab8, 0xfff0d3 };
-#define UR_SPINES 11
+static const uint32_t URCHIN_RGB[UR_NONE] = { 0x29233e, 0x4c3b64, 0x765d86, 0xb394a3, 0xe7d1b3, 0xffedc4 };
+#define UR_SPINES 15
 #define UR_FACE    5
-#define UR_RX     10.0f
-#define UR_RY     8.0f
+#define UR_RX     8.0f
+#define UR_RY     7.0f
 #define UR_BASE   7.0f
 #define UR_TINT   0.93f
 typedef struct { float dx[UR_SPINES + UR_FACE], dy[UR_SPINES + UR_FACE], len[UR_SPINES + UR_FACE];
@@ -2715,7 +2864,7 @@ static void urchin_pose(ur_pose_t *p, float clock, bool chewing) {
         float a = -3.14159f - 0.32f + k * (3.14159f + 0.64f) / (UR_SPINES - 1);
         a += amp * fast_sin(clock * sp + k * 1.7f + 8 * TAU);
         p->dx[k] = cosf(a); p->dy[k] = sinf(a);
-        p->len[k] = (k & 1) ? 4.0f : 6.0f;
+        p->len[k] = k % 3 == 0 ? 8.0f : k % 3 == 1 ? 5.5f : 7.0f;
         p->rim[k] = 1.0f / sqrtf(p->dx[k] * p->dx[k] / (UR_RX * UR_RX) + p->dy[k] * p->dy[k] / (UR_RY * UR_RY));
         p->end[k] = p->rim[k] + p->len[k];
         p->den[k] = p->end[k] - p->rim[k] + 2;
@@ -2749,9 +2898,9 @@ static int urchin_tone(float lx, float ly, const ur_pose_t *p) {
         if (lit < -0.30f) tone = 1;
         if (lit < -0.75f || ly > UR_BASE - 1.2f) tone = 0;
         int ix = (int)floorf(lx), iy = (int)floorf(ly);
-        uint32_t h = chash(ix + 40, iy + 40);
-        if ((h & 7) == 0) tone = tone > 0 ? tone - 1 : 0;           /* the mottle */
-        else if ((h & 15) == 1 && tone < 4) tone++;
+        int plate = (ix + 40 + ((iy + 40) / 3 % 2)) % 4;
+        if ((iy + 40) % 3 == 0 && plate == 1) tone = tone > 0 ? tone - 1 : 0;
+        else if ((iy + 40) % 3 == 1 && plate == 1) tone = 4;
         return UR_T0 + tone;
     }
     /* the crown: a spine is a wedge from inside the dome out to a fine point */
@@ -2759,9 +2908,10 @@ static int urchin_tone(float lx, float ly, const ur_pose_t *p) {
         float u = lx * p->dx[k] + ly * p->dy[k], w = lx * p->dy[k] - ly * p->dx[k];
         float rim = p->rim[k], end = p->end[k];
         if (u < rim - 2 || u > end) continue;
-        float half = 2.6f * (end - u) / p->den[k] + 0.3f;
+        float half = 1.15f + .65f * (end - u) / p->den[k];
         if (w * w > half * half) continue;
         float slit = -p->dx[k] * 0.55f - p->dy[k] * 0.83f;          /* the spine's own side of the light */
+        if ((int)(u - rim + 4) % 3 == 0) return slit > -.3f ? UR_T4 : UR_T2;
         if (u > end - 1.8f) return slit > -0.5f ? UR_T5 : UR_T4;    /* pale tips */
         if (u > end - 3.8f) return slit > -0.3f ? UR_T4 : UR_T3;
         return slit > 0.2f ? UR_T3 : slit > -0.5f ? UR_T2 : UR_T1;
@@ -2770,6 +2920,7 @@ static int urchin_tone(float lx, float ly, const ur_pose_t *p) {
 }
 static void draw_urchin(ctx_t *c, const tank_t *t) {
     if (!(t->sd_unlocks & SD_ITEM_URCHIN) || t->urchin_x < 0) return;
+    draw_creature_partner(c, t, CREATURE_URCHIN);
     if (!c->scaled && (URCHIN_FLOOR_Y + UR_BASE < c->oy || URCHIN_FLOOR_Y - 16 >= c->oy + c->h ||
         t->urchin_x + 20 < c->ox || t->urchin_x - 20 >= c->ox + c->w)) return;
     int64_t helper_start = PROF_MARK();
@@ -2843,7 +2994,7 @@ static void draw_urchin(ctx_t *c, const tank_t *t) {
 #define SH_PTS_MAX 140
 enum { SH_FREE = 0, SH_ONBLADE = 1, SH_GRIP = 2 };   /* the tail's pose: the open curl, round a blade, the tight grip */
 enum { SHT_0, SHT_1, SHT_2, SHT_3, SHT_4, SHT_5, SHT_EYE, SHT_GLINT, SHT_FINM, SHT_FINR, SHT_N };
-static const uint32_t SH_RGB[SHT_N]   = { 0xfff1b8, 0xfcd055, 0xfa9b19, 0xf3640e, 0xcb2f15, 0x8e1e0b, 0x1b3a63, 0xe4ecff, 0xffd98a, 0xf3640e };
+static const uint32_t SH_RGB[SHT_N]   = { 0xffecc4, 0xf3cb80, 0xd8904e, 0xa4553a, 0x713a37, 0x422f39, 0x172b36, 0xfffae1, 0xb0d5c3, 0x4f9898 };
 static uint32_t creature_tint(uint32_t natural, bool detail, bool eye, uint8_t colors) {
     unsigned color = detail ? colors >> 4 : colors & 15;
     if (!color || eye) return natural;
@@ -2931,7 +3082,7 @@ static bool sh_body(float ly, float *sx, float *w, float *tb) {
     if (ly < 13.2f || ly > 26.4f) return false;
     float tt = (26.0f - ly) / 12.8f; tt = tt < 0 ? 0 : tt > 1 ? 1 : tt;
     float sp = sinf(3.14159265f * tt);
-    *sx = 7.0f + 1.0f * tt + 1.6f * sp; *w = 3.0f + 3.0f * powf(sp, 0.75f); *tb = tt;
+    *sx = 7.0f + 1.8f * tt + 1.4f * sp; *w = 1.8f + 4.4f * powf(sp, 1.2f); *tb = tt;
     return true;
 }
 /* one local pixel's byte (0 = water). nod and the row's body numbers come
@@ -2970,19 +3121,20 @@ static uint8_t sh_tone(float lx, float ly, float t, float flutter, const decor_s
         return SHB_ON | (gx * gx + gy * gy < 0.49f ? SHT_GLINT : SHT_EYE);
     }
     float u = 0, d = head_rows && lx > 13 ? sh_seg(lx, ly, 15.0f + jut, 11.0f + nod, 21.6f + jut, 12.5f + nod, &u) : 99;   /* the snout */
-    float hw = 1.55f - 0.5f * u;
+    float hw = 1.8f - 0.35f * u;
     if (d <= hw) {
         int tone = SHT_2;
         if (ly > 11.0f + nod + 0.6f + u * 1.2f) tone = SHT_3;
         if (d > hw - 0.7f && ly > 11.0f + nod) tone = SHT_4;
         if (u > 0.9f) tone = SHT_4;
+        if (u > .18f && u < .8f && ly < 11.6f + nod + u) tone = SHT_0;
         if ((chash((int)lx, (int)ly) & 7) == 0) tone = sh_clamp(tone + 1, 1, 5);
         return SHB_ON | tone;
     }
     /* the coronet: short blunt nubs, the middle one tallest (Strato 10-15: the
      * first pass's sharp points read as spikes); one short cheek point */
-    static const float SPIKES[5][5] = { { 8.9f, 4.0f, 8.9f, 1.7f, 1.25f }, { 10.3f, 4.0f, 10.5f, 2.0f, 1.15f }, { 6.8f, 4.6f, 6.2f, 3.3f, 0.95f },
-                                        { 12.6f, 4.6f, 13.3f, 3.5f, 0.85f }, { 5.2f, 7.6f, 3.6f, 7.4f, 0.9f } };
+    static const float SPIKES[5][5] = { { 8.9f, 4.0f, 6.8f, .8f, 1.2f }, { 10.3f, 4.0f, 10.4f, 1.0f, 1.0f }, { 6.8f, 4.6f, 3.8f, 2.2f, 1.0f },
+                                        { 12.6f, 4.6f, 14.6f, 2.2f, .8f }, { 5.2f, 7.6f, 2.6f, 6.0f, 1.0f } };
     if (ly < 10.5f) for (int i = 0; i < 5; i++) {
         const float *q = SPIKES[i];
         float margin = q[4] + 0.001f;
@@ -2993,7 +3145,7 @@ static uint8_t sh_tone(float lx, float ly, float t, float flutter, const decor_s
         d = sh_seg(lx, ly, q[0] + jut, q[1] + nod, q[2] + jut, q[3] + nod, &u);
         if (d <= q[4] * (1 - 0.15f * u)) return SHB_ON | ((u > 0.75f || d > q[4] * 0.55f) ? SHT_3 : SHT_2);
     }
-    float dx = (lx - 10.4f - jut) / 5.5f, dy = (ly - 8.5f - nod) / 5.4f, r = head_rows ? sqrtf(dx * dx + dy * dy) : 99;   /* the head: a round ellipse */
+    float dx = (lx - 10.4f - jut) / 5.0f, dy = (ly - 8.5f - nod) / 4.7f, r = head_rows ? sqrtf(dx * dx + dy * dy) : 99;
     if (r <= 1.0f) {
         float lit = -dx * 0.6f - dy * 0.8f;
         int tone = SHT_2;
@@ -3001,18 +3153,19 @@ static uint8_t sh_tone(float lx, float ly, float t, float flutter, const decor_s
         if (lit < -0.45f) tone = SHT_3;
         if (r > 0.82f && lit < 0.1f) tone = SHT_4;
         if (de < 2.75f && (lx < ex || ly < ey)) tone = SHT_1;            /* the pale ring over the eye */
-        if ((chash((int)lx, (int)ly) & 7) == 0) tone = sh_clamp(tone + 1, 0, 5);
+        if (lx < 10 && ly > 9 && (int)ly % 3 == 0) tone = SHT_4;
+        if (lx > 12 && ly > 11 && ly < 13) tone = SHT_0;
         return SHB_ON | tone;
     }
     d = ly > 10 && ly < 17.5f && lx > 4 && lx < 13 + jut ? sh_seg(lx, ly, 8.6f + jut, 11.8f + nod, 8.2f, 14.2f, &u) : 99;   /* the throat joins head and body (its top goes with the head) */
-    bool throat = d <= 3.1f;
+    bool throat = d <= 2.5f;
     float sx = row->sx, w = row->w;
     bool body = row->body;
     if (body || throat) {
         float un, ridge; bool inside;
         if (body) {
             un = (lx - sx) / w; inside = fabsf(un) <= 1.0f;
-            ridge = fmodf(ly - 14.0f + un * 1.2f + 40.0f, 4.0f);
+            ridge = fmodf(ly - 14.0f + un * 1.7f + 40.0f, 3.6f);
             if (!inside && un < 0 && fabsf(un) <= 1.0f + 1.3f / w && ridge < 1.4f) return SHB_ON | SHT_4;   /* a dorsal bump */
         } else { sx = 8.4f; w = 3.1f; un = (lx - 8.4f) / 3.1f; inside = true; ridge = 9; }
         if (inside) {
@@ -3026,7 +3179,11 @@ static uint8_t sh_tone(float lx, float ly, float t, float flutter, const decor_s
                 if (un < -0.78f) tone = SHT_4; else if (un < -0.45f) tone = SHT_3;
                 if (un > -0.45f && un < 0.1f && ridge > 1.6f && ly < 20) tone = SHT_2;
             }
-            if ((chash((int)lx, (int)ly + 7) & 7) == 0) tone = sh_clamp(tone + 1, 0, 5);
+            if (ridge > 1.0f && ridge < 1.9f && un > -.6f && un < .1f)
+                tone = SHT_1;
+            float plate = fabsf(fmodf(ly + 30, 4.0f) - 2);
+            if (fabsf(un + .1f) * 2 + plate < 1.2f) tone = SHT_0;
+            else if (fabsf(un + .1f) * 2 + plate < 1.7f) tone = SHT_3;
             return SHB_ON | tone;
         }
     }
@@ -3106,12 +3263,12 @@ static void sh_sprite_cached(decor_scratch_t *sc, float t, int pose, float u, fl
 /* a blade's ribbon at a tank row, exactly as draw_veg lays it (its sway and
  * taper): the centre x and the half-width; false off the blade */
 static bool veg_ribbon_at(const tank_t *t, int b, int i, int y, float clock, float *cx, float *half) {
+    if (b != 3) return false;
     float bx; int segs = tank_veg_frond(t, b, i, &bx);
     if (segs < 1) segs = 1;
     if (segs > VEG_MAX_SEGS) segs = VEG_MAX_SEGS;
-    bool sword = tank_veg_kind(t, b) == VEG_KIND_SWORD;
     int seed = VEG_SEED[b];
-    float sway = veg_sway(t, sword, i, seed, clock);
+    float sway = veg_sway(t, i, seed, clock);
     float sp = (TANK_BOT - 16 - y) / VEG_SEG_DY;
     if (sp < -0.7f || sp > segs - 1 + 0.7f) return false;
     if (sp < 0) sp = 0;
@@ -3121,7 +3278,7 @@ static bool veg_ribbon_at(const tank_t *t, int b, int i, int y, float clock, flo
     float xk1 = veg_spine(t, bx, sway, k1, segs, i, seed, clock);
     *cx = xk + (xk1 - xk) * fr;
     float u = sp / (segs > 1 ? segs - 1 : 1);
-    *half = sword ? 1.2f + 6.0f * (u < 0.4f ? u / 0.4f : (1 - u) / 0.6f) : fmaxf(0.4f, 2.4f - 2.0f * u);
+    *half = sword_half(u);
     return true;
 }
 /* its pitch this frame, radians (the renderer's rule, below): forward with its speed */
@@ -3153,6 +3310,7 @@ static void seahorse_box(const tank_t *t, int *x0, int *y0, int *x1, int *y1) {
 #define SH_PIVOT_Y 19.0f
 static void draw_seahorse(ctx_t *c, const tank_t *t) {
     if (!(t->sd_unlocks & SD_ITEM_SEAHORSE) || t->sh_x < 0 || t->sh_hidden) return;
+    draw_creature_partner(c, t, CREATURE_SEAHORSE);
     int bx0, by0, bx1, by1; seahorse_box(t, &bx0, &by0, &bx1, &by1);
     if (bx1 < c->ox || bx0 >= c->ox + c->w || by1 + 1 < c->oy || by0 >= c->oy + c->h) return;
     if (scene_box_hidden(bx0, by0, bx1, by1)) return;
@@ -3178,6 +3336,8 @@ static void draw_seahorse(ctx_t *c, const tank_t *t) {
         veg_ribbon_at(t, t->sh_bed, t->sh_frond, (int)ay, t->clock + 0.05f, &cx1, &h1);
         float l = (cx1 - cx0) / 0.05f * 0.9f; l = l < -3 ? -3 : l > 3 ? 3 : l;
         lean = lean * (1 - u) + l * u;
+    } else if (held && t->sh_akind == SH_ANCHOR_KELP) {
+        SW = 1; lean *= 1 - u;
     } else if (onpost) { SW = fmaxf(1.0f, fminf(3.5f, t->sh_ahw)); lean *= 1 - u; }   /* a post stands still: the coil hugs its middle */
     else if (onsand) lean *= 1 - u * 0.6f;
     if (free_u > 0) {                                                    /* off a blade it bobs in the water and pitches with speed */
@@ -3289,23 +3449,27 @@ static int      g_cl_scheme = -1; static float g_cl_dim = -1;
 #define CL_CX 36.0f
 typedef struct { float x0, y0, x1, y1, r; } cl_cap_t;
 static const cl_cap_t CL_ROCKS[] = {                         /* stones, as capsules (a circle = a zero-length one) */
-    { 8, 3, 8, 3, 6 }, { 20, 4, 20, 4, 7 }, { 33, 3, 33, 3, 6 }, { 46, 4, 46, 4, 7 }, { 58, 3, 58, 3, 6 }, { 66, 4, 66, 4, 5 },
-    { 14, 7, 14, 7, 4 }, { 40, 7, 40, 7, 4 }, { 52, 8, 52, 8, 4 }, { 4, 6, 70, 6, 2.5f },
+    { 6, 3, 11, 3, 4 }, { 20, 4, 24, 4, 5 }, { 33, 3, 37, 3, 5 },
+    { 45, 4, 49, 5, 6 }, { 59, 3, 65, 3, 5 },
+    { 14, 6, 19, 7, 3 }, { 38, 7, 41, 7, 4 }, { 54, 7, 57, 8, 3 },
 };
 static const cl_cap_t CL_TUBES[] = {                         /* back to front */
-    { 45, 5, 44, 22, 4.5f }, { 61, 4, 63, 27, 5.0f }, { 52, 4, 53, 34, 5.5f }, { 58, 3, 59, 13, 3.5f },
+    { 45, 5, 42, 23, 3.8f }, { 60, 4, 65, 25, 4.2f },
+    { 53, 5, 54, 35, 4.8f }, { 58, 4, 60, 15, 3.1f },
 };
 static const cl_cap_t CL_BRAIN[] = {
-    { 35, 9, 35, 9, 7 }, { 28, 7, 28, 7, 5.5f }, { 42, 7, 42, 7, 5.5f }, { 35, 14, 35, 14, 5 }, { 31, 12, 31, 12, 4 }, { 39, 12, 39, 12, 4 },
+    { 31, 7, 37, 7, 6 }, { 26, 6, 29, 8, 4 }, { 39, 6, 43, 7, 4 },
+    { 33, 12, 36, 13, 4 }, { 29, 10, 31, 12, 3 }, { 38, 10, 40, 11, 3 },
 };
 static const cl_cap_t CL_WEED_BACK[] = {
-    { 13, 3, 11, 11, 1.1f }, { 14, 3, 15, 12, 1.1f }, { 12, 3, 9, 9, 1.0f },
-    { 30, 3, 29, 10, 1.1f }, { 31, 3, 33, 11, 1.0f },
-    { 47, 3, 48, 12, 1.1f }, { 46, 3, 44, 10, 1.0f },
-    { 66, 3, 68, 11, 1.1f }, { 65, 3, 63, 9, 1.0f }, { 67, 3, 67, 12, 1.0f },
+    { 12, 4, 9, 12, 1.2f }, { 13, 4, 16, 13, 1.1f }, { 9, 8, 6, 10, 1.0f },
+    { 29, 4, 27, 11, 1.2f }, { 30, 4, 34, 10, 1.0f },
+    { 47, 4, 49, 13, 1.0f }, { 46, 4, 42, 10, 1.1f },
+    { 66, 4, 69, 13, 1.0f }, { 65, 4, 62, 10, 1.1f }, { 68, 7, 70, 9, 1.0f },
 };
 static const cl_cap_t CL_WEED_FRONT[] = {
-    { 21, 2, 19, 9, 1.1f }, { 22, 2, 24, 8, 1.0f }, { 41, 2, 43, 8, 1.0f }, { 40, 2, 39, 7, 1.0f }, { 56, 2, 57, 8, 1.0f },
+    { 20, 2, 17, 8, 1.2f }, { 21, 2, 25, 7, 1.0f },
+    { 40, 2, 44, 7, 1.1f }, { 39, 2, 37, 8, 1.0f }, { 56, 2, 58, 8, 1.1f },
 };
 #define CL_CORAL_X  24.0f                                    /* the branching coral's base, and its scale */
 #define CL_CORAL_Y  5.0f
@@ -3344,8 +3508,9 @@ static float cl_sd(int e, int pass, float px, float py, bool *deep) {
             float d = cl_cap_sd(px, py, &CL_BRAIN[i], 1);
             if (d < best) { second = best; best = d; } else if (d < second) second = d;
         }
-        float v = fast_sin(px * 1.3f + py * 0.9f) + 0.6f * fast_sin(py * 2.1f - px * 0.5f);
-        *deep = best < -0.8f && ((second < 0.5f && second > -1.2f) || v > 0.95f);   /* the seams, and a few winding grooves */
+        int chamber = ((int)floorf(px + py * .6f)) % 5;
+        *deep = best < -.8f && ((second < .5f && second > -1.2f) ||
+                              (chamber == 0 && (int)py % 4 != 0));
     }
     return best;
 }
@@ -3372,7 +3537,18 @@ static void cl_paint(int e, int pass, float s) {
             else if (out_r || out_d) v = CLV_RIM;
             else if (out_l || out_u) v = CLV_LIT;
             else if (deep) v = CLV_DEEP;                        /* the rock's moss: never on its edge */
-            else { uint32_t h = chash(i + 97 * e, j) % 100; v = h < 20 ? CLV_SHADE : h < 26 ? CLV_LIT : CLV_BODY; }
+            else if (e == CLE_TUBE) {
+                int rib = (i + j / 4) % 3;
+                v = rib == 0 ? CLV_SHADE : rib == 1 ? CLV_LIT : CLV_BODY;
+                if (j % 5 == 0 && rib == 2) v = CLV_SHADE;
+            } else if (e == CLE_CORAL) {
+                int cup = (i + ((j / 3) & 1)) % 3;
+                v = j % 3 == 1 && cup == 1 ? CLV_SHADE :
+                    j % 3 == 0 && cup == 1 ? CLV_LIT : CLV_BODY;
+            } else {
+                uint32_t h = chash(i + 97 * e, j) % 100;
+                v = h < 14 ? CLV_SHADE : h < 28 ? CLV_LIT : CLV_BODY;
+            }
             if (e == CLE_TUBE && deep && (out_u || out_l)) v = CLV_RIM;   /* the mouth's far lip */
             ds()->cl_sprite[j][i] = (uint8_t)CL_TONE(e, v);
         }
@@ -4442,7 +4618,7 @@ typedef struct {
 static piece_t g_pc[PIECES_MAX];
 static bool g_scene_front;                /* the baked scene holds the pieces IN FRONT */
 /* the scene's signature: what the bake depends on (render_tank rebakes on a change) */
-typedef struct { int n; uint32_t col[PIECES_MAX]; int16_t cx[PIECES_MAX]; uint8_t item[PIECES_MAX], z[PIECES_MAX], q[PIECES_MAX]; uint32_t scenery, vegetation; float dim; bool front, simple; uint8_t extra_scenery, season; int lx; } scene_sig_t;
+typedef struct { int n; uint32_t col[PIECES_MAX]; int16_t cx[PIECES_MAX]; uint8_t item[PIECES_MAX], z[PIECES_MAX], q[PIECES_MAX]; uint32_t scenery, vegetation; float dim; bool front, simple; uint8_t extra_scenery, season, foliage, statue; int lx; } scene_sig_t;
 static scene_sig_t g_sig; static bool g_sig_ok;
 static bool g_pk_hidden;                  /* director `pumpkin off`: the frame-rate A/B */
 void render_set_pumpkin_hidden(bool hidden) { g_pk_hidden = hidden; }
@@ -4626,6 +4802,10 @@ static void pc_draw(ctx_t *c, const tank_t *t, int k, bool final, bool record) {
  * frame. The rectangle: a 14 px strip of speckled stones in four tones. The
  * bowl: the same speckle in 2 px grains over a bed that runs ~70 px down to
  * the glass, pebbles scattered through it, darkening with depth. */
+static int sand_ridge(int x) {
+    int u = x % 48 - 24;
+    return TANK_SAND_TOP + 1 + u * u / 240;
+}
 static inline uint32_t floor_rgb(int x, int y) {
     uint32_t grain = chash(x, y), pebble = chash(x / 7, y / 4);
     unsigned tone = (grain >> 4) & 15;
@@ -4639,10 +4819,32 @@ static inline uint32_t floor_rgb(int x, int y) {
     if (depth < 0) depth = 0;
     if (depth > 18) depth = 18;
     uint32_t base = mix(pal[1], pal[2], .25f + depth * (.6f / 18));
+    int ripple = (y * 3 + x / 11 + (x / 29 % 2) * 2) % 13;
+    if (ripple == 0 && x % 19 < 14) return mix(base, pal[0], .23f);
+    if (ripple == 1 && x % 19 < 12) return mix(base, pal[3], .20f);
+    if ((chash(x / 13, y / 3) & 7) == 0) base = mix(base, pal[3], .13f);
     if (stone) return y % 4 == 1 ? mix(base, pal[0], .55f) : mix(base, pal[3], .55f);
     if (tone < 2) return mix(base, pal[0], .32f);
     if (tone < 5) return mix(base, pal[3], .4f);
     return base;
+}
+static uint32_t kelp_forest_material(int x, int y) {
+    int cell = x / 32, stem = x % 32;
+    int top = TANK_BOT - 14 - (75 + cell % 4 * 21);
+    int down = y - top;
+    if (down < 0 || y >= TANK_BOT - 14) return 0;
+    int bend = (int)(sinf(y * .08f) * 3);
+    int axis = stem - 15 - bend;
+    int leaf_x = axis - ((down / 24 + cell) % 2 ? 6 : -6);
+    int leaf_y = down % 24 - 12;
+    bool leaf = leaf_x * leaf_x * 2 + leaf_y * leaf_y < 80;
+    int half = down < 8 ? down / 4 : 2;
+    if (!leaf && abs(axis) > half) return 0;
+    uint32_t material = leaf ? (leaf_x < 0 ? 0x82ad80 : 0x315e51) :
+                              (axis < 0 ? 0x6c9670 : 0x2e5b50);
+    if (leaf && abs(leaf_x + leaf_y / 3) < 1) material = 0xb3c293;
+    if (leaf && (leaf_y + 24) % 4 == 0 && abs(leaf_x) > 2) material = 0x4c7e60;
+    return material;
 }
 static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
     static uint32_t row_water, row_color;
@@ -4658,28 +4860,83 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
     water = row_color;
     int floor = TANK_BOT - 14;
     int rise = floor - y, cell = x / 56, local = x % 56 - 28;
+    /* A finite engraved stage behind the residents. Integer silhouettes and
+     * material cuts are shared by live rows and both scene-cache painters. */
+    int ray = (x + y / 3 + g_journal_theme * 17) % 109;
+    if (ray < 10 && y < floor - 28) water = mix(water, 0x9ec9be, .045f);
+    int bank = (x / 17 % 5) * 3 + (x % 17 - 8) * (x % 17 - 8) / 10;
+    if (rise > 0 && rise < 21 - bank / 2)
+        water = mix(water, g_journal_theme == 5 ? 0x63536c : 0x365764, .24f);
+    if (g_journal_theme == 1) {
+        int xx = x % 89 - 44, yy = y - 25 - (x / 89 % 2) * 16;
+        if (yy > -20 && yy < 15 && xx * xx + yy * yy * 3 < 650) {
+            bool vein = abs(xx + yy / 2) % 9 < 2;
+            return mix(water, vein ? 0x719f78 : xx < 0 ? 0x345f55 : 0x52856b, .25f);
+        }
+    } else if (g_journal_theme == 2) {
+        int xx = x % 97 - 48, flute = (xx + 52) % 13 - 6;
+        int summit = 42 + (3 - abs(xx) / 12) * 8 + x / 97 % 2 * 4;
+        if (abs(xx) < 43 && rise > 7 && rise < summit - flute * flute / 8) {
+            uint32_t coral = flute < -2 ? 0x684568 : flute < 2 ? 0xd5a08c : 0x946481;
+            if (rise > summit - 7) coral = flute < 0 ? 0xf0c2a1 : 0xb77f9b;
+            if (rise % 11 < 2 && abs(flute) < 2) coral = 0x694e72;
+            return mix(water, coral, .42f);
+        }
+        if (rise > 2 && rise < 10 && x % 31 < 19)
+            return mix(water, x % 5 < 2 ? 0xb5b493 : 0x647d7a, .45f);
+    } else if (g_journal_theme == 3) {
+        int xx = x % 101 - 50, yy = rise;
+        if (yy > 0 && yy < 55 && abs(xx) < 5 + (55 - yy) / 9)
+            return mix(water, yy > 48 ? 0x7deddf : xx < 0 ? 0x685e94 : 0x343b67, .7f);
+        int bx = (x + 8) % 67 - 33, by = y - 40 - x / 67 % 3 * 20;
+        int rr = bx * bx + by * by;
+        if (rr > 50 && rr < 81) return mix(water, 0x8dbcd9, .45f);
+    } else if (g_journal_theme == 4) {
+        int xx = x % 113 - 56, yy = rise - 12;
+        if (yy > -10 && yy < 23 && abs(xx) < (yy > 13 ? 5 : 10 - abs(yy) / 3))
+            return mix(water, yy % 7 == 0 ? 0x57777a : xx < 0 ? 0xb4b49a : 0x718c84, .65f);
+    } else if (g_journal_theme == 5) {
+        int horizon = 63 + (x / 34 % 3) * 4;
+        if (y >= horizon && y < horizon + 6)
+            water = mix(water, 0xe7a680, .18f);
+        if (y > floor - 60 && y < floor - 40 && x % 117 > 81 && x % 117 < 89)
+            return mix(water, 0x40415d, .7f);
+    } else if (g_journal_theme == 6) {
+        int xx = x % 109 - 54, yy = rise;
+        int axis = xx + yy / 7, half = (73 - yy) / 5 + 2;
+        if (yy > 0 && yy < 73 && abs(axis) < half) {
+            uint32_t ice = axis < -half / 3 ? 0x356491 : axis < 2 ? 0x82bdcc : 0xc3e8e4;
+            if (axis == half - 1 || axis == -half + 1) ice = 0xe7fbec;
+            if ((yy + axis * 2 + 120) % 23 == 0) ice = 0xaddce1;
+            return mix(water, ice, .78f);
+        }
+    } else if (g_journal_theme == 7) {
+        int xx = x % 111 - 55, yy = rise - 21;
+        if (rise > 8 && yy < 29 && xx * xx + yy * yy < 850 &&
+            abs(xx + yy / 2) % 8 < 2)
+            return mix(water, yy > 14 ? 0x88caba : 0x596c9e, .62f);
+        if ((chash(x, y) & 1023) < 2 && y < floor - 40)
+            return mix(water, 0xd0dfd9, .6f);
+    }
     if (rise > 0 && rise < 12 + (cell % 3) * 6 - local * local / 60)
         water = mix(water, 0x537779, .18f);
     else if (rise > 0 && rise < 28 + (cell % 4) * 5 - local * local / 38)
         water = mix(water, 0x537779, .08f);
     if (g_journal_theme == 1) {
-        int stem = x % 32, bend = (int)(sinf(y * 0.08f) * 3);
-        int height = 75 + (x / 32 % 4) * 21;
-        int leaf_x = stem - 15 - bend - (y / 24 % 2 ? 6 : -6), leaf_y = y % 24 - 12;
-        if (y > floor - height && (abs(stem - 15 - bend) <= 2 ||
-            (leaf_x * leaf_x * 2 + leaf_y * leaf_y < 80)))
-            return mix(water, x / 32 % 2 ? 0x6aa785 : 0x467b70, x / 32 % 2 ? .6f : .35f);
-        if ((x + y / 2) % 51 < 5) return mix(water, 0x9adf83, 0.12f);
+        uint32_t material = kelp_forest_material(x, y);
+        if (material) return mix(water, material, .38f);
+        if ((x + y / 2) % 51 < 3) return mix(water, 0x9adf83, 0.06f);
     } else if (g_journal_theme == 2) {
         int dx = x % 54 - 27, rise = floor - y, peak = 50 + (x / 54 % 3) * 17;
         if (rise > 0 && rise < peak && (abs(dx) < 3 ||
             (rise > 12 && abs(abs(dx) - (rise - 12) / 2) <= 3 && abs(dx) < 25) ||
             (rise > 32 && abs(abs(dx) - (rise - 32) / 2) <= 2 && abs(dx) < 17) ||
             (rise < 12 && dx * dx + rise * rise < 190)))
-            return mix(water, x / 54 % 2 ? 0xc08da7 : 0xceac96, x / 54 % 2 ? .55f : .35f);
+            return mix(water, abs(dx) < 2 ? 0xe6bf9a :
+                       (dx + rise / 2) % 5 < 2 ? 0x754f72 : 0xc08da7, .38f);
     } else if (g_journal_theme == 3) {
         uint32_t hash = (uint32_t)(x * 73856093u) ^ (uint32_t)(y * 19349663u);
-        if (y < floor && hash % 277u < 3) return mix(water, hash & 1 ? 0x6eefff : 0xe18cff, 0.9f);
+        if (y < floor && hash % 1109u == 0) return mix(water, hash & 1 ? 0x6eefff : 0xe18cff, 0.55f);
         int dx = x % 43 - 21, rise = floor - y;
         if (rise > 0 && rise < 22 + x / 43 % 3 * 7 && abs(dx) < (28 - rise) / 4)
             return mix(water, 0xa275ef, 0.8f);
@@ -4697,9 +4954,14 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
                     (local < 34 || local > 68 || rise >= height - 12);
         if (column || capital || arch) {
             uint32_t stone = local % 6 < 2 ? 0x5b8686 : 0x91aaa0;
-            if (y % 19 < 2 || (local + y / 19 * 7) % 29 == 0) stone = 0x3b6464;
+            int course = (rise + 3) % 11;
+            if (course == 0 || (local + rise / 11 * 7) % 17 == 0) stone = 0x304f55;
+            else if (course == 1) stone = 0xb4bd9f;
+            else if ((chash(x, y) & 31) < 2) stone = 0x587a75;
+            if (column && (local == 12 || local == 18 || local == 24)) stone = 0xb3bfa4;
+            if (capital && (rise == height - 8 || rise == height - 3)) stone = 0xbac7aa;
             if (rise < 18 && (x + y * 3) % 11 < 4) stone = 0x39775b;
-            return mix(water, stone, x / 76 % 2 ? .6f : .4f);
+            return mix(water, stone, x / 76 % 2 ? .36f : .24f);
         }
         if (rise > 0 && rise < 12 && (x % 37 - 18) * (x % 37 - 18) + rise * rise < 160)
             return mix(water, 0x718d83, 0.75f);
@@ -4721,10 +4983,15 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
         bool crystal = rise > 0 && rise < height && abs(crystal_x) < (height - rise) / 3;
         if (ceiling || crystal) {
             int facet = ceiling ? local : crystal_x;
-            return mix(water, facet < 0 ? 0x75b5ed : 0xd0f6ff, ceiling ? .45f : .65f);
+            int extent = ceiling ? (length - top) / 4 : (height - rise) / 3;
+            uint32_t ice = facet < -extent / 3 ? 0x356491 : facet < 1 ? 0x7fbed8 : 0xc7ebee;
+            if (abs(facet) >= extent - 1) ice = facet < 0 ? 0x559bb7 : 0xe7fbec;
+            int fracture = (ceiling ? top : rise) + facet * 2;
+            if ((fracture + 160) % 17 == 0 && abs(facet) < extent - 1) ice = 0x9bd4dc;
+            return mix(water, ice, ceiling ? .70f : .82f);
         }
         uint32_t hash = (uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u;
-        if (hash % 811 == 0 && y < floor) return 0xb5e9ff;
+        if (hash % 2437 == 0 && y < floor) return mix(water, 0xb5e9ff, .5f);
     } else if (g_journal_theme == 7) {
         int dx = x - 47, dy = y - 29;
         if (dx * dx + dy * dy < 17 * 17 && (dx - 8) * (dx - 8) + (dy + 4) * (dy + 4) >= 16 * 16)
@@ -4733,9 +5000,11 @@ static uint32_t backdrop_rgb(int x, int y, uint32_t water) {
             water = mix(water, 0x8ab9ed, 0.23f);
         int rise = floor - y, local = x % 49 - 24;
         int peak = 30 + x / 49 % 3 * 13;
-        if (rise > 0 && rise < peak && (abs(local) < 2 ||
-            (rise > 9 && abs(abs(local) - (rise - 9) / 2) < 2 && abs(local) < 21)))
-            return mix(water, rise > peak - 9 ? 0x85dfd2 : 0x48659d, 0.85f);
+        int bend = rise * rise / 180 - rise / 8;
+        int blade = local - bend, width = (peak - rise) / 9 + 1;
+        if (rise > 0 && rise < peak && abs(blade) < width)
+            return mix(water, blade == 0 ? 0xb5e7d0 :
+                       blade < 0 ? 0x739ab2 : 0x374b7a, .85f);
     }
     return water;
 }
@@ -4792,7 +5061,7 @@ static void draw_season(ctx_t *c, int season, bool final) {
     case SEASON_WINTER:                             /* a snow dusting on the sand's ridge */
         for (int x = 0; x < TANK_W; x++) {
             uint32_t h = (uint32_t)(x * 2654435761u);
-            int top = TANK_SAND_TOP + 4 - (int)((h >> 8) % 5);
+            int top = sand_ridge(x);
             season_px(c, x, top, 0xf2f8ff, final);
             if ((h >> 14) % 3) season_px(c, x, top + 1, 0xe2eefa, final);
             if ((h >> 18) % 11 == 0) season_px(c, x, top + 3 + (int)((h >> 22) % 9), 0xf2f8ff, final);
@@ -4814,7 +5083,182 @@ static void draw_season(ctx_t *c, int season, bool final) {
         }
     }
 }
+_Static_assert(FOLIAGE_KELP == sizeof GROUND_COVER_ART / sizeof GROUND_COVER_ART[0], "every carpet set needs live art");
+_Static_assert(KELP_HEIGHT == sizeof KELP_ART / sizeof KELP_ART[0] &&
+               KELP_WIDTH == sizeof KELP_ART[0], "kelp art and perch dimensions match");
+static void draw_ground_sprite(ctx_t *c, int kind, int x, int y, int width,
+                               bool final, bool lit, uint32_t background, bool mirror) {
+    int height = width * GROUND_COVER_H / GROUND_COVER_W;
+    if (x + width <= c->ox || x >= c->ox + c->w ||
+        y + height <= c->oy || y >= c->oy + c->h) return;
+    src_t colors[16];
+    for (int i = 1; i < 16; i++)
+        colors[i] = src_color(shop_art_color(GROUND_COVER_PALETTE[kind][i], lit, background), c->dim);
+    for (int row = 0; row < height; row++) {
+        if (y + row < c->oy || y + row >= c->oy + c->h) continue;
+        const uint8_t *pixels = GROUND_COVER_ART[kind][row * GROUND_COVER_H / height];
+        for (int col = 0; col < width;) {
+            int sx = col * GROUND_COVER_W / width;
+            int color = pixels[mirror ? GROUND_COVER_W - 1 - sx : sx];
+            int end = col + 1;
+            while (end < width) {
+                sx = end * GROUND_COVER_W / width;
+                if (pixels[mirror ? GROUND_COVER_W - 1 - sx : sx] != color) break;
+                end++;
+            }
+            if (color) season_span(c, x + col, x + end - 1, y + row, &colors[color], final);
+            col = end;
+        }
+    }
+}
+static void draw_ground_cover(ctx_t *c, const tank_t *t, bool final) {
+    static const int centers[] = {7, 23, 39, 62, 79, 94};
+    int kinds[FOLIAGE_COUNT], count = 0;
+    for (int kind = 0; kind < FOLIAGE_KELP; kind++)
+        if (t->foliage.planted & (1u << kind)) kinds[count++] = kind;
+    if (!count) return;
+    for (int p = 0; p < 6; p++) {
+        int x = centers[p] * TANK_W / 100 - GROUND_COVER_W / 2;
+        int y = TANK_SAND_TOP - 12 + (p % 3) * 2;
+        draw_ground_sprite(c, kinds[p % count], x, y, GROUND_COVER_W,
+                           final, true, 0, (p & 1) != 0);
+    }
+}
+static void draw_kelp_sprite_rows(ctx_t *c, int x, int y, int height, int sway,
+                                  bool final, bool lit, uint32_t background,
+                                  int row_start, int row_end) {
+    int width = height * KELP_WIDTH / KELP_HEIGHT;
+    if (x + width + 2 <= c->ox || x - 2 >= c->ox + c->w ||
+        y + height <= c->oy || y >= c->oy + c->h) return;
+    static src_t colors[16];
+    static float palette_dim = -1;
+    static bool palette_lit;
+    static uint32_t palette_background;
+    if (palette_dim != c->dim || palette_lit != lit || palette_background != background) {
+        for (int i = 1; i < 16; i++)
+            colors[i] = src_color(shop_art_color(KELP_PALETTE[i], lit, background), c->dim);
+        palette_dim = c->dim; palette_lit = lit; palette_background = background;
+    }
+    int first_row = c->oy > y ? c->oy - y : 0;
+    int last_row = c->oy + c->h - y < height ? c->oy + c->h - y : height;
+    if (first_row < row_start) first_row = row_start;
+    if (last_row > row_end) last_row = row_end;
+    bool native = height == KELP_HEIGHT;
+    for (int row = first_row; row < last_row; row++) {
+        int sy = native ? row : row * KELP_HEIGHT / height;
+        int offset = sy < KELP_SWAY_HEIGHT
+            ? sway * (KELP_SWAY_HEIGHT - sy) / (KELP_SWAY_HEIGHT / 2) : 0;
+        int left = c->ox - x - offset, right = c->ox + c->w - x - offset;
+        if (left < 0) left = 0;
+        if (right > width) right = width;
+        const uint8_t *pixels = KELP_ART[sy];
+        if (native) {
+            for (int col = left; col < right;) {
+                int color = pixels[col], end = col + 1;
+                while (end < right && pixels[end] == color) end++;
+                if (color) season_span(c, x + offset + col, x + offset + end - 1, y + row, &colors[color], final);
+                col = end;
+            }
+            continue;
+        }
+        for (int col = left; col < right;) {
+            int color = pixels[col * KELP_WIDTH / width];
+            int end = col + 1;
+            while (end < right && pixels[end * KELP_WIDTH / width] == color) end++;
+            if (color) season_span(c, x + offset + col, x + offset + end - 1, y + row, &colors[color], final);
+            col = end;
+        }
+    }
+}
+static void draw_kelp_sprite(ctx_t *c, int x, int y, int height, int sway,
+                             bool final, bool lit, uint32_t background) {
+    draw_kelp_sprite_rows(c, x, y, height, sway, final, lit, background, 0, height);
+}
+static void draw_kelp(ctx_t *c, const tank_t *t, bool final, bool crowns) {
+    bool simple = render_simple_scene();
+    if (simple && crowns) return;
+    for (int patch = 0; patch < KELP_PATCH_COUNT; patch++) {
+        float x, y;
+        if (!tank_kelp_anchor(t, patch, &x, &y)) continue;
+        int top = TANK_SAND_TOP + 10 - KELP_HEIGHT;
+        draw_kelp_sprite_rows(c, (int)x - KELP_WIDTH / 2, top, KELP_HEIGHT,
+                             crowns ? tank_kelp_sway(t, patch) : 0, final, true, 0,
+                             crowns || simple ? 0 : KELP_CROWN_HEIGHT,
+                             crowns ? KELP_CROWN_HEIGHT : KELP_HEIGHT);
+    }
+}
+/* Champion statue (collection reward): a gold figure of a completed variety
+ * on a stone plinth, baked with the floor so it costs nothing per frame. */
+static bool statue_shape(int v, float x, float y) {
+    static const float half_w[FISH_VARIETY_COUNT] = {10, 8, 8, 11, 8, 14, 9, 12, 9, 8};
+    static const float half_h[FISH_VARIETY_COUNT] = {6, 8, 5, 4, 8, 4.5f, 9, 5, 6.5f, 5};
+    float a = half_w[v], b = half_h[v];
+    if (v == FISH_JELLYFISH) {
+        if (y <= 1 && x * x + y * y * 1.4f <= a * a) return true;
+        for (int k = 0; k < 4; k++) {
+            float sx = -5.5f + k * 3.6f + 1.2f * sinf(y * .7f + k);
+            if (y > 1 && y < 13 - (k & 1) * 3 && fabsf(x - sx) < .75f) return true;
+        }
+        return false;
+    }
+    if (v == FISH_STINGRAY)
+        return fabsf(x) / a + fabsf(y) / b <= 1 || (x < -a + 2 && x > -a - 9 && fabsf(y) < .8f);
+    if ((x / a) * (x / a) + (y / b) * (y / b) <= 1) return true;
+    float root = -a + 2, len = v == FISH_GUPPY || v == FISH_BETTA ? 10 : 7, d = root - x;
+    if (d >= 0 && d <= len) {
+        float spread = v == FISH_GUPPY || v == FISH_BETTA ? 1.1f : .8f;
+        if (fabsf(y) <= 1 + d * spread && !(v == FISH_SHARK && d > len * .5f && fabsf(y) < d * .35f)) return true;
+    }
+    if (v == FISH_SHARK && y < -b + 1 && y >= -b - 6 && x > -3 && x < 4 - (-b - y) * .9f) return true;
+    if ((v == FISH_ANGEL || v == FISH_BETTA) && fabsf(y) > b - 1 && fabsf(y) <= b + 6 - (x + 6) * .5f &&
+        x > -7 && x < 4) return true;
+    if (v == FISH_PUFFER) {
+        for (int k = 0; k < 8; k++) {
+            float ang = k * .785f, px = cosf(ang) * (a + 1.6f), py = sinf(ang) * (b + 1.6f);
+            if (fabsf(x - px) < .9f && fabsf(y - py) < .9f) return true;
+        }
+    }
+    return false;
+}
+static void draw_champion_statue(ctx_t *c, const tank_t *t, bool final) {
+    int v = t->story.statue - 1;
+    if (v < 0 || v >= FISH_VARIETY_COUNT) return;
+    int cx = TANK_W * 86 / 100, base = TANK_SAND_TOP + 6;
+    int top = base - 42;
+    if (top >= c->oy + c->h || base <= c->oy) return;
+    src_t stone[3] = {src_color(0xc4c2b8, c->dim), src_color(0x8e8c84, c->dim), src_color(0x5a5953, c->dim)};
+    src_t gold[5] = {src_color(0x5b3a12, c->dim), src_color(0x9a6a22, c->dim), src_color(0xd9a63e, c->dim),
+                     src_color(0xffe29a, c->dim), src_color(0x2a1a08, c->dim)};
+    for (int y = base - 9; y < base; y++) {
+        int half = y < base - 7 ? 10 : 13;
+        int tone = y == base - 9 || y == base - 7 ? 0 : y >= base - 2 ? 2 : 1;
+        season_span(c, cx - half, cx + half, y, &stone[tone], final);
+    }
+    for (int y = base - 13; y < base - 9; y++) season_span(c, cx - 1, cx + 1, y, &gold[1], final);
+    float fy = base - 13 - (v == FISH_JELLYFISH ? 13 : v == FISH_ANGEL || v == FISH_PUFFER ? 9 : 7);
+    for (int y = top; y < base - 9; y++) {
+        if (y < c->oy || y >= c->oy + c->h) continue;
+        int run = -1, run_x = 0;
+        for (int x = cx - 22; x <= cx + 23; x++) {
+            int tone = -1;
+            float lx = (float)(x - cx), ly = (float)y - fy;
+            if (x <= cx + 22 && statue_shape(v, lx, ly)) {
+                bool edge = !statue_shape(v, lx - 1, ly) || !statue_shape(v, lx + 1, ly) ||
+                            !statue_shape(v, lx, ly - 1) || !statue_shape(v, lx, ly + 1);
+                tone = edge ? 0 : ly < -2.5f ? 3 : ly > 2.5f ? 1 : 2;
+                if (v != FISH_JELLYFISH && v != FISH_STINGRAY && fabsf(lx - 5) < .6f && fabsf(ly + 1.5f) < .6f) tone = 4;
+            }
+            if (tone != run) {
+                if (run >= 0) season_span(c, run_x, x - 1, y, &gold[run], final);
+                run = tone; run_x = x;
+            }
+        }
+    }
+}
 static void draw_floor_scenery(ctx_t *c, const tank_t *t, bool final) {
+    draw_ground_cover(c, t, final);
+    draw_kelp(c, t, final, false);
+    draw_champion_statue(c, t, final);
     if (t->season) draw_season(c, t->season, final);
     /* the fixed scenery is movable now (2.4): pieces_build draws it with the rest */
 }
@@ -4845,7 +5289,7 @@ static void draw_simple_static(ctx_t *c, const tank_t *t) {
             if (g_pc[k].item == 4)
                 draw_cluster_crown(c, g_pc[k].cx, tank_cluster_scheme(t), tank_cluster_growth(t), 0, &x0, &y0, &x1, &y1);
         }
-        for (int b = 0; b < tank_veg_beds(t); b++) if (bed_z(t, b) == layer) {
+        for (int b = 3; b < tank_veg_beds(t); b++) if (bed_z(t, b) == layer) {
             draw_veg(c, t, b, VEG_SEED[b], -1, false);
         }
     }
@@ -4873,8 +5317,7 @@ void render_backdrop_stats(unsigned *cached_rows, size_t *bytes) {
     *bytes = (size_t)g_backdrop_row[g_backdrop_height] * sizeof *g_backdrop;
 }
 static uint16_t backdrop_pixel(int x, int y, uint32_t water, float dim) {
-    uint32_t h = (uint32_t)(x * 2654435761u);
-    int top = TANK_SAND_TOP + 4 - (int)((h >> 8) % 5);
+    int top = sand_ridge(x);
     return rgb565(y >= top ? floor_rgb(x, y) : backdrop_rgb(x, y, water), dim);
 }
 static inline void backdrop_fill(uint16_t *row, int left, int right, int y, uint16_t color) {
@@ -4924,10 +5367,12 @@ static bool backdrop_encode(const uint16_t *pixels, size_t *used) {
 }
 static void backdrop_prepare(const tank_t *t, float dim) {
     scene_sig_t sig; memset(&sig, 0, sizeof sig);
+    sig.foliage = t->foliage.planted;
+    sig.statue = (uint8_t)t->story.statue;
     sig.simple = render_simple_scene() && !setup_is_place();
     if (sig.simple) {
         uint32_t hash = 2166136261u;
-        for (int b = 0; b < tank_veg_beds(t); b++) {
+        for (int b = 3; b < tank_veg_beds(t); b++) {
             int n; tank_veg_bed(t, b, NULL, NULL, NULL, &n);
             hash = (hash ^ (unsigned)bed_z(t, b)) * 16777619u;
             for (int i = 0; i < n; i++) {
@@ -5034,11 +5479,7 @@ static void draw_scene(const tank_t *t, uint16_t *fb, int stride, float dim) {
             continue;
         }
         uint32_t water = water_rgb(y);
-        /* Default water is flat only above the tallest distant ridge. */
-        if (!g_journal_theme && y <= TANK_BOT - 14 - 43) {
-            uint16_t color = rgb565(water, dim);
-            backdrop_fill(fb + (y - g_tile_y) * stride, c.ox, c.ox + c.w, y, color);
-        } else {
+        {
             uint32_t previous = UINT32_MAX;
             uint16_t color = 0;
             for (int x = c.ox; x < c.ox + c.w; x++) {
@@ -5052,8 +5493,7 @@ static void draw_scene(const tank_t *t, uint16_t *fb, int stride, float dim) {
     /* pebbled bottom: irregular top edge, speckled stones in three tones.
        All variation comes from a position hash so it is stable every frame. */
     for (int x = c.ox; x < c.ox + c.w; x++) {
-        uint32_t h = (uint32_t)(x * 2654435761u);
-        int top = TANK_SAND_TOP + 4 - (int)((h >> 8) % 5);
+        int top = sand_ridge(x);
         for (int y = top > g_tile_y ? top : g_tile_y; y < render_tile_bottom(); y++) {
             if (g_backdrop && g_backdrop_row[y] != UINT16_MAX) continue;
             if (scene_hidden(x, y)) continue;
@@ -5061,8 +5501,6 @@ static void draw_scene(const tank_t *t, uint16_t *fb, int stride, float dim) {
             fb[(y - g_tile_y) * stride + x] = rgb565(col, dim);
         }
     }
-    /* (the dark oval under the left bed - the "reef rock" - is gone, 2026-10-02:
-       it stood for nothing; the reef is the cluster the keeper buys) */
     /* Only failed RLE rows regenerate the cached static prefix. Later pieces
        stay live, preserving painter order around animated or dragged pieces. */
     for (int y = c.oy; y < c.oy + c.h;) {
@@ -5108,8 +5546,7 @@ static void bake_scene(const tank_t *t, uint16_t *sc, float dim) {
     /* pebbled bottom: irregular top edge, speckled stones in three tones,
        stable position hash; vignetted in 8-bit before quantising */
     for (int x = 0; x < TANK_W; x++) {
-        uint32_t h = (uint32_t)(x * 2654435761u);
-        int top = TANK_SAND_TOP + 4 - (int)((h >> 8) % 5);
+        int top = sand_ridge(x);
         for (int y = top; y < TANK_H; y++) {
             uint32_t col = floor_rgb(x, y);
             int inv = 256 - (g_vig ? g_vig[y * TANK_W + x] : vig_alpha(x, y));
@@ -5129,9 +5566,7 @@ static void bake_scene(const tank_t *t, uint16_t *sc, float dim) {
 static void draw_text(ctx_t *c, int x, int y, int scale, uint32_t rgb, const char *s);
 static int text_w(const char *s, int scale);
 static bool care_stroke_visible(const tank_t *t) {
-    return tank_stroking(t) &&
-        ((t->tool == TOOL_SPONGE && t->wipe_sounded) ||
-         (t->tool == TOOL_SCISSORS && t->slash_cut));
+    return tank_stroking(t) && t->reef_flow_s > 0 && t->slash_cut;
 }
 static uint16_t g_damage[TANK_MAX_H], g_damage_previous[TANK_MAX_H];
 static uint16_t g_damage_blocks[6];
@@ -5288,6 +5723,14 @@ static void clock_sparkle_position(const tank_t *t, const render_clock_layout_t 
 static bool clock_solid(const tank_t *t) {
     return render_clock_active(t) && !(t->aquariums.clock_flags & CLOCK_HIDE_PANEL);
 }
+/* Clock glass and the weather card have rounded corners (radius 9 and 7); the tank
+ * stays visible there, so occlusion and damage skipping must step in by this much. */
+enum { CLOCK_FACE_RADIUS = 9, CLOCK_CARD_RADIUS = 7 };
+static int clock_corner_inset(int row, int h, int r) {
+    if (r > h / 2) r = h / 2;
+    int d = row < r ? r - row : row >= h - r ? row - (h - r - 1) : 0;
+    return d ? r - (int)sqrtf((float)(r * r - (d - .5f) * (d - .5f)) + .5f) : 0;
+}
 static int g_damage_policy;
 static uint32_t g_damage_pixel_ns = 900, g_damage_rectangle_us = 4000;
 void render_damage_policy(int policy) {
@@ -5351,9 +5794,9 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     }
     force_full |= was_simple;
     was_simple = false;
-    static struct { int w, h, theme, water, sand, night, shelf; uint32_t unlocks, collections, challenges; uint8_t scenery, season, chapters; } previous;
-    static uint8_t algae[ALGAE_CAP];
+    static struct { int w, h, theme, water, sand, night, shelf; uint32_t unlocks, collections, challenges; uint8_t scenery, season, chapters, statue; } previous;
     bool full = force_full || previous.w != TANK_W || previous.h != TANK_H ||
+        previous.statue != t->story.statue ||
         previous.theme != t->journal.theme || previous.water != t->water_style ||
         previous.sand != t->sand_style || previous.night != t->night ||
         previous.unlocks != (t->sd_unlocks & ~SD_ITEM_PUMPKIN) || previous.scenery != t->polish.scenery_unlocks || previous.shelf != t->companion.decor ||
@@ -5376,6 +5819,7 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     previous.shelf = t->companion.decor; previous.collections = t->companion.collections;
     previous.challenges = t->companion.game_challenges;
     previous.chapters = t->rpg.chapter;
+    previous.statue = (uint8_t)t->story.statue;
     static float previous_secondary = -1;
     float secondary = secondary_clock(t);
     bool scenery_changed = secondary != previous_secondary;
@@ -5403,20 +5847,32 @@ void render_damage_begin(const tank_t *t, bool force_full) {
         mussel_x = x; mussel_y = y;
     }
     mussel_glint = glint_pose;
-    for (int cy = 0; cy < ALGAE_ROWS; cy++) for (int cx = 0; cx < ALGAE_COLS; cx++) {
-        int index = cy * ALGAE_COLS + cx;
-        if (algae[index] != t->algae[index])
-            damage_rect(cx * ALGAE_CELL - 8, cy * ALGAE_CELL - 8,
-                (cx + 1) * ALGAE_CELL + 8, (cy + 1) * ALGAE_CELL + 8);
+    /* Always clear the last representative too when an adult is sold. */
+    static int16_t partner_x[3], partner_y[3];
+    static bool partner_visible[3];
+    for (int creature = CREATURE_SNAIL; creature <= CREATURE_SEAHORSE; creature++) {
+        int stock = creature - CREATURE_SNAIL;
+        float x = 0, y = 0;
+        bool visible = tank_creature_partner_pose(t, creature, &x, &y);
+        bool changed = visible != partner_visible[stock] ||
+            (visible && (scenery_changed || (int)x != partner_x[stock] || (int)y != partner_y[stock]));
+        if (changed && partner_visible[stock])
+            damage_rect(partner_x[stock] - 25, partner_y[stock] - 25,
+                        partner_x[stock] + 25, partner_y[stock] + 25);
+        partner_visible[stock] = visible;
+        if (visible) {
+            partner_x[stock] = (int16_t)x; partner_y[stock] = (int16_t)y;
+            if (changed) damage_rect((int)x - 25, (int)y - 25, (int)x + 25, (int)y + 25);
+        }
     }
-    memcpy(algae, t->algae, sizeof algae);
     for (int i = 0; i < t->n_fish; i++) {
         const fish_t *f = &t->fish[i];
         fish_bounds_t b = fish_bounds(t, f);
         damage_rect((int)floorf(b.left), (int)floorf(b.top), (int)ceilf(b.right), (int)ceilf(b.bottom));
     }
     for (int i = 0; i < MAX_BUBBLE; i += bubble_step(t))
-        damage_rect((int)t->bubble[i].x - 6, (int)t->bubble[i].y - 6, (int)t->bubble[i].x + 6, (int)t->bubble[i].y + 6);
+        if (!t->bubble[i].column)
+            damage_rect((int)t->bubble[i].x - 6, (int)t->bubble[i].y - 6, (int)t->bubble[i].x + 6, (int)t->bubble[i].y + 6);
     for (int i = 0; i < MAX_FOOD; i++) if (t->food[i].alive)
         damage_rect((int)t->food[i].x - 5, (int)t->food[i].y - 5, (int)t->food[i].x + 5, (int)t->food[i].y + 5);
     if (care_stroke_visible(t))
@@ -5437,6 +5893,7 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     pieces_build(t, false, false);
     static scene_sig_t previous_pieces;
     scene_sig_t pieces; memset(&pieces, 0, sizeof pieces);
+    pieces.foliage = t->foliage.planted;
     pieces.n = g_npc;
     for (int k = 0; k < g_npc; k++) {
         pieces.item[k] = g_pc[k].item; pieces.cx[k] = g_pc[k].cx; pieces.z[k] = g_pc[k].z | g_pc[k].mirror << 4;
@@ -5453,6 +5910,18 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     }
     if (memcmp(&pieces, &previous_pieces, sizeof pieces)) full = true;
     previous_pieces = pieces;
+    {
+        static int previous_sway[KELP_PATCH_COUNT];
+        for (int patch = 0; patch < KELP_PATCH_COUNT; patch++) {
+            int sway = render_simple_scene() ? 0 : tank_kelp_sway(t, patch);
+            float x, y;
+            if (sway != previous_sway[patch] && tank_kelp_anchor(t, patch, &x, &y))
+                damage_rect((int)x - KELP_WIDTH / 2 - 3, TANK_SAND_TOP + 10 - KELP_HEIGHT,
+                            (int)x + KELP_WIDTH / 2 + 3,
+                            TANK_SAND_TOP + 10 - KELP_HEIGHT + KELP_CROWN_HEIGHT - 1);
+            previous_sway[patch] = sway;
+        }
+    }
     if (t->sd_unlocks & ((UINT32_C(1) << 28) | (UINT32_C(1) << 24) | (UINT32_C(1) << 29)))
         damage_rows(0, 48);
     bool clock_changed = clock_damage_changed(t);
@@ -5496,7 +5965,7 @@ void render_damage_begin(const tank_t *t, bool force_full) {
        silhouettes only once, including trims and moved/removed sword plants. */
     static struct { int x, top; bool active; } fronds[VEG_BEDS_MAX][VEG_FRONDS_MAX];
     static float previous_veg_clock[VEG_BEDS_MAX];
-    for (int b = 0; b < VEG_BEDS_MAX; b++) {
+    for (int b = 3; b < VEG_BEDS_MAX; b++) {
         float grass_clock = veg_clock(t, t->clock, VEG_SEED[b]);
         int n = 0;
         if (b < tank_veg_beds(t)) tank_veg_bed(t, b, NULL, NULL, NULL, &n);
@@ -5519,9 +5988,10 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     if (!repaint_all && !clock_changed && render_clock_active(t)) {
         render_clock_layout_t l; render_clock_layout(t, &l);
         for (int y = 0; y + 40 <= TANK_H; y += 40) for (int x = 0; x + 32 <= TANK_W; x += 32) {
-            bool face = clock_solid(t) && x >= l.face_x && x + 32 <= l.face_x + l.face_w &&
+            bool face = clock_solid(t) && x >= l.face_x + CLOCK_FACE_RADIUS &&
+                x + 32 <= l.face_x + l.face_w - CLOCK_FACE_RADIUS &&
                 y >= l.face_y && y + 40 <= l.face_y + l.face_h;
-            bool caption = l.rows && x >= l.x && x + 32 <= l.x + l.w &&
+            bool caption = l.rows && x >= l.x + CLOCK_CARD_RADIUS && x + 32 <= l.x + l.w - CLOCK_CARD_RADIUS &&
                 y >= l.caption_y && y + 40 <= l.caption_y + l.caption_h;
             if (face || caption) g_damage_blocks[y / 40] &= (uint16_t)~(1u << (x / 32));
         }
@@ -5554,22 +6024,45 @@ bool render_damage_range(int tile_y, int tile_height, int *first, int *height) {
     *first = start; *height = end - start;
     return end > start;
 }
-static void draw_food_pellet(ctx_t *c, float x, float y) {
-    fill_ellipse(c, x, y, 2.6f, 2.6f, 0x9d7548, 255);
-    fill_ellipse(c, x - .3f, y - .5f, 2.0f, 1.7f, 0xe4bd7c, 255);
-    fill_ellipse(c, x - .8f, y - 1, .8f, .7f, 0xf6dfab, 255);
+static void draw_food_tier(ctx_t *c, float x, float y, unsigned tier, unsigned variant) {
+    if (tier == PROGRESSION_FOOD_PREMIUM) {
+        for (int i = -3; i <= 3; i++) {
+            int yy = (int)y + (i * i / 3) - 1;
+            fill_ellipse(c, x + i, yy, 1.2f, 1.4f, 0x762f40, 255);
+            px_blend(c, (int)x + i, yy - 1, i & 1 ? 0xf19b85 : 0xc6535a, 255);
+        }
+    } else if (tier == PROGRESSION_FOOD_PLUS) {
+        static const uint32_t colors[] = {0xef725f, 0xecc65a, 0x65b887, 0x71b9ce, 0xc98cbc};
+        uint32_t color = colors[variant % 5];
+        float lean = variant & 1 ? 1 : -1;
+        float xs[] = {x - 4, x - 1, x + 4, x + 2, x - 2};
+        float ys[] = {y - 1, y - 3, y - lean, y + 2, y + 3};
+        fill_poly(c, xs, ys, 5, mix(color, 0x372c39, .25f));
+        float fx[] = {x - 3, x - 1, x + 3, x}, fy[] = {y - 1, y - 2, y - lean, y + 1};
+        fill_poly(c, fx, fy, 4, color);
+        px_blend(c, (int)x - 1, (int)y - 1, mix(color, 0xfff0cc, .55f), 255);
+    } else {
+        fill_ellipse(c, x, y, 2.8f, 2.5f, 0x98603f, 255);
+        fill_ellipse(c, x - .3f, y - .5f, 2.0f, 1.6f, 0xe3b775, 255);
+        px_blend(c, (int)x - 1, (int)y - 1, 0xffe6aa, 255);
+    }
+}
+static void draw_food_pellet(ctx_t *c, const tank_t *t, int index) {
+    draw_food_tier(c, t->food[index].x, t->food[index].y,
+                   (unsigned)progression_food_tier(t), (unsigned)index);
 }
 static void draw_water_bubble(ctx_t *c, const bubble_t *b) {
-    float r = b->column ? 2.6f : 1.8f;
-    fill_ellipse(c, b->x, b->y, r, r, 0x9fc9d2, 22);
+    float r = b->column ? 3.0f : 2.0f;
+    fill_ellipse(c, b->x, b->y, r, r, 0x98d4dc, 36);
     for (int y = (int)(b->y - r); y <= (int)(b->y + r); y++) {
         float half = r * ell_half((y - b->y) / r);
         if (half <= 0) continue;
         int left = (int)(b->x - half), right = (int)(b->x + half);
-        px_blend(c, left, y, 0xb7d7dd, 85);
-        if (right != left) px_blend(c, right, y, 0x84b8c6, 65);
+        px_blend(c, left, y, 0xc6f2e7, 205);
+        if (right != left) px_blend(c, right, y, 0x689fae, 165);
     }
-    px_blend(c, (int)(b->x - r * .4f), (int)(b->y - r * .4f), 0xeff5e9, 140);
+    px_blend(c, (int)(b->x - r * .4f), (int)(b->y - r * .4f), 0xfff3ca, 255);
+    px_blend(c, (int)b->x, (int)(b->y + r * .65f), 0xb0ece1, 200);
 }
 static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float dim) {
     ctx_t c = ctx_full(fb, stride, dim);
@@ -5597,14 +6090,13 @@ static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float d
     PROF_ADD(0, p0);
     draw_inventory_extras(&c, t, DECOR_Z_BACK);
     for (int i = 0; i < MAX_FOOD; i++) if (t->food[i].alive)
-        draw_food_pellet(&c, t->food[i].x, t->food[i].y);
+        draw_food_pellet(&c, t, i);
     PROF_ADD(3, p0);
     for (int i = 0; i < t->n_fish; i++) draw_fish(&c, t, &t->fish[i]);
     draw_surface_floats(&c, t, DECOR_Z_FRONT);
     draw_inventory_extras(&c, t, DECOR_Z_FRONT);
     draw_tank_mussel(&c, t);
     PROF_ADD(4, p0);
-    draw_algae(&c, t);
     PROF_ADD(6, p0);
 }
 static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
@@ -5652,6 +6144,8 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     if (cached) {
         /* the scene's signature: what the bake depends on; a change rebakes */
         scene_sig_t sig; memset(&sig, 0, sizeof sig);
+        sig.foliage = t->foliage.planted;
+        sig.statue = (uint8_t)t->story.statue;
         for (int k = 0; k < g_npc; k++) {
             if (!g_pc[k].baked) continue;
             int n = sig.n++;
@@ -5680,6 +6174,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     } else {
         draw_scene(t, fb, stride, dim);
     }
+    draw_kelp(&c, t, cached, true);
     theme_detail_t details[4]; theme_details(t, details);
     for (int i = 0; i < 4; i += 3) if (details[i].kind) {
         theme_detail_draw(&c, &details[i]);
@@ -5716,39 +6211,30 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
 #define VEG_PASS(b, layer) do { g_veg_skip = veg_skip_for(t, (b)); \
         g_pk_shade_all = g_pk_lx >= 0 && ((b) == 3 ? tank_decor_above(t, 0, 8) : pkz == DECOR_Z_BACK); \
         draw_veg(&c, t, (b), veg_seed[(b)], (layer), cached); g_pk_shade_all = false; } while (0)
-    for (int b = 0; b < tank_veg_beds(t); b++)          /* a BACK-layer piece first: behind the grass too */
+    for (int b = 3; b < tank_veg_beds(t); b++)
         if (bed_z(t, b) == DECOR_Z_BACK) VEG_PASS(b, -1);
-    for (int b = 0; b < tank_veg_beds(t); b++)
+    for (int b = 3; b < tank_veg_beds(t); b++)
         if (bed_z(t, b) == DECOR_Z_MIDDLE) VEG_PASS(b, 0);
         /* no DYN_RECT: with the scene cache each frond span vignettes itself */
     if (g_veg_mask_cx >= 0) {                        /* a castle IN FRONT: inside its open arch the late fronds go before the fish */
         g_veg_arch_pass = -1;
-        for (int b = 0; b < tank_veg_beds(t); b++)
+        for (int b = 3; b < tank_veg_beds(t); b++)
             if (bed_z(t, b) == DECOR_Z_MIDDLE) VEG_PASS(b, 1);
-        for (int b = 0; b < tank_veg_beds(t); b++)
+        for (int b = 3; b < tank_veg_beds(t); b++)
             if (bed_z(t, b) == DECOR_Z_FRONT) VEG_PASS(b, -1);
         g_veg_arch_pass = 0;
     }
     PROF_ADD(2, p0);
-    /* the airstone the column rises from, on the floor where the keeper put
-       it (setup): three stones and a glint - dynamic, since it can move */
-    {
-        float ax = t->bubble_x, ay = TANK_BOT - 17;
-        fill_ellipse(&c, ax - 6, ay + 1, 7, 4, 0x2a3634, 255);
-        fill_ellipse(&c, ax + 5, ay + 2, 6, 3.5f, 0x22302c, 255);
-        fill_ellipse(&c, ax, ay - 2, 6, 3.5f, 0x3a4a48, 255);
-        fill_ellipse(&c, ax - 1, ay - 3, 2, 1.2f, 0x5a6a68, 200);
-        DYN_RECT((int)ax - 14, (int)ay - 7, (int)ax + 12, (int)ay + 7);
-    }
     /* food pellets */
     for (int i = 0; i < MAX_FOOD; i++)
         if (t->food[i].alive) {
-            draw_food_pellet(&c, t->food[i].x, t->food[i].y);
+            draw_food_pellet(&c, t, i);
             DYN_RECT((int)t->food[i].x - 5, (int)t->food[i].y - 5, (int)t->food[i].x + 5, (int)t->food[i].y + 5);
         }
     /* bubbles */
     for (int i = 0; i < MAX_BUBBLE; i += bubble_step(t)) {
         const bubble_t *b = &t->bubble[i];
+        if (b->column) continue;
         draw_water_bubble(&c, b);
         DYN_RECT((int)b->x - 5, (int)b->y - 5, (int)b->x + 5, (int)b->y + 5);
     }
@@ -5796,6 +6282,11 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
         draw_urchin(&c, t);
         DYN_RECT((int)t->urchin_x - 19, (int)URCHIN_FLOOR_Y - 17, (int)t->urchin_x + 19, (int)(URCHIN_FLOOR_Y + UR_BASE) + 1);
     }
+    for (int creature = CREATURE_SNAIL; creature <= CREATURE_SEAHORSE; creature++) {
+        float x, y;
+        if (tank_creature_partner_pose(t, creature, &x, &y))
+            DYN_RECT((int)x - 25, (int)y - 25, (int)x + 25, (int)y + 25);
+    }
     /* the pieces IN FRONT back over the fish (and the snail, the food, the
        bubbles), only where they were drawn: the scene holds them. The castle's
        front row comes back the same way - a fish in the arch swims THROUGH,
@@ -5811,9 +6302,9 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
        own vignette and untags itself, so the fish rects below skip it) */
     int64_t front_start = PROF_MARK();
     if (g_veg_mask_cx >= 0) g_veg_arch_pass = 1;     /* (the arch's pixels were drawn before the fish) */
-    for (int b = 0; b < tank_veg_beds(t); b++)
+    for (int b = 3; b < tank_veg_beds(t); b++)
         if (bed_z(t, b) == DECOR_Z_MIDDLE) VEG_PASS(b, 1);
-    for (int b = 0; b < tank_veg_beds(t); b++)          /* a FRONT-layer piece last: over the grass and the fish */
+    for (int b = 3; b < tank_veg_beds(t); b++)
         if (bed_z(t, b) == DECOR_Z_FRONT) VEG_PASS(b, -1);
     g_veg_arch_pass = 0;
     if (render_clock_us) {
@@ -5926,10 +6417,8 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
      * behind it needs repair, and next frame's scene restore erases wiped
      * cells for free) */
     PROF_ADD(5, p0);
-    draw_algae(&c, t);
     for (int i = 1; i < 3; i++) if (details[i].kind) theme_detail_draw(&c, &details[i]);
     draw_snail(&c, t, false);                    /* on the glass, over the film */
-    companion_render_decor(t, fb, stride);
     g_pk_lx = -1; g_pk_under_castle = false; g_pk_shadows = false;   /* the light is this frame's: no page is ever lit by it */
     PROF_ADD(6, p0);
 #undef DYN_RECT
@@ -5961,15 +6450,10 @@ static void draw_care_stroke(const tank_t *t, uint16_t *fb, int stride) {
     if (!care_stroke_visible(t)) return;
     ctx_t c = ctx_full(fb, stride, t->night ? .45f : 1);
     int x = (int)t->drag_px, y = (int)t->drag_py;
-    uint32_t color = t->tool == TOOL_SPONGE ? 0xc1e2d6 : 0xe8c794;
+    uint32_t color = 0xb5e7eb;
     for (int i = -3; i <= 3; i++) {
-        if (t->tool == TOOL_SPONGE) {
-            px_blend(&c, x + i, y - 3 + abs(i) / 2, color, 150);
-            px_blend(&c, x + i, y + 3 - abs(i) / 2, color, 95);
-        } else {
-            px_blend(&c, x + i, y + i, color, 170);
-            px_blend(&c, x + i, y - i, color, 130);
-        }
+        px_blend(&c, x + i, y - 2, color, 150);
+        px_blend(&c, x + i, y + 2, color, 95);
     }
 }
 void render_tank(const tank_t *t, uint16_t *fb, int stride) {
@@ -5985,9 +6469,11 @@ void render_tank(const tank_t *t, uint16_t *fb, int stride) {
     for (int y = render_tile_top(); y < render_tile_bottom(); y++) {
         g_hidden_left[y] = g_hidden_right[y] = TANK_W;
         if (clock_solid(t) && y >= l.face_y && y < l.face_y + l.face_h) {
-            g_hidden_left[y] = l.face_x; g_hidden_right[y] = l.face_x + l.face_w;
+            int inset = clock_corner_inset(y - l.face_y, l.face_h, CLOCK_FACE_RADIUS);
+            g_hidden_left[y] = l.face_x + inset; g_hidden_right[y] = l.face_x + l.face_w - inset;
         } else if (l.rows && y >= l.caption_y && y < l.caption_y + l.caption_h) {
-            g_hidden_left[y] = l.x; g_hidden_right[y] = l.x + l.w;
+            int inset = clock_corner_inset(y - l.caption_y, l.caption_h, CLOCK_CARD_RADIUS);
+            g_hidden_left[y] = l.x + inset; g_hidden_right[y] = l.x + l.w - inset;
         }
     }
     g_scene_occluded = true;
@@ -6091,10 +6577,9 @@ static void slider(ctx_t *c, int x, int y, int w, float frac, uint32_t rgb,
 
 static void button(ctx_t *c, int x, int y, int W, int H, uint32_t fill, uint32_t edge, const char *label, int scale);   /* below */
 static void draw_text(ctx_t *c, int x, int y, int scale, uint32_t rgb, const char *s);                                  /* the pixel font, below */
-#define CARD_MORE_H 22
 static void card_draw(ctx_t c, const tank_t *t, int fish_idx) {
     const fish_t *f = &t->fish[fish_idx];
-    /* Preserve the card/tool/next hitboxes and cache footprint. */
+    /* Preserve the card, next-arrow and cache footprint. */
     const int X = RENDER_CARD_X, Y = RENDER_CARD_Y, W = RENDER_CARD_W, H = RENDER_CARD_H; /* x clear of the curved bezel */
     /* backdrop: 28k blended pixels - hoisted (this alone was most of the
      * card's ~12 ms/frame on the device through per-pixel px_blend) */
@@ -6134,9 +6619,7 @@ static void card_draw(ctx_t c, const tank_t *t, int fish_idx) {
     slider(&c, X + 8, Y + 174, W - 16, f->sociable,         0x38dcc7, "SOCIAL", saw_social);
     slider(&c, X + 8, Y + 200, W - 16, f->curiosity / 10.0f, 0x6db9ff, "CURIOUS", saw_curious);
 
-    /* The whole card remains the Home target; its footprint never competes
-       with the separate next-fish arrow, tools or lock. */
-    button(&c, X + 8, Y + H - 8 - CARD_MORE_H, W - 16, CARD_MORE_H, 0x1c2f36, 0x9fd8e2, "HOME", 2);
+    draw_text(&c, X + 8, Y + H - 20, 1, 0x9fd8e2, "FISH DETAILS");
 }
 
 /* ---- stats card cache (2026-09-01) ----
@@ -6176,14 +6659,9 @@ static void snail_card_draw(ctx_t *c, const tank_t *t) {
     creature_card_frame(c, true);
     draw_creature_portrait(c, X + W / 2, Y + 42, 2, CREATURE_SNAIL, t->companion.creature_colors[CREATURE_SNAIL], t->clock);
     draw_text(c, X + (W - text_w("SNAIL", 3)) / 2, Y + 82, 3, 0xffffff, "SNAIL");
-    const char *cap = "ALGAE GRAZED SO FAR";
+    const char *cap = "A REEF COMPANION";
     draw_text(c, X + (W - text_w(cap, 2)) / 2, Y + 112, 2, 0x9fd8e2, cap);
-    char n[24];
-    if (t->snail_grazed <= 0) snprintf(n, sizeof n, "NOTHING YET");
-    else snprintf(n, sizeof n, "%d SPOT%s", (int)t->snail_grazed, t->snail_grazed == 1 ? "" : "S");
-    draw_text(c, X + (W - text_w(n, 3)) / 2, Y + 134, 3, 0xffffff, n);
-    const char *activity = t->snail_cell >= 0 ? (t->snail_graze > 0 ? "GRAZING ALGAE" : "SEEKING ALGAE") :
-        tank_snail_upright(t) ? "EXPLORING THE SAND" : "RETURNING TO SAND";
+    const char *activity = tank_snail_upright(t) ? "EXPLORING THE SAND" : "RETURNING TO SAND";
     draw_text(c, X + (W - text_w(activity, 2)) / 2, Y + 170, 2, 0x9fd8e2, activity);
 }
 
@@ -6204,16 +6682,9 @@ static void urchin_card_draw(ctx_t *c, const tank_t *t) {
             for (int yy = 0; yy < S; yy++) span(c, ox + lx * S, ox + lx * S + S - 1, oy + ly * S + yy, &sc, 255);
         }
     draw_text(c, X + (W - text_w("SEA URCHIN", 3)) / 2, Y + 90, 3, 0xffffff, "SEA URCHIN");
-    const char *cap = "GRASS GRAZED SO FAR";
+    const char *cap = "A SAND COMPANION";
     draw_text(c, X + (W - text_w(cap, 2)) / 2, Y + 118, 2, 0x9fd8e2, cap);
-    char n[24]; int cm = (int)(t->urchin_grazed_px / PX_PER_CM);
-    if (cm < 1) snprintf(n, sizeof n, "NOTHING YET");
-    else if (cm < 1000) snprintf(n, sizeof n, "%d CM", cm);
-    else snprintf(n, sizeof n, "%d.%dK CM", cm / 1000, cm % 1000 / 100);   /* 1.0K CM and up: the line never outgrows the card (0.3.2) */
-    draw_text(c, X + (W - text_w(n, 3)) / 2, Y + 140, 3, 0xffffff, n);
-    const char *now = tank_urchin_chewing(t) ? "CHEWING"
-                    : t->urchin_frond >= 0 ? "OFF TO THE TALL GRASS"
-                    : "RESTING";
+    const char *now = "RESTING ON THE SAND";
     draw_text(c, X + (W - text_w(now, 2)) / 2, Y + 170, 2, 0x9fd8e2, now);
 }
 
@@ -6242,7 +6713,7 @@ static void shrimp_card_draw(ctx_t *c, const tank_t *t) {
             for (int yy = 0; yy < S; yy++) span(c, sx + x * S, sx + x * S + S - 1, sy + y * S + yy, &pal[ti], SHRIMP_ALPHA[ti]);
         }
     char line[32];
-    snprintf(line, sizeof line, "%d SHRIMP", n);
+    snprintf(line, sizeof line, "SHRIMP %d", n);
     draw_text(c, X + (W - text_w(line, 3)) / 2, Y + 46, 3, 0xffffff, line);
     snprintf(line, sizeof line, "%d PELLET%s EATEN", (int)t->shrimp_eaten, t->shrimp_eaten == 1 ? "" : "S");
     draw_text(c, X + (W - text_w(line, 2)) / 2, Y + 76, 2, 0x9fd8e2, line);
@@ -6259,7 +6730,6 @@ static void shrimp_card_draw(ctx_t *c, const tank_t *t) {
         } else ring(c, x, py, 6, 0x5a6a6e);
     }
     if (full) snprintf(line, sizeof line, "THE SCHOOL IS FULL");
-    else if (tank_shrimp_refusing(t)) snprintf(line, sizeof line, "TOO MUCH ALGAE TO EAT");
     else if (t->shrimp_food >= SHRIMP_PER_JOIN && t->shrimp_cool > 0) {
         int m = (int)ceilf(t->shrimp_cool / 60.0f);
         snprintf(line, sizeof line, "ARRIVES IN %d MIN", m < 1 ? 1 : m);
@@ -6270,8 +6740,7 @@ static void shrimp_card_draw(ctx_t *c, const tank_t *t) {
     draw_text(c, X + (W - text_w(line, 2)) / 2, Y + 158, 2, 0xffffff, line);
     bool eating = false, fleeing = false;
     for (int i = 0; i < n; i++) { eating |= t->shrimp[i].pecking != 0; fleeing |= t->shrimp[i].dart > 0; }
-    const char *activity = fleeing ? "SCATTERING" : eating ? "EATING PELLETS" :
-                           tank_shrimp_refusing(t) ? "RESTING IN ALGAE" : "FORAGING";
+    const char *activity = fleeing ? "SCATTERING" : eating ? "EATING PELLETS" : "FORAGING";
     draw_text(c, X + (W - text_w(activity, 1)) / 2, Y + 184, 1, 0x9fd8e2, activity);
 }
 
@@ -6361,12 +6830,11 @@ static void mussel_card_draw(ctx_t *c, const tank_t *t) {
         !progression_mussel_healthy(t) ? "PAUSED - FISH NEED CARE" : "EARNING AUTOMATICALLY";
     draw_text(c, (PAGE_W - text_w(status, 2)) / 2, Y + 124, 2, 0x9fd8e2, status);
     char line[40];
-    snprintf(line, sizeof line, "TODAY: %u / %d COINS", (unsigned)t->mussel.generated, MUSSEL_DAILY_LIMIT);
+    snprintf(line, sizeof line, "TODAY: %u / %d DOUBLOONS", (unsigned)t->mussel.generated, MUSSEL_DAILY_LIMIT);
     draw_text(c, (PAGE_W - text_w(line, 2)) / 2, Y + 158, 2, 0xffffff, line);
     snprintf(line, sizeof line, "PROGRESS: %u / %d SEC", (unsigned)t->mussel.seconds, MUSSEL_SECONDS);
     draw_text(c, (PAGE_W - text_w(line, 2)) / 2, Y + 188, 2, 0x9fd8e2, line);
-    draw_text(c, (PAGE_W - text_w("1 COIN / 10 HEALTHY MIN", 2)) / 2, Y + 216, 2, 0xffffff, "1 COIN / 10 HEALTHY MIN");
-    button(c, 126, Y + H - 34, 196, 26, 0x1c2f36, 0x9fd8e2, "COLORS", 2);
+    draw_text(c, (PAGE_W - text_w("1 DOUBLOON / 10 HEALTHY MIN", 2)) / 2, Y + 216, 2, 0xffffff, "1 DOUBLOON / 10 HEALTHY MIN");
     creature_card_next_draw(c, t, RENDER_CARD_MUSSEL);
 }
 static int creature_for_card(int selected) {
@@ -6403,28 +6871,23 @@ int render_creature_card_hit(const tank_t *t, float x, float y) {
     return best;
 }
 int render_creature_colors_hit(const tank_t *t, int selected, float x, float y) {
-    int kind = creature_for_card(selected);
-    static const uint32_t owned[] = {SD_ITEM_SHRIMP, SD_ITEM_SNAIL, SD_ITEM_URCHIN, SD_ITEM_SEAHORSE};
-    if (kind < 0 || (kind == CREATURE_MUSSEL ? !tank_mussel_owned(t) : !(t->sd_unlocks & owned[kind]))) return -1;
-    x = render_page_x(x); y = render_page_y(y);
-    return x >= 126 && x < 322 && y >= (PAGE_H + SNAIL_CARD_H) / 2 - 34 &&
-           y < (PAGE_H + SNAIL_CARD_H) / 2 - 8 ? kind : -1;
+    (void)t; (void)selected; (void)x; (void)y;
+    return -1;
 }
 static void creature_card_details(ctx_t *c, const tank_t *t, int selected) {
     int kind = creature_for_card(selected), y = (c->h + SNAIL_CARD_H) / 2 - 82;
-    static const char *const food[] = {"FOOD: FALLEN PELLETS", "FOOD: ALGAE ON GLASS",
-                                     "FOOD: TALL SEAGRASS", "FOOD: FALLING PELLETS"};
+    static const char *const food[] = {"FORAGES FALLEN FOOD", "GLASS CLEANER: CALM +10%",
+                                     "NIGHT GRAZER: REST +20%", "CATCHES DRIFTING FOOD"};
     draw_text(c, (c->w - text_w(food[kind], 2)) / 2, y, 2, 0x9fd8e2, food[kind]);
     char line[48];
     if (kind == CREATURE_SHRIMP)
-        snprintf(line, sizeof line, "%d ACTUAL / %d SHOWN", t->shrimp_n, shrimp_draw_count(t));
+        line[0] = 0;
     else if (kind == CREATURE_SNAIL)
-        snprintf(line, sizeof line, "1 SNAIL / %s", t->snail_cell >= 0 ? "SEEKING ALGAE" : "ROAMING");
+        snprintf(line, sizeof line, "1 SNAIL / ROAMING");
     else if (kind == CREATURE_URCHIN)
-        snprintf(line, sizeof line, "1 URCHIN - TRIMS YOUR GRASS");
+        snprintf(line, sizeof line, "1 URCHIN / RESTING");
     else snprintf(line, sizeof line, "1 SEAHORSE - SHARES TRUST");
-    draw_text(c, (c->w - text_w(line, 1)) / 2, y + 24, 1, 0xffffff, line);
-    button(c, 126, (c->h + SNAIL_CARD_H) / 2 - 34, 196, 26, 0x1c2f36, 0x9fd8e2, "COLORS", 2);
+    if (line[0]) draw_text(c, (c->w - text_w(line, 1)) / 2, y + 24, 1, 0xffffff, line);
     creature_card_next_draw(c, t, selected);
 }
 bool render_stats_next_hit(const tank_t *t, int fish_idx, float x, float y) {
@@ -6472,6 +6935,7 @@ void render_stats_card(const tank_t *t, int fish_idx, uint16_t *fb, int stride) 
         return;
     }
     if (fish_idx < 0 || fish_idx >= t->n_fish) return;
+    return; /* Fish information belongs to FISH > SUMMARY, never a tank overlay. */
     ctx_t c = ctx_full(fb, stride, 1.0f);            /* card ignores night dimming */
     const fish_t *f = &t->fish[fish_idx];
     ring(&c, f->x, f->y, 17 * f->size * TANK_FISH_DISPLAY_SCALE, f->color);
@@ -6534,23 +6998,11 @@ static void shade_box(ctx_t *c, int x, int y, int w, int h) {
     }
 }
 static void rect_fill(ctx_t *c, int x, int y, int w, int h, uint32_t rgb);   /* below */
-#define TOOL_BTN_W ((RENDER_TOOLS_W - 16 - 6) / 2)
-#define TOOL_BTN_H (RENDER_TOOLS_H - 16)
 static void tools_draw(ctx_t *c, const tank_t *t) {
     const int X = RENDER_TOOLS_X, Y = RENDER_TOOLS_Y, W = RENDER_TOOLS_W, H = RENDER_TOOLS_H;
-    shade_box(c, X, Y, W, H);
-    rect_edge(c, X, Y, W, H, 0x9fd8e2); rect_edge(c, X + 1, Y + 1, W - 2, H - 2, 0x1c2f36);
-    static const icon_t *const ICON[2] = { &icon_tool_sponge, &icon_tool_scissors };
-    for (int k = 0; k < 2; k++) {
-        int bx = X + 8 + k * (TOOL_BTN_W + 6), by = Y + 8;
-        bool held = t->tool == (k ? TOOL_SCISSORS : TOOL_SPONGE);
-        rect_fill(c, bx, by, TOOL_BTN_W, TOOL_BTN_H, held ? 0x356670 : 0x14252b);
-        uint32_t edge = held ? 0xffffff : 0x4d6a72;
-        rect_edge(c, bx, by, TOOL_BTN_W, TOOL_BTN_H, edge);
-        if (held) rect_edge(c, bx + 1, by + 1, TOOL_BTN_W - 2, TOOL_BTN_H - 2, edge);
-        const icon_t *ic = ICON[k];
-        blit_icon_scaled(c, bx + (TOOL_BTN_W - ic->w * 2) / 2, by + (TOOL_BTN_H - ic->h * 2) / 2, ic, 2, true);
-    }
+    (void)H;
+    button(c, X, Y, W, 30, 0x14252b, 0x9fd8e2, "FISH MENU", 2);
+    button(c, X, Y + 38, W, 30, 0x14252b, 0x9fd8e2, "MAIN MENU", 2);
     /* the LOCK beside it (0.3.5) */
     const int LX = RENDER_LOCK_X, LY = RENDER_LOCK_Y, LW = RENDER_LOCK_W, LH = RENDER_LOCK_H;
     if (t->tools_locked) rect_fill(c, LX, LY, LW, LH, 0x356670); else shade_box(c, LX, LY, LW, LH);
@@ -6560,38 +7012,25 @@ static void tools_draw(ctx_t *c, const tank_t *t) {
     blit_icon(c, LX + (LW - lk->w) / 2, LY + (LH - lk->h) / 2, lk, 255);
 }
 bool render_lock_hit(float x, float y) {
-    x = render_page_x(x); y = render_page_y(y);
-    return y >= RENDER_TOOLS_Y && x >= RENDER_LOCK_X && x < RENDER_LOCK_X + RENDER_LOCK_W + 16;
+    (void)x; (void)y;
+    return false;
 }
 int render_tools_hit(float x, float y) {
-    x = render_page_x(x); y = render_page_y(y);
-    const int X = RENDER_TOOLS_X, W = RENDER_TOOLS_W;
-    if (y < RENDER_TOOLS_Y || x < X - RENDER_CARD_HIT_SIDE || x >= X + W + RENDER_CARD_HIT_SIDE) return -1;
-    return x < X + W / 2 ? TOOL_SPONGE : TOOL_SCISSORS;
+    (void)x; (void)y;
+    return -1;
+}
+int render_card_menu_hit(float x, float y) {
+    (void)x; (void)y;
+    return RENDER_CARD_MENU_NONE;
 }
 
-/* the chip: the tool at 1x and DONE, top left where the card would be */
-#define TOOL_CHIP_X RENDER_CARD_X
-#define TOOL_CHIP_Y RENDER_CARD_Y
-#define TOOL_CHIP_H 40
-static int tool_chip_w(void) { return 8 + 24 + 8 + text_w("DONE", 2) + 10; }
+/* Compatibility entry points: legacy tools have no visible UI or targets. */
 void render_tool_chip(const tank_t *t, int fish_idx, uint16_t *fb, int stride) {
-    if (t->tool == TOOL_HAND || (fish_idx >= 0 && fish_idx < t->n_fish)) return;
-    /* a stroke on the glass: the chip steps aside until the finger lifts, so
-     * the film it covers shows as the sponge takes it (0.3.5, Strato: "the
-     * sponge should be able to clean algae behind the DONE button") */
-    if (tank_stroking(t)) return;                    /* (not a press: the tap on DONE itself keeps it in view) */
-    ctx_t c = ctx_overlay(fb, stride);
-    const int X = TOOL_CHIP_X, Y = TOOL_CHIP_Y, W = tool_chip_w(), H = TOOL_CHIP_H;
-    shade_box(&c, X, Y, W, H);
-    rect_edge(&c, X, Y, W, H, 0xffffff); rect_edge(&c, X + 1, Y + 1, W - 2, H - 2, 0x9fd8e2);
-    const icon_t *ic = t->tool == TOOL_SCISSORS ? &icon_tool_scissors : &icon_tool_sponge;
-    blit_icon(&c, X + 8, Y + (H - ic->h) / 2, ic, 255);
-    draw_text(&c, X + 8 + ic->w + 8, Y + (H - 14) / 2, 2, 0xffffff, "DONE");
+    (void)t; (void)fish_idx; (void)fb; (void)stride;
 }
 bool render_tool_chip_hit(const tank_t *t, float x, float y) {
-    x = render_page_x(x); y = render_page_y(y);
-    return t->tool != TOOL_HAND && x < TOOL_CHIP_X + tool_chip_w() + 16 && y < TOOL_CHIP_Y + TOOL_CHIP_H + 24;
+    (void)t; (void)x; (void)y;
+    return false;
 }
 
 
@@ -6879,6 +7318,19 @@ static void page_backdrop(ctx_t *c, int x, int y, int w, int h) {
         }
         if (at <= x + w - 1) span(c, at, x + w - 1, yy, &b, 255);
     }
+    rect_edge(c, x + 2, y + 2, w - 4, h - 4, 0x8c794f);
+    rect_edge(c, x + 4, y + 4, w - 8, h - 8, 0x27484b);
+    for (int corner = 0; corner < 4; corner++) {
+        int cx = corner & 1 ? x + w - 9 : x + 8;
+        int cy = corner & 2 ? y + h - 9 : y + 8;
+        rect_fill(c, cx - 3, cy - 3, 6, 6, 0x9b865b);
+        rect_fill(c, cx - 2, cy - 2, 4, 1, 0xe2c893);
+        rect_fill(c, cx - 1, cy, 3, 1, 0x3e463b);
+    }
+    if (w >= 400 && h >= 300) {
+        rect_fill(c, x + 14, y + 44, w - 28, 1, 0x756345);
+        rect_fill(c, x + 14, y + 45, w - 28, 1, 0x122127);
+    }
 }
 /* A bevelled, round-cornered key: the edge colour rims it, a lit lip runs
  * along its top, the face darkens a step toward a shadowed foot. Opaque
@@ -6907,6 +7359,15 @@ static void button(ctx_t *c, int x, int y, int W, int H, uint32_t fill, uint32_t
         rect_fill(c, x + 2, y + H - 4, W - 4, 2, foot);
         rect_fill(c, x + 1, y + H - 2, W - 2, 1, rim_low);
         rect_fill(c, x + 2, y + H - 1, W - 4, 1, rim_low);
+        if (W >= 60 && H >= 26) {
+            uint32_t brass = mix(0xc9a66c, edge, .25f);
+            for (int side = 0; side < 2; side++) {
+                int sx = side ? x + W - 7 : x + 4;
+                rect_fill(c, sx, y + 4, 3, 3, brass);
+                rect_fill(c, sx, y + H - 7, 3, 3, mix(brass, 0x14282b, .35f));
+                px_blend(c, sx, y + 4, 0xf3dcaa, 255);
+            }
+        }
     }
     draw_text(c, x + (W - text_w(label, scale)) / 2, y + (H - 7 * scale) / 2, scale, 0xffffff, label);
 }
@@ -6935,6 +7396,48 @@ void render_ring(uint16_t *fb, int stride, float cx, float cy, float r, uint32_t
 }
 void render_button(uint16_t *fb, int stride, int x, int y, int w, int h, uint32_t fill, uint32_t edge, const char *label, int scale) {
     ctx_t c = ctx_page(fb, stride); button(&c, x, y, w, h, fill, edge, label, scale);
+}
+void render_menu_backdrop(uint16_t *fb, int stride, int x, int y, int w, int h) {
+    ctx_t c = ctx_page(fb, stride); page_backdrop(&c, x, y, w, h);
+}
+void render_doubloon(uint16_t *fb, int stride, int x, int y) {
+    ctx_t c = ctx_page(fb, stride); blit_icon(&c, x, y, &icon_shop_sand_dollar_16, 255);
+}
+void render_food_sample(uint16_t *fb, int stride, int x, int y, unsigned tier) {
+    ctx_t c = ctx_page(fb, stride);
+    fill_ellipse(&c, x, y + 5, 17, 7, 0x060f15, 255);
+    fill_ellipse(&c, x, y + 3, 15, 7, 0xb8955e, 255);
+    fill_ellipse(&c, x, y + 1, 13, 6, 0x28494e, 255);
+    for (int i = 0; i < 5; i++)
+        draw_food_tier(&c, x + (i % 3 - 1) * 7, y - 2 + (i / 3) * 5, tier, (unsigned)i);
+}
+static void page_stamp(ctx_t *c, int x, int y, int kind, uint32_t color);
+void render_fish_meter(uint16_t *fb, int stride, int y, unsigned kind, float value) {
+    ctx_t c = ctx_page(fb, stride);
+    static const char *const labels[] = {"TRUST", "ENERGY", "FULLNESS", "CALM", "VIGOR"};
+    static const uint32_t colors[] = {0xe4b96c, 0x7dc7af, 0xe59a7a, 0x85b8d2, 0xc79be8};
+    static const icon_t *const icons[] = {&icon_trust, &icon_energy, &icon_hunger};
+    if (kind >= 5) { fprintf(stderr, "Invalid fish meter: %u\n", kind); return; }
+    value = fmaxf(0, fminf(10, value));
+    uint32_t color = colors[kind];
+    button(&c, 12, y, 424, 28, 0x102c35, 0x34565e, "", 1);
+    if (kind < 3) blit_icon(&c, 16, y + 2, icons[kind], 255);
+    else page_stamp(&c, 20, y + 6, kind == 3 ? STAMP_LEAF : STAMP_FAMILY, color);
+    draw_text(&c, 48, y + 10, 1, 0xd4e5db, labels[kind]);
+    rect_fill(&c, 149, y + 6, 215, 16, 0x05151e);
+    for (int i = 0; i < 10; i++) {
+        int x = 152 + i * 21;
+        rect_fill(&c, x, y + 9, 17, 10, 0x24414a);
+        float amount = fmaxf(0, fminf(1, value - i));
+        int width = (int)roundf(amount * 17);
+        if (!width) continue;
+        rect_fill(&c, x, y + 9, width, 10, mix(color, 0x132b32, .25f));
+        rect_fill(&c, x, y + 9, width, 2, mix(color, 0xfff0cc, .3f));
+        rect_fill(&c, x, y + 12, width, 4, color);
+    }
+    char number[16];
+    snprintf(number, sizeof number, "%.1f", (double)value);
+    draw_text(&c, 384, y + 10, 1, color, number);
 }
 void render_glyph(uint16_t *fb, int stride, int x, int y, int scale, uint32_t rgb, const uint8_t *rows) {
     ctx_t c = ctx_page(fb, stride); src_t col = src_color(rgb, 1.0f);
@@ -6994,7 +7497,7 @@ static void draw_creature_portrait(ctx_t *c, float x, float y, float scale, int 
 void render_creature_portrait(uint16_t *fb, int stride, float x, float y, int creature, uint8_t colors, float clock) {
     if (creature < 0 || creature >= CREATURE_COUNT) { fprintf(stderr, "Invalid creature portrait\n"); return; }
     ctx_t c = ctx_page(fb, stride);
-    draw_creature_portrait(&c, x, y, creature == CREATURE_SHRIMP ? 4 : creature == CREATURE_SEAHORSE ? 2 : 3, creature, colors, clock);
+    draw_creature_portrait(&c, x, y, creature == CREATURE_SHRIMP ? 4 : creature == CREATURE_SEAHORSE || creature == CREATURE_MUSSEL ? 2 : 3, creature, colors, clock);
 }
 void render_fish_portrait(uint16_t *fb, int stride, float x, float y, float size, const fish_t *who, float clock) {
     ctx_t c = ctx_page(fb, stride);
@@ -7078,12 +7581,12 @@ int render_confirm_hit(float x, float y) {
 typedef struct { uint32_t bit; const icon_t *icon; } badge_t;
 static const badge_t FISH_BADGES[6] = {
     { MS_FIRST_MEAL_FROM_YOU, &icon_ms_first_meal },  { MS_FIRST_HOLD_APPROACH, &icon_ms_first_hold_approach },
-    { MS_FIRST_GRASS, &icon_ms_first_seagrass },      { MS_FIRST_BUBBLES, &icon_ms_first_bubbles },   /* (the third was "first reef" until 0.3.0) */
+    { MS_FIRST_GRASS, &icon_ms_first_reef },          { MS_FIRST_BUBBLES, &icon_ms_first_bubbles },
     { MS_FIRST_FOLLOW, &icon_ms_first_follow },       { MS_FIRST_DART, &icon_ms_first_dart },
 };
 #define TANK_BADGE_N 10
 static const badge_t TANK_BADGES[TANK_BADGE_N] = {
-    { TMS_FIRST_FEEDING, &icon_ms_first_feeding },    { TMS_FIRST_TRIM, &icon_ms_first_trimming },
+    { TMS_FIRST_FEEDING, &icon_ms_first_feeding },    { TMS_FIRST_TRIM, &icon_ms_first_bubbles },
     { TMS_FIRST_CLEANING, &icon_ms_first_glass_cleaning }, { TMS_FIRST_FULL_NIGHT, &icon_ms_first_quiet_night },
     { TMS_FIRST_PLAY_SESSION, &icon_ms_first_play_session }, { TMS_CHANGED_SOMEONE, &icon_ms_tank_changed_someone },
     { TMS_FULL_SCHOOL, &icon_ms_full_school },        /* 2026-09-30: only once the shrimp are bought (tank_badge_shown) */
@@ -7237,7 +7740,7 @@ static const icon_t *fry_req_icon(int kind) {
     case FRY_REQ_FEED:   return &icon_ms_first_feeding;
     case FRY_REQ_HOLD:   return &icon_ms_first_hold_approach;
     case FRY_REQ_CHANGE: return &icon_ms_tank_changed_someone;
-    case FRY_REQ_GRASS:  return &icon_ms_first_trimming;
+    case FRY_REQ_GRASS:  return &icon_ms_first_reef;
     case FRY_REQ_GLASS:  return &icon_ms_first_glass_cleaning;
     default:             return NULL;
     }
@@ -7418,9 +7921,10 @@ void render_milestones(const tank_t *t, uint16_t *fb, int stride) {
             button(&c, X + (W - MSP_HOW_W) / 2, Y + H - 10 - MSP_HOW_H, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_TEAL, "HOW?", 2);
         if (card) {
             const int by = ms_card_btn_y(t);
-            button(&c, X + 24, by - 44, W - 48, MSP_HOW_H, 0x1c2f36, MSP_TEAL, "CUSTOMIZE", 2);
             button(&c, ms_card_btn_x(0), by, MSP_CARD_BTN_W, MSP_HOW_H, 0x1c2f36, MSP_TEAL, "RENAME", 2);
-            if (!progression_fish_sellable(t, g_ms_row)) {           /* not for sale: the button in the page's dim ink, the words too */
+            if (!progression_creative(t)) {
+                button(&c, ms_card_btn_x(1), by, MSP_CARD_BTN_W, MSP_HOW_H, 0x1c2f36, MSP_TEAL, "MARKET", 2);
+            } else if (!progression_fish_sellable(t, g_ms_row)) {           /* not for sale: the button in the page's dim ink, the words too */
                 rect_fill(&c, ms_card_btn_x(1), by, MSP_CARD_BTN_W, MSP_HOW_H, 0x04141a);
                 rect_edge(&c, ms_card_btn_x(1), by, MSP_CARD_BTN_W, MSP_HOW_H, MSP_DIM);
                 draw_text(&c, ms_card_btn_x(1) + (MSP_CARD_BTN_W - text_w("SELL", 2)) / 2, by + (MSP_HOW_H - 14) / 2, 2, MSP_DIM, "SELL");
@@ -7473,11 +7977,9 @@ int render_milestones_tap(const tank_t *t, float x, float y) {
         if (ms_card(t)) {                        /* a fish's card: RENAME / SELL across its foot - each button's half of
                                                     the panel, the HOW? button's depth (a miss costs the modal) */
             const int by = ms_card_btn_y(t), fish = g_ms_row;
-            if (x >= MSP_MODAL_X + 16 && x < MSP_MODAL_X + MSP_MODAL_W - 16 && y >= by - 48 && y < by - 8) {
-                ms_close(); return MS_TAP_CUSTOM + fish;
-            }
             if (x >= MSP_MODAL_X && x < MSP_MODAL_X + MSP_MODAL_W && y >= by - MSP_HOW_SLOP_UP && y < by + MSP_HOW_H + MSP_HOW_SLOP_DN) {
                 if (x < MSP_MODAL_X + MSP_MODAL_W / 2) { ms_close(); return MS_TAP_RENAME + fish; }   /* the platform opens the wheel */
+                if (!progression_creative(t)) { ms_close(); render_life_market_open(fish); return MS_TAP_MARKET; }
                 if (!progression_fish_sellable(t, fish)) { g_ms_sell_asked = true; return MS_TAP_KEPT; }   /* the line says why, from now on */
                 if (!g_ms_sell_armed) { g_ms_sell_armed = true; g_ms_sell_clock = t->clock; return MS_TAP_KEPT; }
                 if (t->clock - g_ms_sell_clock < MSP_SELL_WAIT_S) return MS_TAP_KEPT;                /* a doubled tap: still armed */
@@ -7614,8 +8116,8 @@ void render_milestones_row(int row, int *name_x, int *y) {
  * The milestones page's detail modal, over the live tank: the badge art at
  * 2x (a fish's own sprite for a stage), the name, the caption, and a thin
  * bar along the foot that runs out with the notice's time. */
-static void page_stamp(ctx_t *c, int x, int y, int kind, uint32_t color);
 void render_notice(const tank_t *t, uint16_t *fb, int stride, int kind, int fish, uint32_t bit, float frac_left) {
+    if (kind == NOTICE_MILESTONE || kind == NOTICE_TANK_MILESTONE || kind == NOTICE_STAGE) return;
     ctx_t c = ctx_page(fb, stride);
     const int X = MSP_MODAL_X, W = MSP_MODAL_W, Y = MSP_MODAL_Y, H = MSP_MODAL_H;
     rect_fill(&c, X, Y, W, H, 0x04141a);
@@ -7712,8 +8214,15 @@ bool render_shop_inventory_action(tank_t *t, int action) {
 }
 static const icon_t *shop_icon(int item) { return item == 0 ? &icon_shop_plant : item == 1 ? &icon_shop_snail : item == 2 ? &icon_shop_castle : item == 3 ? &icon_shop_coral : item == 4 ? &icon_shop_cluster : item == 5 ? &icon_shop_shrimp : item == 6 ? &icon_shop_urchin : item == 7 ? &icon_shop_seahorse : &icon_unknown_16; }
 void render_decor_thumbnail(uint16_t *fb, int stride, int x, int y, int size, int item, bool lit) {
-    if (item < 0 || item == 8 || item >= SD_ITEM_COUNT || size < 1 || size > 64) return;
+    if (item < 0 || item == 8 || item >= SD_CATALOG_COUNT || size < 1 || size > 64) return;
     ctx_t c = ctx_page(fb, stride);
+    if (SD_IS_FOLIAGE(item)) {
+        if (item - SD_FOLIAGE_FIRST == FOLIAGE_KELP)
+            draw_kelp_sprite(&c, x + size / 4, y, size, 0, false, lit, 0x10282e);
+        else draw_ground_sprite(&c, item - SD_FOLIAGE_FIRST, x, y + size / 4, size,
+                                false, lit, 0x10282e, false);
+        return;
+    }
     if (item == SD_SHOP_MUSSEL) {
         c.ox = x < 0 ? 0 : x; c.oy = y < 0 ? 0 : y;
         c.w = (x + size < PAGE_W ? x + size : PAGE_W) - c.ox;
@@ -7752,6 +8261,7 @@ void render_decor_thumbnail(uint16_t *fb, int stride, int x, int y, int size, in
  * the same). With more items than a page holds, arrows at the header's
  * right flip through the pages; with one page nothing shows. */
 static int g_shp_page;
+_Static_assert(SHOP_TAP_BUY + SD_CATALOG_COUNT <= SHOP_TAP_MOVE, "shop buy actions must not overlap move");
 static void shop_arrow(ctx_t *c, int x, int y, bool right, uint32_t rgb) {   /* a chevron in a button */
     button(c, x, y, SHP_ARROW_W, SHP_ARROW_H, 0x1c2f36, rgb, "", 2);
     int cx = x + SHP_ARROW_W / 2, cy = y + SHP_ARROW_H / 2;
@@ -7770,7 +8280,7 @@ static void price_tag(ctx_t *c, int x, int y, int price, uint32_t rgb) {   /* th
  * numbered across the pages; row 0 is FRY when it shows, the items after */
 #define SHP_MODAL_FRY 99             /* g_shp_modal: the fry's modal */
 static int g_shp_fry_pick;           /* the fry picked in its modal */
-static bool shp_fry(const tank_t *t) { return progression_fry_for_sale(t); }
+static bool shp_fry(const tank_t *t) { (void)t; return false; }
 static int  shp_rows(const tank_t *t) { return progression_shop_count(t) + shp_fry(t); }
 static int  shp_pages(const tank_t *t) { return (shp_rows(t) + SHP_PER_PAGE - 1) / SHP_PER_PAGE; }
 static int  shp_item(const tank_t *t, int row) {
@@ -7793,6 +8303,17 @@ static int fry_first_left(const tank_t *t) {
 }
 /* a shop row's card: a raised slate under the row, its preview in a sunk well */
 #define SHP_WELL 0x061920
+/* favorite-decor hint: the first resident that loves this shop item, or -1 */
+static int shop_item_fan(const tank_t *t, int item) {
+    for (int j = 0; j < t->n_fish; j++) if (tank_fish_favorite_item(t, j) == item) return j;
+    return -1;
+}
+static void shop_heart(ctx_t *c, int x, int y) {
+    static const char *const rows[6] = {".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."};
+    rect_fill(c, x - 1, y - 1, 9, 8, 0x05141a);
+    for (int r = 0; r < 6; r++) for (int k = 0; k < 7; k++)
+        if (rows[r][k] == 'X') rect_fill(c, x + k, y + r, 1, 1, r == 1 && k == 1 ? 0xffd0e0 : 0xff7fa8);
+}
 static void shop_row_card(ctx_t *c, int top) {
     const int x = 14, w = PAGE_W - 28, y = top - 5, h = 46;
     rect_fill(c, x + 1, y, w - 2, 1, 0x1d4a57);
@@ -7804,11 +8325,12 @@ static void shop_row_card(ctx_t *c, int top) {
 }
 static void shop_fry_row(ctx_t *c, const tank_t *t, uint16_t *fb, int stride, int top) {
     int k = fry_first_left(t);
-    bool room = progression_fry_room(t), can = t->sd_balance >= SD_PRICE_FRY;
+    int price = k >= 0 ? progression_fry_price(t, k) : 0;
+    bool room = progression_fry_room(t), can = t->sd_balance >= price;
     if (k >= 0) { fry_offer_t o; progression_fry_offer(t, k, &o); fry_draw(fb, stride, 48, top + 16, 0.9f, &o, t->clock); }
     draw_text(c, 76, top + 2, 2, 0xffffff, "FRY");
     if (k < 0) { char l[24]; fry_hours(l, sizeof l); draw_text(c, 76, top + 20, 2, MSP_DIM, l); }
-    else price_tag(c, 76, top + 20, SD_PRICE_FRY, can && room ? MSP_TEAL : MSP_DIM);
+    else price_tag(c, 76, top + 20, price, can && room ? MSP_TEAL : MSP_DIM);
     const char *b = k < 0 ? "SOLD OUT" : !room ? "FULL" : "CHOOSE";
     if (k >= 0 && room && can) button(c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, b, 2);
     else button(c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_DIM, b, 2);
@@ -7834,11 +8356,12 @@ static void shop_fry_modal(ctx_t *c, const tank_t *t, uint16_t *fb, int stride) 
         rect_fill(c, sx, sy, 16, 14, o.body);   rect_edge(c, sx, sy, 16, 14, 0x1c2f36);
         rect_fill(c, sx + 22, sy, 16, 14, o.accent); rect_edge(c, sx + 22, sy, 16, 14, 0x1c2f36);
     }
-    bool room = progression_fry_room(t), can = t->sd_balance >= SD_PRICE_FRY;
+    int price = progression_fry_price(t, g_shp_fry_pick);
+    bool room = progression_fry_room(t), can = t->sd_balance >= price;
     fry_offer_t pk; progression_fry_offer(t, g_shp_fry_pick, &pk);
     bool go = room && can && !pk.sold && progression_fry_left() > 0;
-    char line[32]; snprintf(line, sizeof line, "%d", SD_PRICE_FRY);
-    price_tag(c, X + (W - 20 - text_w(line, 2)) / 2, Y + 144, SD_PRICE_FRY, go ? 0xffffff : MSP_DIM);
+    char line[32]; snprintf(line, sizeof line, "%d", price);
+    price_tag(c, X + (W - 20 - text_w(line, 2)) / 2, Y + 144, price, go ? 0xffffff : MSP_DIM);
     if (!room) snprintf(line, sizeof line, t->n_fish >= POP_CAP ? "THE TANK IS FULL" : "WELCOME THE NEW FRY");
     else if (!can) snprintf(line, sizeof line, "YOU HAVE %d", (int)t->sd_balance);
     else line[0] = 0;
@@ -7902,7 +8425,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
     page_backdrop(&c, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H);
     blit_icon(&c, SHP_COIN_X, SHP_COIN_Y, &icon_shop_sand_dollar_64, 255);
-    draw_text(&c, SHP_HEAD_X, SHP_COIN_Y + 6, 2, MSP_TEAL, "SAND DOLLARS");
+    draw_text(&c, SHP_HEAD_X, SHP_COIN_Y + 6, 2, MSP_TEAL, "DOUBLOONS");
     char bal[16]; snprintf(bal, sizeof bal, "%d", (int)t->sd_balance);
     draw_text(&c, SHP_HEAD_X, SHP_COIN_Y + 28, 4, 0xffffff, bal);
     rect_fill(&c, 24, SHP_ROW_Y0 - 12, PAGE_W - 48, 1, 0x8a7434);   /* a gilt rule under the purse */
@@ -7919,7 +8442,11 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         int price = progression_item_price_for(t, i);
         bool can = t->sd_balance >= price;
         /* the preview in full colour: a shop shows its wares (the key and the caption say owned or not) */
-        if (i == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, 43, top + 20, 1, false, true, SHP_WELL, t->companion.mussel_colors);
+        if (i == SD_FOLIAGE_FIRST + FOLIAGE_KELP)
+            draw_kelp_sprite(&c, 34, top, 36, 0, false, true, SHP_WELL);
+        else if (SD_IS_FOLIAGE(i))
+            draw_ground_sprite(&c, i - SD_FOLIAGE_FIRST, 24, top + 10, 36, false, true, SHP_WELL, false);
+        else if (i == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, 43, top + 20, 1, false, true, SHP_WELL, t->companion.mussel_colors);
         else if (i >= 9 && i <= 12) draw_ornament(&c, i, 24, top, 1, false, true, SHP_WELL);
         else if (i == 13) draw_buoy_icon(&c, 24, top, 1, true, SHP_WELL);
         else if (i >= 16) draw_ornament_icon(&c, i, 24, top, 36, true, SHP_WELL);
@@ -7929,18 +8456,22 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
             for (int s = 0; s < count; s++) rect_fill(&c, 26 + s * width, top + 2, width, 32, shop_art_color(i == 14 ? SAND_PALETTE[s][0] : WATER_PALETTE[s + 1][0], true, SHP_WELL));
         }
         else blit_icon(&c, 32, top, shop_icon(i), 255);   /* (the rows are where the bowl is wide: their own column) */
+        if (shop_item_fan(t, i) >= 0) shop_heart(&c, 58, top + 1);
         draw_text(&c, 76, top + 2, 2, 0xffffff, it->name);
         if (tank_decor_placeable(i) && (progression_inventory_placed(t, i) || progression_inventory_stored(t, i))) {
             char copies[40]; snprintf(copies, sizeof copies, "STORED %d / HERE %d",
                 progression_inventory_stored(t, i), progression_inventory_placed(t, i));
             draw_text(&c, 76, top + 20, 1, MSP_TEAL, copies);
         }
-        else if (owned) draw_text(&c, 76, top + 20, 2, MSP_TEAL, "IN THE TANK");
+        else if (owned) draw_text(&c, 76, top + 20, 2, MSP_TEAL,
+            SD_IS_FOLIAGE(i) ? progression_foliage_planted(t, i) ? "PLANTED" : "STORED" : "IN THE TANK");
         else if (progression_creative(t)) draw_text(&c, 76, top + 20, 2, MSP_TEAL, "CREATIVE: FREE");
         else if (!price) draw_text(&c, 76, top + 20, 2, MSP_TEAL,
                                   progression_inventory_stored(t, i) ? "STORED: PLACE" : "UNLOCKED: FREE");
         else price_tag(&c, 76, top + 20, price, can ? MSP_TEAL : MSP_DIM);
         if (tank_decor_placeable(i) && (progression_inventory_placed(t, i) || progression_inventory_stored(t, i)))
+            button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "MANAGE", 2);
+        else if (owned && SD_IS_FOLIAGE(i))
             button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, "MANAGE", 2);
         else if (owned) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, MSP_INK, MSP_DIM, "IN TANK", 2);
         else if (can) button(&c, SHP_BTN_X, top, SHP_BTN_W, SHP_BTN_H, 0x1c2f36, MSP_TEAL, !price ? "ADD" : "BUY", 2);
@@ -7954,7 +8485,6 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         draw_text(&c, nx + 16, ny + 12, 2, 0xffffff, notice);
     }
     button(&c, SHP_EARN_X, MSP_CLOSE_Y, SHP_EARN_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "HOW TO EARN", 2);
-    button(&c, 194, MSP_CLOSE_Y, 116, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "TANKS", 2);
     button(&c, SHP_CLOSE_X, MSP_CLOSE_Y, MSP_CLOSE_W, MSP_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
     if ((g_shp_modal < 0 || g_shp_modal == 8) && !g_shp_earn) return;
     for (int y = render_tile_top(); y < render_tile_bottom(); y++)
@@ -7978,7 +8508,12 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
     bool can = t->sd_balance >= price;
     rect_fill(&c, X, Y, W, H, 0x04141a);
     rect_edge(&c, X, Y, W, H, MSP_TEAL); rect_edge(&c, X + 1, Y + 1, W - 2, H - 2, 0x1c2f36);
-    if (g_shp_modal == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, X + W / 2, Y + 44, 2, false, owned, 0x04141a, t->companion.mussel_colors);
+    if (g_shp_modal == SD_FOLIAGE_FIRST + FOLIAGE_KELP)
+        draw_kelp_sprite(&c, X + W / 2 - 18, Y + 8, 72, 0, false, true, 0x04141a);
+    else if (SD_IS_FOLIAGE(g_shp_modal))
+        draw_ground_sprite(&c, g_shp_modal - SD_FOLIAGE_FIRST, X + W / 2 - 56, Y + 12, 112,
+                           false, true, 0x04141a, false);
+    else if (g_shp_modal == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, X + W / 2, Y + 44, 2, false, owned, 0x04141a, t->companion.mussel_colors);
     else if (g_shp_modal >= 9 && g_shp_modal <= 12) draw_ornament(&c, g_shp_modal, X + (W - tank_ornament_w(g_shp_modal) * 2) / 2, Y + 8, 2, false, owned, 0x04141a);
     else if (g_shp_modal == 13) {
         draw_buoy_icon(&c, X + W / 2 - 36, Y + 8, 2, owned, 0x04141a);
@@ -7990,11 +8525,25 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
         for (int s = 0; s < count; s++) rect_fill(&c, X + W / 2 - 64 + s * width, Y + 18, width - 2, 44, shop_art_color(g_shp_modal == 14 ? SAND_PALETTE[s][0] : WATER_PALETTE[s + 1][0], owned, 0x04141a));
     }
     else blit_icon_scaled(&c, X + (W - 64) / 2, Y + 14, shop_icon(g_shp_modal), 2, owned);
+    int fan = shop_item_fan(t, g_shp_modal);
+    if (fan >= 0) {
+        shop_heart(&c, X + 12, Y + 12);
+        draw_text(&c, X + 24, Y + 12, 1, 0xff9fbd, "LOVED BY");
+        draw_text(&c, X + 12, Y + 26, 1, 0xffd0e0, t->fish[fan].name);
+    }
     draw_text(&c, X + (W - text_w(it->name, 3)) / 2, Y + 88, 3, 0xffffff, it->name);
     draw_text(&c, X + (W - text_w(it->words, 2)) / 2, Y + 118, 2, MSP_TEAL, it->words);
     draw_text(&c, X + (W - text_w(it->words2, 2)) / 2, Y + 138, 2, MSP_TEAL, it->words2);
     const int bx = X + (W - MSP_HOW_W) / 2, by = Y + H - 12 - MSP_HOW_H;
-    if (owned && tank_decor_movable(g_shp_modal)) {           /* a piece in the tank: MOVE re-opens the placement page, SELL (twice) sells it back */
+    if (owned && SD_IS_FOLIAGE(g_shp_modal)) {
+        const char *set = g_shp_modal == SD_FOLIAGE_FIRST + FOLIAGE_KELP ?
+            "KELP STANDS - THIS AQUARIUM" : "FLOOR COVER - THIS AQUARIUM";
+        draw_text(&c, X + (W - text_w(set, 2)) / 2, Y + 164, 2, MSP_TEAL, set);
+        draw_text(&c, X + (W - text_w("MIX WITH OTHER PLANTED SETS", 2)) / 2, Y + 184, 2,
+                  MSP_DIM, "MIX WITH OTHER PLANTED SETS");
+        button(&c, bx, by, MSP_HOW_W, MSP_HOW_H, 0x1c2f36, MSP_TEAL,
+               progression_foliage_planted(t, g_shp_modal) ? "STORE" : "PLANT", 2);
+    } else if (owned && tank_decor_movable(g_shp_modal)) {           /* a piece in the tank: MOVE re-opens the placement page, SELL (twice) sells it back */
         char sell[32]; snprintf(sell, sizeof sell, SD_IS_FIXED_SCENERY(g_shp_modal) ? "REFUND %d - LEAVES TANK" : "REFUND %d - COPY SOLD",
                                 progression_sell_value_for(t, g_shp_modal));
         draw_text(&c, X + (W - text_w("IN THE TANK", 2)) / 2, Y + 164, 2, MSP_TEAL, "IN THE TANK");
@@ -8032,7 +8581,7 @@ int render_shop_tap(const tank_t *t, float x, float y) {
         bool on_btn = y >= by - MSP_HOW_SLOP_UP && y < by + MSP_HOW_H + MSP_HOW_SLOP_DN && x >= bx - MSP_HOW_SLOP_X && x < bx + MSP_HOW_W + MSP_HOW_SLOP_X;
         fry_offer_t pk; progression_fry_offer(t, g_shp_fry_pick, &pk);
         g_shp_modal = -1;
-        if (on_btn && !pk.sold && progression_fry_room(t) && t->sd_balance >= SD_PRICE_FRY) return SHOP_TAP_FRY + g_shp_fry_pick;
+        if (on_btn && !pk.sold && progression_fry_room(t) && t->sd_balance >= progression_fry_price(t, g_shp_fry_pick)) return SHOP_TAP_FRY + g_shp_fry_pick;
         return SHOP_TAP_KEPT;
     }
     if (g_shp_modal >= 0) {
@@ -8041,6 +8590,11 @@ int render_shop_tap(const tank_t *t, float x, float y) {
         const int bx = SHP_MODAL_X + (SHP_MODAL_W - MSP_HOW_W) / 2, by = SHP_MODAL_Y + SHP_MODAL_H - 12 - MSP_HOW_H;
         bool row = y >= by - MSP_HOW_SLOP_UP && y < by + MSP_HOW_H + MSP_HOW_SLOP_DN;
         bool on_btn = row && x >= bx - MSP_HOW_SLOP_X && x < bx + MSP_HOW_W + MSP_HOW_SLOP_X;
+        if (SD_IS_FOLIAGE(item)) {
+            g_shp_modal = -1; g_shp_sell_armed = false;
+            if (on_btn && (owned || can)) return SHOP_TAP_BUY + item;
+            return SHOP_TAP_KEPT;
+        }
         if (owned && tank_decor_movable(item)) {                  /* two buttons: MOVE, and SELL armed then confirmed */
             bool on_move = row && x >= SHP_TWO_X0 - MSP_HOW_SLOP_X && x < SHP_TWO_X0 + MSP_HOW_W + SHP_TWO_GAP / 2;
             bool on_sell = row && x >= SHP_TWO_X1 - SHP_TWO_GAP / 2 && x < SHP_TWO_X1 + MSP_HOW_W + MSP_HOW_SLOP_X;
@@ -8055,7 +8609,6 @@ int render_shop_tap(const tank_t *t, float x, float y) {
         return SHOP_TAP_KEPT;
     }
     if (x >= SHP_CLOSE_X - 6 && y >= MSP_CLOSE_Y - 4) return SHOP_TAP_CLOSE;
-    if (x >= 190 && x < 316 && y >= MSP_CLOSE_Y - 4) return SHOP_TAP_TANKS;
     if (x < SHP_EARN_X + SHP_EARN_W + 8 && y >= MSP_CLOSE_Y - 4) { g_shp_earn = true; return SHOP_TAP_KEPT; }
     if (shp_pages(t) > 1 && y < SHP_ROW_Y0 - 10 && x >= SHP_ARROW_X0 - 8) {   /* the page arrows, in the header band */
         if (x < SHP_ARROW_X1 - 4) { if (g_shp_page > 0) g_shp_page--; }
@@ -8294,6 +8847,12 @@ static void clock_segments(ctx_t *c, int x, int y, int scale, int vertical_scale
                           horizontal ? 3 * s - 2 * gap + 1 : 3 * sy_scale - 2 * gap_y + 1,
                           horizontal ? thick_y : thick, horizontal,
                           mask & (1 << k) ? ink : 0x173139);
+            if ((mask & (1 << k)) && s >= 3 && sy_scale >= 3) {
+                int xx = x + sx[k] * s, yy = y + sy[k] * sy_scale;
+                if (horizontal)
+                    rect_fill(c, xx + inset + 1, yy, 3 * s - 2 * gap - 1, 1, mix(ink, 0xffffff, .5f));
+                else rect_fill(c, xx, yy + inset + 1, 1, 3 * sy_scale - 2 * gap_y - 1, mix(ink, 0xffffff, .5f));
+            }
         }
         x += 5 * s;
     }
@@ -8309,6 +8868,172 @@ static clock_colors_t clock_colors(const tank_t *t) {
     int secondary = t->aquariums.clock_delay >> CLOCK_SECONDARY_SHIFT;
     if (secondary) p.edge = p.minute = p.second = inks[secondary];
     return p;
+}
+static void clock_screw(ctx_t *c, int x, int y, uint32_t metal) {
+    rect_fill(c, x - 1, y - 1, 3, 3, metal);
+    rect_fill(c, x - 1, y, 3, 1, 0x233d43);
+}
+static void clock_bevel(ctx_t *c, int x, int y, int w, int h, int thickness,
+                         uint32_t face, uint32_t light, uint32_t shade) {
+    rect_fill(c, x, y, w, h, shade);
+    rect_fill(c, x, y, w, thickness, light);
+    rect_fill(c, x, y, thickness, h, light);
+    rect_fill(c, x + thickness, y + thickness, w - thickness * 2, h - thickness * 2, face);
+}
+static void clock_pointer(ctx_t *c, int x, int y, float a, int length, int width, uint32_t ink) {
+    float dx = cosf(a), dy = sinf(a), nx = -dy * width, ny = dx * width;
+    float xs[] = {x - dx * length * .18f, x + dx * length * .57f + nx,
+                  x + dx * length, x + dx * length * .57f - nx};
+    float ys[] = {y - dy * length * .18f, y + dy * length * .57f + ny,
+                  y + dy * length, y + dy * length * .57f - ny};
+    fill_fish_material(c, xs, ys, 4, ink, .35f);
+    clock_hand(c, x, y, a, length * 3 / 4, 1, mix(ink, 0xffffff, .55f));
+}
+/* Rounded sea-glass slab: each row is a vertical-gradient span with circular corners. */
+static void clock_round_fill(ctx_t *c, int x, int y, int w, int h, int r, uint32_t top, uint32_t bottom) {
+    if (w <= 0 || h <= 0) return;
+    if (r > w / 2) r = w / 2;
+    if (r > h / 2) r = h / 2;
+    for (int row = 0; row < h; row++) {
+        int d = row < r ? r - row : row >= h - r ? row - (h - r - 1) : 0, inset = 0;
+        if (d) inset = r - (int)sqrtf((float)(r * r - (d - .5f) * (d - .5f)) + .5f);
+        rect_fill(c, x + inset, y + row, w - 2 * inset, 1, h > 1 ? mix(top, bottom, (float)row / (h - 1)) : top);
+    }
+}
+typedef struct { uint32_t top, bottom; } clock_glass_t;
+static clock_glass_t clock_glass_colors(int theme) {
+    return theme == CLOCK_NEON ? (clock_glass_t){0x231a36, 0x0c0a19} :
+           theme == CLOCK_FLIP ? (clock_glass_t){0x3b3029, 0x1a1411} :
+           theme == CLOCK_BINARY ? (clock_glass_t){0x173b3e, 0x091d22} :
+           (clock_glass_t){0x1b4248, 0x0a1e25};
+}
+/* Digital, neon, flip, binary and compact share one calm frame: a soft rim, a glass slab
+ * with a top sheen, and a hairline divider above the date strip.  No screws or brass. */
+static void clock_glass_frame(ctx_t *c, int x, int y, int w, int h, int footer,
+                              int theme, bool transparent, const clock_colors_t *p) {
+    clock_glass_t g = clock_glass_colors(theme);
+    int divider = y + h - footer - 3;
+    if (!transparent) {
+        clock_round_fill(c, x, y, w, h, 9, mix(g.top, p->edge, .38f), mix(g.bottom, p->edge, .18f));
+        if (theme == CLOCK_NEON) {
+            clock_round_fill(c, x + 2, y + 2, w - 4, h - 4, 7, mix(p->edge, g.top, .62f), mix(p->edge, g.bottom, .62f));
+            clock_round_fill(c, x + 3, y + 3, w - 6, h - 6, 6, p->edge, mix(p->edge, g.bottom, .25f));
+            clock_round_fill(c, x + 4, y + 4, w - 8, h - 8, 5, mix(p->edge, g.top, .55f), mix(p->edge, g.bottom, .7f));
+            clock_round_fill(c, x + 5, y + 5, w - 10, h - 10, 4, g.top, g.bottom);
+        } else {
+            clock_round_fill(c, x + 2, y + 2, w - 4, h - 4, 7, g.top, g.bottom);
+            rect_fill(c, x + 9, y + 3, w - 18, 1, mix(g.top, 0xffffff, .22f));
+        }
+        if (theme == CLOCK_DIGITAL) {
+            int well_h = divider - y - 10;
+            clock_round_fill(c, x + 8, y + 7, w - 16, well_h, 5, 0x102d31, 0x07181c);
+            rect_fill(c, x + 13, y + 8, w - 26, 1, 0x2d5a5b);
+            for (int i = 0; i < well_h / 3; i++)          /* one soft diagonal glare across the glass */
+                rect_fill(c, x + w * 3 / 5 + i, y + 9 + i, 3, 1, mix(0x102d31, 0xd8f2ea, .07f));
+        } else if (theme == CLOCK_FLIP) {
+            clock_round_fill(c, x + 6, y + 5, w - 12, divider - y - 6, 5, 0x2b221d, 0x15100d);
+        } else if (theme == CLOCK_COMPACT) {
+            rect_fill(c, x + 12, y + 7, w - 24, 1, mix(g.top, p->edge, .35f));
+        }
+    }
+    int rule = w / 3;
+    uint32_t hair = transparent ? p->edge : mix(p->edge, g.bottom, .5f);
+    rect_fill(c, x + (w - rule) / 2, divider, rule, 1, hair);
+    rect_fill(c, x + w / 2 - 1, divider - 1, 3, 3, p->edge);
+}
+static void clock_instrument(ctx_t *c, int x, int y, int w, int h, int footer,
+                             int theme, bool transparent, const clock_colors_t *p) {
+    int bottom = y + h - footer, body_h = bottom - y;
+    uint32_t brass = mix(p->edge, 0xc39755, .65f);
+    if (!transparent) {
+        uint32_t material = theme == CLOCK_FLIP ? 0x47382e :
+                            theme == CLOCK_NEON ? 0x18263c :
+                            theme == CLOCK_BINARY ? 0x203c3e : 0x16313b;
+        clock_bevel(c, x + 1, y + 1, w - 2, h - 2, 4, material,
+                    mix(brass, 0xf2e5b3, .4f), mix(material, 0x000000, .55f));
+        clock_bevel(c, x + 6, y + 6, w - 12, body_h - 10, 2, 0x081b25,
+                    0x071116, mix(material, 0xd4e5cf, .35f));
+        /* Deep cast corner shoes and slotted screws, not another thin border. */
+        for (int side = 0; side < 2; side++) for (int end = 0; end < 2; end++) {
+            int xx = side ? x + w - 10 : x + 1, yy = end ? y + h - 10 : y + 1;
+            clock_bevel(c, xx, yy, 9, 9, 2, brass, 0xe9d296, 0x574b36);
+            for (int tooth = 0; tooth < 3; tooth++)
+                rect_fill(c, xx + 2 + tooth * 2, yy + (end ? 6 : 1), 1, 2, 0x625e4d);
+            clock_screw(c, xx + 4, yy + 4, 0xe6d6a7);
+        }
+        int plate_w = w > 140 ? 42 : 24;
+        clock_bevel(c, x + (w - plate_w) / 2, bottom - 3, plate_w, 3, 1,
+                    0x99805a, 0xd8c491, 0x544d3c);
+        if (theme == CLOCK_FLIP) {
+            for (int yy = y + 4; yy < bottom - 2; yy += 7)
+                rect_fill(c, x + 2, yy, 3, 2, 0x886345);
+        }
+    }
+    for (int side = 0; side < 2; side++) {
+        int xx = side ? x + w - 4 : x + 3;
+        clock_screw(c, xx, y + 4, brass);
+        clock_screw(c, xx, y + h - 5, brass);
+    }
+    if (theme == CLOCK_ANALOG || theme == CLOCK_ORBIT) {
+        int r = (body_h - 16) / 2, cx = x + w / 2, cy = y + r + 8;
+        if (r > w / 2 - 6) r = w / 2 - 6;
+        cy = y + r + 8;
+        if (theme == CLOCK_ORBIT) {
+            int dial_r = w / 2 - 14;
+            if (dial_r > (body_h - 12) / 2) dial_r = (body_h - 12) / 2;
+            r = dial_r - 3;
+            cy = y + dial_r + 3;
+        }
+        if (!transparent) {
+            fill_ellipse(c, cx, cy, r + 4, r + 4, 0x594a35, 255);
+            fill_ellipse(c, cx - 1, cy - 1, r + 3, r + 3, 0xe0c586, 255);
+            fill_ellipse(c, cx, cy + 1, r + 1, r + 1, 0x9b7a46, 255);
+            fill_ellipse(c, cx, cy, r - 1, r - 1, 0x1b3038, 255);
+            fill_ellipse(c, cx, cy, r - 3, r - 3, brass, 255);
+            fill_ellipse(c, cx, cy, r - 4, r - 4,
+                         theme == CLOCK_ANALOG ? 0x354c4d : 0x142d3c, 255);
+        }
+        for (int k = 0; k < 60; k++) {
+            float a = k * TAU / 60 - TAU / 4;
+            int rr = r - 5;
+            px_blend(c, cx + (int)(cosf(a) * rr), cy + (int)(sinf(a) * rr), k % 5 ? brass : p->ink, 255);
+        }
+        for (int side = -1; side <= 1; side += 2) {
+            int xx = cx + side * (r + 3) - (side > 0 ? 2 : 0);
+            rect_fill(c, xx, cy - 4, 3, 9, 0x9b7a46);
+            for (int tooth = 0; tooth < 3; tooth++)
+                rect_fill(c, xx, cy - 3 + tooth * 3, 3, 1, 0xf1d49b);
+        }
+        for (int k = 0; k < 12; k++) {
+            float a = k * TAU / 12;
+            int xx = cx + (int)(cosf(a) * (r + 2)), yy = cy + (int)(sinf(a) * (r + 2));
+            rect_fill(c, xx, yy, 1, 1, p->ink);
+        }
+        if (theme == CLOCK_ORBIT) {
+            for (int k = 0; k < 4; k++) {
+                float a = k * TAU / 4;
+                clock_hand(c, cx, cy, a, r - 7, 1, 0x34565d);
+            }
+        } else {
+            for (int k = 0; k < 36; k++) {
+                float a = k * TAU / 36;
+                for (int ring = 0; ring < 2; ring++) {
+                    int rr = r * (ring ? 3 : 2) / 5;
+                    px_blend(c, cx + (int)(cosf(a) * rr), cy + (int)(sinf(a) * rr),
+                             k & 1 ? 0x68817b : 0x223d42, 150);
+                }
+            }
+            int sub = r / 5, sy = cy + r * 2 / 5;
+            if (!transparent) {
+                fill_ellipse(c, cx, sy, sub + 1, sub + 1, brass, 255);
+                fill_ellipse(c, cx, sy, sub, sub, 0x213a41, 255);
+            }
+            for (int k = 0; k < 12; k++) {
+                float a = k * TAU / 12;
+                px_blend(c, cx + (int)(cosf(a) * (sub - 1)), sy + (int)(sinf(a) * (sub - 1)), p->edge, 255);
+            }
+        }
+    }
 }
 static void clock_text_stretched(ctx_t *c, int x, int y, int w, int h, uint32_t ink, const char *text) {
     int columns = (int)strlen(text) * 6 - 1;
@@ -8331,23 +9056,29 @@ static void clock_flip(ctx_t *c, int x, int y, int w, int h, int size, int detai
     int top = y + 8;
     for (int digit = 0; digit < 4; digit++) {
         int left = x + margin + digit * (tile_w + gap) + (digit >= 2 ? colon : 0);
-        rect_fill(c, left, top, tile_w, tile_h / 2, 0x20343e);
-        rect_fill(c, left, top + tile_h / 2, tile_w, tile_h - tile_h / 2, 0x10232d);
-        rect_edge(c, left, top, tile_w, tile_h, 0x3b5660);
+        clock_bevel(c, left, top, tile_w, tile_h, 2, 0x172b32, 0x77989a, 0x030d13);
+        rect_fill(c, left + 2, top + 2, tile_w - 4, tile_h / 2 - 2, 0x344c50);
+        rect_fill(c, left + 2, top + tile_h / 2 + 2, tile_w - 4, tile_h / 2 - 4, 0x152931);
+        rect_fill(c, left + 3, top + 3, tile_w - 6, 2, 0x496164);
         rect_fill(c, left + 2, top + 1, tile_w - 4, 1, edge);
         char label[2] = {text[digit + (digit >= 2 ? 1 : 0)], 0};
         if (size == CLOCK_JUMBO)
             clock_text_stretched(c, left + padding, top + padding, tile_w - 2 * padding, tile_h - 2 * padding, ink, label);
         else clock_text_center(c, left, top + padding, tile_w, scale, ink, label);
-        rect_fill(c, left + 1, top + tile_h / 2, tile_w - 2, 1, 0x061118);
-        rect_fill(c, left, top + tile_h / 2 - 1, 2, 3, edge);
-        rect_fill(c, left + tile_w - 2, top + tile_h / 2 - 1, 2, 3, edge);
+        rect_fill(c, left + 1, top + tile_h / 2, tile_w - 2, 2, 0x03090d);
+        rect_fill(c, left + 2, top + tile_h / 2 + 2, tile_w - 4, 1, 0x6a7975);
+        rect_fill(c, left + 2, top + tile_h - 3, tile_w - 4, 1, 0x486068);
+        for (int pin = 0; pin < 2; pin++) {
+            int hinge = left + (pin ? tile_w - 4 : 0);
+            clock_bevel(c, hinge, top + tile_h / 2 - 2, 4, 6, 1, 0xa18456, 0xf1dca2, 0x53432f);
+            rect_fill(c, hinge, top + tile_h / 2, 4, 1, 0x3b3c34);
+        }
     }
     int cx = x + margin + 2 * (tile_w + gap) + colon / 2 - 2;
     rect_fill(c, cx, top + tile_h / 3, 2, 2, ink);
     rect_fill(c, cx, top + tile_h * 2 / 3, 2, 2, ink);
 }
-static void clock_binary(ctx_t *c, int x, int y, int w, int h, int size, int detail_scale, const clock_colors_t *p, int hour, int minute, int second, bool valid, bool seconds) {
+static void clock_binary(ctx_t *c, int x, int y, int w, int h, int size, int detail_scale, const clock_colors_t *p, int hour, int minute, int second, bool valid, bool seconds, bool transparent) {
     int digits[] = {hour / 10, hour % 10, minute / 10, minute % 10, second / 10, second % 10};
     int cols = seconds ? 6 : 4, pitch = (w - 32) / cols, dot = size == CLOCK_LARGE ? 7 : size == CLOCK_MEDIUM ? 5 : size == CLOCK_TINY ? 2 : 3;
     int top = y + (size == CLOCK_LARGE ? 24 : size == CLOCK_MEDIUM ? 20 : size == CLOCK_TINY ? 12 : 15), row_pitch = dot + (size == CLOCK_TINY ? 2 : size == CLOCK_SMALL ? 3 : 5);
@@ -8361,10 +9092,22 @@ static void clock_binary(ctx_t *c, int x, int y, int w, int h, int size, int det
         row_pitch = (h - 28 * detail_scale - 24) / 4;
         dot = row_pitch - 4;
         if (dot > pitch - 6) dot = pitch - 6;
+        if (dot > 33) dot = 33;
     }
     const uint32_t colors[] = {p->hour, p->minute, p->second};
     for (int col = 0; col < cols; col++) {
         int cx = x + 24 + col * pitch;
+        if (!transparent && pitch >= 12) {
+            int plate_top = top - 4, plate_height = row_pitch * 3 + dot + 7;
+            if (!(col & 1)) {
+                int plate_left = cx - pitch / 2 + 2, plate_right = plate_left + pitch * 2 - 4;
+                if (plate_left < x + 2) plate_left = x + 2;
+                if (plate_right > x + w - 2) plate_right = x + w - 2;
+                clock_round_fill(c, plate_left, plate_top, plate_right - plate_left, plate_height, 5,
+                                 0x1f4a4d, 0x0e2a2f);
+            }
+            rect_fill(c, cx, plate_top + 3, 1, plate_height - 6, 0x2f5a5c);
+        }
         if (!(col % 2)) {
             char label[2] = {"HMS"[col / 2], 0};
             clock_text_center(c, cx - pitch / 2, y + 4, 2 * pitch, 1, colors[col / 2], label);
@@ -8376,8 +9119,11 @@ static void clock_binary(ctx_t *c, int x, int y, int w, int h, int size, int det
                 draw_text(c, x + 5, top + row * row_pitch, 1, p->edge, weight);
             }
             bool on = valid && (digits[col] & bit);
-            rect_fill(c, cx - dot / 2, top + row * row_pitch, dot, dot,
-                      on ? colors[col / 2] : 0x233a43);
+            int yy = top + row * row_pitch;
+            fill_ellipse(c, cx, yy + dot / 2, dot * .65f + 1, dot * .65f + 1,
+                         on ? mix(colors[col / 2], 0x0e2a2f, .45f) : 0x3a6366, 255);
+            fill_ellipse(c, cx, yy + dot / 2, dot * .5f, dot * .5f,
+                         on ? colors[col / 2] : 0x233a43, 255);
             if (dot >= 5)
                 rect_fill(c, cx - dot / 2 + 1, top + row * row_pitch + 1, dot - 2, 1,
                           on ? p->ink : 0x3b5660);
@@ -8433,7 +9179,9 @@ static void clock_overlay_live(const tank_t *t, uint16_t *fb, int stride, int64_
     clock_colors_t palette = clock_colors(t);
     uint32_t edge = palette.edge, ink = palette.ink;
     bool seconds = !(t->aquariums.clock_flags & CLOCK_HIDE_SECONDS);
-    if (!(t->aquariums.clock_flags & CLOCK_HIDE_PANEL)) {
+    bool dial = theme == CLOCK_ANALOG || theme == CLOCK_ORBIT;
+    bool transparent = (t->aquariums.clock_flags & CLOCK_HIDE_PANEL) != 0;
+    if (dial && !transparent) {
         src_t panel = src_color(0x04141a, 1);
         for (int py = y; py < y + h; py++)
             span(&c, x, x + w - 1, py, &panel, 255);
@@ -8446,20 +9194,14 @@ static void clock_overlay_live(const tank_t *t, uint16_t *fb, int stride, int64_
         rect_fill(&c, x + 1, y + 1, 1, 5, edge);
         rect_fill(&c, x + w - 2, y + h - 6, 1, 5, edge);
     }
-    if (t->companion.cosmetic > 0 && t->companion.cosmetic <= 3) {
-        static const uint32_t ornaments[] = {0, 0x8ed9a5, 0xf0aeca, 0xc0b1ff};
-        uint32_t color = ornaments[t->companion.cosmetic];
-        for (int corner = 0; corner < 4; corner++) {
-            int ox = corner & 1 ? x + w - 6 : x + 2;
-            int oy = corner & 2 ? y + h - 6 : y + 2;
-            rect_fill(&c, ox, oy, 4, 4, color);
-        }
-    }
+    if (dial) clock_instrument(&c, x, y, w, h, footer, theme, transparent, &palette);
+    else clock_glass_frame(&c, x, y, w, h, footer, theme, transparent, &palette);
     if (theme == CLOCK_FLIP) {
         clock_flip(&c, x, y, w, h, size, detail_scale, ink, edge, text);
     } else if (theme == CLOCK_BINARY) {
         int display_hour = t->aquariums.clock_flags & CLOCK_12H ? (hour % 12 ? hour % 12 : 12) : hour;
-        clock_binary(&c, x, y, w, h, size, detail_scale, &palette, display_hour, minute, valid ? (int)(unix_time % 60) : 0, valid, seconds);
+        clock_binary(&c, x, y, w, h, size, detail_scale, &palette, display_hour, minute, valid ? (int)(unix_time % 60) : 0, valid, seconds,
+                     (t->aquariums.clock_flags & CLOCK_HIDE_PANEL) != 0);
     } else if (theme == CLOCK_ORBIT) {
         clock_orbit(&c, x, y, w, h, size, detail_scale, &palette, text, hour, minute, valid ? (int)(unix_time % 60) : 0, valid, seconds);
     } else if (theme == CLOCK_ANALOG && valid) {
@@ -8471,7 +9213,7 @@ static void clock_overlay_live(const tank_t *t, uint16_t *fb, int stride, int64_
                 px_blend(&c, cx + (int)(cosf(a) * r), cy + (int)(sinf(a) * r), edge, 255);
         }
         for (int n = 1; n <= 12; n++) {
-            if (n % 3) continue;
+            if (radius < 34 && n % 3) continue;
             char number[3]; snprintf(number, sizeof number, "%d", n);
             float a = n * TAU / 12 - TAU / 4;
             int nx = cx + (int)(cosf(a) * (radius - 12)), ny = cy + (int)(sinf(a) * (radius - 12)) - 3;
@@ -8479,8 +9221,12 @@ static void clock_overlay_live(const tank_t *t, uint16_t *fb, int stride, int64_
         }
         float ma = minute * TAU / 60 - TAU / 4;
         float ha = (hour % 12 + minute / 60.0f) * TAU / 12 - TAU / 4;
-        clock_hand(&c, cx, cy, ma, radius - 8, 2, t->aquariums.clock_delay & CLOCK_SECONDARY_MASK ? palette.minute : ink);
-        clock_hand(&c, cx, cy, ha, radius * 3 / 5, 3, palette.hour);
+        if (seconds)
+            clock_hand(&c, cx, cy + radius * 2 / 5, (unix_time % 60) * TAU / 60 - TAU / 4,
+                       radius / 5 - 2, 1, palette.second);
+        clock_pointer(&c, cx, cy, ma, radius - 8, radius > 35 ? 2 : 1,
+                      t->aquariums.clock_delay & CLOCK_SECONDARY_MASK ? palette.minute : ink);
+        clock_pointer(&c, cx, cy, ha, radius * 3 / 5, radius > 35 ? 3 : 1, palette.hour);
         if (seconds) clock_hand(&c, cx, cy, (unix_time % 60) * TAU / 60 - TAU / 4, radius - 4, 1, palette.second);
         rect_fill(&c, cx - 2, cy - 2, 5, 5, 0x10232d);
         rect_fill(&c, cx - 1, cy - 1, 3, 3, edge);
@@ -8496,13 +9242,17 @@ static void clock_overlay_live(const tank_t *t, uint16_t *fb, int stride, int64_
             if (10 + 7 * vertical_scale > h - footer - 2) vertical_scale = (h - footer - 12) / 7;
             clock_segments(&c, x + (w - 22 * segment_scale) / 2, y + 10, segment_scale, vertical_scale, ink, text);
         } else if (size == CLOCK_JUMBO) {
-            if (theme == CLOCK_NEON) {
-                rect_fill(&c, x + 8, y + h - 4, w - 16, 1, edge);
-            }
+            if (theme == CLOCK_NEON)           /* a soft gas glow behind the tube letters */
+                for (int k = 0; k < 4; k++)
+                    clock_text_stretched(&c, x + 8 + (k == 0) - (k == 1), y + 8 + (k == 2) - (k == 3),
+                                         w - 16, h - footer - 12, mix(ink, 0x0c0a19, .62f), text);
             clock_text_stretched(&c, x + 8, y + 8, w - 16, h - footer - 12, ink, text);
         } else {
             if (theme == CLOCK_NEON) {
-                rect_fill(&c, x + 8, y + h - 4, w - 16, 1, edge);
+                int glow = scale > 2 ? 2 : 1;
+                for (int k = 0; k < 4; k++)
+                    clock_text_center(&c, x + (k == 0 ? glow : k == 1 ? -glow : 0), y + 10 + (k == 2 ? glow : k == 3 ? -glow : 0),
+                                      w, scale, mix(ink, 0x0c0a19, .62f), text);
             }
             clock_text_center(&c, x, y + 10, w, scale, ink, text);
         }
@@ -8527,11 +9277,19 @@ static void clock_overlay_live(const tank_t *t, uint16_t *fb, int stride, int64_
     if (layout.rows) {
         char lines[CLOCK_CAPTION_ROWS][64] = {{0}};
         int count = clock_caption_lines(t, lines, layout.w, layout.caption_scale);
-        rect_fill(&c, layout.x, layout.caption_y, layout.w, layout.caption_h, 0x04141a);
-        rect_edge(&c, layout.x, layout.caption_y, layout.w, layout.caption_h, edge);
+        /* Weather card: the same rounded glass as the clock, with the sky icon set between two rules. */
+        clock_glass_t g = clock_glass_colors(dial ? CLOCK_DIGITAL : theme);
+        int cy0 = layout.caption_y, ch = layout.caption_h;
+        clock_round_fill(&c, layout.x, cy0, layout.w, ch, 7, mix(g.top, edge, .38f), mix(g.bottom, edge, .18f));
+        clock_round_fill(&c, layout.x + 2, cy0 + 2, layout.w - 4, ch - 4, 5, g.top, g.bottom);
+        rect_fill(&c, layout.x + 8, cy0 + 3, layout.w - 16, 1, mix(g.top, 0xffffff, .2f));
         if (weather_icon_code() >= 0) {
-            int size = layout.caption_pitch - 2;
-            weather_icon(&c, layout.x + (layout.w - size) / 2, layout.caption_y + 2, size, weather_icon_code());
+            int size = layout.caption_pitch - 2, mid = cy0 + 2 + size / 2, rule = layout.w / 4;
+            int icon_x = layout.x + (layout.w - size) / 2;
+            fill_ellipse(&c, icon_x + size / 2.0f, mid, size * .62f, size * .62f, mix(g.top, edge, .22f), 255);
+            rect_fill(&c, icon_x - 6 - rule, mid, rule, 1, mix(edge, g.top, .45f));
+            rect_fill(&c, icon_x + size + 6, mid, rule, 1, mix(edge, g.top, .45f));
+            weather_icon(&c, icon_x, cy0 + 2, size, weather_icon_code());
         }
         for (int row = 0; row < count; row++) {
             clock_text_center(&c, layout.x, layout.caption_y + 4 + row * layout.caption_pitch, layout.w, layout.caption_scale,
@@ -8660,17 +9418,27 @@ bool render_simple_scene(void) { return g_device.scene_detail == SCENE_SIMPLE; }
 int render_scene_detail(void) { return g_device.scene_detail; }
 void render_tank_emblem(uint16_t *fb, int stride, int x, int y, unsigned emblem) {
     ctx_t c = ctx_page(fb, stride);
-    uint32_t ink = 0xffd998;
-    for (int yy = 0; yy < 20; yy++) for (int xx = 0; xx < 24; xx++) {
-        int dx = xx - 12, dy = yy - 10;
-        bool on = emblem == 1 ? (dx * dx + dy * dy < 80 && dy >= -4 &&
-                                  (xx % 4 == 0 || yy == 15 || dx * dx + dy * dy > 50)) :
-                  emblem == 2 ? dx * dx + dy * dy < 49 :
-                  emblem == 3 ? (abs(dx) + abs(dy) < 7 || (abs(dx) < 2 && abs(dy) < 10) ||
-                                  (abs(dy) < 2 && abs(dx) < 11)) :
-                  ((xx == 6 || xx == 12 || xx == 18) && yy > 4) ||
-                  (yy == 10 && xx >= 4 && xx <= 20) || (yy == 5 && xx >= 10 && xx <= 14);
-        if (on) px_blend(&c, x + xx, y + yy, ink, 255);
+    if (!emblem || emblem >= COMPANION_EMBLEM_COUNT) {
+        draw_ornament_icon(&c, 37, x, y + 2, 18, true, 0);
+        draw_ornament_icon(&c, 19, x + 7, y, 17, true, 0);
+    } else if (emblem == 4) {                    /* ANCHOR: brass shank and flukes wrapped in rope */
+        fill_ellipse(&c, x + 12, y + 3, 3, 3, 0xd8b56a, 255);
+        fill_ellipse(&c, x + 12, y + 3, 1.5f, 1.5f, 0x0e2328, 255);
+        rect_fill(&c, x + 6, y + 6, 13, 2, 0xb38a48);
+        rect_fill(&c, x + 6, y + 6, 13, 1, 0xf0d697);
+        rect_fill(&c, x + 11, y + 6, 3, 14, 0xb38a48);
+        rect_fill(&c, x + 11, y + 6, 1, 14, 0xf0d697);
+        for (int i = 0; i < 6; i++) {
+            rect_fill(&c, x + 4 + i, y + 15 + (i < 3 ? 2 - i : i - 3), 2, 2, 0xb38a48);
+            rect_fill(&c, x + 15 + i, y + 15 + (i < 3 ? i : 5 - i), 2, 2, 0xb38a48);
+        }
+        rect_fill(&c, x + 3, y + 13, 3, 3, 0xf0d697);
+        rect_fill(&c, x + 19, y + 13, 3, 3, 0xf0d697);
+        rect_fill(&c, x + 10, y + 19, 5, 2, 0x7d5c2c);
+        for (int i = 0; i < 4; i++) rect_fill(&c, x + 9 + (i & 1) * 4, y + 9 + i * 2, 3, 1, 0xe2cfa6);
+    } else {
+        static const int items[COMPANION_EMBLEM_COUNT] = {0, 10, 23, 11, 12, 18, 43, 46, 48, 51, 53, 54};
+        draw_ornament_icon(&c, items[emblem], x + 2, y, 20, true, 0);
     }
 }
 #if defined(ESP_PLATFORM) && defined(__GNUC__) && !defined(__clang__)
@@ -8796,7 +9564,7 @@ void render_settings(const tank_t *t, uint16_t *fb, int stride, int bright_pct) 
             draw_text_wrap(&c, 32, 336, 384, 0xffffff, g_mode_message);
         } else {
             draw_text(&c, 32, 284, 1, MSP_TEAL, "LIMITS HUNGER AND STRESS.");
-            draw_text(&c, 32, 300, 1, MSP_TEAL, "KEEPS ENERGY UP. NO XP BONUS.");
+            draw_text(&c, 32, 300, 1, MSP_TEAL, "KEEPS ENERGY UP.");
         }
         return;
     }
@@ -8845,13 +9613,14 @@ static int g_aquarium_page, g_aquarium_pick = -1;
 static char g_aquarium_message[80];
 static char g_aquarium_names[AQUARIUM_CAP][16], g_aquarium_draft[16];
 static bool g_aquarium_naming, g_aquarium_identity, g_aquarium_creative;
+enum { AQUARIUM_KB_Y = 190 };   /* 5 rows + the name field, flush with the page foot */
 static int g_creative_variety, g_creative_remove = -1;
 static aquarium_summary_t g_aquarium_summaries[AQUARIUM_CAP];
 static bool g_aquarium_summary_ok[AQUARIUM_CAP];
-static int g_aquarium_letter;
+static bool g_aquarium_name_from_identity;
 void render_aquariums_open(const tank_t *t) {
     g_aquarium_page = 0; g_aquarium_pick = -1; g_aquarium_message[0] = 0;
-    g_aquarium_naming = false; g_aquarium_letter = 0;
+    g_aquarium_naming = false; g_aquarium_name_from_identity = false;
     g_aquarium_identity = g_aquarium_creative = false;
     g_creative_variety = 0; g_creative_remove = -1;
     for (int i = 0; i < t->aquariums.count; i++) {
@@ -8866,11 +9635,13 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
     if (g_aquarium_identity) { companion_render(t, fb, stride); return; }
     ctx_t c = ctx_page(fb, stride); char line[64];
     page_backdrop(&c, 0, 0, PAGE_W, PAGE_H);
-    draw_text(&c, 24, 12, 2, MSP_TEAL, "AQUARIUMS");
+    draw_text(&c, 24, 12, 2, MSP_TEAL, "TANK SUMMARY");
     button(&c, SET_CLOSE_X, SET_CLOSE_Y, SET_CLOSE_W, SET_CLOSE_H, 0x1c2f36, MSP_TEAL,
            "BACK", 2);
-    snprintf(line, sizeof line, "%s: %s", progression_creative(t) ? "CREATIVE" : "ACTIVE", g_aquarium_names[t->aquariums.active]);
-    draw_text(&c, 24, 48, 2, 0xffffff, line);
+    if (!g_aquarium_naming) {
+        snprintf(line, sizeof line, "%s: %s", progression_creative(t) ? "CREATIVE" : "ACTIVE", g_aquarium_names[t->aquariums.active]);
+        draw_text(&c, 24, 48, 2, 0xffffff, line);
+    }
     if (g_aquarium_creative) {
         {
             draw_text(&c, 24, 84, 2, 0xffffff, "CREATIVE FISH");
@@ -8896,21 +9667,16 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
         draw_text_wrap(&c, 24, 316, 400, 0xffffff, g_aquarium_message);
         return;
     } else if (g_aquarium_naming) {
-        draw_text(&c, 24, 82, 2, MSP_TEAL, "SELECT A LETTER - USE < / >");
-        for (int i = 0; i < 15; i++) {
-            char letter[2] = {g_aquarium_draft[i] == ' ' ? '_' : g_aquarium_draft[i], 0};
-            button(&c, 24 + (i % 8) * 50, 116 + (i / 8) * 58, 44, 48,
-                   i == g_aquarium_letter ? 0x1c2f36 : 0x10282e,
-                   i == g_aquarium_letter ? 0xffffff : MSP_TEAL, letter, 3);
-        }
-        button(&c, 24, 236, 72, 38, 0x1c2f36, MSP_TEAL, "<", 3);
-        button(&c, 112, 236, 72, 38, 0x1c2f36, MSP_TEAL, ">", 3);
-        button(&c, 300, 236, 124, 38, 0x1c2f36, MSP_TEAL, "SAVE", 2);
+        draw_text(&c, 24, 60, 2, MSP_TEAL, "NAME THIS TANK");
+        button(&c, 24, 90, 160, 34, 0x1c2f36, MSP_TEAL, "CANCEL", 2);
+        button(&c, 232, 90, 192, 34, 0x1c2f36, MSP_TEAL, "SAVE NAME", 2);
+        setup_name_keyboard_draw(fb, stride, 24, AQUARIUM_KB_Y, 400, g_aquarium_draft, 15, true,
+                                 0x1c2f36, MSP_TEAL, 0xffffff);
     } else if (g_aquarium_pick >= 0) {
         bool buy = g_aquarium_pick == t->aquariums.count;
         bool active = g_aquarium_pick == t->aquariums.active;
         draw_text(&c, 24, 96, 3, 0xffffff, buy ? "BUY NEW TANK?" : active ? "TANK SUMMARY" : "SWITCH TANK?");
-        snprintf(line, sizeof line, "%s", buy ? "500 SAND DOLLARS" : g_aquarium_names[g_aquarium_pick]);
+        snprintf(line, sizeof line, "%s", buy ? "500 DOUBLOONS" : g_aquarium_names[g_aquarium_pick]);
         draw_text(&c, 24, 138, 2, MSP_TEAL, line);
         if (buy) {
             draw_text(&c, 24, 170, 2, MSP_TEAL, "TWO NEW FRY.");
@@ -8957,19 +9723,31 @@ void render_aquariums(const tank_t *t, uint16_t *fb, int stride) {
             button(&c, 300, y, 124, 34, 0x1c2f36, MSP_TEAL, label, 2);
         }
     }
-    draw_text_wrap(&c, 24, g_aquarium_pick >= 0 && g_aquarium_summary_ok[g_aquarium_pick] ? 306 :
-                   g_aquarium_naming || g_aquarium_pick >= 0 ? 286 : 274,
-                   400, 0xffffff, g_aquarium_message);
+    draw_text_wrap(&c, 24, g_aquarium_naming ? 338 :
+                   g_aquarium_pick >= 0 && g_aquarium_summary_ok[g_aquarium_pick] ? 306 :
+                   g_aquarium_pick >= 0 ? 286 : 274, 400, 0xffffff, g_aquarium_message);
     if (g_aquarium_pick < 0 && !g_aquarium_naming) {
         if (progression_creative(t))
             button(&c, 24, 296, 400, 26, 0x1c2f36, MSP_TEAL, "CREATIVE: ADD / REMOVE FISH", 2);
         else draw_text(&c, 24, 300, 1, MSP_TEAL, "SHARED BANK, MONEY AND PROGRESS");
-        button(&c, 24, 328, 160, 22, 0x1c2f36, MSP_TEAL, "NAME TANK", 2);
-        button(&c, 208, 328, 216, 22, 0x1c2f36, MSP_TEAL, "TANK IDENTITY", 2);
+        button(&c, 24, 328, 400, 22, 0x1c2f36, MSP_TEAL, "NAME & IDENTITY", 2);
     }
 }
 int render_aquariums_tap(tank_t *t, float x, float y) {
     if (g_aquarium_identity) {
+        float px = render_page_x(x), py = render_page_y(y);
+        if (px >= 252 && px < 336 && py >= 8 && py < 38) {
+            g_aquarium_identity = false;
+            render_life_open();
+            return 3;
+        }
+        if (px >= 12 && px < 436 && py >= 116 && py < 146) {
+            snprintf(g_aquarium_draft, sizeof g_aquarium_draft, "%s",
+                     g_aquarium_names[t->aquariums.active]);
+            g_aquarium_naming = true; g_aquarium_name_from_identity = true;
+            g_aquarium_identity = false; g_aquarium_message[0] = 0;
+            return 0;
+        }
         if (companion_tap(t, x, y)) { g_aquarium_identity = false; render_aquariums_open(t); }
         return 0;
     }
@@ -8978,7 +9756,12 @@ int render_aquariums_tap(tank_t *t, float x, float y) {
         if (g_aquarium_creative) {
             g_aquarium_creative = false; g_creative_remove = -1; g_aquarium_message[0] = 0; return 0;
         }
-        if (g_aquarium_naming) { g_aquarium_naming = false; g_aquarium_message[0] = 0; return 0; }
+        if (g_aquarium_naming) {
+            g_aquarium_naming = false;
+            if (g_aquarium_name_from_identity) g_aquarium_identity = true;
+            g_aquarium_name_from_identity = false; g_aquarium_message[0] = 0;
+            return 0;
+        }
         if (g_aquarium_pick < 0) return 1;
         g_aquarium_pick = -1; g_aquarium_message[0] = 0; return 0;
     }
@@ -8990,7 +9773,7 @@ int render_aquariums_tap(tank_t *t, float x, float y) {
             else if (x >= 104 && x < 168) g_creative_variety = (g_creative_variety + 1) % FISH_VARIETY_COUNT;
             else if (x >= 232 && x < 424) {
                 error = progression_creative_add_fish(t, g_creative_variety);
-                if (!error) snprintf(g_aquarium_message, sizeof g_aquarium_message, "FISH ADDED. RENAME IN NAMES & LOOKS.");
+                if (!error) snprintf(g_aquarium_message, sizeof g_aquarium_message, "FISH ADDED. MY FISH > IDENTITY.");
             }
         } else if (y >= 274 && y < 308 && x >= 232 && x < 424) {
             if (g_creative_remove < 0) g_creative_remove = t->n_fish - 1;
@@ -9004,24 +9787,23 @@ int render_aquariums_tap(tank_t *t, float x, float y) {
         return 0;
     }
     if (g_aquarium_naming) {
-        if (x >= 24 && x < 424 && y >= 116 && y < 222) {
-            int row = y >= 174 ? 1 : 0, column = (int)((x - 24) / 50);
-            int letter = row * 8 + column;
-            if (letter < 15 && x < 24 + column * 50 + 44 && y < 116 + row * 58 + 48)
-                g_aquarium_letter = letter;
-        } else if (y >= 236 && y < 274) {
-            if (x >= 300 && x < 424) {
-                char name[16]; memcpy(name, g_aquarium_draft, sizeof name);
-                for (int i = 14; i >= 0 && name[i] == ' '; i--) name[i] = 0;
-                const char *error = progression_aquarium_rename(t, name);
-                if (!error) { render_aquariums_open(t); snprintf(g_aquarium_message, sizeof g_aquarium_message, "TANK NAME SAVED"); }
-                else snprintf(g_aquarium_message, sizeof g_aquarium_message, "%s", error);
-            } else if ((x >= 24 && x < 96) || (x >= 112 && x < 184)) {
-                static const char letters[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-";
-                const char *current = strchr(letters, g_aquarium_draft[g_aquarium_letter]);
-                int n = current ? (int)(current - letters) : 0, count = (int)sizeof letters - 1;
-                n = (n + (x < 100 ? count - 1 : 1)) % count;
-                g_aquarium_draft[g_aquarium_letter] = letters[n];
+        int key = setup_name_keyboard_hit(x, y, 24, AQUARIUM_KB_Y, 400, true);
+        if (key) {
+            setup_name_keyboard_apply(g_aquarium_draft, sizeof g_aquarium_draft, key);
+        } else if (y >= 90 && y < 124) {
+            if (x >= 24 && x < 184) {
+                g_aquarium_naming = false;
+                if (g_aquarium_name_from_identity) g_aquarium_identity = true;
+                g_aquarium_name_from_identity = false; g_aquarium_message[0] = 0;
+            } else if (x >= 232 && x < 424) {
+                const char *error = progression_aquarium_rename(t, g_aquarium_draft);
+                if (!error) {
+                    progression_aquarium_label(t, t->aquariums.active, g_aquarium_names[t->aquariums.active]);
+                    g_aquarium_naming = false;
+                    if (g_aquarium_name_from_identity) g_aquarium_identity = true;
+                    g_aquarium_name_from_identity = false;
+                    snprintf(g_aquarium_message, sizeof g_aquarium_message, "TANK NAME SAVED");
+                } else snprintf(g_aquarium_message, sizeof g_aquarium_message, "%s", error);
             }
         }
         return 0;
@@ -9040,15 +9822,8 @@ int render_aquariums_tap(tank_t *t, float x, float y) {
     if (progression_creative(t) && y >= 296 && y < 322 && x >= 24 && x < 424) {
         g_aquarium_creative = true; g_aquarium_message[0] = 0; return 0;
     }
-    if (x >= 208 && x < 424 && y >= 328 && y < 350) {
+    if (x >= 24 && x < 424 && y >= 328 && y < 352) {
         companion_open_section(COMPANION_SECTION_IDENTITY); g_aquarium_identity = true; return 0;
-    }
-    if (x >= 24 && x < 184 && y >= 328 && y < 350) {
-        memset(g_aquarium_draft, ' ', 15); g_aquarium_draft[15] = 0;
-        size_t n = strlen(g_aquarium_names[t->aquariums.active]);
-        memcpy(g_aquarium_draft, g_aquarium_names[t->aquariums.active], n);
-        g_aquarium_naming = true; g_aquarium_letter = 0; g_aquarium_message[0] = 0;
-        return 0;
     }
     int rows = t->aquariums.count < AQUARIUM_CAP ? t->aquariums.count + 1 : AQUARIUM_CAP;
     if (y >= 68 && y < 96 && x >= 328 && x < 424) {
@@ -9221,7 +9996,13 @@ static void page_stamp(ctx_t *c, int x, int y, int kind, uint32_t color) {
         {"............",".......111..",".....114431.","....1444331.","...14443321.",
          "..14443321..","..1435321...","..135321....","...1321.....","..1321......","..121.......","...1........"},
         {"............",".......11...","......1441..",".....14321..","....14321...",
-         "...14321....","..1443321...",".144433321..","14443333321.","13333333221.",".121212121..","............"}
+         "...14321....","..1443321...",".144433321..","14443333321.","13333333221.",".121212121..","............"},
+        {"............",".1111111111.",".1444444441.",".1414444141.",".1433333331.",
+         ".1433113331.",".1433113331.",".1433333331.",".1313333131.",".1222222221.",".1111111111.","............"},
+        {"...422223...","....4..3....",".....43.....",".....34.....","....3..4....",
+         "...322224...","...3....4...","....3..4....",".....34.....",".....43.....","....4..3....","...422223..."},
+        {"............",".....11.....","...114411...","..14434431..",".1443434331.",
+         ".1434343431.","14343434331.","13434343431.",".133333331..","..1121211...","..1222221...","...11111...."}
     };
     uint32_t palette[] = {0, mix(MSP_INK, color, 0.18f), mix(MSP_INK, color, 0.58f),
         color, mix(color, 0xffffff, 0.48f), mix(color, 0xffcf80, 0.7f)};
@@ -9359,41 +10140,125 @@ void render_internal_poly(render_ctx_t *c, const float *xs, const float *ys, int
         if (x1 >= x0) span(c, (int)(x0 + 0.5f), (int)(x1 - 0.5f), y, &s, alpha);
     }
 }
+/* Theme cards are tiny dioramas: graded water, two-tone sand and the theme's landmark.
+ * Locked themes are drawn in a misted palette with a small padlock. */
+static uint32_t theme_tone(uint32_t rgb, bool unlocked) { return unlocked ? rgb : mix(rgb, 0x16282e, .62f); }
 static void page_theme_thumb(ctx_t *c, int x, int y, int theme, bool unlocked) {
-    static const uint32_t water[] = {0x14586a, 0x184638, 0x255d79, 0x142849,
-                                     0x294c53, 0x794f65, 0x427c96, 0x203651};
-    uint32_t ink = unlocked ? MSP_TEAL : MSP_DIM;
-    rect_fill(c, x, y, 40, 26, unlocked ? water[theme] : 0x14262d);
-    rect_fill(c, x, y + 23, 40, 3, unlocked ? 0x9d916e : MSP_DIM);
-    if (theme == 4) {
-        for (int i = 0; i < 3; i++) rect_fill(c, x + 5 + i * 12, y + 9, 5, 14, ink);
-        rect_fill(c, x + 3, y + 6, 33, 4, ink);
-    } else if (theme == 5 || theme == 7) {
-        ring(c, x + 28, y + 8, 5, unlocked ? 0xffdc73 : ink);
-        rect_fill(c, x + 3, y + 17, 20, 2, ink);
-        rect_fill(c, x + 12, y + 21, 22, 2, ink);
-    } else if (theme == 6) {
-        for (int i = 0; i < 4; i++) {
-            rect_fill(c, x + 4 + i * 10, y, 4, 6 + i % 2 * 5, ink);
-            rect_fill(c, x + 4 + i * 10, y + 18 - i % 2 * 5, 4, 8 + i % 2 * 5, ink);
-        }
-    } else {
-        for (int i = 0; i < 3; i++) {
-            int h = 8 + i % 2 * 8;
-            rect_fill(c, x + 7 + i * 12, y + 23 - h, 3, h, ink);
-            rect_fill(c, x + 4 + i * 12, y + 25 - h, 8, 3, ink);
-        }
-        if (theme == 3) ring(c, x + 26, y + 7, 3, 0xffa3cf);
+    static const uint32_t top[] = {0x2a8a97, 0x2f7a4c, 0x3a8fc0, 0x16305e, 0x3f6f73, 0xf09a6a, 0x9fd6ea, 0x1d2c58};
+    static const uint32_t deep[] = {0x0e3c48, 0x123a24, 0x14476b, 0x070f26, 0x1a3337, 0x5b3a64, 0x3d7da0, 0x0a1230};
+    static const uint32_t sand[] = {0xd9c08a, 0x9b8a52, 0xf0d9a3, 0x4b4f6b, 0xb7a27c, 0xe8b27a, 0xe4f1f6, 0x5e6380};
+    const int W = 46, H = 28;
+#define T(rgb) theme_tone((rgb), unlocked)
+    for (int row = 0; row < H; row++) rect_fill(c, x, y + row, W, 1, T(mix(top[theme], deep[theme], row / (float)(H - 1))));
+    if (theme == 5) {                                   /* sunset lagoon: sun resting on the horizon */
+        fill_ellipse(c, x + 30, y + 13, 7, 7, T(0xffd36b), 255);
+        rect_fill(c, x, y + 13, W, H - 13, T(0x3f6c86));
+        for (int i = 0; i < 4; i++) rect_fill(c, x + 22 + (i & 1) * 3, y + 15 + i * 2, 16 - i * 3, 1, T(0xffc27a));
     }
-    rect_edge(c, x, y, 40, 26, ink);
+    if (theme == 7) {                                   /* moonlit reef: crescent and stars */
+        fill_ellipse(c, x + 35, y + 7, 5, 5, T(0xf4efd2), 255);
+        fill_ellipse(c, x + 37, y + 6, 4, 4, T(top[7]), 255);
+        static const int8_t stars[][2] = {{6, 4}, {14, 8}, {22, 3}, {28, 11}, {42, 14}};
+        for (int i = 0; i < 5; i++) rect_fill(c, x + stars[i][0], y + stars[i][1], 1, 1, T(0xdfe8ff));
+    }
+    if (theme == 3)                                     /* deep glow: drifting specks */
+        for (int i = 0; i < 9; i++) rect_fill(c, x + 3 + i * 5, y + 3 + (i * 7) % 17, 1, 1, T(i & 1 ? 0x7af7e0 : 0xc59cff));
+    rect_fill(c, x, y + H - 5, W, 5, T(sand[theme]));
+    rect_fill(c, x, y + H - 5, W, 1, T(mix(sand[theme], 0xffffff, .3f)));
+    for (int i = 0; i < 6; i++) rect_fill(c, x + 3 + i * 8, y + H - 3 + (i & 1), 2, 1, T(mix(sand[theme], 0x000000, .25f)));
+    switch (theme) {
+    case 0:                                             /* original: rocks and a resting fish */
+        fill_ellipse(c, x + 9, y + 22, 7, 4, T(0x6f7f80), 255);
+        fill_ellipse(c, x + 8, y + 21, 5, 2, T(0x93a3a1), 255);
+        fill_ellipse(c, x + 34, y + 23, 6, 3, T(0x5c6c6e), 255);
+        fill_ellipse(c, x + 24, y + 10, 5, 3, T(0xffa64d), 255);
+        { float xs[] = {(float)x + 19, (float)x + 15, (float)x + 15}, ys[] = {(float)y + 10, (float)y + 7, (float)y + 13};
+          fill_poly(c, xs, ys, 3, T(0xe07a2e)); }
+        rect_fill(c, x + 27, y + 9, 1, 1, T(0x1a1a1a));
+        break;
+    case 1:                                             /* kelp forest: three swaying stalks */
+        for (int k = 0; k < 3; k++) {
+            int sx = x + 8 + k * 14, h = 15 + (k == 1) * 4;
+            rect_fill(c, sx, y + H - 5 - h, 2, h, T(0x6a8b2c));
+            for (int l = 0; l < h / 5; l++) {
+                int ly = y + H - 8 - l * 5, side = (l + k) & 1;
+                fill_ellipse(c, sx + (side ? 4 : -3), ly, 3, 1.6f, T(l & 1 ? 0x9cc04a : 0x7fa63a), 255);
+            }
+            fill_ellipse(c, sx + 1, y + H - 6 - h, 1.5f, 2, T(0xc9df7a), 255);
+        }
+        break;
+    case 2:                                             /* coral reef: fan, branches and brain coral */
+        for (int k = 0; k < 5; k++) {
+            float a = -2.6f + k * .45f;
+            fill_poly(c, (float[]){(float)x + 12, (float)x + 12 + cosf(a) * 10 - 1, (float)x + 12 + cosf(a) * 10 + 1},
+                      (float[]){(float)y + 23, (float)y + 23 + sinf(a) * 10, (float)y + 23 + sinf(a) * 10}, 3, T(0xff7f8f));
+        }
+        fill_ellipse(c, x + 12, y + 13, 3, 3, T(0xffb0b9), 255);
+        for (int k = 0; k < 3; k++) {
+            rect_fill(c, x + 25 + k * 4, y + 13 + (k & 1) * 3, 2, 10, T(0xffa449));
+            fill_ellipse(c, x + 26 + k * 4, y + 13 + (k & 1) * 3, 2, 2, T(0xffd08a), 255);
+        }
+        fill_ellipse(c, x + 39, y + 22, 5, 3, T(0xb48ae0), 255);
+        rect_fill(c, x + 36, y + 21, 6, 1, T(0x8a64c0));
+        break;
+    case 3:                                             /* deep glow: a lantern jelly */
+        fill_ellipse(c, x + 23, y + 10, 7, 5, T(0x3c2a7a), 255);
+        fill_ellipse(c, x + 23, y + 10, 6, 4, T(0xa77bff), 255);
+        fill_ellipse(c, x + 22, y + 8, 3, 1.5f, T(0xe2d0ff), 255);
+        for (int k = 0; k < 4; k++)
+            for (int j = 0; j < 8; j++) rect_fill(c, x + 18 + k * 3 + ((j >> 1) & 1), y + 14 + j, 1, 1, T(0x7af7e0));
+        break;
+    case 4:                                             /* sunken ruins: a column pair and a fallen block */
+        for (int k = 0; k < 2; k++) {
+            int cx0 = x + 7 + k * 22, h = k ? 12 : 18;
+            rect_fill(c, cx0, y + H - 5 - h, 7, h, T(0xb5ab90));
+            rect_fill(c, cx0 + 1, y + H - 5 - h, 1, h, T(0xd9d1b8));
+            rect_fill(c, cx0 + 5, y + H - 5 - h, 1, h, T(0x8a8270));
+            rect_fill(c, cx0 - 2, y + H - 7 - h, 11, 3, T(0xcfc6aa));
+        }
+        rect_fill(c, x + 17, y + 20, 8, 4, T(0x9c937c));
+        rect_fill(c, x + 17, y + 20, 8, 1, T(0xcfc6aa));
+        rect_fill(c, x + 33, y + 9, 1, 3, T(0x5d7f4a));
+        break;
+    case 5:                                             /* sunset lagoon: palm silhouette */
+        rect_fill(c, x + 9, y + 9, 2, 14, T(0x3a2a35));
+        for (int k = 0; k < 4; k++)
+            fill_ellipse(c, x + 10 + (k - 1.5f) * 4, y + 9 + (k == 0 || k == 3), 3, 1.3f, T(0x3a2a35), 255);
+        break;
+    case 6:                                             /* ice cavern: icicles and a frozen block */
+        for (int k = 0; k < 6; k++) {
+            float ix = (float)x + 2 + k * 7.5f, len = 5.0f + (k % 3) * 3;
+            fill_poly(c, (float[]){ix, ix + 5, ix + 2.5f}, (float[]){(float)y, (float)y, (float)y + len}, 3, T(0xe8f8ff));
+        }
+        rect_fill(c, x, y, W, 1, T(0xffffff));
+        rect_fill(c, x + 28, y + 15, 12, 8, T(0xbde6f5));
+        rect_fill(c, x + 28, y + 15, 12, 1, T(0xffffff));
+        rect_fill(c, x + 30, y + 17, 1, 4, T(0xf2fbff));
+        break;
+    case 7:                                             /* moonlit reef: dark coral silhouettes */
+        for (int k = 0; k < 4; k++) fill_ellipse(c, x + 8 + k * 10, y + 21 - (k & 1) * 2, 5, 4 + (k & 1) * 2, T(0x203a5c), 255);
+        rect_fill(c, x + 16, y + 17, 1, 1, T(0x9fd0ff));
+        break;
+    }
+#undef T
+    uint32_t frame = unlocked ? mix(top[theme], 0xffffff, .45f) : MSP_DIM;
+    rect_edge(c, x, y, W, H, frame);
+    if (!unlocked) {                                    /* small padlock in the corner */
+        rect_fill(c, x + W - 11, y + 3, 8, 7, 0x0b1a1f);
+        ring(c, x + W - 7, y + 4, 2, 0xe9ce95);
+        rect_fill(c, x + W - 10, y + 5, 6, 4, 0xe9ce95);
+        rect_fill(c, x + W - 7, y + 6, 1, 2, 0x0b1a1f);
+    }
 }
-static int g_journal_tab, g_journal_theme_page;
+static int g_journal_tab, g_journal_theme_page, g_journal_theme_pending = -1;
 static bool g_journal_daily;
 static char g_journal_message[48];
-void render_journal_open(void) { g_journal_tab = g_journal_theme_page = 0; g_journal_daily = true; g_journal_message[0] = 0; }
+void render_journal_open(void) {
+    g_journal_tab = 2; g_journal_theme_page = 0; g_journal_theme_pending = -1; g_journal_daily = true; g_journal_message[0] = 0;
+}
 void render_journal_open_section(int section) {
     render_journal_open();
-    if (section >= 0 && section <= 2) g_journal_tab = section;
+    (void)section;
 }
 void render_journal(const tank_t *t, uint16_t *fb, int stride) {
     ctx_t c = ctx_page(fb, stride);
@@ -9401,16 +10266,10 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
     draw_text(&c, 24, 10, 2, MSP_TEAL,
               g_journal_tab == 0 ? "GOALS" : g_journal_tab == 1 ? "FISH ALBUM" : "TANK THEMES");
     button(&c, SET_CLOSE_X, SET_CLOSE_Y, SET_CLOSE_W, SET_CLOSE_H, 0x1c2f36, MSP_TEAL, "BACK", 2);
-    char line[64]; int level = journal_level(t);
-    if (level == JOURNAL_LEVEL_MAX)
-        snprintf(line, sizeof line, "KEEPER %d/15  MAX - %lu XP", level, (unsigned long)t->journal.xp);
-    else snprintf(line, sizeof line, "KEEPER %d/15  %lu/%lu XP", level,
-                  (unsigned long)t->journal.xp, (unsigned long)journal_level_xp(level + 1));
+    char line[64];
+    snprintf(line, sizeof line, "%ld DOUBLOONS", (long)t->sd_balance);
     draw_text(&c, 24, 42, 2, 0xffffff, line);
-    uint32_t floor = journal_level_xp(level), next = level == 15 ? t->journal.xp : journal_level_xp(level + 1);
-    float fraction = level == 15 ? 1 : (float)(t->journal.xp - floor) / (next - floor);
     rect_fill(&c, 24, 64, 400, 6, MSP_DIM);
-    rect_fill(&c, 24, 64, (int)(400 * fraction), 6, MSP_TEAL);
     if (g_journal_tab == 0) {
         if (progression_creative(t)) {
             page_stamp(&c, 210, 120, STAMP_TANK, MSP_TEAL);
@@ -9464,8 +10323,9 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
         }
     } else if (g_journal_tab == 1) {
         draw_text(&c, 24, 76, 2, MSP_TEAL, "LOOKS - EARN XP TO UNLOCK");
-        for (int i = 0; i < FISH_VARIETY_COUNT; i++) {
-            int x = 24 + i % 2 * 204, y = 96 + i / 2 * 39;
+        for (int rank = 0; rank < FISH_VARIETY_COUNT; rank++) {
+            int i = companion_variety_at(rank);
+            int x = 24 + rank % 2 * 204, y = 96 + rank / 2 * 39;
             bool seen = (t->journal.seen & (1u << i)) != 0, grown = (t->journal.grown & (1u << i)) != 0;
             rect_fill(&c, x, y, 196, 36, 0x10282e);
             rect_fill(&c, x, y, 3, 36, grown ? 0xffdc73 : seen ? MSP_TEAL : MSP_DIM);
@@ -9475,9 +10335,9 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
             portrait.accent = seen ? 0xffbd59 : 0x203c42;
             render_fish_portrait(fb, stride, x + 26, y + 18, 0.6f, &portrait, 0);
             draw_text(&c, x + 56, y + 3, 2, seen ? 0xffffff : MSP_DIM, FISH_VARIETY_NAMES[i]);
-            snprintf(line, sizeof line, "LEVEL %d", JOURNAL_VARIETY_LEVELS[i]);
-            draw_text(&c, x + 56, y + 21, 2, MSP_TEAL,
-                      grown ? "ADULT" : seen ? "SEEN" : journal_variety_unlocked(t, i) ? "UNLOCKED" : line);
+            snprintf(line, sizeof line, "LV %u / %s", JOURNAL_VARIETY_LEVELS[i],
+                     grown ? "ADULT" : seen ? "SEEN" : journal_variety_unlocked(t, i) ? "OPEN" : "LOCKED");
+            draw_text(&c, x + 56, y + 21, 1, MSP_TEAL, line);
         }
     } else {
         snprintf(line, sizeof line, "BACKDROPS %d/%d", g_journal_theme_page + 1, (JOURNAL_THEME_COUNT + 3) / 4);
@@ -9490,12 +10350,18 @@ void render_journal(const tank_t *t, uint16_t *fb, int stride) {
             bool active = t->journal.theme == theme;
             button(&c, 24, y, 400, 38, active ? 0x1c2f36 : 0x10282e,
                    active ? 0xffffff : journal_theme_unlocked(t, theme) ? MSP_TEAL : MSP_DIM, "", 2);
-            page_theme_thumb(&c, 32, y + 6, theme, journal_theme_unlocked(t, theme));
-            draw_text(&c, 82, y + 12, 2, 0xffffff, JOURNAL_THEME_NAMES[theme]);
-            if (active) draw_text(&c, 340, y + 12, 2, 0xffffff, "ACTIVE");
-            if (!journal_theme_unlocked(t, theme)) {
-                snprintf(line, sizeof line, "LEVEL %d", JOURNAL_THEME_LEVELS[theme]);
-                draw_text(&c, 320, y + 12, 2, MSP_TEAL, line);
+            bool owned = journal_theme_unlocked(t, theme);
+            page_theme_thumb(&c, 32, y + 5, theme, owned);
+            draw_text(&c, 88, y + 12, 2, owned ? 0xffffff : 0xa7c4ba, JOURNAL_THEME_NAMES[theme]);
+            if (active) draw_text(&c, 340, y + 12, 2, 0xffdc73, "ACTIVE");
+            else if (owned) draw_text(&c, 352, y + 15, 1, MSP_TEAL, "OWNED");
+            else if (g_journal_theme_pending == theme) {
+                draw_text(&c, 318, y + 8, 1, 0xffdc73, "TAP AGAIN");
+                draw_text(&c, 318, y + 22, 1, 0xffdc73, "TO BUY");
+            } else {
+                snprintf(line, sizeof line, "%d", journal_theme_price(theme));
+                blit_icon(&c, 330, y + 11, &icon_shop_sand_dollar_16, 255);
+                draw_text(&c, 350, y + 12, 2, t->sd_balance >= journal_theme_price(theme) ? 0xe9ce95 : 0x8a7f6a, line);
             }
         }
     }
@@ -9541,38 +10407,106 @@ int render_journal_tap(tank_t *t, float x, float y) {
     } else if (g_journal_tab == 2 && y >= 74 && y < 100) {
         if (x >= 328 && x < 372 && g_journal_theme_page > 0) g_journal_theme_page--;
         else if (x >= 380 && x < 424 && (g_journal_theme_page + 1) * 4 < JOURNAL_THEME_COUNT) g_journal_theme_page++;
-        g_journal_message[0] = 0;
+        g_journal_message[0] = 0; g_journal_theme_pending = -1;
     } else if (g_journal_tab == 2 && x >= 24 && x < 424 && y >= 106 && y < 270) {
         int row = (int)((y - 106) / 42), theme = g_journal_theme_page * 4 + row;
         if (y >= 106 + row * 42 + 38 || theme >= JOURNAL_THEME_COUNT) return 0;
-        snprintf(g_journal_message, sizeof g_journal_message, "%s", !journal_theme_unlocked(t, theme) ? "EARN MORE XP TO UNLOCK THIS THEME" :
-                 journal_set_theme(t, theme) ? "THEME SAVED!" : "SAVE FAILED - THEME UNCHANGED");
+        bool owned = journal_theme_unlocked(t, theme);
+        if (!owned && g_journal_theme_pending != theme) {   /* first tap prices it, second tap buys */
+            g_journal_theme_pending = theme;
+            snprintf(g_journal_message, sizeof g_journal_message, "%s COSTS %d DOUBLOONS",
+                     JOURNAL_THEME_NAMES[theme], journal_theme_price(theme));
+            return 0;
+        }
+        g_journal_theme_pending = -1;
+        bool bought = owned || journal_theme_buy(t, theme);
+        snprintf(g_journal_message, sizeof g_journal_message, "%s", !bought ? "NOT ENOUGH DOUBLOONS OR SAVE FAILED" :
+                 journal_set_theme(t, theme) ? "THEME SAVED!" : "OWNED; SELECTION SAVE FAILED");
     }
     return 0;
 }
 static int g_life_page, g_home_category, g_home_page;
-void render_life_open(void) { g_life_page = g_home_category = g_home_page = 0; }
-static void home_companion(int section) { companion_open_section(section); g_life_page = 1; }
+static int g_home_fish;
+static bool g_home_direct_fish;
+int render_life_companion_section(void) { return g_life_page ? companion_current_section() : -1; }
+void render_life_open(void) {
+    g_life_page = g_home_category = g_home_page = g_home_fish = 0;
+    g_home_direct_fish = false;
+}
+void render_life_fish_open(int fish) {
+    render_life_open();
+    g_home_category = 1; g_home_direct_fish = true;
+    g_home_fish = fish >= 0 ? fish : 0;
+    companion_open_section(COMPANION_SECTION_SUMMARY);
+    companion_select_fish(g_home_fish);
+    g_life_page = 1;
+}
+void render_life_fish_return(int fish) {
+    if (!g_life_page && g_home_category == 1) { g_home_fish = fish >= 0 ? fish : 0; return; }
+    if (!g_life_page || companion_current_section() != COMPANION_SECTION_SUMMARY) { render_life_fish_open(fish); return; }
+    g_home_fish = fish >= 0 ? fish : 0;
+    companion_select_fish(g_home_fish);
+}
+static void home_companion(int section) {
+    companion_open_section(section);
+    if (g_home_category == 1) companion_select_fish(g_home_fish);
+    g_life_page = 1;
+}
+static bool g_story_pending;
+bool render_life_take_story(void) { bool s = g_story_pending; g_story_pending = false; return s; }
+void render_life_story_open(bool rpg, int fish) {
+    render_life_open(); g_home_category = 4; g_home_fish = fish >= 0 ? fish : 0; g_story_pending = true;
+    home_companion(rpg ? COMPANION_SECTION_RPG : COMPANION_SECTION_ADVENTURES);
+    companion_select_fish(g_home_fish);
+}
+void render_life_market_open(int fish) {
+    render_life_open(); g_home_category = 3; g_home_fish = fish >= 0 ? fish : 0;
+    home_companion(COMPANION_SECTION_MARKET);
+    companion_select_fish(g_home_fish);
+}
 void render_life_creature_open(int creature) {
     render_life_open(); g_home_category = 2; g_life_page = 1;
     companion_open_creature(creature);
 }
 int render_life_tap(tank_t *t, float x, float y) {
     if (g_life_page) {
-        if (companion_tap(t, x, y)) g_life_page = 0;
+        float px = render_page_x(x), py = render_page_y(y);
+        if (px >= 252 && px < 336 && py >= 8 && py < 38) {
+            g_life_page = g_home_category = g_home_page = 0;
+            g_home_direct_fish = false;
+            return HOME_NONE;
+        }
+        if (companion_tap(t, x, y)) {
+            if (g_home_category == 1) g_home_fish = companion_selected_fish();
+            if (companion_take_bank_request()) return HOME_BANK;   /* closing the bank returns to this Summary */
+            g_life_page = 0;
+            bool games = g_home_category == 4;
+            if (g_home_direct_fish) { g_home_category = 0; g_home_direct_fish = false; return HOME_CLOSE; }
+            if (g_home_category >= 4) g_home_category = 0;
+            if (games) return HOME_GAMES;
+        }
         return HOME_NONE;
     }
     x = render_page_x(x); y = render_page_y(y);
     if (x >= 326 && x < 438 && y >= 8 && y < 44) {
+        if (g_home_category == 6) { g_home_category = 3; return HOME_NONE; }
         if (g_home_category) { g_home_category = g_home_page = 0; return HOME_NONE; }
         return HOME_CLOSE;
     }
-    if (g_home_category == 1 && x >= 300 && x < 424 && y >= 322 && y < 354) {
-        g_home_page = !g_home_page; return HOME_NONE;
+    if (!g_home_category && x >= 380 && x < 436 && y >= 310 && y < 358) return HOME_SETTINGS;
+    if (g_home_category == 1 && y >= 312 && y < 352 && t->n_fish) {
+        if (g_home_fish >= t->n_fish) g_home_fish = 0;
+        if (x >= 24 && x < 68) g_home_fish = (g_home_fish + t->n_fish - 1) % t->n_fish;
+        else if (x >= 224 && x < 268) g_home_fish = (g_home_fish + 1) % t->n_fish;
+        else if (x >= 276 && x < 424) return HOME_BANK;
+        return HOME_NONE;
     }
-    if (!g_home_category && y >= 322 && y < 354) {
-        if (x >= 24 && x < 212) g_home_category = 1;
-        else if (x >= 236 && x < 424) home_companion(COMPANION_SECTION_SYMBOLS);
+    if (g_home_category == 1 && y >= 312 && y < 352 && x >= 276 && x < 424) return HOME_BANK;
+    if (g_home_category == 6) {
+        if (x < 24 || x >= 424 || y < 70 || y >= 310) return HOME_NONE;
+        int v = (int)(y - 70) / 24;
+        if (v >= FISH_VARIETY_COUNT || !progression_collection_complete(t, v)) return HOME_NONE;
+        progression_statue_show(t, (int)t->story.statue == v + 1 ? -1 : v);
         return HOME_NONE;
     }
     if (x < 24 || x >= 424 || y < 70 || y >= 310) return HOME_NONE;
@@ -9581,43 +10515,31 @@ int render_life_tap(tank_t *t, float x, float y) {
     int choice = row * 2 + col;
     if (!g_home_category) {
         if (choice == 0 && progression_hard(t) && !t->n_fish) return HOME_RECOVERY;
-        if (choice == 0) return HOME_KEEPER;
+        if (choice == 0) { g_home_category = 1; g_home_fish = 0; }
         if (choice == 1) g_home_category = 2;
-        if (choice == 2) g_home_category = 4;
-        if (choice == 3) g_home_category = 3;
-        if (choice == 4) return HOME_GAMES;
-        if (choice == 5) return HOME_SETTINGS;
+        if (choice == 2) { g_home_category = 3; home_companion(COMPANION_SECTION_MARKET); }
+        if (choice == 3) return HOME_GAMES;
+        if (choice == 4) return HOME_CASINO;
+        if (choice == 5) { g_home_category = 5; home_companion(COMPANION_SECTION_HELP); }
     } else if (g_home_category == 1) {
-        if (g_home_page) {
-            if (choice == 0) home_companion(COMPANION_SECTION_GENES);
-            if (choice == 1) home_companion(COMPANION_SECTION_FIRSTS);
-            if (choice == 2) home_companion(COMPANION_SECTION_KEEPSAKES);
-            if (choice == 3) home_companion(COMPANION_SECTION_SYMBOLS);
-            return HOME_NONE;
-        }
-        if (choice == 0) home_companion(COMPANION_SECTION_CARE);
-        if (choice == 1) return HOME_BANK;
-        if (choice == 2) home_companion(COMPANION_SECTION_WARDROBE);
-        if (choice == 3) return HOME_KEEPER;
-        if (choice == 4) home_companion(COMPANION_SECTION_LIFE);
-        if (choice == 5) home_companion(COMPANION_SECTION_FAMILY);
+        if (!t->n_fish) return choice == 0 ? (home_companion(COMPANION_SECTION_SUMMARY), HOME_NONE) : HOME_NONE;
+        if (g_home_fish >= t->n_fish) g_home_fish = 0;
+        static const int sections[6] = {COMPANION_SECTION_SUMMARY, -1, COMPANION_SECTION_FAMILY,
+                                        COMPANION_SECTION_GENES, COMPANION_SECTION_LIFE, COMPANION_SECTION_WARDROBE};
+        if (choice == 1) setup_begin_rename(t, g_home_fish);
+        else home_companion(sections[choice]);
     } else if (g_home_category == 2) {
-        if (choice == 0) return HOME_SHOP;
-        if (choice == 1) return HOME_TANKS;
-        if (choice == 2) home_companion(COMPANION_SECTION_APPEARANCE);
-        if (choice == 3) home_companion(COMPANION_SECTION_CREATURE_COLORS);
-        if (choice == 4) return HOME_THEMES;
-        if (choice == 5) home_companion(COMPANION_SECTION_RECAP);
+        if (choice == 0) return HOME_TANKS;
+        if (choice == 1) return HOME_SHOP;
+        if (choice == 2) home_companion(COMPANION_SECTION_FOOD);
+        if (choice == 3) return HOME_THEMES;
+        if (choice == 4) home_companion(COMPANION_SECTION_APPEARANCE);
     } else if (g_home_category == 3) {
-        if (choice == 0) return HOME_JOURNAL;
-        if (choice == 1) home_companion(COMPANION_SECTION_COLLECTIONS);
-        if (choice == 2) home_companion(COMPANION_SECTION_REWARDS);
-        if (choice == 3) home_companion(COMPANION_SECTION_VISITORS);
-        if (choice == 4) return HOME_ALBUM;
-        if (choice == 5) home_companion(COMPANION_SECTION_OBJECTS);
-    } else if (g_home_category == 4) {
-        if (choice == 0) home_companion(COMPANION_SECTION_ADVENTURES);
-        if (choice == 1) home_companion(COMPANION_SECTION_RPG);
+        if (choice == 0) home_companion(COMPANION_SECTION_MARKET);
+        if (choice == 1) home_companion(COMPANION_SECTION_CREATURE_MARKET);
+        if (choice == 2) g_home_category = 6;
+        if (choice == 3) home_companion(COMPANION_SECTION_CONTRACT);
+        if (choice == 4) home_companion(COMPANION_SECTION_AUCTION);
     }
     return HOME_NONE;
 }
@@ -9625,53 +10547,88 @@ void render_life(const tank_t *t, uint16_t *fb, int stride) {
     if (g_life_page) { companion_render(t, fb, stride); return; }
     ctx_t c = ctx_page(fb, stride);
     page_backdrop(&c, 0, 0, PAGE_W, PAGE_H);
-    static const char *const titles[] = {"HOME", "FISH", "TANK", "COLLECTIONS", "ADVENTURES"};
-    static const char *const labels[5][6] = {
-        {"NAMES & LOOKS", "TANK", "ADVENTURES", "COLLECTIONS", "GAMES", "SETTINGS"},
-        {"SAY HELLO", "FISH BANK", "WARDROBE", "NAMES & LOOKS", "FISH LIFE", "FAMILY"},
-        {"SHOP & DECOR", "AQUARIUMS", "SAND & WATER", "CREATURE COLORS", "THEMES", "TANK RECAP"},
-        {"GOALS", "DISCOVERIES", "DISPLAY REWARDS", "VISITOR LOG", "ALBUM", "OBJECT STORIES"},
-        {"STORIES", "THE LOST CURRENT", NULL, NULL, NULL, NULL}
-    };
-    static const uint8_t stamps[5][6] = {
-        {STAMP_PEN, STAMP_TANK, STAMP_MAP, STAMP_BOOK, STAMP_GAME, STAMP_GEAR},
-        {STAMP_HEART, STAMP_BANK, STAMP_SHIRT, STAMP_PEN, STAMP_FISH, STAMP_FAMILY},
-        {STAMP_BANK, STAMP_TANK, STAMP_LEAF, STAMP_FISH, STAMP_PEN, STAMP_BOOK},
-        {STAMP_BOOK, STAMP_MAP, STAMP_CUP, STAMP_FISH, STAMP_FISH, STAMP_BOOK},
-        {STAMP_MAP, STAMP_BOOK, 0, 0, 0, 0}
-    };
-    static const char *const hints[5][6] = {
-        {"YOUR FISH", "YOUR REEF", "TRIPS & RPG", "YOUR FINDS", "18 GAMES", "DEVICE"},
-        {"BONDS", "STORAGE", "DRESS UP", "PERSONAL", "MEMORIES", "ROOTS"},
-        {"REEF FINDS", "IDENTITY", "PALETTES", "RESIDENTS", "BACKDROPS", "MEMORIES"},
-        {"OBJECTIVES", "YOUR FINDS", "KEEPSAKES", "GUESTS", "FISH LOOKS", "REEF FINDS"},
-        {"SAFE TRIPS", "STORY RPG", NULL, NULL, NULL, NULL}
-    };
-    draw_text(&c, 24, 18, 3, 0xffffff, titles[g_home_category]);
     button(&c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
-    static const char *const fish_more[] = {"GENES", "LIFE FIRSTS", "KEEPSAKES", "SYMBOL GUIDE"};
+    if (g_home_category == 6) {
+        draw_text(&c, 24, 18, 3, 0xffffff, "COLLECTION");
+        draw_text(&c, 24, 54, 1, MSP_TEAL, "M MARKING  T TRAIT  C COLOR");
+        static const char *const marks[3] = {"M", "T", "C"};
+        for (int v = 0; v < FISH_VARIETY_COUNT; v++) {
+            int y = 70 + v * 24;
+            unsigned got = (t->story.collection >> (3 * v)) & 7u;
+            bool done = got == 7u, shown = (int)t->story.statue == v + 1;
+            button(&c, 24, y, 400, 22, shown ? 0x2a2a12 : 0x10282e, done ? 0xe0b04a : MSP_DIM, "", 1);
+            draw_text(&c, 34, y + 7, 1, done ? 0xffe29a : 0xd4e5db, FISH_VARIETY_NAMES[v]);
+            for (int k = 0; k < 3; k++) {
+                bool have = got & (1u << k);
+                rect_fill(&c, 186 + k * 34, y + 3, 26, 16, have ? 0xe0b04a : 0x24414a);
+                draw_text(&c, 186 + k * 34 + (26 - text_w(marks[k], 1)) / 2, y + 7, 1, have ? 0x2a1a05 : 0x5f7f86, marks[k]);
+            }
+            draw_text(&c, 352, y + 7, 1, shown ? 0xffe29a : done ? 0x8ed9a5 : 0x5f7f86,
+                      shown ? "SHOWN" : done ? "SHOW" : "LOCKED");
+        }
+        draw_text(&c, 24, 316, 1, 0xa7c4ba, "EACH FINISHED ROW EARNS A STATUE.");
+        draw_text(&c, 24, 336, 1, 0xa7c4ba, "TAP IT TO DISPLAY IT IN THE TANK.");
+        return;
+    }
+    /* categories 4 (story) and 5 (help) open their pages directly */
+    int category = g_home_category >= 1 && g_home_category <= 3 ? g_home_category : 0;
+    static const char *const titles[] = {"MAIN MENU", "FISH", "TANK", "MARKET"};
+    static const char *const labels[4][6] = {
+        {"FISH", "TANK", "MARKET", "GAMES", "CASINO", "HELP"},
+        {"SUMMARY", "RENAME", "FAMILY", "GENES", "LIFE", "WARDROBE"},
+        {"TANK SUMMARY", "DECOR & STORAGE", "FISH FOOD", "THEMES", "SAND & WATER", NULL},
+        {"FISH MARKET", "CREATURES", "COLLECTION", "CONTRACTS", "AUCTION", NULL}
+    };
+    static const uint8_t stamps[4][6] = {
+        {STAMP_FISH, STAMP_TANK, STAMP_MAP, STAMP_GAME, STAMP_DICE, STAMP_BOOK},
+        {STAMP_HEART, STAMP_PEN, STAMP_FAMILY, STAMP_HELIX, STAMP_LEAF, STAMP_SHIRT},
+        {STAMP_BANK, STAMP_TANK, STAMP_LEAF, STAMP_PEN, STAMP_BOOK, 0},
+        {STAMP_FISH, STAMP_SHELL, STAMP_CUP, STAMP_PEN, STAMP_BANK, 0}
+    };
+    static const char *const hints[4][6] = {
+        {"YOUR FISH", "AQUARIUM", "BUY & SELL", "ALL GAMES", "SIX GAMES", "HOW IT WORKS"},
+        {"STATS & VALUE", "NEW NAME", "PEDIGREE", "ALLELES", "AGE & GROWTH", "LOOKS"},
+        {"NAME & IDENTITY", "PLACE & MOVE", "PERMANENT DIET", "BACKDROPS", "PALETTES", NULL},
+        {"BUY & SELL", "ONE OF EACH", "GOLD STATUES", "ORDERS", "SATURDAYS", NULL}
+    };
+    draw_text(&c, 24, 18, 3, 0xffffff, titles[category]);
     for (int i = 0; i < 6; i++) {
-        bool recovery = !g_home_category && i == 0 && progression_hard(t) && !t->n_fish;
-        const char *label = g_home_category == 1 && g_home_page ? (i < 4 ? fish_more[i] : NULL) : labels[g_home_category][i];
+        bool recovery = !category && i == 0 && progression_hard(t) && !t->n_fish;
+        const char *label = labels[category][i];
+        const char *hint = hints[category][i];
         if (recovery) label = "RECOVER FISH";
         if (!label) continue;
         int x = 24 + (i % 2) * 212, y = 70 + (i / 2) * 80;
         uint32_t accent = i % 2 ? 0xffdc73 : MSP_TEAL;
+        bool idle = category == 1 && i && !t->n_fish;
         button(&c, x, y, 188, 62, 0x10282e, MSP_DIM, "", 1);
-        rect_fill(&c, x + 1, y + 1, 3, 60, accent);
+        rect_fill(&c, x + 1, y + 1, 3, 60, idle ? MSP_DIM : accent);
         rect_fill(&c, x + 8, y + 12, 34, 36, 0x092027);
-        page_stamp(&c, x + 13, y + 18, g_home_category == 1 && g_home_page ? STAMP_FISH : stamps[g_home_category][i], accent);
-        draw_text_wrap(&c, x + 50, y + 8, 130, 0xffffff, label);
+        page_stamp(&c, x + 13, y + 18, stamps[category][i], idle ? MSP_DIM : accent);
+        draw_text_wrap(&c, x + 50, y + 8, 130, idle ? 0x6f8a90 : 0xffffff, label);
         draw_text(&c, x + 50, y + 44, 1, MSP_TEAL,
-                  recovery ? "HARD MODE" : g_home_category == 1 && g_home_page ? "FISH HISTORY" : hints[g_home_category][i]);
+                  recovery ? "HARD MODE" : hint);
     }
-    if (g_home_category == 1) {
-        draw_text(&c, 24, 332, 1, MSP_TEAL, g_home_page ? "FISH 2/2" : "FISH 1/2");
-        button(&c, 300, 322, 124, 32, 0x1c2f36, MSP_TEAL, g_home_page ? "<" : ">", 3);
-    } else if (!g_home_category) {
-        button(&c, 24, 322, 188, 32, 0x1c2f36, MSP_TEAL, "LIFE & CARE", 1);
-        button(&c, 236, 322, 188, 32, 0x1c2f36, MSP_TEAL, "SYMBOL GUIDE", 1);
-    } else draw_text(&c, 24, 332, 2, MSP_TEAL, "NO STREAKS. NO DEADLINES.");
+    if (category == 1) {
+        int i = g_home_fish < t->n_fish ? g_home_fish : 0;
+        button(&c, 24, 312, 44, 40, 0x1c2f36, MSP_TEAL, "<", 2);
+        button(&c, 224, 312, 44, 40, 0x1c2f36, MSP_TEAL, ">", 2);
+        button(&c, 276, 312, 148, 40, 0x10282e, 0xffdc73, "FISH BANK", 1);
+        const char *name = t->n_fish ? t->fish[i].name : "NO FISH";
+        int scale = text_w(name, 2) <= 148 ? 2 : 1;
+        draw_text(&c, 146 - text_w(name, scale) / 2, scale == 2 ? 319 : 322, scale, 0xffffff, name);
+        if (t->n_fish)
+            draw_text(&c, 146 - text_w(FISH_VARIETY_NAMES[t->fish[i].variety], 1) / 2, 340, 1, MSP_TEAL,
+                      FISH_VARIETY_NAMES[t->fish[i].variety]);
+    }
+    if (!category) {
+        char wallet[48];
+        snprintf(wallet, sizeof wallet, "%ld DOUBLOONS", (long)t->sd_balance);
+        blit_icon(&c, 24, 330, &icon_shop_sand_dollar_16, 255);
+        draw_text(&c, 48, 332, 2, 0xe9ce95, wallet);
+        button(&c, 380, 310, 56, 48, 0x1c2f36, MSP_TEAL, "", 1);
+        page_stamp(&c, 396, 322, STAMP_GEAR, MSP_TEAL);
+    }
 }
 
 /* *value: BRIGHT the percent, FEED 1 = ON. */

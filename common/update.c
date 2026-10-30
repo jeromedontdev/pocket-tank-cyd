@@ -231,7 +231,7 @@ static void network_name(uint16_t *fb, int stride, int x, int y, int width, cons
     update_text(fb, stride, x, y, 2, C_TEXT, shown);
 }
 static void page_bg(uint16_t *fb, int stride) {
-    render_rect(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, C_INK);
+    render_menu_backdrop(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H);
 }
 static bool in_box(float x, float y, int bx, int by, int bw, int bh, int slop) {
     return x >= bx - slop && x < bx + bw + slop && y >= by - slop && y < by + bh + slop;
@@ -382,7 +382,7 @@ static void draw_keyboard(uint16_t *fb, int stride) {
             char ch = kb_char(cell);
             if (!s.kb_mode && ch >= 'a' && ch <= 'z') ch -= 'a' - 'A';
             char lbl[2] = { ch, 0 };
-            render_rect(fb, stride, x, y, w, h, pressed ? C_INNER : C_KEY);
+            render_button(fb, stride, x, y, w, h, pressed ? C_INNER : C_KEY, C_EDGE, "", 1);
             render_rect_edge(fb, stride, x, y, w, h, C_EDGE);
             update_text(fb, stride, x + (w - update_text_w(lbl, 4)) / 2, y + (h - 28) / 2, 4, C_TEXT, lbl);
         } else {

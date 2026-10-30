@@ -30,7 +30,7 @@ def exercise(lib, backup):
         return ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
 
     def aquariums():
-        lib.sim_action(7); tap(330, 100); tap(330, 100)
+        lib.sim_action(7); tap(330, 100); tap(100, 100)
         assert lib.sim_page() == 7
 
     def wipe():
@@ -69,7 +69,7 @@ def exercise(lib, backup):
         assert lib.sim_page() == 7
         tap(200, 308); tap(310, 240)
         assert snapshot()["tank"]["n_fish"] == 5
-        lib.sim_action(7); tap(100, 336); tap(330, 100)
+        lib.sim_action(7); tap(100, 100); tap(370, 342)
         assert lib.sim_page() == 6
         tap(300, 330); tap(350, 196); tap(300, 240)
         stored = snapshot()
@@ -78,7 +78,7 @@ def exercise(lib, backup):
         lineage = bytes.fromhex(stored["story"]["bank"])[:10]
         aquariums(); tap(350, 160); tap(300, 250)
         assert snapshot()["bank"] == stored["bank"], "New tanks share the same Bank"
-        lib.sim_action(7); tap(100, 336); tap(330, 100)
+        lib.sim_action(7); tap(100, 100); tap(370, 342)
         tap(350, 104); tap(120, 240); tap(300, 240)
         moved = snapshot()
         assert not moved["bank"] and moved["tank"]["n_fish"] == 3
@@ -87,22 +87,19 @@ def exercise(lib, backup):
         aquariums(); tap(350, 120); tap(300, 250)
         assert not snapshot()["bank"] and snapshot()["tank"]["n_fish"] == 4, "Do not revive a stale SD Bank"
         aquariums(); tap(350, 160); tap(300, 250)
-        lib.sim_action(7); tap(100, 336); tap(330, 100)
+        lib.sim_action(7); tap(100, 100); tap(370, 342)
         tap(300, 330); tap(350, 196); tap(300, 240)
         aquariums(); tap(350, 120); tap(300, 250)
-        lib.sim_action(7); tap(100, 336); tap(330, 100)
+        lib.sim_action(7); tap(100, 100); tap(370, 342)
         tap(350, 104); tap(120, 240); tap(300, 240)
         assert not snapshot()["bank"] and snapshot()["tank"]["n_fish"] == 5
-        lib.sim_action(7); tap(100, 336); tap(100, 180); tap(100, 300)
+        lib.sim_action(7); tap(100, 100); tap(330, 260); tap(100, 300)
         assert bytes.fromhex(snapshot()["companion"]["active"])[9] != 0, "Creative wardrobe is free"
-        lib.sim_action(7); tap(330, 180); tap(100, 180)
-        for cosmetic in (1, 2, 3, 0):
-            tap(330, 257)
-            assert snapshot()["companion"]["cosmetic"] == cosmetic
-        assert not snapshot()["companion"]["collections"], "Do not fabricate earned collections"
-        lib.sim_action(7); tap(330, 180); tap(100, 100)
-        goal_state = snapshot(); tap(370, 140)
-        assert snapshot() == goal_state, "Creative Goals cannot change the wallet"
+        appearance = snapshot()
+        lib.sim_action(0); lib.sim_customize_fish(0)
+        assert lib.sim_setup_page() == -1, "Creative cannot open a free fish appearance editor"
+        assert snapshot() == appearance, "Blocked appearance editing cannot change the fish or wallet"
+        assert not snapshot()["companion"]["collections"], "Retired rewards cannot fabricate collections"
         encoded = json.dumps(original).encode()
         assert not lib.sim_restore(encoded, len(encoded)), "Normal backup cannot bypass a fixed Creative mode"
         assert lib.sim_mode() == 1
@@ -133,4 +130,4 @@ def exercise(lib, backup):
     wipe(); choose_first_run(lib, 0)
     encoded = json.dumps(original).encode()
     assert lib.sim_restore(encoded, len(encoded)), lib.sim_error().decode()
-    print("PASS: fixed first-run modes, global Bank transfers through touch at both scales, no stale SD duplicates, free Creative edits, cap, rollback and cross-mode restore protection")
+    print("PASS: fixed first-run modes, global Bank transfers through touch at both scales, no stale SD duplicates, blocked free fish styling, cap, rollback and cross-mode restore protection")

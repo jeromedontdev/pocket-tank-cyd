@@ -31,7 +31,7 @@ static int page, selected = -1, bright = 100, bright_saved = 100;
 static float px, py, held, last_x, last_y;
 static bool pressed;
 static bool from_home, home_tanks;
-static int child_parent = 1;
+static int child_parent = 9;
 static float wipe_left;
 static char error[128];
 void net_sim_advance(float dt);
@@ -163,7 +163,7 @@ API int sim_save(void) {
 }
 API int sim_feed_at(float x) {
     if (page || setup_active() || update_active() || wipe_left > 0 ||
-        tank.tool != TOOL_HAND || !progression_mode_chosen(&tank) || !isfinite(x) || x < 0 || x >= TANK_W) return 0;
+        !progression_mode_chosen(&tank) || !isfinite(x) || x < 0 || x >= TANK_W) return 0;
     int before = 0, after = 0;
     for (int i = 0; i < MAX_FOOD; i++) before += tank.food[i].alive;
     tank_feed(&tank, x, 3);
@@ -197,24 +197,28 @@ API int sim_restore(const char *json, size_t size) {
 
 API void sim_action(int action) {
     if (wipe_left > 0) return;
-    if (action >= 0 && action <= 3) { from_home = home_tanks = false; child_parent = 1; tank_handled(&tank); tank.ui_cover = action != 0; }
+    if (action >= 0 && action <= 3) { from_home = home_tanks = false; child_parent = 9; tank_handled(&tank); tank.ui_cover = action != 0; }
     if (action >= 0 && action <= 3) setup_cancel(&tank);
     if (action == 0) { page = 0; render_shop_leave(); render_milestones_leave(); }
-    else if (action == 1) page = 1;
+    else if (action == 1) { render_life_open(); page = 9; }
     else if (action == 2) { render_settings_open(); page = 2; }
     else if (action == 3) page = 3;
     else if (action == 4) tank_feed(&tank, TANK_W / 2.0f, 3);
     else if (action == 5) progression_sd_grant(&tank, 25);
     else if (action == 6) tank_toggle_light(&tank);
-    else if (action == 7) {
+    else if (action == 7 || action == 8 || action == 9) {
         setup_cancel(&tank);
         from_home = home_tanks = false;
-        child_parent = 1;
+        child_parent = 9;
         tank_handled(&tank); tank.ui_cover = true;
-        render_life_open(); page = 9;
+        if (action == 9) render_life_market_open(selected);
+        else if (action == 8) render_life_fish_open(selected);
+        else render_life_open();
+        page = 9;
     }
 }
 API int sim_page(void) { return page; }
+API int sim_games_menu_page(void) { return render_games_menu_page(); }
 API int sim_setup_page(void) { return setup_active() ? setup_page() : -1; }
 API int sim_mode(void) { return progression_mode(&tank); }
 API int sim_mode_chosen(void) { return progression_mode_chosen(&tank); }
@@ -222,7 +226,18 @@ API int sim_width(void) { return TANK_W; }
 API int sim_height(void) { return TANK_H; }
 API void sim_visit(int species) { companion_debug_visit(&tank, species); }
 API int sim_selected(void) { return selected; }
+API int sim_selected_fish(void) { return companion_selected_fish(); }
 API int sim_tool(void) { return tank.tool; }
+API int sim_companion_section(void) { return page == 9 ? render_life_companion_section() : -1; }
+API void sim_customize_fish(int fish) { setup_begin_customize(&tank, fish); }
+API void sim_begin_setup(void) { setup_begin(&tank); }
+API int sim_creature_adults(int kind) { return progression_creature_adults(&tank, kind); }
+API int sim_creature_offspring(int kind) { return progression_creature_offspring(&tank, kind); }
+API int sim_variety_at(int rank) { return companion_variety_at(rank); }
+API int sim_variety_level(int id) {
+    return id >= 0 && id < FISH_VARIETY_COUNT ? JOURNAL_VARIETY_LEVELS[id] : -1;
+}
+API int sim_card_menu_hit(float x, float y) { return render_card_menu_hit(x, y); }
 /* Read-only touch target for automation: do not feed/startle the tank by probing empty glass. */
 API int sim_creature_target(int card) {
     for (int y = 0; y < TANK_H; y += 2) for (int x = 0; x < TANK_W; x += 2) {
@@ -241,7 +256,7 @@ static void shop_action(int result) {
         if (setup_is_place()) { render_shop_leave(); page = 0; }
     } else if (result == SHOP_TAP_TANKS) { render_aquariums_open(&tank); page = 7; }
     else if (result == SHOP_TAP_CLOSE) { render_shop_leave(); page = child_parent; }
-    else if (result >= SHOP_TAP_FRY) progression_buy_fry(&tank, result - SHOP_TAP_FRY);
+    else if (result >= SHOP_TAP_FRY) { /* Retired: fish stock is sold only through Market. */ }
     else if (result >= SHOP_TAP_SELL) progression_sell(&tank, result - SHOP_TAP_SELL);
     else if (result >= SHOP_TAP_MOVE) {
         setup_begin_place(&tank, result - SHOP_TAP_MOVE); page = 0;
@@ -292,6 +307,9 @@ API void sim_touch(float x, float y, int down) {
                     page = 0; selected = -1; setup_cancel(&tank); notice_sync(&tank);
                     render_fb_primed(NULL, 0);
                     if (progression_setup_pending()) setup_begin(&tank);
+                } else if (result == 3) {
+                    page = 9; selected = -1; home_tanks = from_home = false;
+                    render_life_open();
                 }
             }
         } else if (page == 9) {
@@ -299,7 +317,7 @@ API void sim_touch(float x, float y, int down) {
                 int action = render_life_tap(&tank, px, py);
                 if (action == HOME_CLOSE) { page = 0; from_home = false; }
                 else if (action) {
-                    from_home = true; child_parent = 9;
+                    from_home = true; child_parent = 9; selected = -1;
                     switch (home_open(&tank, action)) {
                     case HOME_DEST_BANK: page = 6; break;
                     case HOME_DEST_JOURNAL: page = 5; break;
@@ -313,7 +331,8 @@ API void sim_touch(float x, float y, int down) {
                 }
             }
         } else if (page == 8) {
-            if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_games_tap(&tank, px, py)) page = child_parent;
+            if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_games_tap(&tank, px, py))
+                page = render_life_take_story() ? 9 : child_parent;
         } else if (page == 6) {
             if (held < 0.35f && hypotf(x - px, y - py) < 24 && render_bank_tap(&tank, px, py)) page = child_parent;
         } else if (page == 5) {
@@ -329,6 +348,7 @@ API void sim_touch(float x, float y, int down) {
             else if (result == MS_TAP_BANK) { render_bank_open(); page = 6; }
             else if (result == MS_TAP_GAMES) { render_games_open(); page = 8; tank_handled(&tank); }
             else if (result == MS_TAP_LIFE) { render_life_open(); page = 9; tank_handled(&tank); }
+            else if (result == MS_TAP_MARKET) { page = 9; from_home = false; tank_handled(&tank); }
             else if (result >= MS_TAP_CUSTOM) { setup_begin_customize(&tank, result - MS_TAP_CUSTOM); page = 0; }
             else if (result >= MS_TAP_SELL) progression_sell_fish(&tank, result - MS_TAP_SELL);
             else if (result >= MS_TAP_RENAME) { setup_begin_rename(&tank, result - MS_TAP_RENAME); page = 0; }
@@ -340,10 +360,7 @@ API void sim_touch(float x, float y, int down) {
             else if (result == UPD_TAP_WIFI) updates_sd_status("WI-FI UPDATES ARE ON THE CYD", false);
         } else if (page == 0 && held < 0.35f && hypotf(x - px, y - py) < 12) {
             if (!notice_dismiss()) {
-                if (tank.tool != TOOL_HAND) {
-                    selected = -1;
-                    if (render_tool_chip_hit(&tank, px, py)) tank_set_tool(&tank, TOOL_HAND);
-                } else if (render_stats_next_hit(&tank, selected, px, py)) {
+                if (render_stats_next_hit(&tank, selected, px, py)) {
                     if (render_stats_next_hit(&tank, selected, x, y)) selected = render_stats_next(&tank, selected);
                 } else if (render_creature_colors_hit(&tank, selected, px, py) >= 0) {
                     int kind = render_creature_colors_hit(&tank, selected, px, py);
@@ -351,18 +368,29 @@ API void sim_touch(float x, float y, int down) {
                         render_life_creature_open(kind);
                         from_home = false; page = 9; selected = -1;
                     }
-                } else if (selected >= 0 && selected < tank.n_fish && render_tools_hit(px, py) >= 0) {
-                    tank_set_tool(&tank, render_tools_hit(px, py)); selected = -1;
                 } else if (selected >= 0 && selected < tank.n_fish && render_lock_hit(px, py)) {
-                    tank_lock_tools(&tank, !tank.tools_locked); progression_settings_changed();
-                } else if (selected >= 0 && selected < tank.n_fish && RENDER_CARD_HIT(px, py)) { render_life_open(); from_home = false; page = 9; }
+                    if (render_lock_hit(x, y)) {
+                        tank_lock_tools(&tank, !tank.tools_locked); progression_settings_changed();
+                    }
+                } else if (selected >= 0 && selected < tank.n_fish && render_card_menu_hit(px, py)) {
+                    int menu = render_card_menu_hit(px, py);
+                    if (render_card_menu_hit(x, y) == menu) {
+                        if (menu == RENDER_CARD_MENU_FISH) render_life_fish_open(selected);
+                        else render_life_open();
+                        from_home = false; page = 9;
+                    }
+                }
                 else {
                     int best = -1; float distance = 38;
                     for (int i = 0; i < tank.n_fish; i++) {
                         float d = tank_dist(px, py, tank.fish[i].x, tank.fish[i].y);
                         if (d < distance) { best = i; distance = d; }
                     }
-                    if (best >= 0) selected = selected == best ? -1 : best;
+                    if (best >= 0) {
+                        render_life_fish_open(best);
+                        from_home = false; page = 9; selected = -1;
+                        tank_handled(&tank);
+                    }
                     else if (render_creature_card_hit(&tank, px, py) >= 0) {
                         int card = render_creature_card_hit(&tank, px, py);
                         if (card == RENDER_CARD_SHRIMP) {
@@ -458,10 +486,10 @@ API const uint16_t *sim_frame(float dt) {
         bool card_control = render_stats_next_hit(&tank, selected, px, py) ||
             render_creature_colors_hit(&tank, selected, px, py) >= 0 ||
             (selected >= 0 && selected < tank.n_fish &&
-             (render_tools_hit(px, py) >= 0 || render_lock_hit(px, py)));
+             (render_card_menu_hit(px, py) != RENDER_CARD_MENU_NONE || render_lock_hit(px, py)));
         if (!page && !setup_active() && !card_control && !render_tool_chip_hit(&tank, px, py)) {
             tank_touch_drag(&tank, last_x, last_y);
-            if (tank.tool == TOOL_HAND && held > .7f && fabsf(last_x - px) < 24 &&
+            if (held > .7f && fabsf(last_x - px) < 24 &&
                 fabsf(last_y - py) < 24 && setup_begin_place_at(&tank, px, py))
                 selected = -1;
             else if (held > 0.3f) tank_touch_hold(&tank, last_x, last_y);
@@ -474,7 +502,8 @@ API const uint16_t *sim_frame(float dt) {
     companion_tick(&tank, dt);
     if (page != 8) notice_tick(&tank, dt, tank.ui_cover || setup_birth_due());
     if (!setup_active() && page != 8) setup_poll_birth(&tank);
-    if (setup_take_renamed() >= 0) page = 1;
+    { int renamed = setup_take_renamed();
+      if (renamed >= 0) { render_life_fish_return(renamed); page = 9; selected = -1; } }
     if (page == 1) render_milestones(&tank, frame, TANK_W);
     else if (page == 2) render_settings(&tank, frame, TANK_W, bright);
     else if (page == 3) render_shop(&tank, frame, TANK_W);

@@ -320,6 +320,7 @@ static void render_benchmark(uint16_t *buffer) {
         {
             memset(sample, 0, sizeof *sample);
             tank_init(sample, 0x5167);
+            sample->foliage = (foliage_state_t){1, (1u << FOLIAGE_COUNT) - 1, (1u << FOLIAGE_COUNT) - 1, 0};
             tank_new_population(sample);
             while (sample->n_fish < 5) if (tank_add_fish(sample, 0, 1) < 0) {
                 ESP_LOGE(TAG, "benchmark could not populate its isolated fixture");
@@ -611,11 +612,8 @@ static void tank_task(void *arg) {
           if (r >= SHOP_TAP_INVENTORY) {
               render_shop_inventory_action(&tank, r);
               if (setup_is_place()) touch_port_show_shop(false);
-          } else if (r >= SHOP_TAP_FRY) {                                      /* a fry bought (0.3.5): the shop closes, the birth flow welcomes it */
-              int k = r - SHOP_TAP_FRY;
-              if (progression_buy_fry(&tank, k)) { touch_port_show_shop(false);
-                  ESP_LOGI(TAG, "shop: fry %d bought, %d sand dollars left, %d of %d left today", k, (int)tank.sd_balance, progression_fry_left(), FRY_OFFER_N); }
-              else ESP_LOGI(TAG, "shop: fry %d refused (balance %d, %d fish)", k, (int)tank.sd_balance, tank.n_fish);
+          } else if (r >= SHOP_TAP_FRY) {
+              ESP_LOGW(TAG, "Retired decor-shop fry action rejected; use the fish market");
           } else if (r >= SHOP_TAP_SELL) {                              /* sold back: the refund, the piece gone, the row for sale again */
               int item = r - SHOP_TAP_SELL;
               if (progression_sell(&tank, item)) { 
@@ -627,7 +625,7 @@ static void tank_task(void *arg) {
           } else if (r >= SHOP_TAP_BUY) {
               int item = r - SHOP_TAP_BUY;
               if (progression_buy(&tank, item)) { 
-                  ESP_LOGI(TAG, "shop: %s unlocked, %d sand dollars left", SD_ITEMS[item].name, (int)tank.sd_balance);
+                  ESP_LOGI(TAG, "shop: %s unlocked, %d doubloons left", SD_ITEMS[item].name, (int)tank.sd_balance);
                   if (tank_decor_movable(item)) {                       /* a piece for the tank: the page opens over the live tank */
                       touch_port_show_shop(false); setup_begin_place(&tank, item);
                       ESP_LOGI(TAG, "shop: placement page up for the %s", SD_ITEMS[item].name); } }

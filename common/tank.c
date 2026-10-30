@@ -13,9 +13,8 @@
 int tank_width = 240, tank_height = 180;
 void tank_resolution(bool compact) { tank_width = compact ? 320 : 240; tank_height = compact ? 240 : 180; }
 void tank_reframe(tank_t *t, bool compact) {
-    int old_w = TANK_W, old_cols = ALGAE_COLS, old_rows = ALGAE_ROWS;
+    int old_w = TANK_W;
     if (old_w == (compact ? 320 : 240)) return;
-    uint8_t algae[ALGAE_CAP]; memcpy(algae, t->algae, sizeof algae);
     tank_resolution(compact);
     float scale = (float)TANK_W / old_w;
 #define SCALE(member) t->member *= scale
@@ -27,6 +26,7 @@ void tank_reframe(tank_t *t, bool compact) {
     if (t->sh_x >= 0) { SCALE(sh_x); SCALE(sh_y); SCALE(sh_aref); }
     SCALE(castle_x); SCALE(coral_x); SCALE(cluster_x); SCALE(pumpkin_x); SCALE(chest_x); SCALE(plant_x);
     SCALE(stage_x); SCALE(stage_y); SCALE(startle_x); SCALE(startle_y); SCALE(tap_x); SCALE(tap_y);
+    SCALE(reef_flow_x); SCALE(reef_flow_y);
     for (int i = 0; i < 10; i++) SCALE(ornament_x[i]);
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) SCALE(inventory.extra[i].x);
     for (int i = 0; i < t->n_fish; i++) {
@@ -39,8 +39,6 @@ void tank_reframe(tank_t *t, bool compact) {
     for (int i = 0; i < t->shrimp_n; i++) { SCALE(shrimp[i].x); SCALE(shrimp[i].y); }
 #undef SCALE
     memset(t->algae, 0, sizeof t->algae);
-    for (int y = 0; y < ALGAE_ROWS; y++) for (int x = 0; x < ALGAE_COLS; x++)
-        t->algae[y * ALGAE_COLS + x] = algae[(y * old_rows / ALGAE_ROWS) * old_cols + x * old_cols / ALGAE_COLS];
     t->snail_cell = -1; t->drag_active = t->drag_has_prev = t->hold_active = false;
 }
 #define TAU 6.2831853f
@@ -267,20 +265,29 @@ static float fish_projected_extent(const fish_t *f, float direction, bool horizo
     static const float shark_x[] = {20, 9, 0, -9, -17, -21, -17, -9, 0, 12};
     static const float ray_x[] = {13, 9, 2, -5, -10, -13, -10, -5, 2, 9};
     static const float body_y[] = {0, -7, -10, -9, -6, 0, 6, 9, 10, 7};
+    static const float harbor_x[] = {18, 12, 3, -7, -13, -17, -12, -5, 6, 14};
+    static const float harbor_y[] = {0, -4, -8, -8, -4, 0, 3, 7, 7, 3};
     if (f->variety == FISH_JELLYFISH) {
         static const float x[] = {-16, -15, -11, -6, 0, 6, 11, 15, 16, 8, -8};
         static const float y[] = {1, -5, -11, -15, -17, -15, -11, -5, 1, 3, 3};
         for (int i = 0; i < 11; i++) { EXTENT(x[i] * 1.07f, y[i]); }
-        for (int strand = 0; strand < 5; strand++)
-            for (int segment = 0; segment <= 6; segment++) {
-                float y = segment ? segment * (strand % 2 ? 3 : 3.6f) : 1;
-                float x = (strand - 2) * 5, sway = segment * 0.55f + 0.6f;
+        for (int strand = 0; strand < 6; strand++)
+            for (int segment = 0; segment <= 7; segment++) {
+                float y = 2 + segment * (strand % 3 == 1 ? 2.85f : 2.7f);
+                float x = (-13.5f + strand * 5.4f) * (1 - segment * .035f), sway = segment * 0.5f + 0.5f;
+                EXTENT(x - sway, y); EXTENT(x + sway, y);
+            }
+        for (int strand = 6; strand < 9; strand += 2)
+            for (int segment = 0; segment <= 5; segment++) {
+                float y = 2 + segment * 3.3f, x = (strand == 6 ? -1 : 1) * (2.2f + segment * .62f);
+                float sway = segment * 0.2f + 2.6f;
                 EXTENT(x - sway, y); EXTENT(x + sway, y);
             }
     } else {
         for (int i = 0; i < 10; i++) {
-            float x = f->variety == FISH_SHARK ? shark_x[i] : f->variety == FISH_STINGRAY ? ray_x[i] : body_x[i];
-            EXTENT(x * bx, body_y[i] * by);
+            float x = f->variety == FISH_CLASSIC ? harbor_x[i] : f->variety == FISH_SHARK ? shark_x[i] : f->variety == FISH_STINGRAY ? ray_x[i] : body_x[i];
+            float y = f->variety == FISH_CLASSIC ? harbor_y[i] : body_y[i];
+            EXTENT(x * bx, y * by);
         }
         extent = fmaxf(extent, horizontal ? 6.5f : 2 * sp + 9.5f * by);
         float tail = (0.32f + f->speed * 0.007f) * 8;
@@ -288,12 +295,17 @@ static float fish_projected_extent(const fish_t *f, float direction, bool horizo
             EXTENT(2, -28); EXTENT(2, 28); EXTENT(-9, -20); EXTENT(-9, 20);
             EXTENT(-38, tail * 3 / 8); EXTENT(-38, -tail * 3 / 8);
         } else {
-            float tx = -26 * (f->stage == STAGE_ELDER ? 1.22f : 1) * (f->variety == FISH_GUPPY ? 1.3f : 1);
+            float tx = (f->variety == FISH_CLASSIC ? -29 : -26) *
+                       (f->stage == STAGE_ELDER ? 1.22f : 1) * (f->variety == FISH_GUPPY ? 1.3f : 1);
             float spread = f->variety == FISH_GUPPY ? 17 : f->variety == FISH_PUFFER ? 6 :
                            f->variety == FISH_BETTA ? 20 : f->variety == FISH_SHARK ? 15 : 10;
             EXTENT(f->variety == FISH_SHARK ? -32 : tx, -spread - tail);
             EXTENT(f->variety == FISH_SHARK ? -30 : tx, f->variety == FISH_SHARK ? 10 + tail / 2 : spread + tail);
             EXTENT(-11, 0);
+            if (f->variety == FISH_CLASSIC) {
+                EXTENT(10, -5); EXTENT(3, -17); EXTENT(-4, -19);
+                EXTENT(-12, -10); EXTENT(-9, -7); EXTENT(5, -7);
+            }
             if (f->stage >= STAGE_ADULT || f->variety == FISH_SHARK || f->variety == FISH_BETTA || f->variety == FISH_CLOWNFISH) {
                 float h = f->variety == FISH_ANGEL ? -27 : f->variety == FISH_SHARK ? -23 :
                           f->variety == FISH_BETTA ? -21 : f->stage == STAGE_ELDER ? -17 : -13;
@@ -513,6 +525,8 @@ void tank_new_population(tank_t *t) {
      * (progression halved the stage clocks to match - 0.5/3/24 tended hours) */
     tank_make_fish(t, 0, a, sa, ba, STAGE_FRY);
     tank_make_fish(t, 1, b, sb, bb, STAGE_FRY);
+    /* New aquariums begin with the simple first-tier Tetra; existing residents keep their saved variety. */
+    t->fish[0].variety = t->fish[1].variety = FISH_TETRA;
     t->n_fish = 2;
 }
 
@@ -551,6 +565,16 @@ void tank_seed_genes(tank_t *t, int slot, uint32_t salt) {
 void tank_sync_traits(tank_t *t) {
     for (int i = 0; i < N_FISH_MAX; i++) t->fish[i].traits = i < t->n_fish ? (uint8_t)(t->story.active[i].traits & 15) : 0;
 }
+/* Vigor 0..10 is hybrid vigor: each heterozygous locus (a hidden marking, a
+ * hidden body color or a carried trait) adds diversity. Line-bred pairs that
+ * share alleles converge toward homozygous, lower-vigor offspring. */
+int tank_line_vigor(const fish_lineage_t *l) {
+    if (!l) return 0;
+    int carried = 0;
+    for (int k = 0; k < TRAIT_COUNT; k++) carried += !!(l->traits & (16u << k));
+    int vigor = 2 + (l->pattern2 ? 3 : 0) + (l->color2 ? 3 : 0) + carried;
+    return vigor > 10 ? 10 : vigor;
+}
 static int pattern_rank(int p) {                  /* the classic marks dominate; plain is recessive */
     return p == PATTERN_PLAIN ? 0 : p <= PATTERN_BAND ? 2 : 1;
 }
@@ -586,6 +610,15 @@ static void inherit(tank_t *t, int slot, int a, int b) {
     uint32_t cb = (h & 2) && lb->color2 ? FISH_BODY_COLORS[(lb->color2 - 1) % FISH_COLOR_N] : fb->color;
     uint32_t body = (h & 4) ? cb : ca, other = (h & 4) ? ca : cb;
     if ((h >> 3) % 5 == 0) body = blend_rgb(ca, cb);
+    if ((h >> 12) % 16 == 0) {
+        int first = (int)((h >> 16) % FISH_COLOR_N);
+        for (int step = 0; step < FISH_COLOR_N; step++) {
+            uint32_t color = FISH_BODY_COLORS[(first + step) % FISH_COLOR_N];
+            if (color == ca || color == cb || color == body) continue;
+            other = body; body = color; l->mutation |= GENE_MUTANT_COLOR;
+            break;
+        }
+    }
     int oi = tank_body_index(other);
     l->color2 = FISH_BODY_COLORS[oi] == body ? 0 : (uint8_t)(oi + 1);
     tank_set_look(t, slot, body, (h & 8) ? fb->accent : fa->accent);
@@ -609,14 +642,16 @@ static void inherit(tank_t *t, int slot, int a, int b) {
 
 int tank_add_fish(tank_t *t, int parent_a, int parent_b) {
     if (t->n_fish + t->companion.away >= N_FISH_MAX || t->n_fish + t->companion.away >= ROSTER_N) return -1;
+    if (parent_a < 0 || parent_b < 0 || parent_a >= t->n_fish ||
+        parent_b >= t->n_fish || parent_a == parent_b ||
+        t->fish[parent_a].variety != t->fish[parent_b].variety) return -1;
     int used[ROSTER_N] = {0};
     for (int i = 0; i < t->n_fish; i++) used[t->fish[i].preset] = 1;
     int free_n = 0, free_idx[ROSTER_N];
     for (int i = 0; i < ROSTER_N; i++) if (!used[i]) free_idx[free_n++] = i;
     if (!free_n) return -1;
     int preset = free_idx[(int)tank_randf(t, 0, free_n - 0.001f)];
-    int ia = (parent_a >= 0 && parent_a < t->n_fish) ? parent_a : 0;
-    int ib = (parent_b >= 0 && parent_b < t->n_fish) ? parent_b : (t->n_fish > 1 ? 1 : 0);
+    int ia = parent_a, ib = parent_b;
     const fish_t *pa = &t->fish[ia], *pb = &t->fish[ib];
     float bold = clampf((pa->bold + pb->bold) * 0.5f + tank_randf(t, -0.15f, 0.15f), 0.05f, 0.95f);
     float soc  = clampf((pa->sociable + pb->sociable) * 0.5f + tank_randf(t, -0.15f, 0.15f), 0.05f, 0.95f);
@@ -639,6 +674,8 @@ int tank_add_fish(tank_t *t, int parent_a, int parent_b) {
                   t->story.active[ia].generation : t->story.active[ib].generation;
         line->generation = (uint8_t)(gen < 254 ? gen + 1 : 255);
         if (t->story.births < 0xffff) t->story.births++;
+        if (t->fish[slot].variety < FISH_VARIETY_COUNT)
+            t->story.collection |= (uint32_t)(line->mutation & 7u) << (3 * t->fish[slot].variety);
     }
     place_near_reef(t, &t->fish[slot]);
     t->fish[slot].hunger = 4; t->fish[slot].trust = 4;
@@ -747,6 +784,10 @@ void tank_init(tank_t *t, uint32_t seed) {
     memset(&t->games_extra, 0, sizeof t->games_extra);
     memset(&t->profile, 0, sizeof t->profile);
     memset(&t->care, 0, sizeof t->care);
+    memset(&t->reef, 0, sizeof t->reef);
+    memset(&t->creatures, 0, sizeof t->creatures); t->creature_tick_s = 0;
+    memset(&t->progression, 0, sizeof t->progression);
+    memset(&t->foliage, 0, sizeof t->foliage); t->foliage.version = 1;
     t->care_fraction = 0;
     t->season = SEASON_NONE;
     t->visitor_left = 0;
@@ -788,6 +829,10 @@ void tank_init(tank_t *t, uint32_t seed) {
     t->ravenous = false; t->trickle_off = false;
     t->stage_fish = -1; t->hold_light = false;
     t->drag_active = false; t->drag_has_prev = false; t->drag_dist = 0;
+    t->reef_currents = t->reef_visits = 0;
+    t->reef_flow_s = t->reef_flow_x = t->reef_flow_y = t->reef_flow_dir = t->reef_flow_cooldown = 0;
+    t->reef_flow_gain = 0;
+    t->reef_flow_seen = 0;
     for (int b = 0; b < VEG_BEDS_MAX; b++) {
         /* a fresh tank's canopy has a natural profile: fronds within +-0.04
            of VEG_START, seeded per slot so it's the same tank every boot */
@@ -898,129 +943,25 @@ void tank_init(tank_t *t, uint32_t seed) {
 #define CURIOSITY_SPEND_PER_S 0.25f /* spent at the bubbles / the reef: 9 -> 3 in ~24 s */
 #define CURIOSITY_SPEND_RADIUS 60.0f
 
-/* ---- upkeep: the vegetation keeps growing, algae films the glass ----
- * Vegetation is a comfort system, not scenery: fish swim slower inside the
- * canopy and their stress (already in the advisor's schema) answers to it -
- * cover calms (a canopy is a place to hide), a tank being smothered (two
- * beds past VEG_SMOTHER) presses hard, a completely scalped tank is a mild
- * unease that lifts as soon as one tuft regrows. Rates are per real second;
- * tank_tick runs them awake, tank_tick_sleep runs them faster (an untended
- * dark tank is where the garden gets away from you). */
-/* nubs -> the ceiling in ~45 h awake (was 30 h
-                                       * until 2026-09-23: a few hours' sleep put
-                                       * every bed at the surface, every time) */
-#define VEG_GROW_AWAKE_S    162000.0f
-/* ~20 h of sleep (was 10 h): one night takes a
-                                       * trimmed bed from a third of the glass to
-                                       * two thirds, the second reaches the ceilings */
-#define VEG_GROW_SLEEP_S    72000.0f
-/* the sword plant grows a bit faster than the
-                                       * grass (~36 h awake / ~16 h asleep) */
-#define VEG_SWORD_GROW      1.25f
-#define VEG_SLOW            0.60f     /* cruise speed factor inside a canopy */
-#define ALGAE_STEP_AWAKE_S  240.0f    /* one film growth step per 4 min awake */
-/* (120 until 2026-09-23: a 7 h night filmed the
-                                       * glass to the cap, so every morning looked the
-                                       * same; now a night lands near ALGAE_DIRTY) */
-#define ALGAE_STEP_SLEEP_S  180.0f
-#define ALGAE_COVER_CAP     0.30f     /* growth stops claiming new cells here */
-#define WIPE_RADIUS      20.0f  /* squeegee half-width around the drag path */
-/* stroke travel before a drag starts wiping
-                                 * (a rolly fingertip tap stays under this) */
-#define WIPE_ENGAGE_PX   18.0f
-/* sideways travel before a stroke is scissors (a
-                                 * rolly fingertip tap stays under this; one
-                                 * frond pitch is 12 px, so a flick takes 1-2) */
-#define SLASH_PX         16.0f
-#define SLASH_RATIO      1.5f   /* ... and it must be this much more h than v */
-/* the SCISSORS picked from the toolbox: the keeper
-                                 * said "cut", so a shorter stroke, merely more
-                                 * sideways than not, is enough */
-#define SLASH_TOOL_PX    10.0f
-/* a slash must START this close to a FROND's tip
-                                 * (upward) - not the bed's box: a cleaning scrub
-                                 * begun mid-glass over a tall bed used to arm the
-                                 * scissors (Strato, 2026-09-04) */
-#define SLASH_START_PX   10.0f
-/* ... and this close to a spine SIDEWAYS: the pad
-                                 * of a fingertip is ~6 mm = 75 px on this glass, so
-                                 * a landing a pitch beside a bed's outer frond has
-                                 * that frond under the finger (a stroke begun at
-                                 * the glass, heading in, used to arm nothing) */
-#define SLASH_START_SIDE_PX 16.0f
-/* the fingertip's reach past its REPORTED point: a
-                                 * stroke cuts the frond up to this far beyond where
-                                 * it lands and where it lifts. The touch point is
-                                 * the pad's centre; the outer frond of a bed stands
-                                 * 24 px from the glass and the centre stops short of
-                                 * it, so "the last blade never trips" (Strato,
-                                 * 2026-09-14). Two thirds of the 12 px pitch: a flick
-                                 * still takes only the fronds it visibly covers. */
-#define SLASH_REACH_PX    8.0f
-#define SLASH_WALL_PX       48.0f /* a frond this close to a side wall is a WALL frond ... */
-/* ... and a stroke that starts on no frond of its bed,
-                                 * but this close to it on its OPEN side (no higher
-                                 * than its tip), is aimed at it: armed, and once it
-                                 * is in among the wall fronds, heading for the wall,
-                                 * it runs on into the wall. No finger can stand on a
-                                 * frond 19 px from the glass, or come at it from the
-                                 * wall: the pad meets the bezel and its center stops
-                                 * 2-4 mm short. With its neighbors mown, a bed's
-                                 * outer frond stood where no stroke could begin or
-                                 * end (Strato's log, 2026-10-01: 73 tries at one,
-                                 * starting 29..106 px from the wall, lifting at
-                                 * 39..66). A stroke that starts ON a frond of that
-                                 * bed keeps the precise reach above. */
-#define SLASH_WALL_SIDE_PX  96.0f
+#define WIPE_ENGAGE_PX 18.0f
 
-static int popcount32u(uint32_t v) { int n = 0; while (v) { n += v & 1; v >>= 1; } return n; }
-
-/* canopy geometry: one source of truth for render, the trim hit test and the
- * in-canopy slowdown. Bed 0 is the reef bed (milestone lushness widens its
- * base, as ever); growth adds fronds (out, wider) and segments (up, toward
- * the surface). Height IS growth (2026-09-04): every bed's tallest frond
- * stands g of the way from the floor to the surface - at growth 1 it
- * touches the tank ceiling, whichever bed it is - so "85% grown" and "85%
- * of the tank's height" are the same thing for the comfort band below. At
- * VEG_NUB the fronds are ~5 segment green stubble. */
+/* Sword geometry is shared by the renderer and seahorse anchors. */
 static int veg_segs(float h) { return 2 + (int)(h * (VEG_SEGS_FULL - 2)); }
-/* frond pitch per bed: grass at 12 px; the sword plant's broad leaves at 14 */
-static int veg_pitch(int b) { return b == 3 ? 14 : 12; }
+static int veg_pitch(int b) { (void)b; return 14; }
 static void veg_bed_base(const tank_t *t, int b, float *bx0, int *n) {
-    int lush = popcount32u(t->tank_ms_bits); if (lush > 4) lush = 4;
-    int base_n;
-    if (b == 0)      { *bx0 = t->reef_x - 24 - lush * 6; base_n = 5 + lush; }
-/* the bowl's floor is 358 px, not 448: the two right-hand beds keep
-                                                              their place against the right glass, the reef bed gives up two fronds */
-    else if (b == 1) { *bx0 = TANK_W * 0.84f; base_n = 4; }
-    else if (b == 2) { *bx0 = TANK_W * 0.62f; base_n = 2; }
-    else             { *bx0 = tank_decor_x(t, 0) - PLANT_HALF_W; *n = 4; return; }   /* the sword plant
-                                                              (2026-09-15): four broad leaves, by default on
-                                                              the open floor between the reef bed's widest
-                                                              reach (~199) and bed 2 (272) - the keeper's
-                                                              to move (tank_decor_set) */
-    /* the frond count is fixed per bed now (it used to widen with growth):
-       with fronds cut one at a time, a bed's outer fronds can't be allowed
-       to vanish because its MEAN height dropped */
-    int nn = base_n + 6;
-    if (nn > VEG_FRONDS_MAX) nn = VEG_FRONDS_MAX;
-    *bx0 = clampf(*bx0, TANK_FX0 + 12, TANK_FX1 - 12);
-    /* Keep a three-column sandy opening; reduce grass, not its drawing alone.
-       Bed bounds include the canopy margin used by shelter and trimming. */
-    float middle = TANK_W * 0.5f, gap = TANK_W * 0.06f;
-    if (b == 0) {
-        *bx0 = fminf(*bx0, middle - gap - veg_pitch(b) - 6);
-        while (nn > 1 && *bx0 + nn * veg_pitch(b) + 6 > middle - gap) nn--;
-    } else {
-        *bx0 = fmaxf(*bx0, middle + gap + 6);
-    }
-    while (nn > 1 && *bx0 + (nn - 1) * veg_pitch(b) > TANK_FX1 - 12) nn--;
-    if (b == 1) *bx0 = TANK_FX1 - 12 - (nn - 1) * veg_pitch(b);
-    *n = nn;
+    *bx0 = b == 3 ? tank_decor_x(t, 0) - PLANT_HALF_W : t->reef_x;
+    *n = b == 3 ? 4 : 0;
 }
-int tank_veg_beds(const tank_t *t) { return (t->sd_unlocks & SD_ITEM_PLANT) ? VEG_BEDS_MAX : VEG_BEDS; }
+int tank_veg_beds(const tank_t *t) { return (t->sd_unlocks & SD_ITEM_PLANT) ? VEG_BEDS_MAX : 0; }
 veg_kind_t tank_veg_kind(const tank_t *t, int b) { (void)t; return b == 3 ? VEG_KIND_SWORD : VEG_KIND_GRASS; }
 void tank_veg_bed(const tank_t *t, int b, float *x0, float *x1, float *top_y, int *fronds) {
+    if (b != 3 || !(t->sd_unlocks & SD_ITEM_PLANT)) {
+        if (x0) *x0 = t->reef_x;
+        if (x1) *x1 = t->reef_x;
+        if (top_y) *top_y = TANK_BOT;
+        if (fronds) *fronds = 0;
+        return;
+    }
     float bx0; int n;
     veg_bed_base(t, b, &bx0, &n);
     float hmax = 0;
@@ -1031,19 +972,14 @@ void tank_veg_bed(const tank_t *t, int b, float *x0, float *x1, float *top_y, in
     if (fronds) *fronds = n;
 }
 int tank_nursery_bed(const tank_t *t) {
-    int best = -1;
-    for (int b = 0; b < tank_veg_beds(t); b++)
-        if (t->veg_growth[b] >= VEG_NURSERY && (best < 0 || t->veg_growth[b] > t->veg_growth[best])) best = b;
-    return best;
+    /* A bare tank can breed over open sand; zero is a legacy site sentinel. */
+    return (t->sd_unlocks & SD_ITEM_PLANT) ? 3 : 0;
 }
 /* where the pair circles: low inside the nursery bed, a flat loop that weaves
  * the fronds (body centre ~14 px off the floor line) */
 static void court_site(const tank_t *t, float *cx, float *cy, float *rx) {
-    int b = tank_nursery_bed(t);
-    if (b < 0) { *cx = t->reef_x + 26; *cy = TANK_BOT - 78; *rx = 26; return; }   /* legacy spot */
-    float x0, x1; tank_veg_bed(t, b, &x0, &x1, NULL, NULL);
-    *cx = (x0 + x1) * 0.5f; *cy = TANK_BOT - 16 - 14;
-    float half = (x1 - x0) * 0.5f - 8; *rx = half < 16 ? 16 : half > 30 ? 30 : half;
+    *cx = (t->sd_unlocks & SD_ITEM_PLANT) ? tank_decor_x(t, 0) : t->reef_x;
+    *cy = TANK_BOT - 42; *rx = 24;
 }
 void tank_court_puff(tank_t *t, int n) {
     float sx, sy, sr; court_site(t, &sx, &sy, &sr);
@@ -1059,17 +995,31 @@ void tank_court_puff(tank_t *t, int n) {
  * rather than printed (reflex presentation; the advisor still owns both
  * goals). Down in the fronds, not mid-water: Strato (2026-09-04) - by the
  * reef it read as two friends at the bubbles. */
-/* the breather's spot: low in the nearest seagrass bed with real cover, a
- * body apart per slot; with every bed shaved, the rest spot in the corner */
-static void breather_spot(const tank_t *t, const fish_t *f, int idx, float *x, float *y) {
-    int best = -1; float bd = 1e9f, bx = 0;
-    for (int b = 0; b < tank_veg_beds(t); b++) {
-        if (tank_veg_kind(t, b) != VEG_KIND_GRASS || t->veg_growth[b] < VEG_BARE) continue;
-        float x0, x1; tank_veg_bed(t, b, &x0, &x1, NULL, NULL);
-        float cx = (x0 + x1) * 0.5f, d = fabsf(cx - f->x);
-        if (d < bd) { bd = d; best = b; bx = cx; }
+static bool reef_shelter_at(const tank_t *t, int slot, float *x, float *half) {
+    int item;
+    if (slot < SD_ITEM_COUNT) {
+        item = slot;
+        if (!tank_decor_owned(t, item)) return false;
+        *x = tank_decor_x(t, item);
+    } else {
+        const inventory_extra_t *copy = &t->inventory.extra[slot - SD_ITEM_COUNT];
+        if (!copy->item || copy->item > SD_ITEM_COUNT) return false;
+        item = copy->item - 1;
+        *x = copy->x;
     }
-    if (best < 0) { *x = t->reef_x + 13 + f->rest_dx; *y = TANK_BOT - 50 + f->rest_dy; return; }
+    *half = tank_decor_half_w(item);
+    return tank_decor_movable(item) && !tank_decor_surface(item) && *half >= 18;
+}
+
+/* Rest near the closest authored shelter, including placed extra copies. */
+static void breather_spot(const tank_t *t, const fish_t *f, int idx, float *x, float *y) {
+    float bx = TANK_W * 0.5f, bd = TANK_W;
+    for (int slot = 0; slot < SD_ITEM_COUNT + DECOR_EXTRA_CAP; slot++) {
+        float cx, half;
+        if (!reef_shelter_at(t, slot, &cx, &half)) continue;
+        float d = fabsf(cx - f->x);
+        if (d < bd) { bd = d; bx = cx; }
+    }
     *x = bx + (idx % 2 ? 14 : -14) + (idx / 2) * 10;
     *y = TANK_BOT - 16 - 14 - (idx % 3) * 6;
     tank_glass_clamp(x, y, 20);
@@ -1083,6 +1033,10 @@ static void court_steer(const tank_t *t, const fish_t *f, int idx, float *desire
     *speed = tank_dist(f->x, f->y, cx, cy) > 90 ? 46 : 30;
 }
 int tank_veg_frond(const tank_t *t, int b, int i, float *x) {
+    if (b != 3 || !(t->sd_unlocks & SD_ITEM_PLANT)) {
+        if (x) *x = t->reef_x;
+        return 0;
+    }
     float bx0; int n;
     veg_bed_base(t, b, &bx0, &n);
     if (x) *x = bx0 + i * veg_pitch(b);
@@ -1092,9 +1046,17 @@ int tank_veg_frond(const tank_t *t, int b, int i, float *x) {
  * and the firmware log read it; recomputed after anything moves a frond */
 static void veg_sync(tank_t *t) {
     for (int b = 0; b < VEG_BEDS_MAX; b++) {
+        if (b != 3) {
+            memset(t->veg_h[b], 0, sizeof t->veg_h[b]);
+            t->veg_growth[b] = 0;
+            continue;
+        }
         float bx0; int n; veg_bed_base(t, b, &bx0, &n);
         float sum = 0;
-        for (int i = 0; i < n; i++) sum += t->veg_h[b][i];
+        for (int i = 0; i < n; i++) {
+            t->veg_h[b][i] = 0.44f + (float)((i * 13 + 7) % 17) / 170.0f;
+            sum += t->veg_h[b][i];
+        }
         t->veg_growth[b] = sum / n;
     }
 }
@@ -1116,482 +1078,157 @@ float tank_veg_cap(int b, int i) {
                                                               the watch's and the square's upper corners do the same to the beds by its walls */
     return cap;
 }
-/* a bed's mean ceiling: what "full" means for it (the smother band) */
-static float veg_cap_mean(const tank_t *t, int b) {
-    float bx0; int n; veg_bed_base(t, b, &bx0, &n);
-    float sum = 0;
-    for (int i = 0; i < n; i++) sum += tank_veg_cap(b, i);
-    return sum / n;
-}
-static void veg_grow(tank_t *t, float dg) {
-    for (int b = 0; b < tank_veg_beds(t); b++) {
-        float dgb = tank_veg_kind(t, b) == VEG_KIND_SWORD ? dg * VEG_SWORD_GROW :
-            dg * ((t->sd_unlocks & SD_ITEM_GARDEN) ? 0.5f : 1);
-        for (int i = 0; i < VEG_FRONDS_MAX; i++) {
-            float h = t->veg_h[b][i], cap = tank_veg_cap(b, i);
-            if (h >= cap) continue;                   /* at (or staged above) its ceiling */
-            float room = cap - h;                     /* the last stretch comes in slowly */
-            float ease = room < VEG_CAP_TAPER ? fmaxf(0.3f, room / VEG_CAP_TAPER) : 1.0f;
-            float pace = 1.0f + (veg_slot_rand(b, i, 0xF20D5u) * 2 - 1) * VEG_PACE_SPREAD;   /* its own pace: a flat cut regrows ragged */
-            t->veg_h[b][i] = fminf(cap, h + dgb * pace * ease);
-        }
-    }
-    veg_sync(t);
-}
+
 void tank_veg_sync(tank_t *t) { veg_sync(t); }
 void tank_veg_set(tank_t *t, int b, float g) {
+    if (b < 0 || b >= VEG_BEDS_MAX) return;
     for (int i = 0; i < VEG_FRONDS_MAX; i++) t->veg_h[b][i] = g;
     veg_sync(t);
 }
 
-/* is (x,y) inside bed b's canopy? */
-/* is (x,y) within `side` px of some frond of bed b sideways, and no more than
- * `up` px above its tip? The slash arms only from here. */
-static bool veg_near_frond(const tank_t *t, int b, float x, float y, float side, float up) {
-    float x0, x1; int n;
-    tank_veg_bed(t, b, &x0, &x1, NULL, &n);
-    if (x < x0 - side || x > x1 + side) return false;
-    for (int i = 0; i < n; i++) {
-        float fx; int segs = tank_veg_frond(t, b, i, &fx);
-        float tip = TANK_BOT - 16 - segs * VEG_SEG_PX;
-        if (fabsf(x - fx) <= side && y >= tip - up) return true;
+int tank_reef_shelters(const tank_t *t) {
+    int n = 0;
+    for (int slot = 0; slot < SD_ITEM_COUNT + DECOR_EXTRA_CAP; slot++) {
+        float x, half;
+        if (reef_shelter_at(t, slot, &x, &half)) n++;
+    }
+    return n;
+}
+float tank_reef_open_lane(const tank_t *t) {
+    int open = 0;
+    for (int lane = 0; lane < 12; lane++) {
+        float x = TANK_FX0 + TANK_FW * (lane + 0.5f) / 12;
+        bool blocked = false;
+        for (int slot = 0; slot < SD_ITEM_COUNT + DECOR_EXTRA_CAP && !blocked; slot++) {
+            float cx, half;
+            if (reef_shelter_at(t, slot, &cx, &half) && fabsf(x - cx) < half)
+                blocked = true;
+        }
+        if (!blocked) open++;
+    }
+    return open / 12.0f;
+}
+bool tank_reef_calm_near(const tank_t *t, float x, float y) {
+    if (y < TANK_BOT - 100 || y > TANK_BOT) return false;
+    for (int slot = 0; slot < SD_ITEM_COUNT + DECOR_EXTRA_CAP; slot++) {
+        float cx, half;
+        if (reef_shelter_at(t, slot, &cx, &half) && fabsf(x - cx) < half + 10)
+            return true;
     }
     return false;
 }
-/* does (x,y) lie on the OPEN side of one of bed b's wall fronds, within
- * SLASH_WALL_SIDE_PX of it and no more than `up` px above its tip? -1 = a
- * frond by the left wall, +1 = by the right, 0 = no. */
-static int veg_wall_frond(const tank_t *t, int b, float x, float y, float up) {
-    int n; tank_veg_bed(t, b, NULL, NULL, NULL, &n);
-    for (int i = 0; i < n; i++) {
-        float fx; int segs = tank_veg_frond(t, b, i, &fx);
-        if (y < TANK_BOT - 16 - segs * VEG_SEG_PX - up) continue;
-        float d = x - fx;
-        if (fx <= TANK_FX0 + SLASH_WALL_PX && d > 0 && d <= SLASH_WALL_SIDE_PX) return -1;
-        if (fx >= TANK_FX1 - SLASH_WALL_PX && d < 0 && -d <= SLASH_WALL_SIDE_PX) return 1;
-    }
-    return 0;
+bool tank_reef_current(tank_t *t, float x0, float y0, float x1, float y1) {
+    (void)t; (void)x0; (void)y0; (void)x1; (void)y1;
+    return false; /* Reserved API; historical current counters stay readable. */
 }
-static bool veg_inside(const tank_t *t, int b, float x, float y) {
-    float x0, x1, ty;
-    tank_veg_bed(t, b, &x0, &x1, &ty, NULL);
-    return x >= x0 && x <= x1 && y >= ty;
-}
+
 bool tank_in_grass(const tank_t *t, float x, float y) {
-    for (int b = 0; b < tank_veg_beds(t); b++)
-        if (tank_veg_kind(t, b) == VEG_KIND_GRASS && t->veg_growth[b] >= VEG_BARE && veg_inside(t, b, x, y)) return true;
-    return false;
+    return tank_reef_calm_near(t, x, y);
 }
+
 void tank_reef_spot(const tank_t *t, float *x, float *y) {
     if (t->sd_unlocks & SD_ITEM_CLUSTER) {         /* the cluster stands ~75 px off the floor (more with its bloom): the
                                                       orbit, REEF_ORBIT_UP above this, rides round its crown */
         *x = tank_decor_x(t, 4); *y = TANK_BOT - 50;
-    } else { *x = t->reef_x; *y = t->reef_y; }
-}
-
-/* the scissors: cut every frond whose spine the stroke segment (x0,y0)-(x1,y1)
- * crosses, to the height where it crosses (only ever DOWN, never below nubs).
- * The segment reaches SLASH_REACH_PX past its far end - the finger is a pad,
- * not a point, and the frond just ahead of the reported point at lift is
- * under it (mid-stroke the next segment crosses that frond anyway, at the
- * same height); `landing` (the retroactive first segment of a stroke) reaches
- * the same distance back past its start, for the frond under the finger as
- * it touched down. A frond in the reach is cut at the height of that end.
- * Returns the number of fronds cut. */
-static int veg_cut(tank_t *t, float x0, float y0, float x1, float y1, bool landing, int wall) {
-    int cuts = 0;
-    float lo = x0 < x1 ? x0 : x1, hi = x0 < x1 ? x1 : x0;
-    if (x1 >= x0) hi += SLASH_REACH_PX; else lo -= SLASH_REACH_PX;
-    if (landing) { if (x1 >= x0) lo -= SLASH_REACH_PX; else hi += SLASH_REACH_PX; }
-    if (wall < 0 && x1 < x0 && x1 <= TANK_FX0 + SLASH_WALL_PX) lo = TANK_FX0;                  /* aimed at a wall frond (SLASH_WALL_SIDE_PX) */
-    if (wall > 0 && x1 > x0 && x1 >= TANK_FX1 - SLASH_WALL_PX) hi = TANK_FX1;
-    float dx = x1 - x0;
-    for (int b = 0; b < tank_veg_beds(t); b++) {
-        float bx0; int n; veg_bed_base(t, b, &bx0, &n);
-        for (int i = 0; i < n; i++) {
-            float fx = bx0 + i * veg_pitch(b);
-            if (fx < lo || fx > hi) continue;
-            float u = fabsf(dx) > 0.001f ? clampf((fx - x0) / dx, 0, 1) : 0;
-            float cy = y0 + (y1 - y0) * u;
-            float hf = (TANK_BOT - 16 - cy) / ((VEG_SEGS_FULL - 1) * VEG_SEG_PX);
-            if (hf < VEG_NUB) hf = VEG_NUB;
-            if (hf >= t->veg_h[b][i]) continue;    /* the stroke passed above the tip */
-            t->trim_px += (t->veg_h[b][i] - hf) * (VEG_SEGS_FULL - 1) * VEG_PAY_PX;   /* the inches (sand dollars) */
-            t->veg_h[b][i] = hf;
-            cuts++;
-            int puffs = 2;                         /* cut leaves drift up */
-            for (int k = 0; k < MAX_BUBBLE && puffs > 0; k++) {
-                if (t->bubble[k].column) continue;
-                t->bubble[k].x = fx + tank_randf(t, -4, 4);
-                t->bubble[k].y = cy - tank_randf(t, 0, 6);
-                puffs--;
-            }
-        }
-    }
-    if (cuts) veg_sync(t);
-    return cuts;
-}
-
-/* a film cell that is on the glass: every one in the rectangle; in the bowl,
- * the ones whose centre the circle holds (the grid is the square around it) */
-static bool algae_ok(int cx, int cy) {
-    (void)cx; (void)cy; return true;
-}
-int tank_algae_cells(void) {
-    static int n;
-    if (!n) for (int i = 0; i < ALGAE_CELLS; i++) n += algae_ok(i % ALGAE_COLS, i / ALGAE_COLS);
-    return n;
-}
-float tank_algae_cover(const tank_t *t) {
-    int covered = 0;
-    for (int i = 0; i < ALGAE_CELLS; i++) covered += t->algae[i] > 0;
-    return (float)covered / tank_algae_cells();
-}
-
-/* one film step: thicken a covered cell, or claim a fresh one (preferring
- * cells next to existing film, then the glass edges - the way a real tank
- * fouls from the corners in) until the dapple cap is reached */
-void tank_grow_algae(tank_t *t, int steps) {
-    for (int s = 0; s < steps; s++) {
-        int covered = 0;
-        for (int i = 0; i < ALGAE_CELLS; i++) covered += t->algae[i] > 0;
-        bool claim = covered < (int)(tank_algae_cells() * ALGAE_COVER_CAP);
-        for (int try = 0; try < 8; try++) {
-            int cx = (int)tank_randf(t, 0, ALGAE_COLS - 0.001f);
-            int cy = (int)tank_randf(t, 0, ALGAE_ROWS - 0.001f);
-            uint8_t *cell = &t->algae[cy * ALGAE_COLS + cx];
-            if (!algae_ok(cx, cy)) continue;
-            if (*cell) { *cell = (uint8_t)(*cell > 210 ? 255 : *cell + 45); break; }
-            if (!claim) continue;
-            bool near = false;
-            for (int dy = -1; dy <= 1 && !near; dy++)
-                for (int dx = -1; dx <= 1 && !near; dx++) {
-                    int nx = cx + dx, ny = cy + dy;
-                    if (nx >= 0 && nx < ALGAE_COLS && ny >= 0 && ny < ALGAE_ROWS)
-                        near = t->algae[ny * ALGAE_COLS + nx] > 0;
-                }
-            bool edge = cx == 0 || cy == 0 || cx == ALGAE_COLS - 1 || cy == ALGAE_ROWS - 1
-                     || !algae_ok(cx - 1, cy) || !algae_ok(cx + 1, cy) || !algae_ok(cx, cy - 1) || !algae_ok(cx, cy + 1);
-            float p = near ? 1.0f : edge ? 0.5f : 0.10f;
-            if (tank_randf(t, 0, 1) < p) { *cell = 90; break; }
+    } else {
+        *x = TANK_W * 0.5f; *y = TANK_BOT - 50;
+        for (int slot = 0; slot < SD_ITEM_COUNT + DECOR_EXTRA_CAP; slot++) {
+            float cx, half;
+            if (reef_shelter_at(t, slot, &cx, &half)) { *x = cx; break; }
         }
     }
 }
 
-/* label the film's connected patches (8-neighbour): lab[i] = 1.. per cell
- * with film, 0 without; returns the patch count. A 28 x 23 grid, an
- * iterative flood fill - a few thousand steps, once per wiping frame. */
-static int algae_label(const uint8_t *algae, uint8_t *lab) {
-    int n = 0;
-    int16_t stack[ALGAE_CELLS];
-    for (int i = 0; i < ALGAE_CELLS; i++) lab[i] = 0;
-    for (int i = 0; i < ALGAE_CELLS; i++) {
-        if (!algae[i] || lab[i]) continue;
-        if (n >= 255) break;                               /* the label is a byte; the cap is 30% cover anyway */
-        n++; int sp = 0; stack[sp++] = (int16_t)i; lab[i] = (uint8_t)n;
-        while (sp) {
-            int c = stack[--sp], cx = c % ALGAE_COLS, cy = c / ALGAE_COLS;
-            for (int dy = -1; dy <= 1; dy++)
-                for (int dx = -1; dx <= 1; dx++) {
-                    int nx = cx + dx, ny = cy + dy;
-                    if (nx < 0 || nx >= ALGAE_COLS || ny < 0 || ny >= ALGAE_ROWS) continue;
-                    int j = ny * ALGAE_COLS + nx;
-                    if (algae[j] && !lab[j]) { lab[j] = (uint8_t)n; stack[sp++] = (int16_t)j; }
-                }
-        }
-    }
-    return n;
-}
-/* wipe the film in a WIPE_RADIUS band around the segment (x0,y0)-(x1,y1).
- * A patch whose last cell goes under the keeper's stroke is a COLONY removed
- * (tank_t.algae_colonies, the sand dollars' chore count, 2026-09-15). */
-static void wipe_algae(tank_t *t, float x0, float y0, float x1, float y1) {
-    float dx = x1 - x0, dy = y1 - y0;
-    float len2 = dx * dx + dy * dy;
-    uint8_t lab[ALGAE_CELLS]; int patches = -1;             /* labelled lazily: only a stroke that clears something pays the fill */
-    int wiped = 0;
-    for (int cy = 0; cy < ALGAE_ROWS; cy++)
-        for (int cx = 0; cx < ALGAE_COLS; cx++) {
-            uint8_t *cell = &t->algae[cy * ALGAE_COLS + cx];
-            if (!*cell) continue;
-            float px = cx * ALGAE_CELL + ALGAE_CELL * 0.5f;
-            float py = cy * ALGAE_CELL + ALGAE_CELL * 0.5f;
-            float u = len2 > 1 ? clampf(((px - x0) * dx + (py - y0) * dy) / len2, 0, 1) : 0;
-            if (tank_dist(px, py, x0 + dx * u, y0 + dy * u) < WIPE_RADIUS) {
-                if (patches < 0) patches = algae_label(t->algae, lab);
-                *cell = 0;
-                t->cells_cleaned++; wiped++;
-            }
-        }
-    if (wiped && patches > 0) {
-        bool alive[256] = { false };
-        for (int i = 0; i < ALGAE_CELLS; i++) if (t->algae[i] && lab[i]) alive[lab[i]] = true;
-        for (int p = 1; p <= patches; p++) {
-            bool touched = false;                          /* only a patch this stroke reached can have gone */
-            for (int i = 0; i < ALGAE_CELLS && !touched; i++) touched = lab[i] == p && !t->algae[i];
-            if (touched && !alive[p]) t->algae_colonies++;
-        }
-    }
-}
+/* Reserved diagnostic entry points for old console/save consumers. */
+int tank_algae_cells(void) { return ALGAE_CELLS; }
+float tank_algae_cover(const tank_t *t) { (void)t; return 0; }
+void tank_grow_algae(tank_t *t, int steps) { (void)t; (void)steps; }
 
-/* ---- the snail (2026-09-15, the shop's algae control) ----
- * A rule-based creature on the GLASS: it crawls toward the nearest film cell
- * and grazes it thin, cell by cell; with the glass clean it ambles along the
- * edge. The model never sees it (schema v4 is frozen) - it reaches the fish
- * the way the film does, through cover and calm. Its grazing is not the
- * keeper's chore: cells_cleaned and the colonies never count it. */
-#define SNAIL_PX_S        4.0f     /* crawl toward a patch (6 was "a bit fast" - Strato) */
-#define SNAIL_AMBLE_PX_S  3.0f     /* nothing to eat: the edge walk */
-#define SNAIL_GRAZE_PER_S 45.0f    /* film units per second on a cell (a fresh 90 cell in 2 s) */
-/* the night shift (tank_tick_sleep): this share of the film's cells
-                                    * an hour - the more film, the less it crawls between meals - so a
-                                    * night ends cleaner than it would and a long absence settles under
-                                    * the cap instead of on it, and there is still film to wipe (tuned
-                                    * in selftest-sleep; 20 cells an hour flat was a spotless glass).
-                                    * 0.12 until 0.3.6 (a night 0.12, a week 0.18 of the glass); now a
-                                    * night ~0.10 and a week ~0.12, under ALGAE_DIRTY: a snail's tank
-                                    * comes back from days away fit to breed, still filmed (Strato) */
-#define SNAIL_SLEEP_FRAC_H 0.20f
-/* it keeps inside the visible window: the panel's corners are
-                                    * rounded and the bezel curve hides the outer ~24 px (Strato,
-                                    * 2026-09-15: "stuck in the bottom left corner, I can barely
-                                    * see it" - the film seeds from the corners and it went there) */
-#define SNAIL_MARGIN      30.0f
-/* it grazes a cell from this close (one cell): a corner cell
-                                    * under the bezel is eaten from the visible edge */
-#define SNAIL_REACH       16.0f
-/* where the snail may stand: SNAIL_MARGIN inside the rectangle's frame; on the
- * bowl, whose glass hides nothing, 16 px inside the circle */
-static void snail_clamp(float *x, float *y, float ymax) {
-    *x = clampf(*x, SNAIL_MARGIN, TANK_W - SNAIL_MARGIN); *y = clampf(*y, SNAIL_MARGIN, ymax);
-}
-static int snail_nearest_cell(const tank_t *t) {
-    int best = -1; float bd = 1e9f;
-    for (int i = 0; i < ALGAE_CELLS; i++) {
-        if (!t->algae[i]) continue;
-        float cx = (i % ALGAE_COLS) * ALGAE_CELL + ALGAE_CELL * 0.5f, cy = (i / ALGAE_COLS) * ALGAE_CELL + ALGAE_CELL * 0.5f;
-        float d = tank_dist(t->snail_x, t->snail_y, cx, cy);
-        if (d < bd) { bd = d; best = i; }
-    }
-    return best;
-}
-bool tank_snail_upright(const tank_t *t) { return t->snail_cell < 0 && t->snail_y >= SNAIL_FLOOR_Y - 1; }
-/* generous round the 32 px sprite: a fingertip on this 322 ppi
-                                    * panel covers ~60 px, and the snail is small and low on the glass
-                                    * (Strato, 2026-09-16: "challenging to tap the little guy" at 30;
-                                    * the fish take 38 and are tested first) */
+/* Ornamental wanderers do not maintain the habitat or earn chore credit. */
+#define SNAIL_MARGIN 30.0f
 #define SNAIL_TAP_RADIUS 48.0f
+#define URCHIN_TAP_RADIUS 40.0f
+#define URCHIN_HALF_W 16.0f
+static float urchin_lo(void) { return TANK_FX0 + DECOR_MARGIN + URCHIN_HALF_W; }
+static float urchin_hi(void) { return TANK_FX1 - DECOR_MARGIN - URCHIN_HALF_W; }
+bool tank_creature_partner_pose(const tank_t *t, int creature, float *x, float *y) {
+    if (creature < CREATURE_SNAIL || creature > CREATURE_SEAHORSE ||
+        t->creatures.version != 1 ||
+        t->creatures.stock[creature - CREATURE_SNAIL].adults < 2) return false;
+    uint32_t bit = creature == CREATURE_SNAIL ? SD_ITEM_SNAIL :
+        creature == CREATURE_URCHIN ? SD_ITEM_URCHIN : SD_ITEM_SEAHORSE;
+    if (!(t->sd_unlocks & bit)) return false;
+    float primary = creature == CREATURE_SNAIL ? t->snail_x :
+        creature == CREATURE_URCHIN ? t->urchin_x : t->sh_x;
+    if (!isfinite(primary) || primary < 0 ||
+        (creature == CREATURE_SEAHORSE && t->sh_hidden)) return false;
+    float offset = creature == CREATURE_SEAHORSE ? 36 : 42;
+    float px = primary + (primary < TANK_W * .5f ? offset : -offset);
+    float py = creature == CREATURE_SNAIL ? SNAIL_FLOOR_Y :
+        creature == CREATURE_URCHIN ? URCHIN_FLOOR_Y :
+        clampf(t->sh_y - SH_BODY_UP + 12, 30, TANK_BOT - 30);
+    if (x) *x = clampf(px, TANK_FX0 + 26, TANK_FX1 - 26);
+    if (y) *y = py;
+    return true;
+}
+static bool creature_partner_hit(const tank_t *t, int creature, float x, float y, float radius) {
+    float px, py;
+    return tank_creature_partner_pose(t, creature, &px, &py) &&
+        tank_dist(px, py, x, y) <= radius;
+}
+bool tank_snail_upright(const tank_t *t) { (void)t; return true; }
 bool tank_snail_hit(const tank_t *t, float x, float y) {
-    if (!(t->sd_unlocks & SD_ITEM_SNAIL) || t->snail_x < 0) return false;
-    return tank_dist(t->snail_x, t->snail_y, x, y) <= SNAIL_TAP_RADIUS;
+    return (t->sd_unlocks & SD_ITEM_SNAIL) && t->snail_x >= 0 &&
+        (tank_dist(t->snail_x, t->snail_y, x, y) <= SNAIL_TAP_RADIUS ||
+         creature_partner_hit(t, CREATURE_SNAIL, x, y, SNAIL_TAP_RADIUS));
+}
+void tank_snail_place(tank_t *t) {
+    t->snail_x = TANK_FX0 + SNAIL_MARGIN + 10;
+    t->snail_y = SNAIL_FLOOR_Y; t->snail_heading = 0;
+    t->snail_cell = -1; t->snail_graze = 0; t->snail_front = true;
 }
 static void snail_tick(tank_t *t, float dt) {
     if (!(t->sd_unlocks & SD_ITEM_SNAIL)) return;
     if (t->snail_x < 0) tank_snail_place(t);
-    if (t->snail_cell < 0 || !t->algae[t->snail_cell]) { t->snail_cell = (int16_t)snail_nearest_cell(t); t->snail_graze = 0; }
-    if (t->snail_cell >= 0) {
-        float cx = (t->snail_cell % ALGAE_COLS) * ALGAE_CELL + ALGAE_CELL * 0.5f;
-        float cy = (t->snail_cell / ALGAE_COLS) * ALGAE_CELL + ALGAE_CELL * 0.5f;
-        float tx = cx, ty = cy; snail_clamp(&tx, &ty, TANK_BOT - SNAIL_MARGIN);
-        float d = tank_dist(t->snail_x, t->snail_y, tx, ty);      /* to the nearest point it may stand on */
-        if (d > 3 && tank_dist(t->snail_x, t->snail_y, cx, cy) > SNAIL_REACH) {
-            t->snail_heading = atan2f(ty - t->snail_y, tx - t->snail_x);
-            float step = fminf(d, SNAIL_PX_S * dt);
-            t->snail_x += cosf(t->snail_heading) * step; t->snail_y += sinf(t->snail_heading) * step;
-        } else {                                            /* grazing: the film thins under it */
-            t->snail_graze += dt;
-            int v = t->algae[t->snail_cell] - (int)(SNAIL_GRAZE_PER_S * dt + 0.5f);
-            t->algae[t->snail_cell] = (uint8_t)(v < 0 ? 0 : v);
-            if (v <= 0) t->snail_grazed++;                  /* a cell eaten clean: its card's tally */
-        }
-    } else if (t->snail_y < SNAIL_FLOOR_Y - 1) {            /* clean glass: down to the floor, flat on the glass, head down.
-                                                               A hair off straight down keeps the sideways facing it had
-                                                               (cos's sign) for the floor walk it lands in. */
-        t->snail_heading = 1.5708f + (cosf(t->snail_heading) < 0 ? 0.001f : -0.001f);
-        t->snail_front = true;                              /* off the glass it stands where it was: in front of everything */
-        t->snail_y = fminf(SNAIL_FLOOR_Y, t->snail_y + SNAIL_PX_S * dt);
-    } else {                                                /* the floor walk, upright: along the bottom, a rest now and
-                                                               then, a turn at each end (the facing lives in snail_heading) */
-        t->snail_y = SNAIL_FLOOR_Y;
-        bool resting = fmodf(t->clock, 24.0f) < 5.0f;
-        if (!resting) {
-            float dir = cosf(t->snail_heading) < 0 ? -1.0f : 1.0f;
-            t->snail_x += dir * SNAIL_AMBLE_PX_S * dt;
-            bool turned = false;
-            if (t->snail_x <= TANK_FX0 + SNAIL_MARGIN) { t->snail_x = TANK_FX0 + SNAIL_MARGIN; t->snail_heading = 0; turned = true; }
-            if (t->snail_x >= TANK_FX1 - SNAIL_MARGIN) { t->snail_x = TANK_FX1 - SNAIL_MARGIN; t->snail_heading = 3.14159f; turned = true; }
-            /* at each end it picks its lane for the walk back: in front of the IN FRONT pieces, or behind
-               them (from the clock's bits, not the tank's RNG: a seeded run is the same run) */
-            if (turned) t->snail_front = (((uint32_t)(t->clock * 997.0f) * 2654435761u) >> 20 & 1) != 0;
-        }
+    t->snail_cell = -1; t->snail_graze = 0; t->snail_y = SNAIL_FLOOR_Y;
+    if (fmodf(t->clock, 24) < 5) return;
+    float dir = cosf(t->snail_heading) < 0 ? -1 : 1;
+    t->snail_x += dir * 3 * dt;
+    if (t->snail_x <= TANK_FX0 + SNAIL_MARGIN) {
+        t->snail_x = TANK_FX0 + SNAIL_MARGIN; t->snail_heading = 0;
+        t->snail_front = !t->snail_front;
+    } else if (t->snail_x >= TANK_FX1 - SNAIL_MARGIN) {
+        t->snail_x = TANK_FX1 - SNAIL_MARGIN; t->snail_heading = 3.14159f;
+        t->snail_front = !t->snail_front;
     }
-    snail_clamp(&t->snail_x, &t->snail_y, SNAIL_FLOOR_Y);
 }
-/* asleep: the snail keeps working, coarsely - the nearest cells go, one by
- * one. tank_tick_sleep hands it the night a slice at a time, AFTER the
- * slice's film has grown, so it eats the night's film as it comes; the
- * part-cell carries over, so a nap's few minutes count too (2026-10-02: it
- * used to run once, before the night's film, on the film the keeper had
- * already left - from a clean glass a snail's tank woke exactly as dirty as
- * one without, and (int) of a short nap was no cells at all). */
-static void snail_sleep(tank_t *t, float seconds) {
-    if (!(t->sd_unlocks & SD_ITEM_SNAIL)) return;
-    if (t->snail_x < 0) tank_snail_place(t);
-    int covered = 0;
-    for (int i = 0; i < ALGAE_CELLS; i++) covered += t->algae[i] > 0;
-    t->snail_sleep_acc += covered * (1.0f - expf(-SNAIL_SLEEP_FRAC_H * seconds / 3600.0f));
-    int cells = (int)t->snail_sleep_acc;
-    t->snail_sleep_acc -= cells;
-    for (int k = 0; k < cells; k++) {
-        int c = snail_nearest_cell(t);
-        if (c < 0) break;
-        t->algae[c] = 0; t->snail_grazed++;
-        t->snail_x = (c % ALGAE_COLS) * ALGAE_CELL + ALGAE_CELL * 0.5f;
-        t->snail_y = (c / ALGAE_COLS) * ALGAE_CELL + ALGAE_CELL * 0.5f;
-        snail_clamp(&t->snail_x, &t->snail_y, TANK_BOT - SNAIL_MARGIN);
-    }
-    t->snail_cell = -1;
-}
-void tank_snail_place(tank_t *t) {
-    t->snail_x = TANK_FX0 + SNAIL_MARGIN + 10; t->snail_y = SNAIL_FLOOR_Y;   /* on the floor, bottom left, facing right */
-    t->snail_heading = 0; t->snail_cell = -1; t->snail_graze = 0; t->snail_front = true;
-}
-
-/* ---- the urchin (2026-10-02, SD_ITEM_URCHIN; tank.h has the rules) ----
- * The grass's snail. Awake its appetite fills slowly (URCHIN_AWAKE_PER_H of
- * frond height an hour, for the whole tank: about what a trimmed bed grows
- * awake, so it holds the grass where the keeper left it - the scissors
- * still bring it down; 0.30 only slowed the climb, and keepers saw an
- * urchin "on vacation", 0.3.6); with a bite's worth it crawls to the frond standing
- * tallest over URCHIN_KEEP (a near one wins a close call), chews at its foot
- * for URCHIN_CHEW_S while the frond comes down a bite and bits of leaf drift
- * up from the tip, then rests and ambles the sand. Asleep it grazes the
- * grass's height over the keep line in proportion to how much there is
- * (URCHIN_SLEEP_FRAC_H of it an hour), every frond its share, so the canopy
- * keeps its shape, only lower; a tall tank feeds it faster, so a long
- * absence settles below the ceilings instead of on them. */
-#define URCHIN_PX_S          1.6f     /* tube feet: slower than the snail */
-#define URCHIN_AWAKE_PER_H   0.50f    /* (0.30 until 0.3.6: 6 h awake from 0.57 climbed to 0.63; now ~flat) */
-/* of the height over the keep line, an hour asleep (tuned in
-                                       * selftest-sleep: a 7 h night from a trimmed 0.35 lands ~0.52
-                                       * where it lands 0.69 alone; days away settle ~0.54, not 0.83.
-                                       * 0.20 until 0.3.6: 0.57 a night, 0.64 a week) */
-#define URCHIN_SLEEP_FRAC_H  0.35f
-#define URCHIN_BITE          0.05f    /* one sitting: ~17 px off a frond on the 1.8 */
-#define URCHIN_CHEW_S        14.0f
-#define URCHIN_TAP_RADIUS    40.0f    /* a fingertip round a ~32 px urchin */
-#define URCHIN_HALF_W        16.0f
-static bool urchin_frond_ok(const tank_t *t, int b, int i) {
-    if (b < 0 || b >= tank_veg_beds(t) || tank_veg_kind(t, b) != VEG_KIND_GRASS) return false;
-    float bx0; int n; veg_bed_base(t, b, &bx0, &n);
-    return i >= 0 && i < n;
-}
-static float urchin_lo(void) { return TANK_FX0 + DECOR_MARGIN + URCHIN_HALF_W; }
-static float urchin_hi(void) { return TANK_FX1 - DECOR_MARGIN - URCHIN_HALF_W; }
-static float urchin_frond_x(const tank_t *t, int b, int i) {
-    float x; tank_veg_frond(t, b, i, &x);
-    return clampf(x, urchin_lo(), urchin_hi());
-}
-/* the frond standing tallest over the keep line, a near one winning a close
- * call; -1 when no frond is worth a sitting */
-static bool urchin_pick(tank_t *t) {
-    float best = 0; int bb = -1, bi = -1;
-    for (int b = 0; b < tank_veg_beds(t); b++) {
-        if (tank_veg_kind(t, b) != VEG_KIND_GRASS) continue;
-        float bx0; int n; veg_bed_base(t, b, &bx0, &n);
-        for (int i = 0; i < n; i++) {
-            float over = t->veg_h[b][i] - URCHIN_KEEP;
-            if (over < URCHIN_BITE * 0.5f) continue;
-            float score = over - fabsf(urchin_frond_x(t, b, i) - t->urchin_x) * 0.0004f;
-            if (bb < 0 || score > best) { best = score; bb = b; bi = i; }
-        }
-    }
-    t->urchin_bed = (int8_t)bb; t->urchin_frond = (int8_t)bi; t->urchin_chew = 0;
-    return bb >= 0;
-}
-bool tank_urchin_chewing(const tank_t *t) { return t->urchin_frond >= 0 && t->urchin_chew > 0; }
+bool tank_urchin_chewing(const tank_t *t) { (void)t; return false; }
 bool tank_urchin_hit(const tank_t *t, float x, float y) {
-    if (!(t->sd_unlocks & SD_ITEM_URCHIN) || t->urchin_x < 0) return false;
-    return tank_dist(t->urchin_x, URCHIN_FLOOR_Y, x, y) <= URCHIN_TAP_RADIUS;
+    return (t->sd_unlocks & SD_ITEM_URCHIN) && t->urchin_x >= 0 &&
+        (tank_dist(t->urchin_x, URCHIN_FLOOR_Y, x, y) <= URCHIN_TAP_RADIUS ||
+         creature_partner_hit(t, CREATURE_URCHIN, x, y, URCHIN_TAP_RADIUS));
+}
+void tank_urchin_place(tank_t *t) {
+    t->urchin_x = clampf(t->reef_x + 45, urchin_lo(), urchin_hi());
+    t->urchin_bed = t->urchin_frond = -1;
+    t->urchin_chew = t->urchin_appetite = 0;
+    t->urchin_to = -1; t->urchin_rest = 20;
 }
 static void urchin_tick(tank_t *t, float dt) {
     if (!(t->sd_unlocks & SD_ITEM_URCHIN)) return;
     if (t->urchin_x < 0) tank_urchin_place(t);
-    t->urchin_appetite = fminf(t->urchin_appetite + URCHIN_AWAKE_PER_H / 3600.0f * dt, URCHIN_BITE * 2);
-    if (t->urchin_frond >= 0 && (!urchin_frond_ok(t, t->urchin_bed, t->urchin_frond)
-                                 || t->veg_h[t->urchin_bed][t->urchin_frond] <= URCHIN_KEEP + 0.005f)) {
-        t->urchin_bed = t->urchin_frond = -1; t->urchin_chew = 0;      /* the keeper's scissors got there first */
-    }
-    if (t->urchin_frond < 0 && t->urchin_appetite >= URCHIN_BITE) urchin_pick(t);
-    if (t->urchin_frond >= 0) {
-        int b = t->urchin_bed, i = t->urchin_frond;
-        float fx = urchin_frond_x(t, b, i), d = fx - t->urchin_x;
-        if (fabsf(d) > 1.5f) {                                         /* on its way */
-            t->urchin_x += (d > 0 ? 1 : -1) * fminf(fabsf(d), URCHIN_PX_S * dt);
-            t->urchin_chew = 0;
-            return;
-        }
-        float before = t->veg_h[b][i];                                 /* chewing at its foot */
-        float h = fmaxf(URCHIN_KEEP, before - URCHIN_BITE / URCHIN_CHEW_S * dt);
-        float eat = fminf(before - h, fmaxf(t->urchin_appetite, 0));
-        t->veg_h[b][i] = before - eat;
-        t->urchin_appetite -= eat;
-        t->urchin_grazed_px += eat * (VEG_SEGS_FULL - 1) * VEG_PAY_PX;
-        float c0 = t->urchin_chew; t->urchin_chew += dt;
-        if (fmodf(c0, 1.8f) > fmodf(t->urchin_chew, 1.8f)) {           /* a bit of leaf drifts up from the tip */
-            float x; int segs = tank_veg_frond(t, b, i, &x);
-            for (int k = 0; k < MAX_BUBBLE; k++) {
-                if (t->bubble[k].column) continue;
-                t->bubble[k].x = x + tank_randf(t, -3, 3);
-                t->bubble[k].y = TANK_BOT - 16 - segs * VEG_SEG_PX;
-                break;
-            }
-        }
-        veg_sync(t);
-        if (t->urchin_appetite <= 0.0005f || t->veg_h[b][i] <= URCHIN_KEEP + 0.0005f) {   /* full, or down to the keep line */
-            t->urchin_bed = t->urchin_frond = -1; t->urchin_chew = 0;
-            t->urchin_to = -1; t->urchin_rest = tank_randf(t, 30, 70);
-        }
-        return;
-    }
-    if (t->urchin_rest > 0) { t->urchin_rest -= dt; return; }      /* resting, its spines waving */
+    t->urchin_bed = t->urchin_frond = -1;
+    t->urchin_chew = t->urchin_appetite = 0;
+    if (t->urchin_rest > 0) { t->urchin_rest = fmaxf(0, t->urchin_rest - dt); return; }
     if (t->urchin_to < 0) t->urchin_to = tank_randf(t, urchin_lo(), urchin_hi());
     float d = t->urchin_to - t->urchin_x;
-    t->urchin_x += (d > 0 ? 1 : -1) * fminf(fabsf(d), URCHIN_PX_S * 0.7f * dt);
+    t->urchin_x += (d > 0 ? 1 : -1) * fminf(fabsf(d), 1.12f * dt);
     if (fabsf(d) < 0.5f) { t->urchin_to = -1; t->urchin_rest = tank_randf(t, 40, 120); }
 }
-/* asleep: a share of the grass over the keep line, every frond in proportion
- * (see above); it wakes where the grass stands tallest */
-static void urchin_sleep(tank_t *t, float seconds) {
-    if (!(t->sd_unlocks & SD_ITEM_URCHIN)) return;
-    if (t->urchin_x < 0) tank_urchin_place(t);
-    float k = 1.0f - expf(-URCHIN_SLEEP_FRAC_H * seconds / 3600.0f);
-    float eaten = 0, most = 0; int mb = -1, mi = -1;
-    for (int b = 0; b < tank_veg_beds(t); b++) {
-        if (tank_veg_kind(t, b) != VEG_KIND_GRASS) continue;
-        float bx0; int n; veg_bed_base(t, b, &bx0, &n);
-        for (int i = 0; i < n; i++) {
-            float over = t->veg_h[b][i] - URCHIN_KEEP;
-            if (over <= 0) continue;
-            t->veg_h[b][i] -= over * k; eaten += over * k;
-            if (over > most) { most = over; mb = b; mi = i; }
-        }
-    }
-    if (eaten <= 0) return;
-    t->urchin_grazed_px += eaten * (VEG_SEGS_FULL - 1) * VEG_PAY_PX;
-    if (mb >= 0) t->urchin_x = urchin_frond_x(t, mb, mi);
-    t->urchin_bed = t->urchin_frond = -1; t->urchin_chew = 0; t->urchin_to = -1; t->urchin_rest = 0;
-    veg_sync(t);
-}
-void tank_urchin_place(tank_t *t) {
-    float x0, x1; tank_veg_bed(t, 0, &x0, &x1, NULL, NULL);       /* on the sand just right of the reef bed */
-    t->urchin_x = clampf(x1 + 18, urchin_lo(), urchin_hi());
-    t->urchin_bed = t->urchin_frond = -1; t->urchin_chew = 0; t->urchin_appetite = 0;
-    t->urchin_to = -1; t->urchin_rest = 20;
-}
+
 /* ---- the seahorse (0.3.6, SD_ITEM_SEAHORSE; tank.h has the story) ----
  * Three things it does. PERCH: its tail round an ANCHOR (tank.h: a blade, a
- * post on a decoration, or the sand) for a while, then it lets go and DRIFTs
+ * post on a decoration) for a while, then it lets go and DRIFTs
  * to another at SH_DRIFT_PX_S - upright, slow, its dorsal fin doing the work.
  * A finger resting on the glass (the settled hold the fish answer,
  * HOLD_ATTRACT_S) makes it let go at once and swim to the finger's edge at
@@ -1608,8 +1245,8 @@ void tank_urchin_place(tank_t *t) {
 #define SH_STAY_MAX     140.0f
 #define SH_POST_STAY_MIN 60.0f    /* on a decoration */
 #define SH_POST_STAY_MAX 180.0f
-#define SH_SAND_STAY_MIN 50.0f    /* resting on the bottom, before it lifts off to look again */
-#define SH_SAND_STAY_MAX 110.0f
+#define SH_HOVER_STAY_MIN 2.0f
+#define SH_HOVER_STAY_MAX 5.0f
 #define SH_LINGER_S     3.0f
 /* the water (Strato 10-15: "it moves to a new location and stops abruptly
  * with no easing ... it should continue to slightly drift the direction it
@@ -1620,15 +1257,28 @@ void tank_urchin_place(tank_t *t) {
 #define SH_LAG_S        0.55f
 #define SH_EASE_PX      34.0f
 #define SH_TAP_RADIUS   26.0f
-#define SH_SAND_Y       (TANK_BOT - 21.0f)   /* the coil's centre resting on the floor */
 #define SH_GRIP_SWORD   0.72f                /* a sword leaf is gripped higher, where it is narrow */
+bool tank_kelp_anchor(const tank_t *t, int patch, float *x, float *y) {
+    if (!t || patch < 0 || patch >= KELP_PATCH_COUNT ||
+        !(t->foliage.planted & (1u << FOLIAGE_KELP))) return false;
+    if (x) *x = TANK_W * (patch ? .74f : .26f);
+    if (y) *y = TANK_SAND_TOP + 10 - KELP_HEIGHT * .6f;
+    return true;
+}
+int tank_kelp_sway(const tank_t *t, int patch) {
+    static const int sway[] = {0, 1, 1, 0, -1, -1};
+    int phase = t->clock >= 0 && t->clock < 1e9f
+        ? (int)(t->clock * 2) % 6
+        : (int)fmodf(floorf(fmaxf(t->clock, 0) * 2), 6);
+    return sway[(phase + patch * 2) % 6];
+}
 typedef struct { uint8_t kind, front; int8_t bed, frond, item; float x, y, hw; } sh_cand_t;
 /* a frond it may hold: any frond tall enough. Its LANE comes from where the
  * frond is drawn: a grass bed is woven (even fronds behind the fish, odd in
  * front), the sword plant by its depth (BEHIND: all behind; AMONG: woven;
  * IN FRONT: all in front) */
 static bool sh_frond_ok(const tank_t *t, int b, int i) {
-    if (b < 0 || b >= tank_veg_beds(t)) return false;
+    if (b != 3 || !(t->sd_unlocks & SD_ITEM_PLANT)) return false;
     float bx0; int n; veg_bed_base(t, b, &bx0, &n);
     return i >= 0 && i < n && t->veg_h[b][i] >= SH_MIN_H;
 }
@@ -1678,6 +1328,10 @@ static int sh_posts(const tank_t *t, sh_cand_t *out, int max) {
 /* is what it holds still there? (a piece or plant the keeper moved to another
  * depth under it keeps it: it goes with it to that lane) */
 static bool sh_hold_ok(tank_t *t) {
+    if (t->sh_akind == SH_ANCHOR_KELP) {
+        t->sh_front = false;
+        return tank_kelp_anchor(t, t->sh_frond, NULL, NULL);
+    }
     if (t->sh_akind == SH_ANCHOR_BLADE) {
         if (!sh_frond_ok(t, t->sh_bed, t->sh_frond)) return false;
         t->sh_front = sh_frond_front(t, t->sh_bed, t->sh_frond);
@@ -1689,7 +1343,7 @@ static bool sh_hold_ok(tank_t *t) {
             if (c[i].item == t->sh_aitem && fabsf(c[i].x - t->sh_ax) < 0.01f && fabsf(c[i].y - t->sh_ay) < 0.01f) { t->sh_front = c[i].front != 0; return true; }
         return false;
     }
-    return t->sh_akind == SH_ANCHOR_SAND;
+    return false;
 }
 static void sh_take(tank_t *t, const sh_cand_t *c) {
     t->sh_akind = c->kind; t->sh_bed = c->bed; t->sh_frond = c->frond; t->sh_aitem = c->item;
@@ -1702,9 +1356,16 @@ static void sh_take(tank_t *t, const sh_cand_t *c) {
  * a taller blade a little sooner), with a little chance in it, so it hops
  * blade to blade through a bed and crosses to the next now and then (Strato
  * 10-15: after a cut "it shouldn't be out in open water for very long").
- * The sand only when there is nothing else. Never the one it is on. */
+ * With no real anchor, it cruises upright between open-water hover points. */
 static bool sh_pick(tank_t *t, float from_x, float from_y) {
     sh_cand_t best = { 0, 0, -1, -1, -1, 0, 0, 0 }; bool have = false; float bs = 0;
+    for (int patch = 0; patch < KELP_PATCH_COUNT; patch++) {
+        sh_cand_t c = {SH_ANCHOR_KELP, 0, -1, (int8_t)patch, -1, 0, 0, 1};
+        if (!tank_kelp_anchor(t, patch, &c.x, &c.y) ||
+            (t->sh_akind == SH_ANCHOR_KELP && t->sh_frond == patch)) continue;
+        float score = -tank_dist(c.x, c.y, from_x, from_y) + 60 + tank_randf(t, 0, 30);
+        if (!have || score > bs) { bs = score; best = c; have = true; }
+    }
     for (int b = 0; b < tank_veg_beds(t); b++) {
         float bx0; int n; veg_bed_base(t, b, &bx0, &n);
         for (int i = 0; i < n; i++) {
@@ -1721,15 +1382,18 @@ static bool sh_pick(tank_t *t, float from_x, float from_y) {
         float score = -tank_dist(posts[i].x, posts[i].y, from_x, from_y) + tank_randf(t, 0, 30) - (posts[i].front != t->sh_front ? 15 : 0);   /* a lane change a little later */
         if (!have || score > bs) { bs = score; best = posts[i]; have = true; }
     }
-    if (!have) {                                                           /* nothing: a spot on the sand near here */
-        best.kind = SH_ANCHOR_SAND; best.front = t->sh_front; best.bed = best.frond = -1; best.item = -1;   /* the sand in the lane it is in */
-        best.x = clampf(from_x + tank_randf(t, -60, 60), TANK_FX0 + 40, TANK_FX1 - 40); best.y = SH_SAND_Y; best.hw = 0;
+    if (!have) {
+        best.kind = SH_ANCHOR_NONE; best.front = t->sh_front;
+        best.bed = best.frond = -1; best.item = -1;
+        best.x = tank_randf(t, TANK_FX0 + 40, TANK_FX1 - 40);
+        best.y = tank_randf(t, 70, TANK_BOT - 50); best.hw = 0;
     }
     sh_take(t, &best);
     return true;
 }
 /* anything to hold at all (a blade tall enough, a post on a piece behind)? */
 static bool sh_any_hold(const tank_t *t) {
+    if (tank_kelp_anchor(t, 0, NULL, NULL)) return true;
     sh_cand_t c[12];
     if (sh_posts(t, c, 12) > 0) return true;
     for (int b = 0; b < tank_veg_beds(t); b++) {
@@ -1741,6 +1405,9 @@ static bool sh_any_hold(const tank_t *t) {
 /* a hold other than the one it has? (its stay over, with nowhere else to go
  * it keeps the one it has rather than dropping to the sand and climbing back) */
 static bool sh_another_hold(const tank_t *t) {
+    for (int patch = 0; patch < KELP_PATCH_COUNT; patch++)
+        if (tank_kelp_anchor(t, patch, NULL, NULL) &&
+            !(t->sh_akind == SH_ANCHOR_KELP && t->sh_frond == patch)) return true;
     sh_cand_t c[12]; int n = sh_posts(t, c, 12);
     for (int i = 0; i < n; i++)
         if (!(t->sh_akind == SH_ANCHOR_POST && fabsf(c[i].x - t->sh_ax) < 0.01f && fabsf(c[i].y - t->sh_ay) < 0.01f)) return true;
@@ -1752,9 +1419,9 @@ static bool sh_another_hold(const tank_t *t) {
     return false;
 }
 static float sh_stay_for(tank_t *t) {
-    return t->sh_akind == SH_ANCHOR_BLADE ? tank_randf(t, SH_STAY_MIN, SH_STAY_MAX)
+    return t->sh_akind == SH_ANCHOR_BLADE || t->sh_akind == SH_ANCHOR_KELP ? tank_randf(t, SH_STAY_MIN, SH_STAY_MAX)
          : t->sh_akind == SH_ANCHOR_POST  ? tank_randf(t, SH_POST_STAY_MIN, SH_POST_STAY_MAX)
-         : tank_randf(t, SH_SAND_STAY_MIN, SH_SAND_STAY_MAX);
+         : tank_randf(t, SH_HOVER_STAY_MIN, SH_HOVER_STAY_MAX);
 }
 void tank_seahorse_place(tank_t *t) {
     float x0, x1; tank_veg_bed(t, 0, &x0, &x1, NULL, NULL);
@@ -1763,16 +1430,21 @@ void tank_seahorse_place(tank_t *t) {
     t->sh_hitched = t->sh_credited = false; t->sh_stay = 0; t->sh_vx = t->sh_vy = 0;
     t->sh_pose = SH_POSE_BLADE; t->sh_land = 0;
     sh_pick(t, t->sh_x, t->sh_y);
-    t->sh_x = t->sh_tx; t->sh_y = t->sh_ty; t->sh_mode = SH_PERCH; t->sh_stay = sh_stay_for(t); t->sh_land = SH_LAND_S;
+    if (t->sh_akind != SH_ANCHOR_NONE) {
+        t->sh_x = t->sh_tx; t->sh_y = t->sh_ty; t->sh_mode = SH_PERCH;
+        t->sh_stay = sh_stay_for(t); t->sh_land = SH_LAND_S;
+    }
 }
 const char *tank_seahorse_holding(const tank_t *t) {
+    if (t->sh_akind == SH_ANCHOR_KELP) return "KELP";
     if (t->sh_akind == SH_ANCHOR_BLADE) return t->sh_bed >= 0 && tank_veg_kind(t, t->sh_bed) == VEG_KIND_SWORD ? "A LEAF" : "A BLADE";
     if (t->sh_akind == SH_ANCHOR_POST) return t->sh_aitem == 2 ? "THE CASTLE" : t->sh_aitem == 3 ? "THE CORAL" : "THE REEF";
-    return "THE SAND";
+    return "OPEN WATER";
 }
 bool tank_seahorse_hit(const tank_t *t, float x, float y) {
     if (!(t->sd_unlocks & SD_ITEM_SEAHORSE) || t->sh_x < 0) return false;
-    return tank_dist(t->sh_x + 4 * t->sh_facing, t->sh_y - SH_BODY_UP, x, y) <= SH_TAP_RADIUS;
+    return tank_dist(t->sh_x + 4 * t->sh_facing, t->sh_y - SH_BODY_UP, x, y) <= SH_TAP_RADIUS ||
+        creature_partner_hit(t, CREATURE_SEAHORSE, x, y, SH_TAP_RADIUS);
 }
 float tank_seahorse_days(const tank_t *t) { return t->sh_s / 86400.0f; }
 /* the finger's edge: SH_HITCH_OFF px from the hold toward the middle of the
@@ -1886,7 +1558,7 @@ static void seahorse_tick(tank_t *t, float dt) {
         sh_let_go(t, 0);
     }
     if (t->sh_mode == SH_PERCH) {
-        if (!sh_hold_ok(t)) {                                      /* the scissors took its blade, the piece moved */
+        if (!sh_hold_ok(t)) {
             /* a SHORT wait before it looks again: the blade's stay timer used
              * to carry over here and it hung in the water for minutes
              * (Strato 10-15: "it moved a little bit but now it looks frozen") */
@@ -1926,19 +1598,32 @@ static void seahorse_tick(tank_t *t, float dt) {
         }
         return;
     }
-    /* adrift: on its way to an anchor (a blade, a post, or a spot on the sand) */
+    /* Adrift: a real anchor, or a short open-water hover when none exists. */
     if (t->sh_akind != SH_ANCHOR_NONE && t->sh_akind != SH_ANCHOR_SAND && !sh_hold_ok(t)) sh_pick(t, t->sh_x, t->sh_y);
     if (t->sh_akind == SH_ANCHOR_BLADE) { sh_grip(t, t->sh_bed, t->sh_frond, &t->sh_ax, &t->sh_ay); t->sh_tx = t->sh_ax; t->sh_ty = t->sh_ay; }
-    if (t->sh_stay > 0) { t->sh_stay -= dt; sh_land_tick(t, dt, false); return; }   /* the moment after a loss: it hangs, then goes */
-    if (t->sh_akind == SH_ANCHOR_SAND && sh_any_hold(t)) sh_pick(t, t->sh_x, t->sh_y);   /* on its way to rest: something better turned up */
+    if (t->sh_akind == SH_ANCHOR_NONE && sh_any_hold(t)) {
+        sh_pick(t, t->sh_x, t->sh_y); t->sh_stay = 0;
+    }
+    if (t->sh_stay > 0) {
+        t->sh_stay -= dt; sh_land_tick(t, dt, false);
+        if (t->sh_stay <= 0 && t->sh_akind == SH_ANCHOR_NONE && !t->night)
+            sh_pick(t, t->sh_x, t->sh_y);
+        return;
+    }
+    if (t->sh_akind == SH_ANCHOR_NONE && t->night) {
+        sh_land_tick(t, dt, false);
+        t->sh_vx = t->sh_vy = 0;
+        return;
+    }
     sh_move(t, dt, SH_DRIFT_PX_S);
     sh_land_tick(t, dt, false);                                        /* whatever it held, it has let go */
-    if (sh_at(t)) {                                                    /* the tail finds the anchor */
-        t->sh_mode = SH_PERCH; t->sh_stay = sh_stay_for(t); t->sh_pose = SH_POSE_BLADE; t->sh_land = 0;
+    if (sh_at(t)) {
+        if (t->sh_akind != SH_ANCHOR_NONE) t->sh_mode = SH_PERCH;
+        t->sh_stay = sh_stay_for(t); t->sh_pose = SH_POSE_BLADE; t->sh_land = 0;
     }
 }
 /* ---- the shrimp school (SD_ITEM_SHRIMP; tank.h has the rules) ----
- * A loose school steering to one goal - a spot at the foot of the grass most
+ * A loose school steering to one goal - a spot near available shelter most
  * of the time, now and then out on the sand or up in open water - each shrimp
  * at its own offset from it, keeping about a body length from its neighbours
  * (Strato: "space them out a bit more so they overlap a tad less"). A pellet
@@ -1955,7 +1640,7 @@ static float shrimp_hash(int i, int k) {  /* a fixed 0..1 per shrimp: its place 
     h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
     return (h & 0xffff) / 65535.0f;
 }
-bool tank_shrimp_refusing(const tank_t *t) { return tank_algae_cover(t) > SHRIMP_REFUSE_COVER; }
+bool tank_shrimp_refusing(const tank_t *t) { (void)t; return false; }
 int tank_shrimp_display_count(const tank_t *t) {
     return t->companion.display_compact ? (t->shrimp_n + 1) / 2 : t->shrimp_n;
 }
@@ -1969,84 +1654,55 @@ static void shrimp_spawn(tank_t *t, int i, float x) {
 void tank_shrimp_place(tank_t *t, int n) {
     if (n < 0) n = 0;
     if (n > SHRIMP_MAX) n = SHRIMP_MAX;
-    int wide = 0; float wbest = -1, x0 = 0, x1 = 0;           /* at the foot of the widest bed, clear of the glass */
-    for (int b = 0; b < tank_veg_beds(t); b++) { float a, z; tank_veg_bed(t, b, &a, &z, NULL, NULL); if (z - a > wbest) { wbest = z - a; wide = b; } }
-    tank_veg_bed(t, wide, &x0, &x1, NULL, NULL);
-    float cx = clampf((x0 + x1) * 0.5f, TANK_FX0 + 60, TANK_FX1 - 60);
+    float cx = clampf(t->reef_x, TANK_FX0 + 60, TANK_FX1 - 60);
     for (int i = 0; i < n; i++) shrimp_spawn(t, i, cx + (shrimp_hash(i, 1) - 0.5f) * (40 + n * 9));
     t->shrimp_n = (uint8_t)n;
     t->shrimp_tx = cx; t->shrimp_ty = FOOD_FLOOR_Y - 12; t->shrimp_tt = 4;
 }
-/* the school's next goal. Mostly the foot of the grass; now and then out on
- * the sand; and now and then a slow DRIFT UP a bed to the top of its canopy
- * (or at least SHRIMP_RISE_MIN above the floor when the grass is cut short),
- * a while up there, then back down - Strato, 2026-09-29: "you dont get to see
- * them much ... i dont want them swimming all over the tank all the time but a
- * chance for them to randomly drift up to at least the top of the sea grass".
- * About a quarter of their time goes on these trips. Never while refusing food. */
+/* Mostly reef/sand goals, with occasional slow trips through open water. */
 #define SHRIMP_RISE_P    0.06f         /* of the goals picked (0.10: up off the bottom ~45% of the time) */
 #define SHRIMP_RISE_MIN  60.0f         /* px above the floor, at the least */
-static void shrimp_goal(tank_t *t, bool refusing) {
-    int beds = tank_veg_beds(t);
+static void shrimp_goal(tank_t *t) {
     float r = tank_randf(t, 0, 1);
-    if (!refusing && r < SHRIMP_RISE_P && beds > 0) {              /* up the grass to the canopy */
-        int b = (int)tank_randf(t, 0, beds - 0.001f);
-        float x0, x1, top; tank_veg_bed(t, b, &x0, &x1, &top, NULL);
-        t->shrimp_tx = x1 - x0 > 16 ? tank_randf(t, x0 + 8, x1 - 8) : (x0 + x1) * 0.5f;
-        t->shrimp_ty = fminf(top + tank_randf(t, -8, 10), FOOD_FLOOR_Y - SHRIMP_RISE_MIN);
-        t->shrimp_tt = tank_randf(t, 22, 32);                           /* the drift up is slow; then a while at the top */
+    if (r < SHRIMP_RISE_P) {
+        t->shrimp_tx = tank_randf(t, TANK_FX0 + 40, TANK_FX1 - 40);
+        t->shrimp_ty = FOOD_FLOOR_Y - tank_randf(t, SHRIMP_RISE_MIN, SHRIMP_RISE_MIN + 30);
+        t->shrimp_tt = tank_randf(t, 22, 32);
         return;
     }
-    if ((refusing || r < SHRIMP_RISE_P + 0.62f) && beds > 0) {     /* the grass: the school's cover */
-        int b = (int)tank_randf(t, 0, beds - 0.001f);
-        float x0, x1; tank_veg_bed(t, b, &x0, &x1, NULL, NULL);
-        t->shrimp_tx = x1 - x0 > 16 ? tank_randf(t, x0 + 8, x1 - 8) : (x0 + x1) * 0.5f;
+    if (r < SHRIMP_RISE_P + 0.62f) {
+        t->shrimp_tx = clampf(t->reef_x + tank_randf(t, -30, 30), TANK_FX0 + 40, TANK_FX1 - 40);
     } else t->shrimp_tx = tank_randf(t, TANK_FX0 + 40, TANK_FX1 - 40);         /* out on the sand */
-    t->shrimp_ty = refusing || tank_randf(t, 0, 1) < 0.8f ? FOOD_FLOOR_Y - tank_randf(t, 12, 26)
+    t->shrimp_ty = tank_randf(t, 0, 1) < 0.8f ? FOOD_FLOOR_Y - tank_randf(t, 12, 26)
                                                           : FOOD_FLOOR_Y - tank_randf(t, 30, 64);   /* a swim up into open water */
     t->shrimp_tt = tank_randf(t, 6, 11);
 }
-/* the grass's top over x: the bed under it, or the beds' average over open
- * sand. A pellet that has sunk below it is the shrimp's to take, still falling
- * or resting on the floor (Strato, 2026-09-29: "if food falls below the
- * seagrass canopy its fair game for shrimp even as its still floating downward") */
-static float shrimp_canopy_y(const tank_t *t, float x) {
-    float sum = 0; int nb = tank_veg_beds(t);
-    for (int b = 0; b < nb; b++) {
-        float x0, x1, top; tank_veg_bed(t, b, &x0, &x1, &top, NULL);
-        if (x >= x0 && x <= x1) return top;
-        sum += top;
-    }
-    return nb ? sum / nb : FOOD_FLOOR_Y;
-}
-static bool shrimp_food_ok(const tank_t *t, const food_t *p) {
-    return p->alive && (p->floor_s > 0 || p->y >= shrimp_canopy_y(t, p->x));
+static bool shrimp_food_ok(const food_t *p) {
+    return p->alive && (p->floor_s > 0 || p->y >= FOOD_FLOOR_Y - 36);
 }
 static void shrimp_tick(tank_t *t, float dt) {
     if (!(t->sd_unlocks & SD_ITEM_SHRIMP)) return;
     if (t->shrimp_n < SHRIMP_START) tank_shrimp_place(t, SHRIMP_START);
-    bool refusing = tank_shrimp_refusing(t);
     if (t->shrimp_cool > 0) t->shrimp_cool -= dt;
     int n = t->shrimp_n;
     float cx = 0, cy = 0;                                          /* the school's middle */
     for (int i = 0; i < n; i++) { cx += t->shrimp[i].x; cy += t->shrimp[i].y; }
     cx /= n; cy /= n;
-    /* a newcomer: ten pellets eaten and the cooldown out - it steps out of the grass by the school */
+    /* A newcomer joins the school after ten pellets and the cooldown. */
     if (t->shrimp_food >= SHRIMP_PER_JOIN && t->shrimp_cool <= 0 && n < SHRIMP_MAX) {
         shrimp_spawn(t, n, cx + (shrimp_hash(n, 1) - 0.5f) * 20);
         t->shrimp_n = (uint8_t)++n;
         t->shrimp_food = 0; t->shrimp_cool = SHRIMP_COOLDOWN_S;
     }
     t->shrimp_tt -= dt;
-    if (t->shrimp_tt <= 0) shrimp_goal(t, refusing);
+    if (t->shrimp_tt <= 0) shrimp_goal(t);
     int fp = -1; float best = 1e9f;                                /* the pellet in reach nearest the school */
-    if (!refusing)
-        for (int k = 0; k < MAX_FOOD; k++) {
-            const food_t *p = &t->food[k];
-            if (!shrimp_food_ok(t, p)) continue;
-            float d = fabsf(p->x - cx) + fabsf(p->y - cy) * 0.5f;
-            if (d < best) { best = d; fp = k; }
-        }
+    for (int k = 0; k < MAX_FOOD; k++) {
+        const food_t *p = &t->food[k];
+        if (!shrimp_food_ok(p)) continue;
+        float d = fabsf(p->x - cx) + fabsf(p->y - cy) * 0.5f;
+        if (d < best) { best = d; fp = k; }
+    }
     float gx = fp >= 0 ? t->food[fp].x : t->shrimp_tx;
     float gy = fp < 0 ? t->shrimp_ty : t->food[fp].floor_s > 0 ? FOOD_FLOOR_Y - 2 : t->food[fp].y;   /* on the floor, or still sinking */
     float spread = 40 + n * 9;                                    /* the school's width: 76 px for 4, 130 for 10 */
@@ -2087,11 +1743,8 @@ static void shrimp_tick(tank_t *t, float dt) {
             float hx = q->x + SHRIMP_HEAD * q->facing;
             for (int k = 0; k < MAX_FOOD; k++) {                       /* a pellet at its head */
                 food_t *p = &t->food[k];
-                if (!shrimp_food_ok(t, p) || fabsf(p->x - hx) > 8 || fabsf(p->y - q->y) > 9) continue;
-                if (refusing) {                                        /* too much algae: it turns its back on it */
-                    q->facing = (int8_t)(q->x > p->x ? 1 : -1); q->behind = -0.6f;
-                    q->vx = q->facing * 6.0f;
-                } else if (k == fp) {
+                if (!shrimp_food_ok(p) || fabsf(p->x - hx) > 8 || fabsf(p->y - q->y) > 9) continue;
+                if (k == fp) {
                     q->pecking = 1; q->vx *= 0.5f;
                     q->vy = p->floor_s > 0 ? q->vy * 0.5f : 8.0f;           /* a falling pellet: it sinks with it */
                     p->nibbled += dt;
@@ -2168,7 +1821,7 @@ static void cluster_grow(tank_t *t, float seconds) {
 void     tank_coral_set_rgb(tank_t *t, uint32_t rgb) { t->coral_rgb = rgb & 0xffffff; }
 /* the decor's spot and layer (see tank.h): item 0 is the plant, item 2 the castle, item 3 the coral, item 4 the cluster, item 8 the pumpkin */
 const char *const FISH_VARIETY_NAMES[FISH_VARIETY_COUNT] = {
-    "CLASSIC", "ANGEL", "GUPPY", "TETRA", "PUFFER",
+    "HARBORFIN", "ANGEL", "GUPPY", "TETRA", "PUFFER",
     "SHARK", "JELLYFISH", "STINGRAY", "CLOWNFISH", "BETTA"
 };
 const char *const FISH_PATTERN_NAMES[FISH_PATTERN_COUNT] = { "STRIPES", "SPOTS", "BAND", "PLAIN",
@@ -2368,7 +2021,6 @@ void tank_decor_set(tank_t *t, int item, float x, int z) {
 
 void tank_touch_hold(tank_t *t, float x, float y) {
     tank_handled(t);
-    if (t->tool != TOOL_HAND) return;            /* a tool in hand: the glass takes its strokes and nothing else (2026-10-04) */
     t->hold_active = true; t->hold_x = x; t->hold_y = y;
 }
 
@@ -2376,64 +2028,14 @@ void tank_touch_drag(tank_t *t, float x, float y) {
     tank_handled(t);
     t->drag_active = true;
     if (!t->drag_has_prev) {
-        /* stroke start: a slash must BEGIN on a plant - within SLASH_START_PX
-         * of an actual frond (beside its spine, no higher than its tip). A
-         * cleaning scrub that starts mid-glass, even straight above a tall
-         * bed, and then works down through the grass arms nothing: it keeps
-         * wiping algae and the fronds stand. */
-        t->slash_armed = t->tool == TOOL_SCISSORS;   /* the scissors: any stroke (below) */
-        for (int b = 0; b < tank_veg_beds(t) && !t->slash_armed; b++)
-            t->slash_armed = veg_near_frond(t, b, x, y, SLASH_START_SIDE_PX, SLASH_START_PX);
-        /* ... or beside a wall frond, on no frond of that frond's own bed
-         * (SLASH_WALL_SIDE_PX; another bed's canopy under the finger does
-         * not make the stroke any less aimed at the wall) */
-        t->slash_wall = 0;
-        for (int b = 0; b < tank_veg_beds(t) && !t->slash_wall; b++)
-            if (!veg_near_frond(t, b, x, y, SLASH_START_SIDE_PX, SLASH_START_PX))
-                t->slash_wall = (int8_t)veg_wall_frond(t, b, x, y, SLASH_START_PX);
-        if (t->slash_wall) t->slash_armed = true;
-        if (t->tool == TOOL_SPONGE || (t->tool == TOOL_HAND && t->tools_locked)) { t->slash_armed = false; t->slash_wall = 0; }   /* the sponge never cuts, nor does a locked bare finger */
-        t->slash_engaged = t->slash_cut = false; t->wipe_sounded = false;
-        t->slash_x0 = x; t->slash_y0 = y; t->slash_h = t->slash_v = 0;
-    }
-    if (t->drag_has_prev) {
-        float sdx = x - t->drag_px, sdy = y - t->drag_py;
+        t->slash_x0 = x; t->slash_y0 = y; t->slash_cut = false;
+    } else {
         t->drag_dist += tank_dist(x, y, t->drag_px, t->drag_py);
-        bool wipes = t->tool == TOOL_SPONGE || (t->tool == TOOL_HAND && !t->tools_locked);   /* the scissors never wipe, nor does a locked bare finger */
-        if (wipes && t->drag_dist >= WIPE_ENGAGE_PX) {   /* a real stroke, not a tap */
-            wipe_algae(t, t->drag_px, t->drag_py, x, y);
-            if (!t->wipe_sounded) { t->wipe_sounded = true; tank_emit(TEV_WIPE, -1); }
-        }
-        /* the slash (2026-09-04, per frond): an armed stroke becomes scissors
-         * once it has travelled SLASH_PX sideways, mostly sideways - deliberate
-         * work, so a tap or a missed poke at a fish never shears the garden.
-         * From then on every sideways segment cuts the fronds it crosses at
-         * the height it crosses them (the travel before engagement is cut
-         * retroactively as one straight segment from the stroke start), so
-         * a flick takes one or two fronds at the finger's height and a sweep
-         * along the floor mows the bed to nubs. */
-        if (t->slash_armed) {
-            t->slash_h += fabsf(sdx); t->slash_v += fabsf(sdy);
-            int cuts = 0;
-            if (!t->slash_engaged) {
-                if (t->tool == TOOL_SCISSORS ? t->slash_h >= SLASH_TOOL_PX && t->slash_h > t->slash_v
-                                             : t->slash_h >= SLASH_PX && t->slash_h > SLASH_RATIO * t->slash_v) {
-                    t->slash_engaged = true;
-                    cuts += veg_cut(t, t->slash_x0, t->slash_y0, x, y, true, t->slash_wall);
-                }
-            } else if (fabsf(sdx) >= fabsf(sdy))   /* only the sideways segments cut */
-                cuts += veg_cut(t, t->drag_px, t->drag_py, x, y, false, t->slash_wall);
-            if (cuts) tank_emit(TEV_SNIP, -1);
-            if (cuts && !t->slash_cut) { t->slash_cut = true; t->trims++; }
-        }
     }
     t->drag_px = x; t->drag_py = y; t->drag_has_prev = true;
-    t->tool_idle = 0;
 }
-
 void tank_set_tool(tank_t *t, int tool) {
-    t->tool = (uint8_t)(tool == TOOL_SPONGE || tool == TOOL_SCISSORS ? tool : TOOL_HAND);
-    t->tool_idle = 0;
+    (void)tool; t->tool = TOOL_HAND; t->tool_idle = 0;
 }
 
 void tank_lock_tools(tank_t *t, bool lock) { t->tools_locked = lock; }
@@ -2487,7 +2089,6 @@ int tank_shrimp_tap(tank_t *t, float x, float y) {
 }
 void tank_touch_tap(tank_t *t, float x, float y) {
     tank_handled(t);
-    if (t->tool != TOOL_HAND) return;            /* a tool in hand: no feed, no light, no startle - DONE first (2026-10-04) */
     if (y - tank_glass_top(x) < FEED_ZONE_Y) { tank_feed(t, x, 3); return; }     /* surface tap = feed (the bowl's surface is its top glass) */
     if (t->tap_burst_t > TAP_WINDOW) t->tap_count = 0;
     t->tap_count++; t->tap_burst_t = 0; t->tap_x = x; t->tap_y = y;
@@ -2550,7 +2151,6 @@ static void touch_tick(tank_t *t, float dt) {
              * tank's hold_approaches counter still counts the hold once. */
             if (draw_begins) f->hold_far = d >= HOLD_APPROACH_FROM;
             if (f->hold_far && d < HOLD_APPROACH_AT) {
-                f->ms_bits |= MS_FIRST_HOLD_APPROACH;
                 if (!t->hold_approached) { t->hold_approached = true; t->hold_approaches++; tank_emit(TEV_INVESTIGATE, i); }
             }
         }
@@ -2564,9 +2164,9 @@ static void touch_tick(tank_t *t, float dt) {
      * enough to notice across a couple of check-ins, rare enough to feel
      * like something glimpsed rather than an indicator */
     if (t->spawning && t->court_a >= 0 && t->court_b >= 0) {
-        /* the spawning (2026-09-24): no episode clock - the pair circles in
-         * the grass until the fry comes, lit or dark. The clock that counts
-         * is the time BOTH spend in the fronds (a parent still swimming down,
+        /* No episode clock: the pair circles the nursery until the fry
+         * comes, lit or dark. The clock that counts is the time BOTH spend
+         * near shelter (a parent still swimming down,
          * or begging, holds it); the bubbles mark their arrival. */
         float sx, sy, sr; court_site(t, &sx, &sy, &sr);
         const fish_t *a = &t->fish[t->court_a], *b = &t->fish[t->court_b];
@@ -2580,12 +2180,11 @@ static void touch_tick(tank_t *t, float dt) {
         else if ((t->court_cool -= dt) <= 0) {
             t->court_active = tank_randf(t, 6, 9);
             t->court_cool = tank_randf(t, 40, 90);
-            tank_court_puff(t, 2);                  /* a flirt of bubbles, from the grass */
+            tank_court_puff(t, 2);
         }
     } else t->court_active = 0;
-    /* a tool nobody has used for a while goes back in the box */
-    if (t->tool && !t->drag_active && (t->tool_idle += dt) > TOOL_IDLE_S) t->tool = TOOL_HAND;
-    /* a lifted finger ends the wipe/slash stroke (platform re-asserts while down) */
+    t->tool = TOOL_HAND;
+    /* A lifted finger ends the current stroke (platform reasserts while down). */
     if (!t->drag_active) {
         t->drag_has_prev = false; t->drag_dist = 0;
         t->slash_armed = t->slash_engaged = t->slash_cut = false;
@@ -2652,6 +2251,7 @@ void tank_tick_sleep(tank_t *t, float seconds) {
         f->hunger = clampf(f->hunger + SLEEP_HUNGER_PER_H * h, 0, t->companion.cozy ? 6 : 10);
         f->energy = clampf(f->energy + SLEEP_ENERGY_PER_H * h * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1), 0, 10);
         f->stress = clampf(f->stress - SLEEP_STRESS_PER_H * h * ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1), 0, 10);
+        if (tank_fish_comfort(t, i) < 0 && f->stress < 2) f->stress = 2;   /* missing its favorite piece */
         f->speed = 0; f->target_speed = 0; f->speed_vel = 0; f->turn_vel = 0; f->bored = 0; f->breather = 0;  /* a night's sleep is a fresh start */
         f->goal_age += seconds; f->ask_age += seconds;  /* wake re-asks the advisor at once */
     }
@@ -2662,28 +2262,10 @@ void tank_tick_sleep(tank_t *t, float seconds) {
     cluster_grow(t, seconds);
     shrimp_sleep(t, seconds);
     if (t->sd_unlocks & SD_ITEM_SEAHORSE) { t->sh_s += seconds; t->sh_snack_cool = fmaxf(0, t->sh_snack_cool - seconds); }   /* days with the keeper run through the night */
-    /* the garden grows fastest in a dark, untended tank: waking to a taller
-     * canopy and film on the glass is the morning chore. The night is lived
-     * a SLEEP_SLICE_S at a time - the grass and the film grow, then the
-     * snail and the urchin eat into what grew (2026-10-02: one pass for the
-     * whole night let the snail eat only the film from before it, and the
-     * night's growth all landed after) - the same whether the span comes in
-     * one call (a boot after a power-off) or many (the naps). */
-    for (float left = seconds; left > 0; left -= SLEEP_SLICE_S) {
-        float dt = left < SLEEP_SLICE_S ? left : SLEEP_SLICE_S;
-        veg_grow(t, dt / VEG_GROW_SLEEP_S);
-        /* film steps go through the same accumulator the awake tick uses:
-         * (int)(30 / 120) is 0 - the truncation that had quietly stopped every
-         * bit of algae from forming overnight (2026-09-04). Nothing is banked
-         * past the slice: the awake tick once paid a long sleep's overflow out
-         * a step per frame, film refilling under the keeper's wipe (2026-09-29). */
-        t->algae_acc += dt * ((t->sd_unlocks & SD_ITEM_FILTER) ? 0.5f : 1);
-        int steps = (int)(t->algae_acc / ALGAE_STEP_SLEEP_S);
-        t->algae_acc -= steps * ALGAE_STEP_SLEEP_S;
-        tank_grow_algae(t, steps);
-        snail_sleep(t, dt);
-        urchin_sleep(t, dt);
-    }
+    t->reef_flow_s = 0; t->reef_flow_cooldown = 0;
+    t->reef_flow_seen = 0;
+
+
 }
 
 /* the schema's 3 x 2 zone grid (advisor_core.c encodes the same), 0..5 */
@@ -2716,6 +2298,31 @@ int tank_favorite_decor(const tank_t *t, int idx) {
         if (score < best) { best = score; item = i; }
     }
     return item;
+}
+
+/* A fish's loved piece is part of its nature: fixed from its life id and
+ * variety, so it costs no save bytes. Present -> calmer and faster growing;
+ * missing -> a little restless. */
+static const uint8_t FAVORITE_ITEMS[] = {
+    1, 2, 3, 9, 10, 11, 12, 16, 18, 19, 20, 23, 27,
+    SD_SCENERY_BRAIN, SD_SCENERY_ANEMONE, SD_DECOR_FIRST + 7, SD_DECOR_FIRST + 10,
+    SD_FOLIAGE_FIRST, SD_FOLIAGE_FIRST + 1, SD_FOLIAGE_FIRST + 2, SD_FOLIAGE_FIRST + FOLIAGE_KELP,
+};
+int tank_fish_favorite_item(const tank_t *t, int idx) {
+    if (!t || idx < 0 || idx >= t->n_fish) return -1;
+    uint32_t h = (t->polish.active[idx].id + 1u) * 2654435761u ^ (uint32_t)(t->fish[idx].variety + 7) * 40503u;
+    h ^= h >> 15; h *= 2246822519u; h ^= h >> 13;
+    return FAVORITE_ITEMS[h % (uint32_t)(sizeof FAVORITE_ITEMS)];
+}
+bool tank_item_in_tank(const tank_t *t, int item) {
+    if (!t) return false;
+    if (SD_IS_FOLIAGE(item))
+        return t->foliage.version == 1 && (t->foliage.planted & (1u << (item - SD_FOLIAGE_FIRST))) != 0;
+    return tank_decor_owned(t, item);
+}
+int tank_fish_comfort(const tank_t *t, int idx) {
+    int item = tank_fish_favorite_item(t, idx);
+    return item < 0 ? 0 : tank_item_in_tank(t, item) ? 1 : -1;
 }
 
 void tank_mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
@@ -2927,7 +2534,7 @@ static void eat_nearby_food(tank_t *t, fish_t *f) {
             f->eaten++;
             tank_emit(TEV_EAT, (int)(f - t->fish));
             if (t->food[i].from_player) {
-                f->eaten_player++; f->ms_bits |= MS_FIRST_MEAL_FROM_YOU;
+                f->eaten_player++;
                 if (t->feed_open) { t->player_feedings++; t->feed_open = false; }   /* the gesture became a meal */
             }
             /* post-meal reflex from the prototype */
@@ -2941,6 +2548,11 @@ static void eat_nearby_food(tank_t *t, fish_t *f) {
 
 static void update_fish(tank_t *t, int idx, float dt) {
     fish_t *f = &t->fish[idx];
+    if (f->goal.id == GOAL_VISIT_BUBBLES) {
+        f->goal.id = GOAL_EXPLORE;
+        f->goal_age = f->ask_age = 0;
+        f->at_bubbles = false;
+    }
     f->wearable = t->companion.active[idx].wearable;
     f->wear_colors = t->companion.active[idx].wear_colors;
     /* drives (prototype rates, speed rescaled by the same 0.55) */
@@ -2969,8 +2581,16 @@ static void update_fish(tank_t *t, int idx, float dt) {
         if (dc > 0 && (t->aquariums.stat_upgrades & STAT_ENRICHMENT)) dc *= 1.25f;
         f->curiosity = clampf(f->curiosity + dt * dc, 0, 10);
     }
-    f->stress    = clampf(f->stress - dt * (f->goal.id == GOAL_REST ? 0.48f : 0.18f) *
-                         ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1), 0, 10);
+    {
+        int comfort = tank_fish_comfort(t, idx);
+        bool rest = f->goal.id == GOAL_REST;
+        /* creature roles: the snail keeps the glass clear (calm +10%); the
+           urchin grazes the floor quiet so resting fish settle 20% faster */
+        float roles = ((t->sd_unlocks & SD_ITEM_SNAIL) ? 1.10f : 1) * (rest && (t->sd_unlocks & SD_ITEM_URCHIN) ? 1.20f : 1);
+        f->stress = clampf(f->stress - dt * (rest ? 0.48f : 0.18f) * roles *
+                           ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1) * (comfort > 0 ? 1.3f : 1), 0, 10);
+        if (comfort < 0 && f->stress < 2.5f) f->stress = fminf(2.5f, f->stress + dt * 0.02f);
+    }
     /* energy: the prototype's per-second drain (full to empty in ~3 min of
      * cruising) kept the school at energy ~3 - permanently tired, so the
      * advisor never had a fish fit enough to dart and read every content
@@ -2987,40 +2607,8 @@ static void update_fish(tank_t *t, int idx, float dt) {
         else f->breather += dt;
     } else if (!t->night && f->energy < BREATHER_AT && f->goal.id != GOAL_FLEE_SHADOW && !(t->ravenous && f->hunger > 6.5f))
         f->breather = dt;
-    /* a canopy is a place to hide: a fish inside one calms faster (below) */
-    bool hidden = false;
-    for (int b = 0; b < tank_veg_beds(t) && !hidden; b++)
-        hidden = t->veg_growth[b] >= VEG_BARE && veg_inside(t, b, f->x, f->y);
-    /* vegetation comfort (2026-09-04 rework: fish LIKE cover). Three regimes,
-     * each seeking its own equilibrium against the natural decay above:
-     *  - SMOTHERED: the second-tallest bed past VEG_SMOTHER (85% of the way to
-     *    its own ceiling, tank_veg_cap - since 2026-09-23 a bed stops short of
-     *    the surface) - at least two beds crowding their ceilings - is the tank
-     *    being overrun: real stress, ramping from nothing at 85% to the full
-     *    press at 100% (settles ~6-7 with every bed at its ceiling). One bed
-     *    at the ceiling is just a good hiding place, never a stressor.
-     *  - BARE: no bed past VEG_BARE - nowhere to hide - is a mild unease
-     *    (settles ~1.3) that lifts the moment one tuft regrows.
-     *  - otherwise COVER CALMS: stress decays faster the more canopy there is
-     *    (up to +0.18/s, doubling the base rate, at a tank full of grass), and
-     *    faster again for a fish tucked inside a canopy. */
-    {
-        float g1 = 0, g2 = 0, gmean = 0;               /* tallest, second tallest */
-        int nb = tank_veg_beds(t);
-        for (int b = 0; b < nb; b++) {
-            float g = t->veg_growth[b];
-            gmean += g / nb;                          /* cover calms by real height */
-            g /= veg_cap_mean(t, b);                  /* the smother band by fullness */
-            if (g > g1) { g2 = g1; g1 = g; } else if (g > g2) g2 = g;
-        }
-        float over = (g2 - VEG_SMOTHER) / (1.0f - VEG_SMOTHER);
-        if (over > 0)
-            f->stress = clampf(f->stress + fminf(1, over) * 0.15f * (8.0f - f->stress) * dt, 0, 10);
-        else if (g1 < VEG_BARE)
-            f->stress = clampf(f->stress + 0.15f * (2.5f - f->stress) * dt, 0, 10);
-        else
-            f->stress = clampf(f->stress - dt * (0.18f * gmean + (hidden ? 0.18f : 0)), 0, 10);
-    }
+    bool hidden = tank_reef_calm_near(t, f->x, f->y);
+    if (hidden) f->stress = clampf(f->stress - dt * 0.22f, 0, 10);
 
     f->wander += dt * (0.65f + f->curiosity * 0.04f) + sinf(t->clock + f->x * 0.01f) * dt * 0.12f;
     if (f->dart_timer > 0) f->dart_timer -= dt;
@@ -3242,8 +2830,7 @@ static void update_fish(tank_t *t, int idx, float dt) {
     f->target_speed = want * (f->energy < 1.2f && f->breather <= 0 ? 0.45f : 1) * (glancing ? 0.6f : 1);
     /* swimming through a canopy is slow going (a fleeing fish crashes through) */
     if (f->goal.id != GOAL_FLEE_SHADOW)
-        for (int b = 0; b < tank_veg_beds(t); b++)
-            if (veg_inside(t, b, f->x, f->y)) { f->target_speed *= VEG_SLOW; break; }
+        if (hidden) f->target_speed *= 0.80f;
     /* the pace is sprung, critically damped (implicit, stable at any dt): a
      * glance, a canopy or a recovery eases in and out of its new speed
      * instead of kicking the fish's acceleration. Never past the target */
@@ -3365,17 +2952,13 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
         tank_randf(t, 0, 1) < TRICKLE_RATE * dt)
         tank_scatter_food(t, 1);
 
-    /* upkeep: the garden gets away from an idle keeper, slowly */
-    veg_grow(t, dt / VEG_GROW_AWAKE_S);
-    t->coral_acc += dt;                                     /* by the minute: see tank_t.coral_acc */
+    t->reef_flow_s = t->reef_flow_cooldown = 0;
+    t->reef_flow_seen = 0;
+    t->coral_acc += dt;
     if (t->coral_acc >= 60) { coral_grow(t, t->coral_acc); t->coral_acc = 0; }
     t->cluster_acc += dt;
     if (t->cluster_acc >= 60) { cluster_grow(t, t->cluster_acc); t->cluster_acc = 0; }
-    t->algae_acc += dt * ((t->sd_unlocks & SD_ITEM_FILTER) ? 0.5f : 1);
-    if (t->algae_acc >= ALGAE_STEP_AWAKE_S) {
-        t->algae_acc = 0;                                   /* one step per 4 min, never a backlog */
-        tank_grow_algae(t, 1);
-    }
+
     snail_tick(t, dt);
     urchin_tick(t, dt);
     seahorse_tick(t, dt);
@@ -3398,6 +2981,7 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
     /* bubbles rise */
     for (int i = 0; i < MAX_BUBBLE; i++) {
         bubble_t *b = &t->bubble[i];
+        if (b->column) continue;
         b->wobble += dt * 2.5f;
         b->y -= b->vy * dt;
         b->x += sinf(b->wobble) * dt * (b->column ? 9 : 4);

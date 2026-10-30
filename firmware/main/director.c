@@ -169,7 +169,7 @@ static void help(void) {
     ESP_LOGI(TAG, "help | state | hungry [N] [level=9] (N fish starving, water cleared, trickle held)");
     ESP_LOGI(TAG, "fed [level=1] (everyone full, trickle back on) | set <hunger|energy|stress|curiosity|trust> <0-10> [fish name|idx]");
     ESP_LOGI(TAG, "feed [n=3] [x] (keeper drops pellets; trickle back on) | trickle on|off | pellets clear");
-    ESP_LOGI(TAG, "algae <steps|clear> | veg <bed 0-2|all> <0.03-1> | light (toggle) | auto | sleep <hours> | save");
+    ESP_LOGI(TAG, "cleaning tools, bubbler and current gestures retired | light (toggle) | auto | sleep <hours> | save");
     ESP_LOGI(TAG, "STAGED TANKS: fresh / stages / stage are disabled on hardware; use simulator demos");
     ESP_LOGI(TAG, "benchmark (bounded RAM-only five-fish Normal/Balanced LCD test; pauses real care, never saves fixtures)");
     ESP_LOGI(TAG, "perf on|off (verbose frame tracing; off by default to avoid serial-induced stalls)");
@@ -177,7 +177,7 @@ static void help(void) {
     ESP_LOGI(TAG, "milestones [off] (the page, on cue; on the device: tap the open stats card)");
     ESP_LOGI(TAG, "journal | journal tap <x> <y> | journal demo (disabled on hardware; use simulator)");
     ESP_LOGI(TAG, "games | games tap <x> <y> (framebuffer coordinates; real aquarium care pauses)");
-    ESP_LOGI(TAG, "home | home tap <x> <y> (main menu; life remains an alias; framebuffer coordinates)");
+    ESP_LOGI(TAG, "home | mainmenu | life | home tap <x> <y> (main menu; framebuffer coordinates) | myfish (fish hub)");
     ESP_LOGI(TAG, "rpg (read-only Lost Current progress and chapter contributors)");
     ESP_LOGI(TAG, "settings | settings tap <x> <y> | settings off (clock, weather and brightness; framebuffer coordinates)");
     ESP_LOGI(TAG, "bank | bank tap <x> <y> | bank verify (JSON validation) | bank demo (disabled on hardware; use simulator)");
@@ -190,10 +190,10 @@ static void help(void) {
     ESP_LOGI(TAG, "bright <0-255> (panel now; not saved) | level <10-100> (the keeper's setting, saved)");
     ESP_LOGI(TAG, "shop: chest (%d), shell (%d), starfish (%d), anchor (%d), buoy (%d), sand (%d), lights (%d) | style sand <0..7> | style water <0..7>",
              SD_PRICE_CHEST, SD_PRICE_SHELL, SD_PRICE_STARFISH, SD_PRICE_ANCHOR, SD_PRICE_BUOY, SD_PRICE_SAND, SD_PRICE_LIGHTS);
-    ESP_LOGI(TAG, "shop also: wreck, urn, crystal, fan, ruins, jelly | fish customize <0..%d> (free appearance editor)", N_FISH_MAX - 1);
+    ESP_LOGI(TAG, "market (fish trading) | shop also: wreck, urn, crystal, fan, ruins, jelly | fish card <0..%d> (summary)", N_FISH_MAX - 1);
     ESP_LOGI(TAG, "setup tap <x> <y> (activate the open setup page at framebuffer coordinates; same hit targets as touch)");
     ESP_LOGI(TAG, "clock | sd status | sd backup | sd backups | sd export | sd verify | sd restore|undo [number] [confirm] (JSON tank snapshots on SD)");
-    ESP_LOGI(TAG, "overgrown (grass to the ceiling + fouled glass; fish stress climbs) | court (stage the fry: in ~10-20 s the pair courts in the grass, then it is born) | arrive (the fry, now)");
+    ESP_LOGI(TAG, "overgrown retired | court / arrive (hardware staging disabled; use simulator)");
     ESP_LOGI(TAG, "sd update (check, then confirm within 60s) | sd update-upload <bytes> (USB package copy)");
     ESP_LOGI(TAG, "wifi | wifi setup (on-screen picker) | wifi set ssid=<name> pass=<secret> | wifi forget | ota | ota check (legacy Wi-Fi flow) | ota url <manifest url>|default");
 }
@@ -326,14 +326,11 @@ static void run(tank_t *t, char *line) {
         ESP_LOGI(TAG, "trickle %s", t->trickle_off ? "OFF" : "on");
     } else if (!strcmp(c, "pellets")) {
         clear_pellets(t); ESP_LOGI(TAG, "pellets cleared");
-    } else if (!strcmp(c, "algae") && argc > 1) {
-        if (!strcmp(argv[1], "clear")) { memset(t->algae, 0, sizeof t->algae); ESP_LOGI(TAG, "glass clean"); }
-        else { int s = atoi(argv[1]); tank_grow_algae(t, s); ESP_LOGI(TAG, "algae +%d steps", s); }
-    } else if (!strcmp(c, "veg") && argc > 2) {
-        float g = atof(argv[2]);
-        if (!strcmp(argv[1], "all")) for (int b = 0; b < tank_veg_beds(t); b++) tank_veg_set(t, b, g);
-        else { int b = atoi(argv[1]); if (b >= 0 && b < tank_veg_beds(t)) tank_veg_set(t, b, g); }
-        ESP_LOGI(TAG, "veg %s -> %.2f", argv[1], g);
+    } else if (!strcmp(c, "algae") || !strcmp(c, "veg") || !strcmp(c, "grass") ||
+               !strcmp(c, "sponge") || !strcmp(c, "scissors") || !strcmp(c, "tool") ||
+               !strcmp(c, "trim") || !strcmp(c, "clean") || !strcmp(c, "slash") ||
+               !strcmp(c, "overgrown")) {
+        ESP_LOGW(TAG, "Unavailable: algae, grass and cleaning tools are retired");
     } else if (!strcmp(c, "light")) {
         tank_toggle_light(t); ESP_LOGI(TAG, "light %s (manual)", t->light_on ? "on" : "off");
     } else if (!strcmp(c, "auto")) {
@@ -398,7 +395,7 @@ static void run(tank_t *t, char *line) {
                 !isfinite(x) || !isfinite(y) || x < 0 || y < 0 || x >= TANK_W || y >= TANK_H || !touch_port_games()) {
                 ESP_LOGW(TAG, "games tap requires an open games page and framebuffer x y"); return;
             }
-            if (render_games_tap(t, x, y)) touch_port_show_milestones(true);
+            if (render_games_tap(t, x, y)) touch_port_games_closed();
         } else { ESP_LOGW(TAG, "games | games tap <framebuffer x> <y>"); return; }
         ESP_LOGI(TAG, "games page %s; aquarium care %s", touch_port_games() ? "open" : "closed", touch_port_games() ? "paused" : "resumed");
     } else if (!strcmp(c, "rpg")) {
@@ -409,7 +406,15 @@ static void run(tank_t *t, char *line) {
         for (int chapter = 0; chapter < t->rpg.chapter; chapter++)
             ESP_LOGI(TAG, "%s | contributor %u | %s", companion_rpg_chapter_title(chapter),
                      t->rpg.contributors[chapter], companion_rpg_route(t, chapter));
-    } else if (!strcmp(c, "life") || !strcmp(c, "home")) {
+    } else if (!strcmp(c, "market")) {
+        touch_port_show_life();
+        render_life_market_open(0);
+        ESP_LOGI(TAG, "Fish Market opened");
+    } else if (!strcmp(c, "myfish") || !strcmp(c, "fish")) {
+        touch_port_show_life();
+        render_life_fish_open(0);
+        ESP_LOGI(TAG, "Fish Summary opened");
+    } else if (!strcmp(c, "life") || !strcmp(c, "home") || !strcmp(c, "mainmenu")) {
         if (argc == 1) touch_port_show_life();
         else if (argc == 4 && !strcmp(argv[1], "tap")) {
             float x, y; char extra;
@@ -522,14 +527,18 @@ static void run(tank_t *t, char *line) {
     } else if (!strcmp(c, "fish")) {                 /* fish | fish card <n> | fish rename <n> [name] | fish sell <n>: the milestones card's buttons */
         int n = argc > 2 ? atoi(argv[2]) : -1;
         if (argc > 2 && (n < 0 || n >= t->n_fish)) { ESP_LOGW(TAG, "fish %d: the tank has 0..%d", n, t->n_fish - 1); return; }
-        if (argc > 2 && !strcmp(argv[1], "card")) { touch_port_show_milestones(true); render_milestones_show_fish(t, n); ESP_LOGI(TAG, "%s's card up", t->fish[n].name); }
-        else if (argc == 3 && !strcmp(argv[1], "customize")) { touch_port_dismiss(); setup_begin_customize(t, n); ESP_LOGI(TAG, "customizing fish %d", n); }
+        if (argc > 2 && !strcmp(argv[1], "card")) { touch_port_show_life(); render_life_fish_open(n); ESP_LOGI(TAG, "%s's summary up", t->fish[n].name); }
+        else if (argc == 3 && !strcmp(argv[1], "customize")) {
+            ESP_LOGW(TAG, "Fish looks are bought or inherited in every mode");
+        }
         else if (argc > 3 && !strcmp(argv[1], "rename")) { tank_set_name(t, n, argv[3]); progression_save(t); ESP_LOGI(TAG, "fish %d is %s now, saved", n, t->fish[n].name); }
         else if (argc > 2 && !strcmp(argv[1], "rename")) { touch_port_dismiss(); setup_begin_rename(t, n); ESP_LOGI(TAG, "renaming %s: the wheel is up (CANCEL / DONE)", t->fish[n].name); }
         else if (argc > 2 && !strcmp(argv[1], "sell")) {
-            int worth = progression_fish_value(t, n); char nm[FISH_NAME_MAX + 1]; snprintf(nm, sizeof nm, "%s", t->fish[n].name);
-            if (progression_sell_fish(t, n)) ESP_LOGI(TAG, "%s sold for %d: %d fish left, balance %d", nm, worth, t->n_fish, (int)t->sd_balance);
-            else ESP_LOGW(TAG, "%s stays: the tank keeps %d fish, and a fry owed its welcome holds every sale", nm, FISH_KEEP_MIN);
+            touch_port_show_life(); render_life_market_open(n);
+            ESP_LOGI(TAG, "Market opened for %s; select SELL then CONFIRM SALE", t->fish[n].name);
+        } else if (argc > 1 && (!strcmp(argv[1], "look") || !strcmp(argv[1], "color") ||
+                   !strcmp(argv[1], "colour") || !strcmp(argv[1], "pattern") || !strcmp(argv[1], "variety"))) {
+            ESP_LOGW(TAG, "Fish phenotype shortcuts unavailable; looks are bought or inherited");
         } else {
             for (int i = 0; i < t->n_fish; i++)
                 ESP_LOGI(TAG, "fish %d: %s (%s / %s), %s, trust %.1f, worth %d%s", i, t->fish[i].name,

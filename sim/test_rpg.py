@@ -3,6 +3,7 @@ import copy
 import ctypes
 import json
 import os
+import time
 from pathlib import Path
 
 
@@ -33,8 +34,10 @@ def exercise(lib, backup):
 
     def open_story():
         lib.sim_action(7)
-        tap(100, 180)
-        tap(330, 100)
+        tap(330, 180)
+        while lib.sim_games_menu_page() != 3:
+            tap(350, 80)
+        tap(330, 140)
 
     original = json.loads(backup(lib))
     save_path = os.environ["POCKET_TANK_SAVE"]
@@ -58,8 +61,8 @@ def exercise(lib, backup):
             assert illustration() == initial_art, "Static artwork does not animate or need background ticks"
             tap(380, 24)
             expeditions = frame()
-            assert expeditions != opening, "Story BACK returns to its Adventures parent"
-            tap(330, 100)
+            assert lib.sim_page() == 8 and expeditions != opening, "Story BACK returns to the Games list"
+            tap(330, 140)
             assert frame() == opening, "Reopening a story does not advance it"
             browsed = snapshot()
             differences = {key: (baseline[key], browsed[key]) for key in baseline if baseline[key] != browsed[key]}
@@ -105,6 +108,9 @@ def exercise(lib, backup):
                 assert completed["tank"][field] == baseline["tank"][field], ("Story must not replace aquarium settings", field)
             assert lib.sim_save()
             saved = json.loads(backup(lib))
+            # sim_restore stamps wall time then boots; a second tick between them is 1 s of offline care.
+            while time.time() % 1 > 0.5:
+                time.sleep(0.05)
             restore(saved)
             open_story()
             resumed = snapshot()

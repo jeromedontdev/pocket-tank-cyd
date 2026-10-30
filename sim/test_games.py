@@ -64,7 +64,7 @@ def exercise(lib, backup, output):
     pause_footer = None
     for game in range(6):
         lib.sim_action(7)
-        tap(100, 260)
+        tap(330, 180); tap(100, 100)
         assert lib.sim_page() == 8
         menu = snapshot()
         frame()
@@ -171,7 +171,7 @@ def exercise(lib, backup, output):
                 for _ in range(turns):
                     tap(145 + i % 3 * 72, 131 + i // 3 * 72)
         after_play = snapshot()
-        assert after_play == before, "Playing must not change fish, care, wallet, goals or XP"
+        assert after_play == before, "Playing must not change fish, care, wallet, goals or legacy XP"
         tap(380, 20)
         tap(224, 290)
         assert snapshot() == before, "First BACK/replay tap must not discard an unclaimed reward"
@@ -179,12 +179,13 @@ def exercise(lib, backup, output):
         save_path = os.environ["POCKET_TANK_SAVE"]
         os.environ["POCKET_TANK_SAVE"] = str(output / "missing" / "reward.sav")
         tap(224, 226)
-        assert snapshot() == before, "Failed reward saves must roll back coins AND XP"
+        assert snapshot() == before, "Failed reward saves must roll back coins without changing legacy XP"
         os.environ["POCKET_TANK_SAVE"] = save_path
         tap(224, 226)
         claimed = snapshot()
         dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
-        assert dollars == (1 if before["game_income"]["paid"][game] + before["game_income"]["legacy"] < 5 else 0), ("Per-game daily limit", game, dollars)
+        open_round = before["game_income"]["paid"][game] + before["game_income"]["legacy"] < 5
+        assert (3 <= dollars <= 12) if open_round else dollars == 0, ("Per-game daily limit pays reward + 2", game, dollars)
         assert claimed["tank"]["sd_earned"] - before["tank"]["sd_earned"] == dollars
         assert claimed["tank"]["journal_xp"] == before["tank"]["journal_xp"]
         expected = json.loads(json.dumps(before))
@@ -204,14 +205,14 @@ def exercise(lib, backup, output):
         assert lib.sim_page() == 9
     assert len(screens) == 6, "Every game needs its own actual-renderer screen"
     lib.sim_action(7)
-    tap(100, 260)
+    tap(330, 180); tap(100, 100)
     tap(110, 140)
     no_score = snapshot()
     for _ in range(120):
         frame(0.25)
     tap(224, 226)
     unsuccessful = snapshot()
-    assert unsuccessful["tank"] == no_score["tank"], "An unsuccessful round must not pay coins or XP"
+    assert unsuccessful["tank"] == no_score["tank"], "An unsuccessful round must not pay coins or change legacy XP"
     assert unsuccessful["companion"]["game_rounds"][0] == no_score["companion"]["game_rounds"][0] + 1
     tap(380, 20)
     tap(380, 20)
@@ -220,7 +221,7 @@ def exercise(lib, backup, output):
     frame(0.25)
     assert snapshot()["tank"]["clock"] > no_score["tank"]["clock"], "Aquarium simulation must resume on exit"
     lib.sim_action(7)
-    tap(100, 260)
+    tap(330, 180); tap(100, 100)
     tap(80, 330)  # Relaxed: timed games now finish explicitly.
     tap(110, 140)
     relaxed_before = snapshot()
@@ -233,7 +234,7 @@ def exercise(lib, backup, output):
     tap(380, 20)
     assert lib.sim_page() == 9
     lib.sim_action(7)
-    tap(100, 260)
+    tap(330, 180); tap(100, 100)
     tap(80, 330)  # Return to challenge mode for subsequent sessions.
     tap(300, 330)
     records = frame()
@@ -245,7 +246,7 @@ def exercise(lib, backup, output):
     new_screens = set()
     for game in range(6):
         lib.sim_action(7)
-        tap(100, 260)
+        tap(330, 180); tap(100, 100)
         if game == 0:
             tap(350, 80)
         tap(110 + game % 2 * 204, 140 + game // 2 * 64)
@@ -341,7 +342,8 @@ def exercise(lib, backup, output):
         tap(224, 226)
         claimed = snapshot()
         dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
-        assert dollars == (1 if before["game_income"]["paid"][game + 6] + before["game_income"]["legacy"] < 5 else 0), ("Per-game daily limit", game, dollars)
+        open_round = before["game_income"]["paid"][game + 6] + before["game_income"]["legacy"] < 5
+        assert (3 <= dollars <= 12) if open_round else dollars == 0, ("Per-game daily limit pays reward + 2", game, dollars)
         assert claimed["games"]["rounds"][game] == before["games"]["rounds"][game] + 1
         assert claimed["games"]["best"][game] >= 4
         assert claimed["companion"] == old_six, "Original six records must remain byte-for-byte unchanged"
@@ -357,7 +359,7 @@ def exercise(lib, backup, output):
     extra_screens = set()
     for game in range(6):
         lib.sim_action(7)
-        tap(100, 260)
+        tap(330, 180); tap(100, 100)
         if game == 0:
             tap(350, 80)
         tap(110 + game % 2 * 204, 140 + game // 2 * 64)
@@ -389,7 +391,7 @@ def exercise(lib, backup, output):
         os.environ["POCKET_TANK_SAVE"] = save_path
         tap(224, 226)
         empty = snapshot()
-        assert empty["tank"] == before["tank"], "Finishing an untouched game must award no coins or XP"
+        assert empty["tank"] == before["tank"], "Finishing an untouched game must award no coins or change legacy XP"
         assert empty["games_extra"]["rounds"][game] == before["games_extra"]["rounds"][game] + 1
         assert empty["games_extra"]["best"][game] == before["games_extra"]["best"][game]
         assert empty["games_extra"]["medals"][game] == before["games_extra"]["medals"][game]
@@ -540,7 +542,8 @@ def exercise(lib, backup, output):
         tap(224, 226)
         claimed = snapshot()
         dollars = claimed["tank"]["sd_balance"] - before["tank"]["sd_balance"]
-        assert dollars == (1 if before["game_income"]["paid"][game + 12] + before["game_income"]["legacy"] < 5 else 0), ("Per-game daily limit", game, dollars)
+        open_round = before["game_income"]["paid"][game + 12] + before["game_income"]["legacy"] < 5
+        assert (3 <= dollars <= 12) if open_round else dollars == 0, ("Per-game daily limit pays reward + 2", game, dollars)
         assert claimed["tank"]["sd_earned"] - before["tank"]["sd_earned"] == dollars
         assert claimed["tank"]["journal_xp"] == before["tank"]["journal_xp"]
         assert claimed["games_extra"]["rounds"][game] == before["games_extra"]["rounds"][game] + 1
@@ -568,7 +571,7 @@ def exercise(lib, backup, output):
         assert snapshot()["games_extra"] == claimed["games_extra"]
     assert len(extra_screens) == 6, "Third-page games require six distinct help screens"
     lib.sim_action(7)
-    tap(100, 260)
+    tap(330, 180); tap(100, 100)
     tap(300, 330)
     extra_records = frame()
     tap(350, 70)
@@ -645,6 +648,10 @@ def exercise(lib, backup, output):
     legacy.pop("game_income", None)
     legacy.pop("content", None)
     legacy.pop("fixed", None)
+    legacy.pop("reef", None)
+    legacy.pop("creatures", None)
+    legacy.pop("progression", None)
+    legacy.pop("foliage", None)
     encoded = json.dumps(legacy).encode()
     if original.get("profile", {}).get("mode", 0) == 2:
         before = snapshot()
@@ -659,7 +666,7 @@ def exercise(lib, backup, output):
         assert migrated["games_extra"]["best"] == [0] * 6
         assert migrated["games_extra"]["rounds"] == [0] * 6
     lib.sim_action(7)
-    tap(100, 260)
+    tap(330, 180); tap(100, 100)
     tap(350, 80)  # Restore first menu page for later tests.
     tap(380, 20)
     encoded = json.dumps(original).encode()

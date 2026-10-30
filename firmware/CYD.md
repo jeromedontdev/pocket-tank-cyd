@@ -8,7 +8,539 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.3.20 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.4.0 is a distinct aquarium game, not just a board port.**
+
+## 2.4.0: current trading revision
+
+### Identity and serenity follow-up
+
+The latest UI removes ornamental footer dots and the interior Tank-menu gap.
+Name & Identity combines tank rename, subtitle and detailed material badges;
+all fish/tank naming uses shared QWERTY controls with cancel/save rollback.
+Seasons derive from saved weather latitude rather than a second north/south
+setting, including when forecasts are disabled. No configured city means no
+guessed season. The Auto/Off accent choice remains.
+Harborfin replaces the starter variety's appearance and displayed name while
+retaining its historical ID, saved genetics and same-variety pairing. Its
+forked tail/sail are covered by clearance and exact tiled-rendering tests.
+Rainbow flakes keep stable per-particle colors. Need gauges use icons,
+decimal values and ten individually visible shaded cells at both resolutions.
+Background contrast and luminous noise are reduced without deleting decor.
+
+The latest source consolidates Fish, Tank, Market and Games. A fish tap opens
+Fish Summary directly; tank identity/rename is under Tank Summary. Markets use
+separate stock, residents/sales and nursery pages. The obsolete tool padlock,
+firsts/collections, free fish/creature color editors and Decor-shop fry are gone.
+Stories and Lost Current are entries in the single paged Games list (no
+Arcade/Stories/RPG submenus). Main > Fish opens Fish Summary, whose six
+actions replace the duplicate Fish menu; Fish Bank and Rename return to it.
+Main > Help replaces the Care Guide with fourteen topics.
+
+Casino revision: Main is Fish/Tank/Market/Games/Casino/Help with a Settings
+cog at the bottom right. Main > Fish is a hub (Summary, Rename, Family, Genes,
+Life, Wardrobe, arrows, Fish Bank); Fish Summary shows five meters including
+Vigor. Casino races (fixed x2-x6, ~89.5% per lane) and reels (~94.1% RTP)
+settle each 5-50 doubloon bet once through `wallet_settle`, which saves and
+rolls back on failure. Daily demand (+25% for bred fish), pedigree bonuses
+(2%/generation, 6% for RARE+, max five) and per-variety mutation collection
+bits plus the displayed statue reuse existing story fields, saved as optional
+JSON keys `collection` and `statue`; there is no save-schema bump.
+
+2.4.0 trade revision: Market hub tiles are Fish Market, Creatures, Collection,
+Contracts and Auction. The Creature Market (section 29) trades all five
+creatures: shrimp school, snail, urchin, seahorse and pearl mussel. There is no
+creature breeding; one of each per aquarium, and colors roll at purchase
+(Natural 45% / Tinted 30% x1.4 / Two-tone 20% x2 / Prized 5% x3.5 resale).
+Decor no longer lists creature items (59 shop rows). Contracts (section 37)
+renew every three days and pay quote x1.6 + 50; the Saturday Auction (section
+38) takes five rival bids between 95% and 165% of the quote. The casino adds
+Pearl Hi-Lo, Shell Game, Treasure Dive and Tide Wheel, all settled through
+`wallet_settle`. Saves are schema 23 / 6476 bytes. Verified on COM4: 1,795,840
+bytes, SHA256 `4ac91891...0d9d92`, live ~22.2 fps.
+**Doubloons** are the only active currency; historical XP/levels remain in
+compatible saves but neither gate nor reward play. Colors come from bought
+stock, inheritance or mutation in every mode. The same-variety pairing guard
+also rejects invalid/self parents before consuming RNG.
+Sale value = stage worth x (100% + 20%/market tier) x care (60-100%) x genes;
+genes = 100% + 4%/vigor + 15%/shown trait + 25%/mutation + 10% rare marking.
+Vigor (tank_line_vigor) counts heterozygous loci, 0-10, and adds up to 10%
+growth. Each fish's favorite decor gives +30% calm recovery and +10% growth
+when placed; missing, calm floors at stress 2.5 (2 after sleep) and growth -10%.
+Tetra is the first market tier; Harborfin keeps FISH_CLASSIC's frozen ID.
+Game rounds pay min(score,10)+2 doubloons, five rounds per game per day.
+Permanent Pellets/Flakes/Bloodworms food has distinct live art and growth multipliers
+of 1x/1.25x/1.5x, shared across aquariums.
+Flakes cost 250 doubloons and Bloodworms cost 750 more. Awake and offline growth
+use the multiplier without rescaling saved age or stacking it on reload.
+Themes cost 0/120/180/260/160/220/300/360 doubloons, tap twice to buy;
+legacy unlocks migrate without awarding currency again. Thirteen subtitles
+and twelve emblems widen the schema-23 ranges: older firmware rejects saves
+that use the new values.
+
+The forced starter arch is removed. Only actual placed shelter counts, and
+bare tanks can breed over open sand. Unanchored seahorses cruise upright in
+midwater. Reef Rhythm, current gestures, the bubbler and Say Hello are retired.
+Their historical save fields remain inert. Setup skips bubbler placement;
+legacy bubble goals normalize to exploration. Ambient bubbles remain visual.
+Fish/tank achievements are also inert end-to-end: no meal/hold/goal/night/
+population firsts, stage announcements or growth/trust bonus payouts.
+Historical bits and ledgers stay readable, with no reset or replay of rewards.
+Birth/trade income, actual growth and care/storage/update notices remain.
+Decor & Storage sells Anubias Carpet (60), Moss Cushions (85), Pearlweed
+(110) and Kelp (95 doubloons) as aquarium-local plant sets. Mix the first
+three across six low patches; kelp adds two 80px stands, roughly half sword
+height. Store/Plant is free afterward.
+The source PNGs and flash-resident palette art are generated together by
+`tools/draw_ground_cover.py`. Shaded leaf planes/veins, textured moss domes,
+paired pearlweed leaves and sand-root details replace the previous tufts.
+Low plants use the shared static floor-scenery path (simple, live, compressed
+backdrop and baked scene). Kelp's fixed lower stems use the same caches.
+Only the top 21px crowns draw live, with six-step 2Hz sway, at most 2px at
+the tip and fully static/baked in Simple. Animation damages only the moving
+crowns instead of rebuilding static caches. Native-size drawing clips before
+scanning and avoids resampling divisions; a shared 16-color dimmed palette
+adds about 268 bytes of static storage, not another heap/frame buffer.
+Planted kelp provides real seahorse perches; storing it releases the grip.
+Sword leaves and their grip-width helper now share a broader folded profile,
+with emerald/teal shading, pale ribs, textured veins and a redrawn shop icon.
+Kelp Forest theme leaf positions are relative to each stalk's tapered tip,
+eliminating the per-height horizontal cuts through its top leaves.
+No shelter bonus, growth, trimming or neglect penalties. New aquariums start
+bare; legacy saves keep their existing cover as free Anubias.
+There is no separate Foliage shop/shortcut.
+Direct fish Summary closes in one Back; Menu opens Main directly. Companion,
+setup, weather and network/update pages share crafted frames and controls,
+and wallets use the gold doubloon icon.
+
+New saves are schema 23 / 6476 bytes: the frozen 6472-byte prefix plus four
+aquarium-local foliage bytes. JSON adds `foliage`. Never erase/repartition to install
+this revision; preserve touch calibration, residents and the shared wallet.
+Latest-revision acceptance and hardware measurements must be recorded separately
+from the earlier local image below.
+
+### Identity, keyboard and gauge acceptance
+
+All 27 source validation groups have passed for the combined revision: 23
+passed the first matrix run, then the four failing isolated-profile/theme-route
+fixtures were corrected and rerun successfully. Transactional fish/tank naming,
+weather-derived hemispheres, the full market suite and historical inventory
+migration pass. Menu fit covers 572 screens at both scales on CYD and 502
+on the alternate board profile. Edge purchase/storage/reload, trading, food
+upgrades, navigation and durable saves pass on the rebuilt browser renderer.
+
+The final 180-second sweep passes **10,660 cases / 74,620 full/tile/retained
+frame sets**, including five fish, eight extra ornaments, both scales, detail
+settings, day/night, clocks, foliage masks and cache failure/recovery.
+All 44 gauge/value combinations have exact one-row clipping; a full meter
+must have ten separate lit runs after 240px downsampling, not just virtual
+segment gaps. Food checks require all five flake colors, and badge checks
+require distinct multitone illustrated emblems. Harborfin bounds and all
+species/stage/turn silhouettes pass.
+
+Hardware testing caught an expensive sword-vegetation path in the first
+identity image. Sword folds, ribs and veins now share one bounded row
+occlusion mask rather than repeating the piece/arch lookup for every stroke.
+This adds no persistent state or cache bank and changes no artwork:
+**576 captured screenshots**, **12 scene hashes** and **48 sampled animation
+frame hashes** match the preserved pre-optimization renderer exactly.
+Independent scalar tests also verify piece/arch visibility for both arch
+passes, mask subsets and offscreen edges at both resolutions/board profiles.
+
+Unified identity image: **1,759,520 bytes**, **206,560 OTA-slot bytes free**.
+SHA256: `c339283c2b1e30e77703963e39a9b55b32ebed0681efab74f4cdab20b8986aed`.
+COM4 active `ota_0` app-only installation and full binary readback match exactly.
+Fresh 4 MiB recovery backup:
+`identity-polish-com4-20261029-121132-backup.bin`.
+No full erase, repartition, COM5 access or save replacement.
+
+Fresh COM4 before/after measurements compare the preceding `6077e537` image
+with the identity image above: identical RAM-only five-resident Normal /
+Balanced fixtures, all four planted foliage sets, 240 frames per cell.
+The benchmark restores the real aquarium afterward.
+
+| Output path | Day FPS | Night FPS | Clock/decor FPS | Dense FPS |
+|---|---:|---:|---:|---:|
+| Synchronous full | 14.82 -> 14.73 | 14.68 -> 14.61 | 12.35 -> 12.21 | 13.60 -> 13.52 |
+| Pipeline full | 23.89 -> 23.80 | 23.58 -> 23.51 | 16.97 -> 16.86 | 20.31 -> 20.24 |
+| Forced partial | 18.83 -> 18.86 | 18.08 -> 18.23 | 14.03 -> 13.92 | 15.80 -> 15.77 |
+| Normal adaptive | 22.84 -> 22.85 | 22.51 -> 22.55 | 16.18 -> 16.12 | 19.62 -> 19.57 |
+
+Final adaptive changes range from +0.18% to -0.37%; the worst decrease across
+all sixteen fixtures is 1.13%. Do not claim a performance increase from the
+UI/art polish. The rejected first identity image had fallen to
+15.94/15.78/13.14/14.35 adaptive FPS; sharing sword-row visibility recovered
+the lost performance with pixel-identical artwork, not a simpler plant or
+disabled animation. All five real residents (bolt, pip, kelp, odie and mira)
+and the exact clock settings survive the benchmark/save sequence.
+
+Final reboot and two-minute quiet soak pass with profile `cyd2432s028`,
+all five named residents, unchanged **6838 doubloons / 11485 lifetime earned**,
+and a verified 12,513-byte Bank JSON round-trip. No panic, heap corruption,
+assertion failure, unavailable profile or blocked saves.
+Post-command ten-second windows measure **21.8-23.3 FPS**, p99 at most
+56 ms. The explicit console/help check blocks the tank task for 650 ms
+(702 ms maximum frame), and the later 252 ms SPIFFS autosave produces a
+304 ms maximum frame; neither is hidden in the steady-render figures.
+
+### Preceding kelp, sword plant, theme and achievement-retirement acceptance
+
+The final catalog has four aquarium-local plant sets (IDs 63..66): three
+static carpets and two gently animated kelp stands. Kelp-only tanks provide
+real seahorse anchors; Store releases the grip. The source PNGs and indexed
+art regenerate byte-for-byte, and shop previews share the live plant art.
+Kelp Forest regression checks prove complete top leaves and pointed stalk
+tips at every authored height, at both screen sizes.
+
+All **27 existing validation groups** pass on the combined revision.
+The final crown-only 180-second stress run passes **10,424 cases / 72,968
+full/tile/retained frame sets**, including all sixteen planted masks,
+phase changes, planting/removal, both resolutions, all detail levels and
+cache modes, five fish, eight extra ornaments, clocks, day/night and palettes.
+Actual Edge purchase/store/replant/reload/viewer acceptance and separate
+fish/creature market regressions pass. The final routed gallery contains
+**202 captures per resolution**, without achievement overlays.
+
+Achievement retirement is tested with a real eaten player pellet, growth,
+full trust, goal changes and overnight sleep: no new firsts or stage/trust
+income. Every historical bit and stage change remains silent even with a
+blocked queue; directly requesting retired modals leaves all pixels untouched.
+Historical bits and wallet values round-trip, while update and care/storage
+warnings still work. Birth income and market transactions remain unchanged.
+
+The 27-group matrix passed the combined gameplay revision; subsequent
+renderer optimizations also pass focused art/clipping/timing-boundary tests,
+the above stress sweep, and rebuilt Edge acceptance. Native-size and
+row/column replay preserve exact pixels; income help fits its modal and no
+longer advertises retired growth/trust payouts.
+
+Unified CYD build: **1,757,856 bytes**, **208,224 OTA-slot bytes free**.
+SHA256: `6077e5371dd9dda448a9f4a16a9891cb4aa04e5fab81d37bfc3d3b48be361ddc`.
+COM4 active `ota_0` app-only installation and full readback match exactly.
+Recovery backup: `identity-polish-com4-20261029-103300-backup.bin`.
+
+The initial all-live kelp path was too expensive: adaptive day/night/
+clock-decor/dense FPS was 21.50/21.24/15.48/18.52. Native clipped drawing
+helped, but caching the fixed stems and drawing only the small crowns
+recovered more performance without simplifying the artwork. All sixteen
+240-frame end-to-end fixtures are measured below. The baseline has three
+static carpets; the final build adds planted kelp, kelp perches, wider sword
+art, corrected theme leaves and achievement retirement. These are whole-scene
+comparisons, not an isolated cost measurement of animation.
+
+| Mode | Day before/after | Night before/after | Clock/decor before/after | Dense before/after |
+|---|---:|---:|---:|---:|
+| 0, blocking full | 15.34 / 14.79 | 15.08 / 14.65 | 13.53 / 12.34 | 13.73 / 13.60 |
+| 1, asynchronous full | 24.43 / 23.84 | 24.04 / 23.54 | 18.52 / 16.97 | 21.12 / 20.29 |
+| 2, forced partial diagnostic | 22.50 / 18.80 | 22.30 / 18.05 | 14.69 / 14.04 | 19.99 / 15.78 |
+| 3, normal adaptive | 23.44 / 22.80 | 23.39 / 22.49 | 17.44 / 16.19 | 21.21 / 19.60 |
+
+With all four sets planted, adaptive FPS is **2.7-7.6% lower** than the
+three-carpet baseline. Forced-partial diagnostics lose up to **21.1%**;
+they are not the shipping policy. Do not describe the added plants as free
+or claim unchanged FPS. Simple keeps all kelp still and cached.
+
+The final post-benchmark cold reboot, Bank JSON verification and two-minute
+quiet soak pass without panic, corruption, profile rejection or blocked saves.
+All five residents (bolt, pip, kelp, odie, mira), wallet **6,838**, earned
+**11,485** and exact clock preferences remain intact. The actual saved tank,
+which retains its existing plants rather than receiving free purchases,
+finishes the quiet soak at about **23.8-24.5 FPS**.
+The recovery dump is verified at exactly **4,194,304 bytes**.
+
+### Previous three-variety ground-cover acceptance
+
+The existing Decor & Storage catalog now contains three floor sets (IDs
+63..65), leaving all historical item IDs and 64-bit profile masks frozen.
+The transient shop action ranges were widened so new BUY results cannot
+alias MOVE. Sets are local to each aquarium, with one-time transactional
+purchases and free Store/Plant actions. Planting multiple sets distributes
+their distinct artwork over the same six patches rather than stacking
+additional simulated plants.
+
+Schema 23 appends exactly four bytes at offset 6472. Complete old snapshots
+migrate to free Anubias; new aquariums start bare. Sized active and inactive
+profile reads distinguish a genuine historical prefix from a truncated tail.
+Legacy binary/JSON fixtures, corruption/partial tails, failed writes,
+wallet rollback, aquarium isolation and the actual simulator/firmware
+persistence-port harnesses pass. No historical prefix was resized.
+
+Both-board art checks pass all three sprites, eight planted combinations,
+exact row/column clips, tiled catalog previews and nonaliasing shop actions.
+The 180-second finalized stress run passes **11,336 cases / 79,352
+full/tile/retained frame sets**, including per-frame planting/removal changes,
+both resolutions, all detail levels, day/night, clocks, palettes, five fish
+and eight extra ornaments, without tank mutation. Edge acceptance passes
+all three purchases, independent Store/Plant, unchanged repeat-action
+wallets, reload and schema-23 viewer support at both scales.
+The actual routed gallery has **200 captures per resolution**.
+Source PNGs and indexed live artwork regenerate byte-for-byte.
+All **27 existing validation groups** pass after updating the RPG schema/
+downgrade fixture and simulator catalog-count expectation and rerunning those
+two selectors. Separate fish/creature trade tests pass at both resolutions.
+
+Unified CYD build: **1,754,608 bytes**, **211,472 OTA-slot bytes free**.
+SHA256: `0497311b97eb486a50529643bac39e125af485c3879512ff874ecfa15b758172`.
+This earlier image was verified on COM4 with an exact active-app readback.
+Its full 4,194,304-byte recovery dump is
+`identity-polish-com4-20261029-085844-backup.bin`.
+Reboot/quiet-soak checks retained bolt/pip/kelp/odie/mira, wallet 6,838,
+earned 11,485 and all clock preferences. Its mode-3 day/night/clock-decor/
+dense fixtures measured 23.44/23.39/17.44/21.21 FPS, providing the before-kelp
+baseline rather than a claim about the final image.
+
+### Previous automatic ground-cover correction
+
+The foliage request means low plants along the aquarium floor, not another
+menu category. Six deterministic broad-leaf patches now grow visually out of
+the sand, with pale veins, shaded leaves and exposed sandy gaps. They are
+static background art, not simulated growing plants; no save/schema changes
+or extra creature-care behaviors are introduced.
+
+The separate Foliage shortcut and filtered shop are removed. Existing
+Sword Plant/Sea Fan/Lily Pads/Bonsai stock stays in Decor & Storage.
+Full historical backup and cache/damage replay regressions, both-size
+navigation/life tests, all-menu art checks and real Edge acceptance pass.
+Specific ground-cover tests verify low bounds, substantial floor coverage
+and exact single-row/single-column replay. The 180-second finalized renderer
+stress passes **16,015 cases / 112,105 full/tile/retained frame sets** with
+no state mutation. The actual tank preview is in the feature guide.
+
+Final app: **1,747,952 bytes**, **218,128 OTA-slot bytes free**.
+SHA256: `63b05650702db0e3d646da88aef24d933243a0a1692358089ccdcaeba0f673cb`.
+COM4 app-only installation and exact ota_0 readback passed after a fresh
+full 4 MiB recovery backup:
+`identity-polish-com4-20261029-082451-backup.bin`.
+No full erase, repartition, calibration write or COM5 access was used.
+The backup is exactly 4,194,304 bytes. Pre/post-benchmark reboot and two-minute
+quiet-soak checks pass, retaining the five residents, wallet 6838 / earned
+11485, exact clock preferences and working Bank JSON.
+Against the immediately preceding quiet-menu image, default-mode day/night/
+clock-decor/dense FPS was 23.27 / 23.15 / 18.22 / 20.96 (versus 23.62 / 23.53 /
+18.36 / 21.23). Across all 16 fixtures the cost was 0.3-1.6%; this automatic
+version is historical evidence, not acceptance for the purchased varieties.
+
+### Previous quiet-menu follow-up acceptance
+
+The 27 validation groups pass with retired-feature fixtures updated, including
+complete historical backup migration, both-board menu bounds, full simulator
+smoke, navigation/life, Creative, weather and OTA. Targeted touch markets and
+content/inventory rollback tests also pass. Direct fish Back and the Menu
+shortcut are tested at 320 and 240 pixels; setup skips the bubbler in both
+directions. Retired current/greeting APIs cannot award rewards or consume RNG.
+
+The additional 180-second embedded-renderer stress run cycles all three live
+food recipes and passed **16,738 cases / 117,166 full/tile/retained frame sets**
+without tank mutation. Real Edge acceptance passed persistent food purchases,
+stock/resident/nursery navigation, one-Back fish exits, both resolutions,
+save reload and corruption/quota recovery. The corrected routed gallery has
+**193 captures per scale**, including actual weather and post-purchase Tank
+Summary screens, rather than mislabeled neighboring pages.
+
+Final app: **1,747,120 bytes**, **218,960 OTA-slot bytes free**.
+SHA256: `e92439387e1c77a37a43250c6ddf54278790732b39eb9a8716e530ec0ae29966`.
+COM4 app-only installation and exact ota_0 readback passed after a fresh
+full 4 MiB recovery backup:
+`identity-polish-com4-20261029-074438-backup.bin`.
+No full erase, repartition, calibration write or COM5 access was used.
+
+Both post-install and post-benchmark reboot checks preserved bolt, pip,
+kelp, odie and mira, wallet **6838**, earned **11485**, and the exact clock
+preferences (theme 4, layout 67, delay 4, flags 7, UTC quarters -20,
+secondary 0, text/captions 1). Bank JSON round-trip verified after the final
+reboot (**12464 bytes**). HTTPS weather succeeded in **5288 ms**, starting
+with 30848 internal bytes free / 29696 largest. The final autosave took
+**276 ms**. Both two-minute quiet soaks had no panic, heap corruption,
+stack-canary failure or blocked profile writes.
+
+All 16 identical 240-frame hardware benchmark fixtures completed before and
+after this follow-up. Default mode 3:
+
+| Fixture | Before FPS | Quiet-menu FPS | Change |
+|---|---:|---:|---:|
+| Day | 23.08 | 23.62 | +2.3% |
+| Night | 22.58 | 23.53 | +4.2% |
+| Clock and decor | 17.43 | 18.36 | +5.3% |
+| Dense | 20.12 | 21.23 | +5.5% |
+
+Across all modes/fixtures, gains were **2.0% to 9.3%** versus the immediately
+preceding trading image, not versus an older published release. Mode-3 tick
+work was 1.99-2.07 ms and rendering 27.82-42.00 ms. Real quiet-soak samples
+were mostly 22.5-25.6 FPS; background save/service work still produced a
+**325 ms maximum frame**. This is not a claim of hitch-free operation.
+The benchmark never saves its synthetic residents; the final real-tank save
+completed in **197 ms**. This remains a locally verified, unpublished image.
+
+### Previous trading acceptance (before the quiet-menu follow-up)
+
+The 27-selector matrix passes, including all historical binary/JSON backup
+fixtures, strict save validation, profile storage, both-board screen bounds,
+navigation, complete simulator smoke, weather and OTA. The 180-second embedded
+renderer run covered **16,708 cases / 116,956 exact full/tile/retained frame
+sets**, both scales, all detail levels, day/night, clock layouts and current
+gesture spam, without tank-state mutation.
+
+Separate content tests cover all scenery removal, including fixed pieces and
+full-wallet zero-credit sales, plus save-failure rollback. Native/touch markets
+pass at both sizes in Normal/Hard/Creative. Real Edge acceptance passes the
+consolidated routes, paid food/reload/duplicate-purchase protection, no free
+creature palette, schema-22 viewer, durable saves and corruption/quota recovery.
+The routed gallery has 192 captures per scale.
+
+**Hardware acceptance remains separate:** the first device migration check
+refused the existing profile and safely blocked writes. The persistence port
+had reported its 6472-byte capacity instead of the verified historical
+6464-byte payload length. Sized reads fix that distinction without accepting
+malformed new tails. The migration-corrected COM4 app subsequently restored
+bolt, pip, kelp and odie plus fry mira, wallet 7808, and clock preferences
+(theme 4, layout 67, delay 4, flags 7). Bank JSON verified; HTTPS weather
+succeeded in 5130 ms with 30832 internal bytes free / 29696 largest at start.
+An autosave completed in 196 ms. The original SPIFFS partition was verified
+byte-identical to the pre-update backup before the recovery app-only write.
+
+Final local app: **1,748,352 bytes**, **217,728 OTA-slot bytes free**, SHA256
+`88f0c1a3302737c991984e2bfe1d6b167847127472f99f1aab1fb4bc20775c4c`.
+The fresh full backup is
+`trade-migration-com4-20261029-030715-backup.bin`; exact active-slot app readback
+passed. No erase, repartition, calibration change or COM5 access was used.
+This is a tested local image, not a published release.
+
+All 16 real-device 240-frame benchmark fixtures completed on that exact image.
+Compared with the previous local 2.4.0 iteration, default mode 3 measured:
+
+| Fixture | Before FPS | Current FPS | Change |
+|---|---:|---:|---:|
+| Day | 23.90 | 23.05 | -3.6% |
+| Night | 23.16 | 22.56 | -2.6% |
+| Clock and decor | 18.72 | 17.44 | -6.8% |
+| Dense | 20.58 | 20.09 | -2.4% |
+
+This revision trades a little performance for richer live art and clocks;
+it is **not** a speed improvement over the previous grass-free image. Across
+all modes the measured change was -1.0% to -7.3%. Mode-3 tick work is now
+2.15-2.23 ms and rendering 28.67-44.67 ms; LCD/backpressure remains separate.
+The benchmark preserves the real aquarium, never saves its synthetic fixtures,
+and its final real-tank save completed in 190 ms.
+Post-benchmark reboot again preserved all five residents, wallet 7808 and the
+same clock settings. Bank JSON verified (12471 bytes), HTTPS weather succeeded
+in 5572 ms, and a second save completed in 189 ms. The two-minute quiet soak
+had no crash or heap-corruption report, but did include a 238-ms maximum
+frame during service/save work. Console/JSON diagnostics separately stalled
+the tank task for 652 ms. This is not hitch-free operation; diagnostic stalls
+are not steady benchmark FPS.
+
+## Earlier 2.4.0 iteration (superseded behavior and acceptance)
+
+Seagrass, algae, sponge and scissors are retired. Their save fields and
+historical counters remain reserved for compatibility, but they no longer
+grow, render, slow fish, impose comfort penalties or create offline work.
+The sword plant is an authored static shelter. Snail and urchin wander and rest
+as ornamental residents; shrimp still eat fallen food without algae refusal.
+Seahorses may grip the sword plant and suitable decoration posts.
+
+A deliberate horizontal swipe across the aquarium creates a gentle current
+for 12 seconds, with a 30-second cooldown. Nearby healthy, awake fish gain
+calm and curiosity and may turn with the flow; urgent food, flight, rest and
+touch responses take priority. Open swimming lanes strengthen the bonus.
+The free starter reef and sufficiently wide floor decorations provide
+refuges; extra placed copies count too. The starter reef is always a nursery,
+so removing grass does not require buying a replacement to breed fish.
+This is bonus-only environmental play: there is no neglect penalty, no
+offline environmental decay and no debt to clear on returning.
+
+Tapped fish now offer separate **FISH MENU** and **MAIN MENU** buttons.
+**My Fish** groups identity, fish/creature markets, wardrobe, greetings and life
+history, with Back following the actual entry route. **Tank > Reef Rhythm**
+explains currents, shelter and lane bonuses. Feeding remains unchanged.
+
+Normal/Hard fish species, colors and patterns come from bought stock and
+inheritance, not free appearance editing. Names and optional wearables remain;
+Creative retains sandbox styling. Sale prices combine stage, variety and
+condition, with an asking-price spread to prevent instant resale profit.
+Breeding requires two healthy adult/elder fish of the same variety and room
+for their inherited offspring. Existing residents are preserved.
+
+(Superseded in 2.4.0: creatures no longer breed.) Snail, urchin and seahorse supported two adults per species and four nursery
+offspring. Pairs produce one offspring per 1800 seconds of awake, settled
+active-tank time. Market trades save transactionally; a sale requires a fresh
+confirmed quote. Existing ownership migrates to one adult, never a pair.
+Shrimp schools and pearl mussels are not pair-traded; helper benefits and
+mussel income do not multiply with stock. Inactive aquariums stay paused.
+
+Save schema 21 is 6464 bytes: 20-byte Reef Rhythm state at offset 6424,
+then 20-byte creature stock at 6444. The entire historical prefix is frozen.
+New JSON exports include independent `reef` and `creatures` objects.
+Back up before updating; older firmware cannot read newly saved data.
+
+### 2.4.0 source acceptance
+
+The final native matrix passed all 27 selectors: frozen binary/JSON saves,
+Reef progression, wardrobe, pacing, fish behavior, companion feedback,
+Lost Current, both-board page art, retained renderer stress, Creative, profiles,
+storage, internal tanks, display/SD/settings/touch/hardware, ambient light,
+brightness, weather, OTA, placement, simulator smoke and navigation.
+The separate fish/creature economy suite and touch-market suite passed
+Normal/Hard at both scales, plus Creative gating. These cover anti-replay,
+fresh sale confirmations, write-failure rollback, no immediate resale profit,
+inherited fish genes, bounded creature breeding and cross-tank isolation.
+
+Real Edge acceptance passed after rebuilding the latest WebAssembly source:
+60-item catalog, retired IDs, extended inventory/placement, schema-21 viewer,
+mussel income, care rewards, game caps, clock/weather, fish/main-menu routes,
+current gestures, all modes, durable storage, exclusive tabs and error recovery.
+The actual gallery captured 205 images at each scale, with route assertions
+and worst-case market-text bounds rather than nonempty-frame checks alone.
+The final 180-second embedded-renderer soak covered 14655 cases and 102585
+full/tile/retained frame sets: five fish, repeated current gestures, eight
+extra ornaments, both scales, all detail levels, day/night, palettes and
+clock layouts, with exact pixel parity and no renderer mutation of tank state.
+
+Artwork acceptance replaces all 42 active upstream PNGs and retires five
+unused originals. The icon bank is 107712 bytes, CRC32 `005baad1`; compressed
+embedded RGB/alpha planes shrink from 72126 to 24234 bytes. This is flash
+data, not a claim of 47 KiB more heap. The existing bounded render caches
+remain in use. Static savings include 960 bytes of palette data and a
+240-byte optional pose cache; no extra AI instance or framebuffer is added
+for creature pairs.
+
+### 2.4.0 COM4 benchmark
+
+The final unified CYD app is **1746464 bytes**, leaving **219616 bytes** in
+the existing OTA slot (31008 bytes smaller than the prior local 2.3.20 app).
+SHA256:
+`a0bfd802b79151cc70732d5f0a9f1a99a5dfd83939bd4beab014d76e96c20786`.
+A fresh full 4 MiB recovery dump preceded the active-slot-only write to
+COM4; exact app readback passed. No partition, calibration or NVS erase was
+performed. The final dump is
+`identity-polish-com4-20261029-003143-backup.bin` in the session evidence.
+
+All sixteen matched fixtures completed, 240 frames each. Default transfer
+mode 3:
+
+| Fixture | Before FPS | 2.4.0 FPS | Change | Tick ms before/after | Render ms before/after |
+|---|---:|---:|---:|---:|---:|
+| Day | 22.28 | 23.90 | +7.3% | 2.48 / 1.80 | 28.36 / 27.42 |
+| Night | 21.72 | 23.18 | +6.7% | 2.53 / 1.86 | 30.09 / 29.09 |
+| Clock and decor | 17.56 | 18.73 | +6.7% | 2.49 / 1.81 | 42.65 / 40.58 |
+| Dense | 19.13 | 20.59 | +7.6% | 2.56 / 1.86 | 37.01 / 36.10 |
+
+Other transfer-mode fixtures improved 5.8-24.6%; that is not the normal
+gameplay gain. Removal of grass/upkeep reduces tick work by about 27% while
+the detailed new art, fish, decorations, clocks and LCD transfers still
+consume most of a frame. These are whole-overhaul comparisons, not an
+isolated claim that grass alone caused every difference. Flash remains
+DIO 80 MHz; no PSRAM or additional framebuffer is required.
+
+After saving and rebooting this exact image, the original bolt/pip/kelp/odie
+roster, 7753-dollar wallet and clock preferences survived. Bank JSON
+round-trip verification passed (12205 bytes). HTTPS weather succeeded in
+3923 ms, with 30856 bytes of internal 8-bit heap free and a 29696-byte
+largest block at request start; radio shutdown followed. A two-minute quiet
+soak had no crash/heap assertion. Live output was mostly 19-22 FPS once warm,
+but a 184-ms service stall remained; the separate diagnostic JSON check
+caused a 764-ms stall. This is not hitch-free rendering.
+
+The published 2.3.20 evidence below is historical, not a claim that the
+2.4.0 overhaul has already passed those gates.
 
 ## Release 2.3.20: fish-first identity
 
@@ -836,6 +1368,51 @@ after a fresh full backup (`games-art3-com4-backup.bin`). Not released.
 
 ### Menu art and movable scenery
 
+- **Upstream artwork replacement.** The source audit compared every
+  `assets/icons` PNG against the upstream-derived `v0.3.8-cyd.1` import: all
+  47 were still identical. The 42 active icons are now original, reproducible
+  harbor/reef miniatures (`tools/draw_harbor_icons.py`), with carved shell
+  ribs, banded creatures, slate roofs, brass fittings and real transparent
+  openings. Regenerate PNGs with that tool, then run `tools/gen_icons.py`;
+  never hand-edit `common/icons.c` or `icons.h`.
+  The five retired pumpkin, scissors, sponge and grass/trim source PNGs
+  have been removed rather than reillustrated.
+- **Living reef materials.** The inherited fish silhouettes/caudal webs,
+  jelly bell, ray wings, shrimp frames, snail shell, urchin plates,
+  seahorse armor, castle architecture, coral branches/polyps and reef-cluster
+  geometry/materials have original replacements. The fork-created fish
+  material shader, folded sword-leaf lighting, visitors, food/bubbles,
+  chest/brasswork, mussel, expanded ornaments, wardrobe, menu and minigame
+  illustrations are retained, not indiscriminately redesigned.
+  Sword shading now needs only two tint rows and one optional pose record;
+  no grass cache, new large buffer or glow is added.
+  Sword leaves additionally carry continuous midribs, opposing oblique
+  veins, shaded margins and layered basal collars. The free starter nursery
+  has a permanent mineral-faceted rock gateway at `reef_x`, seated on the
+  sand with an open passage, ridged limpet and coralline inlay. It shares
+  the static scenery path in simple/live/baked/backdrop rendering; moving
+  its anchor invalidates the existing backdrop, scene and damage signatures.
+  It introduces no artwork bank or persistent gameplay state.
+  Breeding stock paints a second snail, urchin or seahorse only when there
+  are two actual aquarium-local adults. The second representative reuses
+  the detailed portrait material and ornamental clock in its primary's
+  depth lane, without duplicating tank state or adding an AI/cache bank.
+  `tank_creature_partner_pose` is the shared renderer/hit-target geometry;
+  retained damage clears both current and previous partner bounds on a
+  stock change. Shrimp schools and the mussel colony remain unpaired;
+  nursery offspring stay bounded market counts rather than extra sprites.
+- **Focused art checks.** `tools/test_harbor_icons.py` verifies reproducible
+  source PNGs and negative space; `tools/test_pack_cyd_icons.py` compares
+  every packed RGB565/alpha pixel with its source PNG rather than a stale
+  golden CRC. `tools/test_page_art.py --harbor-only --cc <compiler>
+  --gallery <directory>` checks all fish species/stages/turns/pitches,
+  helper portraits, live/packed castle pixels and guarded full/40-row
+  day/night rendering at 240 and 320. Pair checks exercise actual secondary
+  hit targets, both depth lanes, guarded 7-row pixels and retained versus
+  freshly rebuilt scene pixels through moving stock counts 2→1→0.
+  Single-adult direct drawing must paint no secondary pixels.
+  It captures the actual fish/helper
+  lineups and reef scenes and reports host rendering cost (not device FPS).
 - **Menu art kit.** Every page shares `page_backdrop` (water gradient,
   edge vignette), bevelled `button` faces and `key_face` keys. Shop rows are
   cards with a recessed `SHP_WELL` preview, and row previews are full colour.
@@ -1833,18 +2410,18 @@ draw alternating 40-row tiles in the same allocation, overlapping the next
 tile's rendering with the previous tile's rotated LCD transfer. The unused framebuffer tail stores a bounded compressed
 backdrop cache; complex rows fall back to live drawing. Nothing is cropped.
 This does not allocate a second framebuffer or take RAM away from weather.
-Scale is saved per aquarium; positions and algae are remapped on a toggle,
+Scale is saved per aquarium; positions are remapped on a toggle,
 and a failed save restores the previous mode. Menu controls stay readable.
 
 **Settings > Display > SCENE** is a separate device-wide
 Balanced/Simple/Enhanced choice. Normal size + Balanced detail are defaults.
-Simple caches real stationary seagrass, all placed decorations and fixed
+Simple caches the static sword plant, starter refuge, all placed decorations and fixed
 floating/purchased scenery against simplified water/sand. Helpers, bubbles,
-the trophy shelf and ambient sparkles are hidden; fish/food and visible algae
-stay active.
-Balanced uses 2 Hz low-amplitude grass, 5 Hz secondary poses and reduced
-bubble/shrimp density at either size. Enhanced retains curved grass at 4 Hz,
-secondary poses at 10 Hz, and full creature density. Fish animation remains
+the trophy shelf and ambient sparkles are hidden; fish, food and current
+responses stay active.
+Balanced uses 5 Hz secondary poses and reduced bubble/shrimp density at
+either size. Enhanced retains secondary poses at 10 Hz and full creature
+density. Fish animation remains
 full-rate in every detail mode. Placement editors show the complete scene.
 The goals are approximately 20/10/5 FPS Simple/Balanced/Enhanced, not caps or
 guaranteed minimums for arbitrary scenes. No simulation,
@@ -2235,8 +2812,9 @@ fish identities/life records, a bounded recap, tank identity, visitor/backup
 records and six fixed-scenery ownership bits. The 24 KiB NVS partition remains
 unchanged; the practical 5920-byte NVS ceiling budgets three copies and 64
 settings entries within the 630 usable entries, retaining the GC page.
-Current saves are 6424 bytes/schema 20 (the 88-byte movable-scenery tail at
-6336; see [Menu art and movable scenery](#menu-art-and-movable-scenery)): the existing 128 KiB SPIFFS partition
+Current saves are 6464 bytes/schema 21 (Reef Rhythm at 6424 and creature stock
+at 6444, after the historical movable-scenery tail; see
+[Reef Rhythm](#240-reef-rhythm)): the existing 128 KiB SPIFFS partition
 holds alternating CRC/readback-verified active copies and a durable wipe
 marker. NVS is migration input only; never put the expanded blob back there.
 Only a byte-for-byte erased filesystem may be formatted automatically.
@@ -2415,11 +2993,11 @@ SELL requires two taps and refunds 20 percent for an eligible paid copy only.
 Permanent unlocks follow all tanks; free replacement/removal never earns coins.
 Failed saves roll
 back both purchases and sales of the new scenery.
-Slow Garden (160) halves grass growth and Bio Filter (180) halves new algae
-growth in both awake and offline simulation. Neither clears existing growth,
-generates chore rewards or changes other care rates. Installations are local;
-their purchase unlocks follow every tank and permit free installation elsewhere.
-New purchases roll back their balance/ownership if the internal save fails.
+Slow Garden and Bio Filter are retired with their upkeep mechanics; IDs 30/31
+remain reserved. Eligible paid installations refund their ordinary sell-back
+values once (32/36 dollars respectively). Free and Creative copies do not pay.
+Migration of inactive tanks follows shared-wallet synchronization, and failed
+saves retain retry semantics without duplicate refunds.
 Menu actions share the dark fill and pale teal outline; selected tabs and
 letters use a white outline. Aquarium and bank pagination use `<` / `>`.
 All original and added shop icons are muted gray while unowned and full color

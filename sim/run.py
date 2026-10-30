@@ -69,8 +69,8 @@ def window(lib):
     app.title("Pocket Tank CYD - desktop preview")
     toolbar = tk.Frame(app)
     toolbar.pack()
-    for label, action in (("Tank", 0), ("Keeper", 1), ("Settings", 2), ("Shop", 3),
-                          ("Feed", 4), ("+25 dollars", 5), ("Light", 6)):
+    for label, action in (("Aquarium", 0), ("Menu", 1), ("Settings", 2), ("Decor", 3),
+                          ("Feed", 4), ("+25 doubloons", 5), ("Light", 6)):
         tk.Button(toolbar, text=label, command=lambda a=action: lib.sim_action(a)).pack(side="left")
     panel = tk.Label(app)
     panel.pack()
@@ -139,7 +139,7 @@ def main():
     parser.add_argument("--save", type=Path, default=Path(__file__).parent / "tank.sav")
     parser.add_argument("--smoke", action="store_true", help="Exercise renderer, pages and JSON without opening a window")
     args = parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix="cyd-simulator-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cyd-simulator-", dir=ROOT) as temporary:
         output = Path(temporary)
         os.environ["POCKET_TANK_SAVE"] = str(output / "smoke.sav" if args.smoke else args.save.resolve())
         os.environ["POCKET_TANK_WIFI"] = str(output / "fake-wifi.txt")
@@ -152,13 +152,13 @@ def main():
                 for action in range(7):
                     lib.sim_action(action)
                     if action <= 3:
-                        assert lib.sim_page() == action
+                        assert lib.sim_page() == (9 if action == 1 else action)
                     for _ in range(5):
                         pixels = lib.sim_frame(0.04)
                         assert any(pixels[i] for i in range(lib.sim_width() * lib.sim_height()))
                     if action <= 3:
                         frames.add(ctypes.string_at(pixels, lib.sim_width() * lib.sim_height() * 2))
-                assert len(frames) == 4, "Tank, Keeper, Settings and Shop must render different pages"
+                assert len(frames) == 4, "Aquarium, Menu, Settings and Decor must render different pages"
                 data = backup(lib)
                 assert lib.sim_restore(data, len(data))
                 assert not lib.sim_restore(b"{}", 2)
@@ -364,70 +364,57 @@ def main():
                 assert lib.sim_restore(encoded, len(encoded))
                 for y in range(60, 310, 40):
                     for x in range(40, 430, 40):
+                        lib.sim_action(0)
                         tap(x, y)
-                        if lib.sim_selected() >= 0:
+                        if lib.sim_companion_section() == 33:
                             break
-                    if lib.sim_selected() >= 0:
+                    if lib.sim_companion_section() == 33:
                         break
-                assert lib.sim_selected() >= 0, "A fish tap must select a fish"
-                first = lib.sim_selected()
+                    lib.sim_action(0)
+                assert lib.sim_companion_section() == 33, "A fish tap opens its useful summary"
+                assert lib.sim_selected() == -1, "Fish cards never overlay the tank"
                 before_cycle = json.loads(backup(lib))
                 for step in range(before_cycle["tank"]["n_fish"]):
-                    tap(176, 28)
-                    assert lib.sim_page() == 0 and lib.sim_selected() == (first + step + 1) % before_cycle["tank"]["n_fish"]
+                    tap(370, 102)
+                    assert lib.sim_page() == 9 and lib.sim_companion_section() == 33
                     current_cycle = json.loads(backup(lib))
                     current_cycle["tank"]["saved_unix"] = before_cycle["tank"]["saved_unix"]
                     assert current_cycle == before_cycle, "Next-fish arrow must not feed or modify the tank"
-                lib.sim_touch(176 * lib.sim_width() / 448, 28 * lib.sim_height() / 368, 1)
-                lib.sim_touch(206 * lib.sim_width() / 448, 28 * lib.sim_height() / 368, 0)
-                assert lib.sim_selected() == first and lib.sim_page() == 0, "Sliding outside the arrow cancels cycling"
-                tap(172, 315)
-                assert json.loads(backup(lib))["tank"]["tools_locked"] == 0 and lib.sim_selected() == first
-                tap(172, 315)
-                assert json.loads(backup(lib))["tank"]["tools_locked"] == 1 and lib.sim_selected() == first
-                tap(70, 80)
-                assert lib.sim_page() == 9, "The fish card HOME must open Home"
-                print("PASS: fish-card arrow cycles all fish, wraps, cancels off-target releases and does not feed/open Keeper")
+                assert json.loads(backup(lib))["tank"]["tools_locked"] == 1
+                from test_navigation import exercise as exercise_navigation
+                exercise_navigation(lib)
+                print("PASS: fish summary cycling is read-only and the historical tool lock is inert")
                 from test_games import exercise
                 exercise(lib, backup, output)
-                from test_life import exercise as exercise_life
-                exercise_life(lib, backup)
                 from test_rpg import exercise as exercise_rpg
                 exercise_rpg(lib, backup)
-                lib.sim_action(5)
-                lib.sim_action(1)
-                lib.sim_action(7); tap(330, 180); tap(100, 100)
-                assert lib.sim_page() == 5, "Collections Goals entry must open Goals"
-                journal_frames = set()
-                for category, x, y in ((330, 100, 100), (330, 100, 260), (100, 100, 260)):
-                    lib.sim_action(7)
-                    tap(330, 180) if category == 330 else tap(330, 100)
-                    tap(x, y)
-                    journal_frames.add(ctypes.string_at(lib.sim_frame(0.04), lib.sim_width() * lib.sim_height() * 2))
-                assert len(journal_frames) == 3, "Goals, album and themes must differ"
                 locked = json.loads(backup(lib))
-                locked["tank"].update(journal_xp=0, journal_theme=0)
+                locked["tank"].update(journal_theme=0, sd_balance=0)
                 encoded = json.dumps(locked).encode()
                 assert lib.sim_restore(encoded, len(encoded))
-                lib.sim_action(7); tap(330, 100); tap(100, 260)
+                lib.sim_action(7); tap(330, 100); tap(330, 180)
                 first_themes = ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
                 tap(400, 86)
                 more_themes = ctypes.string_at(lib.sim_frame(0), lib.sim_width() * lib.sim_height() * 2)
                 assert first_themes != more_themes, "Theme arrows must expose new backdrops"
                 tap(100, 124)
-                assert json.loads(backup(lib))["tank"]["journal_theme"] == 0, "Locked new themes must not apply"
+                assert json.loads(backup(lib))["tank"]["journal_theme"] == 0, "Unpaid themes must not apply"
+                tap(100, 124)
+                assert json.loads(backup(lib))["tank"]["journal_theme"] == 0, "Unaffordable confirmations must not apply"
                 unlocked = json.loads(backup(lib))
-                unlocked["tank"]["journal_xp"] = 4200
+                unlocked["tank"]["sd_balance"] = 10000
                 encoded = json.dumps(unlocked).encode()
                 assert lib.sim_restore(encoded, len(encoded))
-                lib.sim_action(7); tap(330, 100); tap(100, 260); tap(400, 86)
+                lib.sim_action(7); tap(330, 100); tap(330, 180); tap(400, 86)
                 for row, theme in enumerate(range(4, 8)):
+                    tap(100, 124 + row * 42)
+                    assert json.loads(backup(lib))["tank"]["journal_theme"] != theme, "First tap only prices a theme"
                     tap(100, 124 + row * 42)
                     assert json.loads(backup(lib))["tank"]["journal_theme"] == theme, "All new backdrops must be selectable on page two"
                 tap(350, 86)
                 tap(100, 124)
                 assert json.loads(backup(lib))["tank"]["journal_theme"] == 0, "Original must remain selectable"
-                print("PASS: independent Goals/Album/Themes, paginated themes, locked themes and all four new selections")
+                print("PASS: paginated paid themes, insufficient funds, all four new selections and original backdrop")
                 tap(380, 20)
                 assert lib.sim_page() == 9
                 # Exercise real shop routing, especially IDs above the old MOVE boundary.
@@ -444,10 +431,12 @@ def main():
                                     (ROOT / "common" / "progression.c").read_text()).group(1)
                 prices = [int(price_defines.get(price, price)) for price in re.findall(
                     r'\{\s*[^,]+,\s*"[^"]*",\s*"[^"]*",\s*"[^"]*",\s*(\w+)\s*\}', catalog)]
-                assert len(prices) == 63
-                order = sorted((i for i in range(len(prices)) if i != 8), key=lambda i: (prices[i], i))
-                fry_row = int(bool(shop_demo["tank"]["tank_ms_bits"] & (1 << 14)))
+                assert len(prices) == 67
+                order = sorted((i for i in range(len(prices)) if i not in (1, 5, 6, 7, 8, 30, 31, 42)), key=lambda i: (prices[i], i))
+                fry_row = 0  # Decor never contains livestock offers.
                 for item in range(22, 43):
+                    if item in (30, 31, 42):  # mussel is Creature Market stock
+                        continue
                     lib.sim_action(0)  # Reset shop pagination without altering the save.
                     lib.sim_action(3)
                     row = order.index(item) + fry_row
@@ -467,8 +456,9 @@ def main():
                     if 22 <= item <= 29 or 36 <= item <= 41:
                         assert lib.sim_page() == 0 and lib.sim_setup_page() >= 0, ("Movable scenery opens placement after buying", item)
                     else:
-                        assert lib.sim_page() == 3 and lib.sim_setup_page() < 0, ("Upkeep/mussel must not open placement", item)
-                assert current["tank"]["sd_balance"] == 70
+                        assert lib.sim_page() == 3 and lib.sim_setup_page() < 0, ("Upkeep must not open placement", item)
+                balance_after_buys = 2530 - sum(prices[i] for i in range(22, 43) if i not in (30, 31, 42))
+                assert current["tank"]["sd_balance"] == balance_after_buys
                 lib.sim_action(0)
                 lib.sim_action(3)
                 row = order.index(29) + fry_row
@@ -476,16 +466,16 @@ def main():
                     tap(400, 40)
                 tap(150, 98 + (row % 4) * 56 + 16)  # Duck Float: a 60-sand-dollar surface ornament.
                 tap(224, 260)
-                assert json.loads(backup(lib))["tank"]["sd_balance"] == 70, "First SELL tap only arms"
+                assert json.loads(backup(lib))["tank"]["sd_balance"] == balance_after_buys, "First SELL tap only arms"
                 tap(224, 260)
                 sold = json.loads(backup(lib))["tank"]
-                assert not sold["sd_unlocks"] & (1 << 29) and sold["sd_balance"] == 82
+                assert not sold["sd_unlocks"] & (1 << 29) and sold["sd_balance"] == balance_after_buys + prices[29] // 5
                 data = json.dumps(shop_original).encode()
                 assert lib.sim_restore(data, len(data))
-                print("PASS: twenty-one shop purchases through price-sorted UI, including all four stat upgrades, six fixed scenery pieces (each opening placement) and the pearl mussel")
+                print("PASS: eighteen shop purchases through price-sorted UI, excluding retired upkeep, including four stat upgrades, six movable scenery pieces (the pearl mussel is Creature Market stock)")
                 lib.sim_action(1)
-                lib.sim_action(7); tap(100, 336); tap(330, 100)
-                assert lib.sim_page() == 6, "Fish category must open the fish bank"
+                lib.sim_action(7); tap(100, 100); tap(370, 342)
+                assert lib.sim_page() == 6, "Fish Summary must open the fish bank"
                 lib.sim_frame(0.04)
                 bank_before = json.loads(backup(lib))
                 tap(300, 330)
@@ -494,9 +484,12 @@ def main():
                 assert json.loads(backup(lib))["tank"]["n_fish"] == bank_before["tank"]["n_fish"]
                 tap(380, 20)
                 assert lib.sim_page() == 9
-                lib.sim_action(3)
-                tap(250, 326)
-                assert lib.sim_page() == 7, "Shop TANKS entry must open aquarium selection"
+                poor = json.loads(backup(lib))
+                poor["tank"]["sd_balance"] = 0
+                data = json.dumps(poor).encode()
+                assert lib.sim_restore(data, len(data))
+                lib.sim_action(1); tap(330, 100); tap(100, 100)
+                assert lib.sim_page() == 7, "Tank Summary owns aquarium selection"
                 lib.sim_frame(0.04)
                 tank_before = json.loads(backup(lib))
                 def assert_tank_kept():
@@ -510,19 +503,18 @@ def main():
                 assert_tank_kept()
                 tap(350, 160)
                 tap(300, 250)
-                assert lib.sim_page() == 7, "Insufficient sand dollars must not switch tank"
+                assert lib.sim_page() == 7, "Insufficient doubloons must not switch tank"
                 assert_tank_kept()
                 tap(380, 20)
                 tap(380, 20)
-                assert lib.sim_page() == 3
+                assert lib.sim_page() == 9
                 rich = json.loads(backup(lib))
                 rich["tank"]["sd_balance"] = 1000
                 rich["tank"]["setup_pending"] = 0
                 rich["tank"]["newborn_p1"] = 0
                 data = json.dumps(rich).encode()
                 assert lib.sim_restore(data, len(data))
-                lib.sim_action(3)
-                tap(250, 326)
+                lib.sim_action(1); tap(330, 100); tap(100, 100)
                 tap(350, 160)
                 tap(300, 250)
                 assert lib.sim_page() == 0, "Confirmed affordable purchase must load a new tank"
@@ -531,8 +523,7 @@ def main():
                 new_tank["tank"]["setup_pending"] = 0
                 data = json.dumps(new_tank).encode()
                 assert lib.sim_restore(data, len(data))
-                lib.sim_action(3)
-                tap(250, 326)
+                lib.sim_action(1); tap(330, 100); tap(100, 100)
                 tap(350, 120)
                 tap(300, 250)
                 returned = json.loads(backup(lib))

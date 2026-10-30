@@ -13,7 +13,7 @@ static inline unsigned companion_wearables(const companion_bond_t *b) {
     return b->wearables | ((unsigned)(b->tricks >> 3) << 8);
 }
 extern const char *const WEAR_NAMES[WEAR_COUNT];
-extern const uint8_t WEAR_LEVELS[WEAR_COUNT], WEAR_PRICES[WEAR_COUNT];
+extern const uint8_t WEAR_PRICES[WEAR_COUNT];
 /* Compatibility is anatomical, not an ownership/save validity constraint. */
 bool companion_wearable_fits(int variety, int wearable);
 bool companion_wearable(tank_t *t, int fish, int wearable);
@@ -22,6 +22,11 @@ uint8_t companion_creature_colors(const companion_state_t *s, int creature);
 bool companion_compact(tank_t *t, bool compact);
 void companion_open_section(int section);
 void companion_open_creature(int kind);
+void companion_select_fish(int fish);
+int companion_selected_fish(void);
+int companion_current_section(void);
+/* UI order only: market tier, cheapest first. */
+int companion_variety_at(int rank);
 /* Values are also used by simulator/director page selectors; preserve them.
  * These are UI identifiers, not fields in the frozen save layout. */
 typedef enum {
@@ -48,8 +53,26 @@ typedef enum {
     COMPANION_SECTION_RPG_JOURNAL = 21,
     COMPANION_SECTION_RPG_HELP = 22,
     COMPANION_SECTION_RPG_EVENT = 23,
-    COMPANION_SECTION_SYMBOLS = 24
+    COMPANION_SECTION_SYMBOLS = 24,
+    COMPANION_SECTION_REEF = 25,
+    COMPANION_SECTION_MARKET = 26,
+    COMPANION_SECTION_NURSERY = 27,
+    COMPANION_SECTION_SALE = 28,
+    COMPANION_SECTION_CREATURE_MARKET = 29,
+    COMPANION_SECTION_CREATURE_SALE = 30,
+    COMPANION_SECTION_RESIDENTS = 31,
+    COMPANION_SECTION_CREATURE_NURSERY = 32,
+    COMPANION_SECTION_SUMMARY = 33,
+    COMPANION_SECTION_FOOD = 34,
+    COMPANION_SECTION_HELP = 35,
+    COMPANION_SECTION_HELP_TOPIC = 36,
+    COMPANION_SECTION_CONTRACT = 37,
+    COMPANION_SECTION_AUCTION = 38,
+    COMPANION_SECTION_TRADE_CONFIRM = 39,
+    COMPANION_SECTION_AUCTION_RESULT = 40
 } companion_page_t;
+/* Fish Summary's FISH BANK button: true once, then the menu opens the bank. */
+bool companion_take_bank_request(void);
 extern const char *const COMPANION_DISCOVERIES[COMPANION_DISCOVERY_COUNT];
 extern const char *const COMPANION_COLLECTIONS[COMPANION_COLLECTION_COUNT];
 extern const char *const COMPANION_ADVENTURES[COMPANION_ADVENTURE_COUNT];
@@ -114,12 +137,17 @@ int  companion_visitor_pick(tank_t *t);                                  /* reco
 void companion_debug_visit(tank_t *t, int species);   /* serial: a visit on the next tick (-1 = random) */
 void companion_debug_season(tank_t *t, int season);   /* serial: force SEASON_* (-1 = the clock) */
 int  companion_season_for(int64_t local_unix, uint8_t flags);            /* SEASON_* | SEASON_LIGHTS */
+/* Only OFF affects live accents; hemisphere follows the saved weather city.
+ * The legacy SOUTH bit remains readable for old saves and pure date helpers. */
 bool companion_set_seasons(tank_t *t, uint8_t flags);                    /* saved; false = unchanged */
 void companion_polish_observe(tank_t *t);
 bool companion_polish_valid(const tank_polish_t *p, int fish, int bank, bool away);
 void companion_memory(tank_t *t, int kind, int fish, int detail);
 void companion_care_text(const tank_t *t, int fish, char *text, size_t size);
 void companion_memory_text(const tank_memory_t *memory, char *text, size_t size);
+/* 12 subtitles plus none and 12 emblems: every one of AQUARIUM_CAP (8) tanks can be unique */
+#define COMPANION_SUBTITLE_COUNT 13
+#define COMPANION_EMBLEM_COUNT 12
 const char *companion_subtitle(unsigned value);
 const char *companion_emblem(unsigned value);
 bool companion_identity(tank_t *t, bool emblem);

@@ -18,8 +18,343 @@ or deployment is published. Update this file when its contracts change.
 4. Validate the exact behavior and error/rollback paths. Record what actually
    passed, what was not tested, and any remaining work in the final response.
 
+## Game direction and design (2.4.0, authoritative)
+
+This section is the current design contract. Where an older bullet below
+(handoff logs, historical revisions) disagrees, this section wins; keep the
+old bullets only as history and evidence.
+
+### Pillars
+
+- **A serene aquarium first.** The tank is the main screen; menus are tools
+  around it. Prefer calm motion, few overlays, no chores, no neglect debt and
+  no random stress injected to make meters move. Decor choice stays rich, but
+  every new visual must earn its frame-time (see the FPS budgets below).
+- **One loop: buy, breed, sell.** Buy fish in the Fish Market, raise
+  same-variety pairs, and sell offspring. Genetics (alleles, vigor, mutations,
+  rare marks), stage, care and pedigree set the price. Purchases must never
+  resell for an immediate profit.
+- **One currency: doubloons** (gold coin icon in every purse). XP, levels,
+  firsts, trophies, object stories, frames and discoveries are retired as
+  active systems; keep their historical save fields frozen and unused.
+- **Original work only.** Do not reintroduce assets, names or code from the
+  upstream project the fork started from. New art is procedural or drawn by
+  tools in `tools/` in the established crafted pixel style.
+
+### Navigation (keep it shallow)
+
+- Main: Fish, Tank, Market, Games, Casino, Help; Settings is the cog at the
+  bottom right. Tapping a fish opens its Fish Summary directly; one Back
+  returns to the aquarium. Every companion submenu has Menu (to Main) and
+  Back (to its real parent).
+- Fish hub: Summary, Rename (full-page QWERTY), Family, Genes, Life, Wardrobe,
+  `<`/`>` and Fish Bank. Fish Summary shows five meters (Trust, Energy,
+  Fullness, Calm, Vigor) and info lines; it has no action grid.
+- Tank: Tank Summary (with Name & Identity), Decor & Storage, Fish Food,
+  Themes, Sand & Water.
+- Market hub: Fish Market, Creature Market, Collection, Contracts, Auction.
+- Games is one paged list (Stories and Lost Current are entries); never
+  reintroduce Arcade/Stories/RPG submenus or game-count subtitles.
+- Help is a topic list on Main covering every system (including
+  CONTRACTS & AUCTIONS and CREATURES); update it when a mechanic changes.
+
+### Fish economy and genetics
+
+- Varieties breed only with their own variety, on every path. The Fish Market
+  sells the varieties you have unlocked, cheapest tier first (Tetra is tier
+  one). Sale value = stage x tier x care x genes; genes include vigor
+  (heterozygous loci), visible traits, mutations and rare marks. Pedigree
+  certificates (generation and prized lines) add a small bonus. One variety
+  per day is in demand (+`PROGRESSION_DEMAND_PCT`%).
+- Favorite decor present or missing changes calm recovery and growth.
+  Permanent diets (Pellets, Flakes, Bloodworms) speed growth and have distinct
+  live particles.
+- Collections: finding every mutation of a variety awards a gold statue that
+  can be displayed in the tank (`tank_story_t` collection/statue bits).
+
+### Contracts and auctions (`common/progression.c` trade block)
+
+- Contracts: one order per `PROGRESSION_CONTRACT_DAYS` (3) day window, chosen
+  deterministically from the window and six named clients. An order asks for a
+  variety plus a need (fine grade, rare grade or any mutation, bred adult).
+  Filling it pays quote x `PROGRESSION_CONTRACT_PCT`% + `PROGRESSION_CONTRACT_BONUS`.
+  The filled mark is `progression.reserved` = window % 255 + 1.
+- Auction: Saturdays (`care.day % 7 == PROGRESSION_AUCTION_WEEKDAY`), one
+  eligible prized fish per week. Five rival bids rise from 80% of the quote to
+  a hammer of 95..165%, deterministic from (week, life id), consecutive
+  bidders differ; reserve is 95%. The weekly mark is `progression.pad` =
+  week % 65535 + 1. Both marks are profile-wide (copied across aquarium
+  switches) and serialized as optional JSON keys `contract_done`/`auction_done`.
+- Trades require Normal/Hard (not Creative) and `progression.version == 1`.
+  Every sale goes through `sell_fish_at`, which saves transactionally and
+  shows the pedigree certificate on its confirmation page.
+- UI sections: CONTRACT 37, AUCTION 38, TRADE_CONFIRM 39, AUCTION_RESULT 40.
+
+### Creatures (one Creature Market for all of them)
+
+- Shrimp school, snail, urchin, seahorse and pearl mussel are all bought and
+  sold in Market > Creature Market (`market_creature` cycles all
+  `CREATURE_COUNT` kinds). The Decor shop lists only decor and foliage;
+  creature catalog IDs (1, 5, 6, 7, 42) stay reserved and still render in the
+  tank.
+- Creatures do not breed. One of each per aquarium (the shrimp as one
+  school). Legacy pairs/nurseries were retired once with a refund.
+- Colors roll at purchase: NATURAL 45%, TINTED 30% (x1.4 resale), TWO-TONE 20%
+  (x2), PRIZED 5% (x3.5). Resale = price / 2 x rarity, so rerolling is a
+  losing average with lottery-like upside. Selling clears that tank's colors.
+- Roles: shrimp forage fallen food; the snail keeps glass clear (calm
+  recovers faster); the urchin grazes at night (resting fish settle faster);
+  the seahorse perches on kelp and doubles trust from holds; the pearl mussel
+  earns 1 doubloon per `MUSSEL_SECONDS` while fish are healthy, up to
+  `MUSSEL_DAILY_LIMIT` per day, paid automatically. Mussel ownership is the
+  per-aquarium `mussel.owned` bitmask (version 2); selling clears only the
+  active aquarium's bit and the paid/owned profile bits once none remain.
+
+### Casino
+
+- Casino games: Fish Races, Reef Reels, Pearl Hi-Lo, Shell Game, Treasure
+  Dive and Tide Wheel. Bets are 5/10/25/50 doubloons, settled once per play via
+  `progression_wallet_settle` (transactional; failure shows SAVE FAILED).
+  Keep every game's return below 100% and betting off in Creative.
+
+### Technical guardrails for this direction
+
+- Layout: page space is 448 x ~362. At 240 px, scale-1 lines must stay within
+  about 33 characters and Main/hub hints within about 14;
+  `tools/test_page_art.c` asserts against clipped text at both scales.
+- Tests to extend when touching these systems: `tools/test_trade.c`
+  (`test_reef_progression.py --trade-only`), the creature part of
+  `tools/test_fish_market.c`, `tools/test_page_art.c` (trade and
+  creature-market captures), `tools/test_companion_feedback.c`,
+  `sim/test_market.py`, `tools/test_browser.cjs` and
+  `tools/capture_cyd_gallery.py`. The fish-price part of `test_fish_market.c`
+  predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
+- Current verified COM4 2.4.0 app (Creature Market, contracts, auction, six
+  casino games) is 1,795,840 bytes (0x1b6700, 9% app partition free), SHA256
+  `4ac91891c508aea2b2c5b70106f767634b716a6a9dbd990dcb6323ab2c0d9d92`; app-only
+  ota_0 write with full backup and exact readback. Live tank ~22.2 fps; fixtures
+  1/2/3 at 22.41/16.41/19.44 fps, matching the previous image.
+- Previous identity/serenity app was 1,759,520 bytes, SHA256
+  `c339283c2b1e30e77703963e39a9b55b32ebed0681efab74f4cdab20b8986aed`.
+  Full recovery backup, app-only ota_0 write, exact readback, all sixteen
+  fresh hardware fixtures, reboot/Bank verification and two-minute soak pass.
+  Normal adaptive day/night/clock-decor/dense FPS:
+  22.85/22.55/16.12/19.57, within -0.37% of the preceding image at worst.
+  See firmware/CYD.md for all paths, stress evidence and explicit save/console
+  stalls; no commit or release publication was performed for this revision.
+- Casino revision (supersedes the menu layout below): Main is Fish, Tank,
+  Market, Games, Casino, Help, and Settings is the cog at the bottom right
+  (400,334). Main > Fish opens the Fish hub (Summary/Rename/Family/Genes/Life/
+  Wardrobe, `<`/`>` and Fish Bank); Fish Summary has no action grid, only five
+  meters (Vigor added) and info lines. Casino bets go through `wallet_settle`
+  once per play; keep RTP below 100% and betting off in Creative. Collection
+  bits/statue live in `tank_story_t` (JSON `collection`/`statue`), with no
+  schema bump. At 240 px, keep scale-1 lines within ~33 characters and avoid
+  multi-line `draw_text_wrap` paragraphs (16 px pitch overlaps).
+- The economy/help revision: Main menu is Fish, Tank, Market, Games, Help,
+  Settings. Main > Fish opens Fish Summary; its six actions are the only fish
+  hub. Fish Bank and Rename (full-page QWERTY) must return to the Summary,
+  not Main or the aquarium. Games is one paged list with Stories and Lost
+  Current as entries; never reintroduce Arcade/Stories/RPG submenus. Help
+  replaces Care Guide. Sale value = stage x tier x care x genes, where genes
+  include vigor (heterozygous loci), shown traits, mutations and rare marks;
+  purchase must exceed immediate resale. Favorite decor present/missing changes
+  calm recovery and growth; do not inject random stress. Tetra is market tier
+  one; Harborfin keeps FISH_CLASSIC's ID. Themes cost doubloons (tap twice).
+  13 subtitles / 12 emblems cover eight aquariums uniquely. Jelly tentacle
+  geometry must match fish_projected_extent; shrimp schools draw half.
+  Summary text must fit at 240 px (test_page_art clipping check).
+- The identity/serenity revision removes the seven decorative footer pips and
+  packs Tank actions contiguously (Summary, Decor, Food, Themes, Sand & Water).
+  Tank Summary has one Name & Identity entry; rename returns there on Save or
+  Cancel, and Menu must reach Main in both firmware and simulator.
+  Fish first-run/newborn/rename and tank names share the QWERTY draw/hit helper
+  in setup.c, never the historical wheel IDs. Preserve valid existing name
+  characters and transactional failure behavior. Test real key coordinates.
+  Season hemisphere comes from saved weather-city latitude, even with weather
+  disabled; without a city show no season. Preserve legacy SOUTH data but never
+  let it override the city. Only the optional accent Auto/Off control remains.
+  FISH_CLASSIC keeps its frozen numeric ID but is displayed/rendered as the
+  original Harborfin, including forked tail and ribbed sail; clearance, live
+  art, previews, market and existing residents must agree without changing
+  saved genetics/colors. Rainbow flake colors derive from stable particle
+  indices, not moving coordinates; samples use the same material.
+  Need gauges have illustrated icons, decimal values and ten shaded segments:
+  test ten separate pixel runs at both scales, not just virtual-coordinate
+  gaps. Fullness/Calm invert hunger/stress. Calm10 is normal without recent
+  startle/chasing; do not inject random stress to animate a meter.
+  Reef/shell/pearl/star emblems reuse detailed actual ornament materials.
+  Quiet background contrast/less luminous noise must not erase owned decor.
+  Sword folds/ribs/veins share one at-most-21px row occlusion mask; preserve
+  exact material strokes and verify against scalar piece/arch visibility.
+  Do not repeat full piece-mask work for every single-pixel vein stroke.
+- The next trading-focused iteration supersedes the earlier 2.4.0 UI/art
+  acceptance below. The user found the clock/live creature art insufficient,
+  markets crowded, menus fragmented and retired tool controls still visible.
+  Do not treat replaced icon PNGs as evidence that live procedural creatures,
+  theme scenery, bubbles, sand or clocks have visibly changed. Capture and
+  inspect those actual render paths at both scales.
+- Use one active currency, doubloons. XP and levels are historical save data,
+  not active gates, rewards or a second displayed economy. Preserve frozen
+  offsets and existing wallets/stock. Fish varieties may breed only with the
+  same variety on every path. Fish and creature base colors must come from
+  purchased stock, inheritance or mutation, never free editors, even Creative.
+  Permanent Pellets/Flakes/Bloodworms diets must have distinct live art and measurable growth
+  multipliers with transactional persistence across aquariums.
+- Consolidate Fish/Tank/Market/Games. Tapping fish opens the useful fish
+  summary directly, not the old stats/tool/lock overlay. One Back closes a
+  direct fish summary to the aquarium; Menu opens Main from every companion
+  submenu. Child Back preserves its actual parent. Stats belong inside
+  Fish; no sponge/scissors padlock may remain drawn or interactive. Stories
+  and Lost Current belong under Games; tank identity/rename under Tank
+  Summary. Retire active firsts/trophies/object stories/frames/discoveries
+  rather than retaining empty navigation. No game-count tile subtitle.
+  Decoration Shop must not offer fish fry. Markets need separate roomy stock,
+  residents/sales and pair/nursery views with explicit confirmation.
+- Every placed decoration, including sea glass, fixed scenery and extras,
+  needs an accessible removal path. Placement arrows must cycle actual
+  placed items/copies, not unlocked-but-absent stock. Remove the mandatory
+  starter stone arch: a bare tank may breed over open sand without a hidden
+  structure or phantom shelter bonus. Unanchored seahorses cruise upright in
+  open water and hover briefly, rather than sinking to a sand perch.
+- Bubbler, Reef Rhythm/current gestures and Say Hello are retired, including
+  setup, visit goals, rewards, tips and navigation. Keep legacy binary/JSON
+  fields and enum IDs intact; compatibility APIs must be no-ops without
+  rewards or RNG changes. Ambient/courtship bubbles may remain visual.
+- Every menu and submenu, including setup, weather and network/update pages,
+  must use the established crafted materials rather than flat placeholder
+  panels. Reuse shared framed controls; inspect actual captures at both scales.
+  Use the gold doubloon icon in purses. Name food Pellets/Flakes/Bloodworms
+  with distinct actual particles and samples, not generic tier labels.
+- Foliage means visual ground cover like the old seagrass footprint, not
+  a separate shop/category. Decor & Storage sells aquarium-local floor sets:
+  Anubias Carpet 60, Moss Cushions 85, Pearlweed 110 and Kelp 95 doubloons.
+  Owned sets can be planted/stored for free. The first three mix across
+  six static patches; kelp adds two 80px stands, about half sword height.
+  Existing saves retain free Anubias; new aquariums start bare. No growth,
+  trimming, maintenance or phantom shelter bonus. PNG source art and the
+  indexed live header come from tools/draw_ground_cover.py; previews must
+  use the same art. Include planted bits in compressed/baked/damage cache
+  signatures and test every mixture at both sizes, including row/column clips.
+  Bake kelp's fixed lower stems into the floor cache; only the top 21px
+  crowns draw live, with six-step 2Hz sway (at most 2px; fully baked in Simple).
+  Damage only the moving crowns on phase changes; never invalidate static
+  scene caches every animation phase or redraw/resample the whole 80px plant.
+  Keep the native-size clipped fast path and shared 16-color dimmed palette.
+  Seahorses can genuinely perch on kelp's fixed stems: keep grip and art aligned,
+  release on Store, and preserve upright open-water swimming without perches.
+  Sword art and grip width must share sword_half; its preview uses the same
+  folded emerald/teal direction, not the retired thin lime silhouette.
+  Keep legacy SD_ITEM_COUNT and 64-bit profile ownership frozen; foliage uses
+  appended catalog IDs 63..66 and its own save tail, never legacy bit shifts.
+- The working 2.4.0 overhaul supersedes the older gameplay/routing contracts
+  below; 2.3.20 remains the published baseline until publication is verified.
+  The current user authorized autonomous mechanic design and iteration, not
+  approval prompts for each concept. Build/COM4 testing remains subject to the
+  backup and app-only safety rules; publication is a separate authorization.
+- Achievement retirement includes runtime detectors, meal/hold bits, sleep,
+  growth and population firsts, stage/trust bonus payouts, and queued modals,
+  not just menus. Preserve historical save bits/ledgers without new grants.
+  Keep care/storage warnings, release updates, the light-control tip and real
+  fish growth, breeding and trade income. Test actual eating, every legacy
+  bit, stage changes, blocked queues, no-op retired modal rendering and reload.
+- Kelp Forest theme leaves must be positioned relative to each stalk's tip,
+  not a global row phase clipped at a per-stalk height. Use tapered tips and
+  complete leaf silhouettes at every authored height; verify both scales.
+- Seagrass, algae and cleaning tools remain retired. Beds 0..2 have no
+  simulation or rendered geometry; sword bed 3 has static authored leaves.
+  Snail and urchin are ornamental wanderers; shrimp never refuse food because
+  of algae. Seahorse blade anchors use sword bed 3, never retired grass;
+  kelp perches use their separate planted-set anchor kind.
+  Preserve old save fields, catalog IDs and historic chore counters; never
+  renumber or silently reuse them.
+- Shelter comes only from sufficiently wide, actually placed nonsurface
+  decorations, including extra copies. Swipes never create current bonuses.
+  Quiet Company uses quiet viewing only, not historical current counters.
+  There are no
+  neglect penalties or offline environmental debt. Care gestures must not
+  depend on the reserved historical tool-lock flag.
+- Fish Summary replaces both the old Names & Looks hub and tapped-fish overlay.
+  Keep all seven clock faces and their saved preferences. Legacy toolbox
+  hitboxes and free base-color editing are retired in every mode.
+- The user's follow-up makes fish commerce/breeding the core loop. Normal/Hard
+  species, colors and patterns come from bought stock and inheritance, not
+  free identity editing; names and optional wearables remain. Creative does
+  not restore free fish/creature color editing. Existing residents and historical unlock records
+  must survive. Fish type/quality affects sale value, but fresh purchases
+  must not yield instant resale profit. Buying and confirmed selling must
+  save transactionally, including wallet, roster, identities and family/bank
+  references. Clear capacity, breeding-pair and failure feedback is required.
+- (Superseded: creatures no longer breed; see "Creatures" above.) Historically, creature pairs also bred for trade. Existing single residents must not
+  silently become pairs. Keep adult representatives and nursery stock bounded,
+  active-time breeding paused in inactive aquariums, and pair visuals/hit targets
+  consistent. Legacy creature ownership, paid refunds, shop actions and market
+  stock must remain synchronized: free replacements cannot become sale income.
+  Additional stock must not multiply mussel income or resurrect grazing chores.
+  Creature palettes currently use one existing saved slot per species per
+  aquarium: paid initial stock assigns a bounded palette, and a rare birth
+  mutation changes the whole species palette, including adults. Do not claim
+  individual creature color inheritance. Shrimp/mussel have paid palettes,
+  not individual offspring genes. Free palette saves reject in every mode.
+- Current 2.4.0 saves are schema 23 / 6476 bytes. The entire historical
+  6424-byte prefix is frozen; Reef Rhythm occupies 6424..6443 and creature
+  stock 6444..6463, with eight progression bytes at 6464 and four aquarium-local
+  foliage bytes at 6472. Complete schema-22 prefixes migrate; partial new tails
+  and invalid ownership/planted masks must be rejected.
+  Initialize the appended progression state even on nonzero-filled tank memory.
+  Active persistence ports must report the verified stored payload length via
+  `aquarium_store_read_sized`, not the caller's larger capacity: zero-padding
+  a historical snapshot is not evidence that its new schema tail exists.
+  Downgraded synthetic JSON fixtures must remove newer `reef`, `creatures`,
+  `progression` and `foliage` sections; never relax strict production validation.
+  Retired shop IDs stay reserved. Paid filter/garden
+  refunds run once, after shared-wallet copying on inactive-tank migration.
+  Hard online starvation is unchanged by the environmental overhaul.
+### Earlier local trading revision
+
+- Final COM4 app is 1,748,352 bytes, 217,728 OTA-slot bytes free, SHA256
+  `88f0c1a3302737c991984e2bfe1d6b167847127472f99f1aab1fb4bc20775c4c`.
+  Full recovery backup and exact app-only ota_0 readback passed. The first
+  image safely blocked writes on a historical-profile length mismatch;
+  verified sized reads fixed it. Original SPIFFS was byte-identical before
+  recovery. Residents bolt/pip/kelp/odie and fry mira, wallet and clock settings
+  loaded; Bank JSON, HTTPS weather and saves passed. No erase/repartition.
+- All 27 source selectors passed, with final native backup and exact bounded
+  clocks. Renderer stress: 180 seconds, 16708 cases / 116956 full/tile/retained
+  frame sets. Final persistence changes also passed focused profile/storage,
+  complete simulator smoke and real Edge acceptance. Gallery: 192 per scale.
+- All 16 device benchmark fixtures passed. Against the previous local 2.4.0
+  image, default-mode FPS changed 23.90/23.16/18.72/20.58 to
+  23.05/22.56/17.44/20.09 (day/night/clock-decor/dense). The richer art costs
+  2.4-6.8% in that mode, not a speed gain. Final real-tank save took 190 ms.
+  Keep this local identity separate from published 2.3.20.
+
+### Historical deployment evidence (not latest-revision acceptance)
+
+- Earlier 2.4.0 source acceptance passed the 27-selector matrix, native economy and
+  both-scale Normal/Hard/Creative touch-market checks, and rebuilt real Edge
+  acceptance. The 180-second embedded renderer soak covered 14655 cases /
+  102585 exact full/tile/retained frame sets. The actual gallery has 205
+  captures per scale, with market text/route assertions. All 42 active
+  upstream icon PNGs were replaced; five retired originals were removed.
+  Screenshots and reproducible evidence are in the feature/hardware guides.
+- COM4's latest app-only verified local 2.4.0 build is 1746464 bytes,
+  219616 bytes free in its existing OTA slot, SHA256
+  `a0bfd802b79151cc70732d5f0a9f1a99a5dfd83939bd4beab014d76e96c20786`.
+  Full recovery backup preceded the write; exact readback passed on ota_0.
+  All 16 final before/after benchmark fixtures completed. Default mode 3
+  improved 22.28/21.72/17.56/19.13 to 23.90/23.18/18.73/20.59 FPS,
+  roughly 6.7-7.6%, not a dramatic multiplier. Tick work fell from about
+  2.5 to 1.8 ms, but rendering/LCD work remains. Keep this local identity
+  separate from published 2.3.20; the old COM4 evidence below is historical.
+  Final save/reboot/Bank JSON and the original bolt/pip/kelp/odie roster
+  passed. Clock preferences and wallet 7753 survived. HTTPS weather passed
+  with 30856 internal bytes free / 29696 largest at request start, then the
+  radio shut down. The two-minute quiet soak had a 184-ms service stall;
+  JSON verification produced a separate 764-ms diagnostic stall. Do not
+  claim hitch-free output or confuse these with steady fixture FPS.
 - Release 2.3.20 is published at tag/source
   `7b5411019ac89cb7ad6e3a75fa223459e366c81e`. Main acceptance
   (40806623944) and all-board release/installer gates (40808164983) passed.

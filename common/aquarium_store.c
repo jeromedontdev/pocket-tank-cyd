@@ -81,7 +81,9 @@ static bool copies(const char *directory, const uint32_t id[2], int slot, size_t
     }
     return true;
 }
-bool aquarium_store_read(const char *directory, const uint32_t id[2], int slot, void *data, size_t size) {
+bool aquarium_store_read_sized(const char *directory, const uint32_t id[2], int slot,
+                               void *data, size_t size, size_t *stored_size) {
+    if (stored_size) *stored_size = 0;
     char paths[2][192]; uint32_t sequence[2] = {0}; int status[2];
     if (!copies(directory, id, slot, size, paths, sequence, status)) return false;
     int use = status[1] == 1 && (status[0] != 1 || sequence[1] > sequence[0]) ? 1 : 0;
@@ -96,7 +98,11 @@ bool aquarium_store_read(const char *directory, const uint32_t id[2], int slot, 
               h.crc == crc32(0, data, h.length) && fgetc(file) == EOF && !ferror(file);
     if (fclose(file) != 0) ok = false;
     if (!ok) fprintf(stderr, "Aquarium reread verification failed\n");
+    else if (stored_size) *stored_size = h.length;
     return ok;
+}
+bool aquarium_store_read(const char *directory, const uint32_t id[2], int slot, void *data, size_t size) {
+    return aquarium_store_read_sized(directory, id, slot, data, size, NULL);
 }
 bool aquarium_store_write(const char *directory, const uint32_t id[2], int slot, const void *data, size_t size) {
     char paths[2][192]; FILE *files[2] = {NULL, NULL}; header_t heads[2]; int status[2];

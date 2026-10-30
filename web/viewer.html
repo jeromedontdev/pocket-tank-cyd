@@ -160,7 +160,7 @@ function genes(line, shownPattern) {
   if (line.color2) carried.push("a hidden colour");
   TRAITS.forEach((t, k) => { if (line.traits & (16 << k)) carried.push(t); });
   const out = [["Genes", shown.length ? shown.join(", ") : "classic"], ["Carries", carried.length ? carried.join(", ") : "nothing hidden"]];
-  if (line.mutation) out.push(["Mutation", [line.mutation & 1 ? "new marking" : "", line.mutation & 2 ? "new trait" : ""].filter(Boolean).join(" + ") + "!"]);
+  if (line.mutation) out.push(["Mutation", [line.mutation & 1 ? "new marking" : "", line.mutation & 2 ? "new trait" : "", line.mutation & 4 ? "new body color" : ""].filter(Boolean).join(" + ") + "!"]);
   return out;
 }
 
@@ -201,6 +201,14 @@ function card(f, line, life, names, extra) {
 function show(save) {
   if (!save || save.format !== "pocket-tank" || typeof save.schema !== "number" || !save.tank) throw new Error("This is not a Pocket Tank CYD backup.");
   if (save.schema < 9) throw new Error(`Schema ${save.schema} is too old to view - restore it on the tank and back up again.`);
+  if (!Number.isInteger(save.schema) || save.schema > 23) throw new Error("Unsupported backup schema.");
+  if (save.schema >= 23) {
+    const f = save.foliage;
+    if (Object.keys(save).length !== 26 || !f || Object.keys(f).length !== 4 ||
+        f.version !== 1 || f.reserved !== 0 || !Number.isInteger(f.owned) || f.owned < 0 || f.owned > 15 ||
+        !Number.isInteger(f.planted) || f.planted < 0 || f.planted > 15 || (f.planted & ~f.owned))
+      throw new Error("Invalid ground-cover sets.");
+  }
   const t = save.tank, comp = save.companion || {}, pol = save.polish || {}, story = save.story || null;
   const life = { active: lives(hex(pol.active)), bank: lives(hex(pol.bank)), traveler: lives(hex(pol.traveler))[0] };
   const lin = story ? { active: lines(hex(story.active)), bank: lines(hex(story.bank)), traveler: lines(hex(story.traveler))[0] } : null;
@@ -231,21 +239,33 @@ function show(save) {
     : save.creative && save.creative.enabled === 1 ? "Creative (no progression rewards)" : "Normal";
   const facts = [
     ["Fish", `${t.n_fish} at home, ${bank.length} in the Bank${traveler ? ", 1 on an adventure" : ""}`],
-    ["Journal XP", t.journal_xp], ["Sand dollars", t.sd_balance],
+    ["Doubloons", t.sd_balance],
+    ["Permanent food", save.progression ?
+      `${["Pellets", "Flakes", "Bloodworms"][save.progression.food_tier] || "Unknown"}; ${[1, 1.25, 1.5][save.progression.food_tier] || "?"}x growth` :
+      "Base; predates permanent food upgrades"],
     ["Mode", gameMode],
     ["Daily care rewards", save.care ? `${[0, 1, 2].filter(i => save.care.claimed & (1 << i)).length}/3 saved` : "Predates daily care"],
-    ["Game bonus today", save.game_income ? `${save.care.game_paid}/90 sand dollars; up to 5 per game; no XP` :
-      save.care ? `${save.care.game_paid}/5 sand dollars; no XP` : "Predates daily bonus limit"],
+    ["Game bonus today", save.game_income ? `${save.care.game_paid}/90 doubloons; up to 5 per game` :
+      save.care ? `${save.care.game_paid}/5 doubloons` : "Predates daily bonus limit"],
     ["Shared decoration storage", save.inventory ? `${[...hex(save.inventory.stored), ...hex(save.content && save.content.stored)].reduce((sum, n) => sum + n, 0)}/64 pieces` : "Predates inventory"],
+    ["Ground-cover sets here", save.foliage ?
+      ["Anubias Carpet", "Moss Cushions", "Pearlweed", "Kelp"].map((name, i) =>
+        `${name}: ${save.foliage.planted & (1 << i) ? "planted" : save.foliage.owned & (1 << i) ? "stored" : "not purchased"}`).join("; ") :
+      "Legacy Anubias Carpet (kept when restored)"],
     ["Extra ornaments here", save.inventory ? `${hex(save.inventory.extra).filter((n, i) => i % 8 === 0 && n !== 0).length}/8 placed` : "Predates inventory"],
     ["Pearl mussel", save.mussel ? save.mussel.owned ?
       `${save.mussel.version >= 2 ? save.mussel.owned.toString(2).replace(/0/g, "").length + " aquarium resident(s); " : "Legacy resident; "}${save.mussel.generated}/15 earned today; ${save.mussel.bank} pending automatic payout` :
-      "Available in the shop" : "Predates pearl mussel"],
+      "Available in the Creature Market" : "Predates pearl mussel"],
     ["Born in this tank", story ? story.births : "-"],
     ["Seasons", !story ? "-" : story.flags & 1 ? "off" : story.flags & 2 ? "southern hemisphere" : "northern hemisphere"],
     ["Founded", pol.founded_unix ? new Date(pol.founded_unix * 1000).toLocaleDateString() : "unknown"],
     ["Saved", t.saved_unix ? new Date(t.saved_unix * 1000).toLocaleString() : "unknown"],
     ["Backup schema", save.schema],
+    ...["snail", "urchin", "seahorse"].map(species => [
+      `${species[0].toUpperCase()}${species.slice(1)}`,
+      save.creatures ? (save.creatures[`${species}_adults`] ? "Resident in this tank (one per tank)" : "Not owned here") : "Predates creature stock"
+    ]),
+    ["Creatures", "Shrimp school, snail, urchin, seahorse and pearl mussel: one of each per tank, traded in the Creature Market. Creatures do not breed; colors roll at purchase and rarer colors resell for more."],
   ];
   const table = el("table");
   for (const [k, v] of facts) { const r = el("tr"); r.append(el("th", k), el("td", String(v))); table.append(r); }
@@ -291,7 +311,7 @@ function show(save) {
     const at = k * MEMORY; if (at + MEMORY > recap.length) break;
     const who = cstr(recap, at + 4, NAME) || "A fish", kind = recap[at + 12], detail = recap[at + 13];
     const text = { 1: `${who} joined the aquarium.`, 2: `${who} reached a new life stage.`, 3: `${who} made a familiar friend.`,
-                   4: "Discovered something new.", 5: `${who} brought home a keepsake.`, 6: "Helpers quietly tended the tank.",
+                   4: "Discovered something new.", 5: `${who} brought home a keepsake.`, 6: "Little reef residents shared a quiet moment.",
                    7: `${VISITOR_MEMORY[detail % VISITOR_MEMORY.length]} visited the reef.` }[kind];
     if (text) list.append(el("li", text));
   }

@@ -77,7 +77,8 @@ static void test_decor_scenery_buy_sell(void) {
     t.sd_balance = INT32_MAX;
     assert(!progression_sell_value_for(&t, SD_SCENERY_FIRST));
     assert(progression_sell(&t, SD_SCENERY_FIRST) && t.sd_balance == INT32_MAX);
-    assert(progression_buy(&t, SD_SCENERY_FIRST) && t.sd_balance == INT32_MAX);
+    assert(!progression_item_owned(&t, SD_SCENERY_FIRST));
+    assert(progression_buy(&t, SD_SCENERY_FIRST) && progression_item_owned(&t, SD_SCENERY_FIRST));
     char *json = progression_backup_json(&t); assert(json);
     cJSON *root = cJSON_Parse(json); free(json); assert(root);
     cJSON *polish = cJSON_GetObjectItemCaseSensitive(root, "polish");
@@ -389,7 +390,7 @@ static void test_harbor_garden_content(void) {
     }
     assert((loaded.companion.active[0].tricks & 7) == (t.companion.active[0].tricks & 7));
     unsigned wardrobe = companion_wearables(&loaded.companion.active[0]);
-    assert(tank_add_fish(&loaded, -1, -1) >= 0);
+    assert(tank_add_fish(&loaded, 0, 1) >= 0);
     assert(!progression_bank_move(&loaded, -1, 0));
     assert(companion_wearables(&loaded.companion.bank[0]) == wardrobe);
     assert(!progression_bank_move(&loaded, 0, 0));
@@ -454,9 +455,11 @@ static void test_retired_pumpkin(void) {
     assert(!progression_pumpkin_offered(&t));
     assert(!progression_item_owned(&t, 8) && !progression_item_unlocked(&t, 8));
     assert(!tank_decor_owned(&t, 8) && !tank_decor_movable(8));
-    assert(progression_shop_count(&t) == SD_ITEM_COUNT - 1);
-    for (int row = 0; row < progression_shop_count(&t); row++)
-        assert(progression_shop_item(&t, row) != 8);
+    assert(progression_shop_count(&t) == SD_CATALOG_COUNT - 8); /* retired + Creature Market stock */
+    for (int row = 0; row < progression_shop_count(&t); row++) {
+        int item = progression_shop_item(&t, row);
+        assert(item != 8 && item != 30 && item != 31);
+    }
     assert(!progression_buy(&t, 8) && !progression_inventory_buy(&t, 8));
     assert(!progression_inventory_place(&t, 8) && !progression_inventory_store(&t, 8, -1));
     assert(progression_save(&t));

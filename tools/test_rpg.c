@@ -8,6 +8,10 @@
 void companion_open(void) {}
 void companion_open_section(int section) { (void)section; }
 void companion_open_creature(int kind) { (void)kind; }
+void companion_select_fish(int fish) { (void)fish; }
+int companion_selected_fish(void) { return 0; }
+int companion_variety_at(int rank) { return rank; }
+int companion_current_section(void) { return -1; }
 void companion_render(const tank_t *t, uint16_t *fb, int stride) {
     (void)t; (void)fb; (void)stride;
 }
@@ -17,6 +21,7 @@ void companion_render_decor(const tank_t *t, uint16_t *fb, int stride) {
 bool companion_tap(tank_t *t, float x, float y) {
     (void)t; (void)x; (void)y; return false;
 }
+bool companion_take_bank_request(void) { return false; }
 
 static void rpg_reload(tank_t *t) {
     tank_init(t, 456);
@@ -66,7 +71,7 @@ int main(void) {
     assert(companion_rpg_legacy(&t, 1));
     assert(companion_rpg_contributor(&t, id));
     assert(strstr(companion_rpg_route(&t, 0), "PROMISE"));
-    assert(tank_add_fish(&t, -1, -1) >= 0);
+    assert(tank_add_fish(&t, 0, 1) >= 0);
     companion_polish_observe(&t);
     assert(tank_remove_fish(&t, 0));
     assert(companion_rpg_contributor(&t, id));
@@ -76,7 +81,8 @@ int main(void) {
     rpg_reload(&t);
     assert(companion_rpg_contributor(&t, id) && companion_rpg_legacy(&t, 0));
     char *json = progression_backup_json(&t);
-    assert(json && strstr(json, "\"schema\":20") && strstr(json, "\"rpg\":"));
+    assert(json && strstr(json, "\"schema\":23") && strstr(json, "\"rpg\":") &&
+           strstr(json, "\"progression\":"));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     free(json);
     rpg_reload(&t);
@@ -130,6 +136,10 @@ int main(void) {
     cJSON_DeleteItemFromObjectCaseSensitive(root, "games_extra");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "content");
     cJSON_DeleteItemFromObjectCaseSensitive(root, "fixed");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "reef");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "creatures");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "progression");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "foliage");
     assert(cJSON_ReplaceItemInObjectCaseSensitive(root, "schema", cJSON_CreateNumber(13)));
     json = cJSON_PrintUnformatted(root); cJSON_Delete(root);
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));

@@ -3,6 +3,7 @@
 #include "setup.h"
 #include "cJSON.h"
 #include "aquarium_store.h"
+#include "weather.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -10,6 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+bool weather_location_south(bool *south) { (void)south; return false; }
 
 #ifdef TEST_PROFILE_STORE
 static void damage(const char *save, int slot, char copy) {
@@ -74,6 +77,12 @@ bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size)
     (void)id;
     if (reject_slot_read || !slot_sizes[slot]) return false;
     memset(data, 0, size); memcpy(data, slots[slot], slot_sizes[slot]); return true;
+}
+bool aquarium_port_read_sized(const uint32_t id[2], int slot, void *data, size_t size, size_t *got) {
+    if (got) *got = 0;
+    if (!aquarium_port_read(id, slot, data, size)) return false;
+    if (got) *got = slot_sizes[slot];
+    return true;
 }
 bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_t size) {
     (void)id;
@@ -170,7 +179,8 @@ static void test_aquariums(tank_t *t) {
     reject_slot_read = false;
     char *json = progression_backup_json(t); assert(json);
     char error[160];
-    assert(strstr(json, "\"schema\":20") && strstr(json, "\"games_extra\":") && strstr(json, "\"profile\":"));
+    assert(strstr(json, "\"schema\":23") && strstr(json, "\"games_extra\":") &&
+           strstr(json, "\"profile\":") && strstr(json, "\"progression\":"));
     assert(progression_restore_json(json, strlen(json), false, error, sizeof error));
     assert(progression_restore_json(json, strlen(json), true, error, sizeof error));
     free(json); reload(t);

@@ -20,7 +20,8 @@ EXPORTS = ["sim_init", "sim_save", "sim_backup", "sim_free", "sim_error",
            "sim_frame", "sim_touch", "sim_action", "sim_width", "sim_height",
            "sim_display_brightness", "sim_page", "sim_setup_page", "sim_mode",
            "sim_mode_chosen", "sim_scene_detail", "sim_brightness", "sim_network_page",
-           "sim_feed_at", "sim_food_x", "sim_selected", "sim_tool", "sim_restore", "malloc", "free"]
+           "sim_feed_at", "sim_food_x", "sim_selected", "sim_selected_fish", "sim_tool", "sim_companion_section",
+           "sim_restore", "malloc", "free"]
 
 
 def build(output, compiler):

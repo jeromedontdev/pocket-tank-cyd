@@ -380,7 +380,7 @@ bool touch_port_read_raw(float *x, float *y) {
 static void settings_touch(tank_t *t, float x, float y, bool down) {
     int v = 0, r = render_settings_touch(t, x, y, down, &v);
     if (r) ESP_LOGI(TAG, "settings action %d value %d", r, v);
-    if (r == SET_TAP_CLOSE) { s_set = false; s_ms = true; s_life = s_from_home && !s_child_from_keeper; s_back = true; }
+    if (r == SET_TAP_CLOSE) { s_set = false; s_ms = s_life = true; s_back = true; }
     else if (r == SET_TAP_RECOVERED) {
         touch_port_dismiss(); setup_cancel(t); notice_sync(t); render_fb_primed(NULL, 0); s_back = true;
         if (progression_setup_pending()) setup_begin(t);
@@ -398,7 +398,7 @@ static void settings_touch(tank_t *t, float x, float y, bool down) {
 }
 void touch_port_life_tap(tank_t *t, float x, float y) {
     int action = render_life_tap(t, x, y);
-    if (action == HOME_CLOSE) { s_ms = s_life = s_from_home = false; s_sel = -1; }
+    if (action == HOME_CLOSE) { s_ms = s_life = s_from_home = false; }
     else if (action) {
         s_life = false; s_from_home = true; s_child_from_keeper = false; s_sel = -1;
         switch (home_open(t, action)) {
@@ -468,16 +468,21 @@ void touch_port_poll(tank_t *t) {
             else ESP_LOGI(TAG, "setup done: %s + %s", t->fish[0].name, t->fish[1].name);
         }
     }
-    { int rf = setup_take_renamed();                         /* a rename closed (2026-10-01): back to the milestones page, the fish's card up */
-      if (rf >= 0) { s_ms = true; s_set = false; s_shop = false; s_sel = -1; render_milestones_show_fish(t, rf); } }
+    { int rf = setup_take_renamed();
+      if (rf >= 0) { s_ms = s_life = true; s_set = s_shop = false; s_sel = -1; render_life_fish_return(rf); } }
     bool modal = s_ms || s_set || s_shop || s_cf || su || s_upd;   /* a page or a prompt owns the glass */
     static bool card_next;
     static int card_color = -1;
+    static int card_menu;
+    static bool card_lock;
     if (touched && !s_down) {
         card_next = !modal && render_stats_next_hit(t, s_sel, s_px, s_py);
         card_color = modal ? -1 : render_creature_colors_hit(t, s_sel, s_px, s_py);
+        bool fish_card = !modal && s_sel >= 0 && s_sel < t->n_fish;
+        card_menu = fish_card ? render_card_menu_hit(s_px, s_py) : RENDER_CARD_MENU_NONE;
+        card_lock = fish_card && render_lock_hit(s_px, s_py);
     }
-    bool card_control = card_next || card_color >= 0;
+    bool card_control = card_next || card_color >= 0 || card_menu || card_lock;
     if (touched) {                                           /* stroke = wipe/slash, reaching the glass (stroke_point above) */
         float dx, dy; stroke_point(!s_down, tx, ty, &dx, &dy);
         if (!s_down) { s_dx0 = s_dx1 = dx; s_frames = 0; s_raw_px = x[0]; s_raw_py = y[0]; }
@@ -489,7 +494,7 @@ void touch_port_poll(tank_t *t) {
     /* tap-and-hold on a decoration (2026-09-24, Strato: "right now it's like 5
        taps to get back to the edit"): a still finger 700 ms on an owned
        piece opens its placement page (MOVE / DEPTH / REMOVE) right there */
-    if (touched && !modal && !card_control && !s_held_page && t->tool == TOOL_HAND && now - s_press_us > 700000 && fabsf(tx - s_px) < 24 && fabsf(ty - s_py) < 24) {
+    if (touched && !modal && !card_control && !s_held_page && now - s_press_us > 700000 && fabsf(tx - s_px) < 24 && fabsf(ty - s_py) < 24) {
         if (setup_begin_place_at(t, s_px, s_py)) {
             s_held_page = true; s_sel = -1;
             ESP_LOGI(TAG, "held on the %s: placement page up", SD_ITEMS[setup_item()].name);
@@ -533,13 +538,16 @@ void touch_port_poll(tank_t *t) {
                     else if (result == 2) {
                         touch_port_dismiss(); setup_cancel(t); notice_sync(t); render_fb_primed(NULL, 0);
                         if (progression_setup_pending()) setup_begin(t);
+                    } else if (result == 3) {
+                        touch_port_dismiss(); render_life_open();
+                        s_ms = s_life = true;
                     }
                     goto released;
                 }
                 int r = render_shop_tap(t, s_px, s_py);
                 ESP_LOGI(TAG, "shop tap at %.0f,%.0f -> %s", s_px, s_py, r == SHOP_TAP_CLOSE ? "CLOSE" : r >= SHOP_TAP_INVENTORY ? "INVENTORY" : r >= SHOP_TAP_FRY ? "BUY A FRY" : r >= SHOP_TAP_SELL ? "SELL" : r >= SHOP_TAP_MOVE ? "MOVE" : r >= SHOP_TAP_BUY ? "UNLOCK" : r == SHOP_TAP_KEPT ? "modal" : "nothing");
                 if (r == SHOP_TAP_TANKS) { s_aquariums = true; render_aquariums_open(t); }
-                else if (r == SHOP_TAP_CLOSE) { s_shop = false; render_shop_leave(); s_ms = true; s_life = s_from_home && !s_child_from_keeper; }   /* back to the milestones page (2026-09-16) */
+                else if (r == SHOP_TAP_CLOSE) { s_shop = false; render_shop_leave(); s_ms = s_life = true; }
                 else if (r >= SHOP_TAP_BUY) s_shop_act = r;   /* main.c buys (and plays the cue) or opens the placement page */
                 goto released;
             }
@@ -549,15 +557,15 @@ void touch_port_poll(tank_t *t) {
                     goto released;
                 }
                 if (s_games) {
-                    if (render_games_tap(t, s_px, s_py)) { s_games = false; s_life = s_from_home && !s_child_from_keeper; }
+                    if (render_games_tap(t, s_px, s_py)) { render_life_take_story(); s_games = false; s_life = true; }
                     goto released;
                 }
                 if (s_bank) {
-                    if (render_bank_tap(t, s_px, s_py)) { s_bank = false; s_life = s_from_home && !s_child_from_keeper; }
+                    if (render_bank_tap(t, s_px, s_py)) { s_bank = false; s_life = true; }
                     goto released;
                 }
                 if (s_journal) {
-                    if (render_journal_tap(t, s_px, s_py)) { s_journal = false; s_life = s_from_home && !s_child_from_keeper; }
+                    if (render_journal_tap(t, s_px, s_py)) { s_journal = false; s_life = true; }
                     goto released;
                 }
                 int r = render_milestones_tap(t, s_px, s_py);
@@ -569,6 +577,7 @@ void touch_port_poll(tank_t *t) {
                 if (r == MS_TAP_JOURNAL) { s_journal = true; render_journal_open(); goto released; }     /* CLOSE / SETTINGS / the sand dollar, detail modal, nothing */
                 if (r == MS_TAP_GAMES) { s_games = true; s_sel = -1; render_games_open(); tank_handled(t); goto released; }
                 if (r == MS_TAP_LIFE) { s_life = true; s_sel = -1; render_life_open(); tank_handled(t); goto released; }
+                if (r == MS_TAP_MARKET) { s_life = true; s_sel = -1; s_from_home = false; tank_handled(t); goto released; }
                 ESP_LOGI(TAG, "page tap at %.0f,%.0f (release %.0f,%.0f) -> %s", s_px, s_py, s_lx, s_ly,
                          r >= MS_TAP_CUSTOM ? "CUSTOMIZE" : r >= MS_TAP_SELL ? "SELL (a fish's card)" : r >= MS_TAP_RENAME ? "RENAME (a fish's card)" :
                          r == MS_TAP_CLOSE ? "CLOSE" : r == MS_TAP_SETTINGS ? "SETTINGS" : r == MS_TAP_SHOP ? "SHOP" : r == MS_TAP_KEPT ? "detail" : "nothing");
@@ -592,12 +601,6 @@ void touch_port_poll(tank_t *t) {
                 progression_ack_milestones(t); render_milestones_leave();   /* everything shown is now "seen" */
                 goto released;
             }
-            if (t->tool != TOOL_HAND) {                      /* a tool in hand owns the glass (2026-10-04): only its chip's DONE answers a tap */
-                s_sel = -1;
-                if (render_tool_chip_hit(t, s_px, s_py)) { tank_set_tool(t, TOOL_HAND); ESP_LOGI(TAG, "tool chip tapped at %.0f,%.0f: back to bare hands", s_px, s_py); }
-                else ESP_LOGI(TAG, "tap at %.0f,%.0f ignored: a tool is in hand (DONE first)", s_px, s_py);
-                goto released;
-            }
             if (card_next) {
                 if (render_stats_next_hit(t, s_sel, s_lx, s_ly)) {
                     s_sel = render_stats_next(t, s_sel); s_sel_us = now;
@@ -611,17 +614,10 @@ void touch_port_poll(tank_t *t) {
                 }
                 goto released;
             }
-            if (s_sel >= 0 && s_sel < t->n_fish && render_tools_hit(s_px, s_py) >= 0) {   /* the toolbox under the card (2026-10-01):
-                                                                                     pick a tool up, or put the one in hand back */
-                int tl = render_tools_hit(s_px, s_py);
-                tank_set_tool(t, t->tool == tl ? TOOL_HAND : tl); s_sel = -1;
-                ESP_LOGI(TAG, "toolbox tap at %.0f,%.0f -> %s", s_px, s_py, t->tool == TOOL_SPONGE ? "SPONGE" : t->tool == TOOL_SCISSORS ? "SCISSORS" : "bare hands");
-                goto released;
-            }
-            if (s_sel >= 0 && s_sel < t->n_fish && render_lock_hit(s_px, s_py)) {   /* the LOCK beside it (0.3.5): bare fingers
-                                                                                 wipe and cut, or only the tools do; the card stays */
-                tank_lock_tools(t, !t->tools_locked); progression_settings_changed(); s_sel_us = now;
-                ESP_LOGI(TAG, "lock tap at %.0f,%.0f -> %s", s_px, s_py, t->tools_locked ? "LOCKED: only the tools wipe and cut" : "unlocked: bare fingers wipe and cut");
+            if (card_lock) {
+                if (render_lock_hit(s_lx, s_ly)) {
+                    tank_lock_tools(t, !t->tools_locked); progression_settings_changed(); s_sel_us = now;
+                }
                 goto released;
             }
             if ((s_sel < 0 || s_sel >= t->n_fish) && render_tool_chip_hit(t, s_px, s_py)) {   /* the tool chip's DONE */
@@ -629,9 +625,13 @@ void touch_port_poll(tank_t *t) {
                 ESP_LOGI(TAG, "tool chip tapped at %.0f,%.0f: back to bare hands", s_px, s_py);
                 goto released;
             }
-            if (s_sel >= 0 && s_sel < t->n_fish && RENDER_CARD_HIT(s_px, s_py)) {   /* a tap ON the card (or the slop
-                ESP_LOGI(TAG, "card tap at %.0f,%.0f -> milestones", s_px, s_py);         under its MORE button) = milestones page */
-                s_ms = s_life = true; s_from_home = false; render_life_open(); goto released;
+            if (card_menu) {
+                if (render_card_menu_hit(s_lx, s_ly) == card_menu) {
+                    if (card_menu == RENDER_CARD_MENU_FISH) render_life_fish_open(s_sel);
+                    else render_life_open();
+                    s_ms = s_life = true; s_from_home = false;
+                }
+                goto released;
             }
             /* fish first; only an empty tap reaches the water. 38 px radius
                (a fingertip on this 322 ppi panel covers ~60 px) against BOTH
@@ -646,7 +646,11 @@ void touch_port_poll(tank_t *t) {
                 if (d2 < bd) { bd = d2; best = i; }
             }
             int helper = render_creature_card_hit(t, s_px, s_py);
-            if (best >= 0) { s_sel = (best == s_sel) ? -1 : best; s_sel_us = now; }
+            if (best >= 0) {
+                render_life_fish_open(best);
+                s_ms = s_life = true; s_from_home = false; s_sel = -1;
+                tank_handled(t);
+            }
             else if (helper >= 0) {
                 if (helper == RENDER_CARD_SHRIMP) {
                     int taps = tank_shrimp_tap(t, s_px, s_py);
@@ -663,7 +667,7 @@ void touch_port_poll(tank_t *t) {
         else if (s_ms && !s_journal && !s_bank && !s_games && !s_life && !s_back && fabsf(dx) >= 40 && fabsf(dx) > 2 * fabsf(dy)) {   /* sideways along the TANK row: its page (2026-09-30) */
             if (render_milestones_swipe(t, s_px, s_py, dx)) ESP_LOGI(TAG, "page swipe %.0f px on the tank row", dx);
         }
-        else if (!card_control && !s_ms && t->tool == TOOL_HAND && s_py - tank_glass_top(s_px) < 60 && dy >= 40) tank_feed(t, s_lx, 3);  /* drag down from the top = feed (not with a tool in hand) */
+        else if (!card_control && !s_ms && s_py - tank_glass_top(s_px) < 60 && dy >= 40) tank_feed(t, s_lx, 3);
     }
 released:
     if (!touched) s_held_page = false;
@@ -682,7 +686,15 @@ void touch_port_show_life(void) { touch_port_dismiss(); s_ms = true; s_life = tr
 void touch_port_show_games(void) { touch_port_dismiss(); s_ms = true; s_games = true; render_games_open(); }
 void touch_port_show_bank(void) { touch_port_dismiss(); s_ms = true; s_bank = true; render_bank_open(); }
 void touch_port_show_journal(void) { touch_port_dismiss(); s_ms = true; s_journal = true; render_journal_open(); }
-void touch_port_show_milestones(bool on) { if (s_ms && !on) render_milestones_leave(); s_ms = on; s_life = s_games = s_journal = s_bank = false; }
+void touch_port_games_closed(void) {
+    bool story = render_life_take_story();
+    if (!story) { touch_port_show_life(); return; }
+    s_games = false; s_ms = s_life = true;
+}
+void touch_port_show_milestones(bool on) {
+    if (on) touch_port_show_life();
+    else { render_milestones_leave(); s_ms = s_life = s_games = s_journal = s_bank = false; }
+}
 void touch_port_dismiss(void) { s_from_home = s_home_tanks = s_child_from_keeper = false; s_aquariums = false; s_life = s_games = s_journal = s_bank = false; s_sel = -1; if (s_ms) render_milestones_leave(); if (s_shop) render_shop_leave(); s_ms = false; s_set = false; s_shop = false; s_upd = false; }
 bool touch_port_updates(void) { return s_upd; }
 void touch_port_show_updates(bool on) { s_life = s_games = s_journal = s_bank = false; s_upd = on; if (on) { s_ms = false; s_set = false; s_shop = false; s_sel = -1; } }

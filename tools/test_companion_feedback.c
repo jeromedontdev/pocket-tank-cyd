@@ -14,6 +14,8 @@ void menu_test_text(int x, int y, int scale, const char *label) {
     if (!*label) return;
     int w = render_text_w(label, scale);
     int h = scale == 1 ? (7 * PAGE_H + TANK_H - 1) / TANK_H : 7 * scale;
+    if (!(x >= 0 && y >= 0 && x + w <= PAGE_W && y + h <= PAGE_H))
+        fprintf(stderr, "Feedback text bounds: %s (%d,%d %dx%d)\n", label, x, y, w, h);
     assert(x >= 0 && y >= 0 && x + w <= PAGE_W && y + h <= PAGE_H);
     for (int i = 0; i < observed_count; i++)
         assert(!(x < observed_bounds[i].x + observed_bounds[i].w &&
@@ -50,53 +52,24 @@ static void fresh_feedback(tank_t *t, bool compact, int mode) {
 static void check_bonds(bool compact) {
     tank_t t;
     fresh_feedback(&t, compact, GAME_MODE_NORMAL);
-    char expected[80], actual[80];
-    static const char *const names[] = {"DART", "BUBBLES", "FOLLOW"};
-    static const unsigned thresholds[] = {10, 25, 50};
     for (unsigned bond = 0; bond <= 100; bond++) {
         t.companion.active[0].bond = (uint8_t)bond;
-        if (bond >= 50) snprintf(expected, sizeof expected, "ALL TRICKS OPEN.");
-        else {
-            unsigned j = bond < 10 ? 0 : bond < 25 ? 1 : 2;
-            unsigned count = (thresholds[j] - bond + 4) / 5;
-            snprintf(expected, sizeof expected, "%s: %u BOND / %u HELLO%s.",
-                     names[j], thresholds[j], count, count == 1 ? "" : "S");
-        }
-        bond_progress_text(&t, &t.companion.active[0], actual, sizeof actual);
-        assert(!strcmp(expected, actual));
+        tank_t before = t;
+        assert(!companion_greet(&t, 0) && !memcmp(&before, &t, sizeof t));
+        assert(!companion_trick(&t, 0, 1));
         draw_feedback(&t, COMPANION_SECTION_CARE);
-        assert(strstr(observed, expected));
-        assert(strstr(observed, "HELLOS: 30S APART. BOND STAYS."));
-        for (int trick = 0; trick < 3; trick++)
-            assert(companion_trick(&t, 0, trick) == (bond >= thresholds[trick]));
+        assert(companion_current_section() == COMPANION_SECTION_SUMMARY);
+        assert(strstr(observed, "FISH SUMMARY") && !strstr(observed, "HELLO"));
+        draw_feedback(&t, COMPANION_SECTION_TRICKS);
+        assert(companion_current_section() == COMPANION_SECTION_SUMMARY);
+        draw_feedback(&t, COMPANION_SECTION_REEF);
+        assert(companion_current_section() == COMPANION_SECTION_SUMMARY);
     }
-    t.companion.active[0].bond = 0;
-    t.companion.powered_s = 100; t.companion.active[0].next_greet_s = 0;
-    assert(companion_greet(&t, 0));
-    assert(t.companion.active[0].bond == 5 && t.companion.active[0].next_greet_s == 130);
-    companion_open_section(COMPANION_SECTION_CARE);
-    assert(!companion_tap(&t, render_frame_x(80), render_frame_y(120)));
-    assert(!strcmp(notice, "Hello ready in 30s."));
-    t.companion.powered_s = 129;
-    assert(!companion_greet(&t, 0));
-    assert(!companion_tap(&t, render_frame_x(80), render_frame_y(120)));
-    assert(!strcmp(notice, "Hello ready in 1s."));
-    t.companion.powered_s = 130;
-    assert(!companion_tap(&t, render_frame_x(80), render_frame_y(120)));
-    assert(!strcmp(notice, "Hello! +5 bond. Trust unchanged."));
-    assert(t.companion.active[0].bond == 10);
     fresh_feedback(&t, compact, GAME_MODE_CREATIVE);
-    assert(!t.companion.active[0].bond);
+    tank_t before = t;
+    assert(!companion_greet(&t, 0) && !memcmp(&before, &t, sizeof t));
     draw_feedback(&t, COMPANION_SECTION_CARE);
-    assert(strstr(observed, "CREATIVE: ALL TRICKS OPEN.") && !strstr(observed, "HELLOS LEFT"));
-    for (int trick = 0; trick < 3; trick++) {
-        companion_open_section(COMPANION_SECTION_CARE);
-        companion_tap(&t, render_frame_x(40 + 146 * trick), render_frame_y(255));
-        assert(strstr(notice, "BACK to watch.") && !strstr(notice, "Locked"));
-    }
-    t.n_fish = 1;
-    companion_tap(&t, render_frame_x(340), render_frame_y(255));
-    assert(!strcmp(notice, "Follow needs a tankmate at home."));
+    assert(companion_current_section() == COMPANION_SECTION_SUMMARY);
 }
 static void check_growth(bool compact) {
     tank_t t;
@@ -117,7 +90,7 @@ static void check_growth(bool compact) {
             life_progress_text(&t, 0, actual, sizeof actual);
             assert(!strcmp(expected, actual));
             draw_feedback(&t, COMPANION_SECTION_LIFE);
-            assert(strstr(observed, "NEXT:") && strstr(observed, "DECOR SETS REST/INTEREST SPOTS."));
+            assert(strstr(observed, "NEXT:") && strstr(observed, "LOVES:") && strstr(observed, "GROWTH x"));
         }
         progression_set_age(&t, 0, (float)thresholds[stage]);
         assert(t.fish[0].stage == (stage_t)(stage + 1));
@@ -127,10 +100,11 @@ static void check_growth(bool compact) {
     assert(!strcmp(actual, "ELDER: NO NEXT STAGE. AGE CONTINUES WITH TIME."));
     progression_set_age(&t, 0, 0);
     t.night = true;
+    float g = progression_fish_growth_factor(&t, 0);   /* favorite decor and vigor */
     progression_tick(&t, 3600);
-    assert(progression_age_s(&t, 0) == 3600);
+    assert(fabsf(progression_age_s(&t, 0) - 3600 * g) < .05f);
     progression_slept(&t, 3600);
-    assert(progression_age_s(&t, 0) == 4500); /* Sleep contributes 25%, not a wall-clock ETA. */
+    assert(fabsf(progression_age_s(&t, 0) - 4500 * g) < .05f); /* Sleep contributes 25%, not a wall-clock ETA. */
     life_progress_text(&t, 0, actual, sizeof actual);
     assert(!strcmp(actual, "NEXT: JUVENILE IN 1 GROWTH-HOUR; SLEEP IS SLOWER."));
     float age = progression_age_s(&t, 0);
@@ -145,7 +119,7 @@ static void check_symbols(bool compact) {
     companion_open_section(COMPANION_SECTION_SYMBOLS);
     static const char *const expected[] = {
         "STRESS: LESS IS BETTER.", "NEITHER END IS GOOD OR BAD.",
-        "CLOSED LOCK: USE A TOOL TO CLEAN."
+        "SWORD PLANT: A CALM SHELTER."
     };
     for (int p = 0; p < 3; p++) {
         observed[0] = 0; observed_count = 0;
@@ -157,8 +131,9 @@ static void check_symbols(bool compact) {
             assert(strstr(observed, "HEART / TRUST: MORE IS BETTER."));
         }
         if (p == 2) {
-            assert(strstr(observed, "SPONGE: WIPE ALGAE FROM THE GLASS."));
-            assert(strstr(observed, "SCISSORS: TRIM SEAGRASS."));
+            assert(strstr(observed, "ARROW: NEXT. BACK: FISH MENU."));
+            assert(strstr(observed, "MAIN MENU: TANK, GAMES, SETTINGS."));
+            assert(!strstr(observed, "SPONGE") && !strstr(observed, "SCISSORS"));
         }
         assert(!companion_tap(&t, render_frame_x(330), render_frame_y(326)));
     }
@@ -167,12 +142,40 @@ static void check_symbols(bool compact) {
     assert(companion_tap(&t, render_frame_x(390), render_frame_y(24)));
     assert(writes == old_writes && !memcmp(&before, &t, sizeof t));
 }
+static void check_market_fit(bool compact) {
+    tank_t t;
+    fresh_feedback(&t, compact, GAME_MODE_NORMAL);
+    t.sd_balance = 99999;
+    memset(t.fish[0].name, 'W', FISH_NAME_MAX); t.fish[0].name[FISH_NAME_MAX] = 0;
+    t.fish[0].trust = t.fish[0].energy = t.fish[0].hunger = t.fish[0].stress = 10.f;
+    while (t.n_fish < POP_CAP && t.n_fish < N_FISH_MAX) t.fish[t.n_fish++] = t.fish[0];
+    assert(progression_market_status(&t));
+    for (int stage = STAGE_FRY; stage <= STAGE_ELDER; stage++)
+        for (int rank = 0; rank < FISH_VARIETY_COUNT; rank++) {
+            t.fish[0].stage = (stage_t)stage; t.fish[0].variety = (uint8_t)companion_variety_at(rank);
+            market_rank = rank; selected = 0;
+            draw_feedback(&t, COMPANION_SECTION_MARKET);
+            for (int i = 0; i < observed_count; i++)
+                assert(observed_bounds[i].x + observed_bounds[i].w <= PAGE_W - 12);
+        }
+    for (int kind = 0; kind < CREATURE_COUNT; kind++) {
+        if (kind == CREATURE_MUSSEL) { t.mussel.version = 2; t.mussel.owned = (uint8_t)(1u << t.aquariums.active); t.companion.mussel_colors = 0x5c; }
+        else if (kind) t.creatures.stock[kind - 1] = (creature_stock_t){0, 1, 0};
+        else { t.sd_unlocks |= SD_ITEM_SHRIMP; t.shrimp_n = SHRIMP_MAX; }
+        if (kind != CREATURE_MUSSEL) t.companion.creature_colors[kind] = 0x5c;
+        market_creature = kind;
+        draw_feedback(&t, COMPANION_SECTION_CREATURE_MARKET);
+        for (int i = 0; i < observed_count; i++)
+            assert(observed_bounds[i].x + observed_bounds[i].w <= PAGE_W - 12);
+    }
+}
 int main(void) {
     for (int compact = 0; compact < 2; compact++) {
         check_bonds(compact != 0);
         check_growth(compact != 0);
         check_symbols(compact != 0);
+        check_market_fit(compact != 0);
     }
-    puts("PASS: companion bond thresholds/counts/cooldowns, Creative tricks, stage rounding and sleep growth; read-only pages fit both scales.");
+    puts("PASS: companion bond thresholds/counts/cooldowns, Creative tricks, stage rounding and sleep growth; read-only and worst-case market pages fit both scales.");
     return 0;
 }

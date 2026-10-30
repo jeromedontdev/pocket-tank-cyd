@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.3.20
+# Pocket Tank CYD 2.4.0
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.3.20**. Stable firmware,
+now versioned independently. This source targets **2.4.0**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -20,17 +20,198 @@ Other boards, model inference/training, audio, battery/PMIC and IMU drivers
 are not included. See [LICENSE](LICENSE) for the original project license.
 
 **Take the illustrated tour:** [CYD features and screenshots](docs/CYD-FEATURES.md)
-covers named tanks, the bank, creature customization, Journal, mini-games,
+covers named tanks, the bank, inherited creatures, mini-games,
 decorations, fish-care upgrades, desk-companion progression, optional weather,
 themed clocks, Wi-Fi setup, releases and SD workflows with captures from the
 actual desktop renderer.
 
-## New in 2.3.20: fish-first identity and quieter presentation
+## New in 2.4.0: a breeding-and-trading aquarium
 
-**Names & Looks** is the first Home tile. **Life & Care** keeps greetings,
-wardrobe, Bank and life-history routes together, while **Symbol Guide** on
-Home explains needs, personality, tools and bond. Tapped-fish cards now label
-their bars and personality traits; sponge, scissors and lock controls remain.
+The aquarium is moving from cleaning chores and freely selected fish looks
+toward buying breeding stock, raising inherited varieties and selling healthy
+offspring. Separate tanks let you maintain different breeding lines. Names and
+optional wearables remain personal touches; existing residents are preserved.
+The single active currency is **doubloons**. XP/levels, firsts, trophies,
+discoveries, frames and object-story rewards no longer drive progression.
+Historical save records remain readable, but are not another currency or
+another set of duties.
+
+Achievement retirement also removes the old first-meal/hold/feeding/night
+popups and growth-stage announcements, their runtime detectors, and one-time
+growth/trust bonus payouts. Actual growth, birth income and trading remain;
+historical badge records and earned wallets are preserved in saves.
+
+**No environmental chores:** seagrass, algae, sponge, scissors, Reef Rhythm
+and the bubbler are retired. Swipes no longer activate currents or current bonuses.
+Buy **Anubias Carpet (60), Moss Cushions (85), Pearlweed (110) or
+Kelp (95 doubloons)** in **Decor & Storage**. Each is a plant set for that
+aquarium. Mix the first three across six low patches with sandy gaps.
+Kelp adds two taller stands, about half the sword plant's height, with
+subtle twice-per-second sway and real seahorse perches. Simple detail keeps
+kelp still. The sword plant has broader folded, veined emerald/teal leaves
+and an updated shop illustration.
+Kelp Forest's background leaves now grow from each stalk's tapered tip
+without abrupt horizontal cuts through the top leaves.
+The same shop row lets you **Store** or **Plant** it again at no further cost.
+The low plants use the static backdrop; kelp animates separately without
+rebuilding it. There is no growth, trimming, feeding
+penalty or shelter bonus. Existing saves keep their Anubias cover for free;
+new aquariums start with bare sand. There is no separate Foliage menu.
+Purchased sword plants and sufficiently wide floor decorations
+provide shelter, including placed extra copies. The forced starter stone arch
+is gone; a bare tank can still breed over open sand.
+Snail and urchin are ornamental wanderers; shrimp still eat fallen pellets,
+without algae-based refusal. There is no environmental neglect penalty or
+offline upkeep debt. Without planted kelp, a sword plant or a suitable decoration post, a
+seahorse cruises upright through open water instead of sitting on the floor.
+
+Tap a fish to open its summary directly, with its needs and breeding information
+inside the Fish menu rather than a stats/tool overlay covering the tank.
+One **Back** returns directly to the aquarium; **Menu** goes straight to the
+main menu from any fish submenu. **Help** (main menu) replaces the Fish-menu
+Care Guide: fourteen illustrated topics from Getting Started to Market Prices.
+Shared crafted glass, brass fittings and framed controls also cover submenus,
+setup, weather and network/update pages.
+The main menu groups **Fish**, **Tank**, **Market**, **Games**, **Help** and
+**Settings**. Main > Fish opens the current fish's Summary, whose six actions
+(Rename, Family, Genes, Life, Wardrobe, Fish Bank) replace the old duplicate
+Fish menu; Fish Bank and Rename return to that Summary. Rename is a full-page
+QWERTY screen. **Games** is one paged list: arcade games, Stories and The Lost
+Current sit side by side, with no Arcade/Stories/RPG submenus. Tank identity
+and rename belong to Tank Summary > Name & Identity, now with thirteen
+subtitles and twelve emblems so eight aquariums can all differ.
+Buying, residents/sales and the fish pair/nursery have separate market pages.
+There is no sponge/scissors padlock, and Decor no longer offers fish fry.
+Active original upstream artwork has been replaced with
+new detailed fish, helpers, scenery and icon illustrations, following this
+fork's material/shading direction.
+
+The first market tier is now the simple **Tetra**; **Harborfin** (the original
+starter's frozen variety ID) is a mid-tier fish. Existing residents keep their
+names, colors, genes and breeding compatibility. Market stock is listed in tier
+order, and each tier adds 20% to a fish's base worth.
+
+**Genetics and vigor:** sale value = stage worth x market tier x care condition
+(60–100%) x genes. The gene factor starts at x1.00 and adds 4% per point of
+**vigor**, 15% per shown recessive trait, 25% per mutation and 10% for a rare
+marking (COMMON / FINE / RARE / PRIZED). Vigor (0–10) is hybrid vigor:
+heterozygous hidden markings, colors and carried traits raise it, while
+line-breeding converges toward low-vigor offspring. Vigor also adds up to 10%
+growth. Bought stock always costs more than its immediate resale.
+
+**Favorite decor:** every fish loves one decoration (shown on its Summary as
+LOVES ...: PLACED or MISSING). With it placed, calm recovers 30% faster and
+growth is +10%; without it, calm drifts down to 7.5 at most and growth is -10%.
+Mini-game rounds pay up to 12 doubloons, five rounds per game per day.
+
+Clock styles have redesigned glass frames (digital, neon, compact, flip,
+binary) and the weather card uses matching glass with an illustrated condition
+badge. Jellyfish trail tapered, curling tentacles rather than streamers, and
+large shrimp schools again draw half of their members to preserve FPS.
+Fish summaries use illustrated, individually colored ten-segment need gauges;
+Fullness and Calm both increase toward healthier states.
+Tank menus pack the remaining actions without a blank tile, and decorative
+footer dots no longer masquerade as page indicators.
+**Tank Summary > Name & Identity** groups tank rename, subtitle and illustrated
+reef/shell/pearl/star badges. Both tank and fish names use a shared QWERTY
+keyboard, including first-run and newborn naming.
+Seasonal accents derive their hemisphere from the saved **weather city**,
+even when live forecasts are off. Without a city, no season is guessed.
+Accents can still be switched off, but there is no separate location selector.
+Quieter, lower-contrast theme scenery and sparser glowing specks leave the
+residents and purchased decorations as the foreground, without moving or
+removing anything you own. For a restrained layout, choose one tall focal
+piece, a low plant set and a wide sandy swimming lane; store other pieces
+in Decor & Storage without selling them.
+
+**Pellets / Flakes / Bloodworms** are permanent diets with distinct live food
+art and shop samples: rounded brown pellets, irregular rainbow-colored flakes
+and curled red bloodworms. Flake colors stay attached to their individual food
+particles while falling. Their growth multipliers remain **1x / 1.25x / 1.5x**;
+Flakes cost **250 doubloons**, Bloodworms **750 more**. The gold doubloon
+icon accompanies wallets rather than leaving the currency text-only.
+There is no bubbler placement, bubble-column destination or greeting/bond
+reward. Natural ambient and courtship bubbles remain purely visual.
+
+This source overhaul is not a claim that 2.4.0 is already published.
+
+![Fish Summary: needs, genes, vigor, worth, favorite decor and actions](docs/media/cyd-features/my-fish.png)
+
+![Fish Market: buying breeding stock and reviewing sale value](docs/media/cyd-features/fish-market.png)
+
+**Creature Market** (Market hub, or the link on Fish Market) trades every
+creature in one place: the shrimp school, snail, urchin, seahorse and pearl
+mussel. Creatures do not breed; each aquarium keeps one of each (shrimp as one
+school). Colors roll at purchase: NATURAL 45%, TINTED 30% (x1.4 resale),
+TWO-TONE 20% (x2) or PRIZED 5% (x3.5), so rare colors are worth reselling and
+rerolling is a gamble that loses on average. Roles: shrimp forage fallen food,
+snails keep the glass clear (calm +10%), urchins graze at night (rest +20%),
+seahorses perch on kelp (trust from holds doubles) and the pearl mussel pays
+doubloons while your fish stay fed. Legacy creature pairs and nursery stock
+were retired once with a refund. The Decor shop now sells only decorations and
+ground cover.
+
+**Breeding contracts:** every three days one of six harbor clients orders a
+variety with a requirement (fine or rare grade, or any mutation, bred adult)
+and pays quote x1.6 + 50 doubloons for a fitting fish before the deadline.
+**Auction day:** on Saturdays one prized bred fish can go under the hammer;
+five rival bids land between 95% and 165% of its quote, and the result page
+shows every bid. Both use the same confirmed, transactional sale as the market.
+
+The main menu is **Fish, Tank, Market, Games, Casino, Help**, with Settings on
+the cog in the bottom-right corner. **Main > Fish** is the Fish hub (Summary,
+Rename, Family, Genes, Life, Wardrobe, plus `<`/`>` fish selection and Fish
+Bank); the Fish Summary itself shows only Trust, Energy, Fullness, Calm and
+**Vigor** bars with value, favorite-decor, pedigree and demand lines.
+**Casino** has six games: Fish Races (pick one of four lanes, fixed x2-x6
+odds, ~90% return), Reef Reels (three reels, ~94% return), Pearl Hi-Lo, the
+Shell Game, Treasure Dive and the Tide Wheel; bets are 5-50 doubloons,
+settled once and saved, and are disabled in Creative. One fish variety is in
+**demand** each day: bred (generation 1+) fish of it sell for +25%. Sale pages
+show a **pedigree certificate**; bloodlines add 2% per generation (6% for
+RARE+ genes, up to five generations). Decor shop rows mark items your fish love
+with a heart. **Market > Collection** tracks the marking, trait and color
+mutations bred per variety; completing a row unlocks a variety statue to show
+in the tank. Snails clean the glass (calm +10%) and urchins graze at night
+(rest +20%).
+
+Buy fish in **Main Menu > Market**. Raise a healthy pair of
+the same variety to adult/elder, keep room in the tank, and establish feeding
+before breeding. Offspring inherit their parents' looks and genes. Sale
+quotes reward variety, life stage, trust, energy, fullness and calm. Bought
+stock always costs more than its best immediate same-stage resale value.
+Sales require confirmation and save successfully before paying out; names,
+family records and Bank references stay consistent. Fish varieties can breed
+only with the same variety, including direct spawning and forced/debug paths.
+Base fish and creature colors are acquired through bought stock, inheritance
+or genetic mutation, not free palette editors, including in Creative.
+Hard mode still has its existing online starvation risk; removing environmental
+chores does not remove feeding or Hard-mode consequences.
+
+Permanent **Pellets / Flakes / Bloodworms** diets use the same doubloons and
+apply across your aquariums. Their food particles look different, and growth is
+multiplied by **1x / 1.25x / 1.5x**; better food does not remove hunger or
+turn into an ongoing subscription. Flakes cost **250**, then Bloodworms cost
+**750 more**; Pellets remain free.
+The original theme remains free; the other seven themes cost **120–360**
+doubloons (tap once to see the price, again to buy). Old earned unlocks migrate
+without a second payout or an XP gate.
+
+**Back up before updating.** New binary saves are **6476 bytes**, with
+schema-23 JSON exports. The frozen 6472-byte layout is followed by four
+aquarium-local foliage bytes; exports add `foliage` beside `progression`.
+Existing saves migrate; older firmware
+cannot read newly saved data. Partitions and touch calibration are unchanged.
+
+The versioned sections below are historical development notes. Where old
+screens, currencies, unlock rules or menus differ, the current 2.4.0 rules
+above take precedence.
+
+## Retained from 2.3.20: quieter presentation
+
+The earlier Names & Looks and tool controls are superseded by the 2.4.0
+navigation above. Symbol Guide explains actual fish needs, personality and bond.
+Fish Summary labels needs and personality traits.
 All seven clock faces gain restrained framing and clearer detail without
 animated glow, new buffers or changes to saved clock preferences.
 
@@ -1030,7 +1211,7 @@ stable ordering for equal prices. The nursery's FRY row, when available, stays
 separate at the top. Existing item IDs, prices, placements and ownership are
 unchanged.
 
-Ten more tank-local unlocks fit the existing 4000-byte save prefix:
+Eight scenic unlocks retain the existing save ownership IDs:
 
 | Unlock | Sand dollars | Effect |
 |---|---:|---|
@@ -1042,17 +1223,16 @@ Ten more tank-local unlocks fit the existing 4000-byte save prefix:
 | Tube Sponges | 100 | Fixed gold sponge garden |
 | Lost Barrel | 110 | Fixed oak barrel |
 | Dive Helmet | 140 | Fixed brass diving helmet |
-| Slow Garden | 160 | Grass grows at half speed, awake and asleep |
-| Bio Filter | 180 | New algae grows at half speed, awake and asleep |
 
-The three surface ornaments can be displayed together. These eight new scenic
-unlocks have fixed positions; unlike movable decorations, they do not offer
-MOVE. A paid copy refunds 20 percent once (tap SELL twice). The permanent
+The three surface ornaments can be displayed together. These eight scenic
+unlocks support moving and layering. A paid copy refunds 20 percent once
+(tap SELL twice). The permanent
 unlock follows all tanks; free replacement copies show REMOVE and refund zero.
 The shop descriptions identify their positions.
-The upkeep upgrades are permanent, affect only their own aquarium, do not
-erase existing algae or grass, and never award chore credit. Other care,
-fish aging and coral growth remain unchanged. Inactive tanks still pause.
+Slow Garden and Bio Filter are retired with the old upkeep mechanics.
+Their IDs remain reserved; eligible paid copies receive ordinary sell-back
+value once when migrated. Other care, fish aging and coral growth remain
+unchanged. Inactive tanks still pause.
 
 ![Surface decorations](docs/media/cyd-features/tank-surface-floats.png)
 
@@ -1080,7 +1260,7 @@ backups, and clear when that tank is wiped. Older backups start without them.
 The binary save's 4000-byte prefix is unchanged; a formerly reserved byte holds the flags.
 
 The fork also includes upstream's daytime breather fix: exhausted fish duck
-into nearby seagrass (or their resting corner) to recover without changing
+into nearby authored shelter (or their resting corner) to recover without changing
 their advisor goal. Calm Current also boosts this resting recovery. The CYD
 fork retains its separate update channel and existing release-number format.
 
@@ -1102,13 +1282,13 @@ original 15 one-time objectives; **TODAY** returns to daily care.
 |---|---:|---:|
 | One player feeding actually eaten | 30 | 12 |
 | Say Hello, or hold calmly near a fish for 60 seconds | 30 | 13 |
-| Clean an algae colony, trim through a 10 cm counter step, or watch a settled tank for five minutes | 65 | 25 |
+| Create a current that a fish responds to, or watch a settled tank for five minutes | 65 | 25 |
 
 Tap each ready **CLAIM** to save it, once per profile per day: **125 dollars
 and 50 XP** in total. Watching requires an uncovered, lit aquarium with at
 least one fed, non-distressed fish; menus and mini-games do not count.
 The alternatives need no purchased helpers, forced fish sales or excessive feeding.
-Repeat feeding, trimming and holds no longer farm XP or additional care money;
+Repeat feeding, currents and holds do not farm XP or additional care money;
 growth, births and full-trust milestones still pay their one-time dollars.
 Games give no XP and only a small shared daily coin bonus.
 
@@ -1316,6 +1496,10 @@ gameplay remains available whether you start, finish, or ignore the story.
 
 ## Desk companion, discoveries and safe adventures
 
+The navigation, greetings, bonds and collection descriptions in this older
+section are historical. The current breeding/trading menus at the top of
+this document supersede them; Say Hello and its trick screen are not playable.
+
 Tap a fish and its **MENU** button for **Home**: **Fish**, **Tank**,
 **Adventures**, **Collections**, **Games**, and **Settings**.
 Fish holds interactions, Bank, wardrobe,
@@ -1352,11 +1536,11 @@ weather's RAM budget.
 **Display > SCENE: BALANCED / SIMPLE / ENHANCED** is independent of scale.
 **Normal size + Balanced detail are the defaults.** Balanced keeps the complete
 scene with reduced secondary animation, aiming for about 10 FPS. Simple aims
-for about 20 FPS: real stationary seagrass and all placed decorations remain,
+for about 20 FPS: the static sword plant, starter reef and all placed decorations remain,
 but decorative animation, helpers, bubbles, the trophy shelf and ambient
 sparkles are hidden.
-Fish, dropped food and visible algae-care feedback remain active. Enhanced
-keeps smooth vegetation and full secondary animation; about 5 FPS is acceptable.
+Fish, dropped food and current responses remain active. Enhanced
+keeps full secondary animation; about 5 FPS is acceptable.
 These are performance goals, not frame caps or guarantees for every aquarium.
 Helpers still work normally; nothing is sold, removed or reset. Placement
 editors show the complete scene regardless of detail.
@@ -1383,7 +1567,7 @@ care assist. Existing saved size/detail choices are respected.
   **Settings > Clock/Weather > Text / Effects > Sparkles** controls eight bright cyan/gold
   drifting stars beside the clock, not fish mood. They remain visible without
   captions and never cover the clock face or its weather panel.
-- **Collections > Discoveries** automatically records bubble watching, exploration, seagrass naps,
+- **Collections > Discoveries** automatically records bubble watching, exploration, sheltered rest,
   swimming together, playful darts, reef visits, greetings, learned tricks,
   growing up and adventure postcards. Behaviour discoveries require at least
   two seconds of the activity with the aquarium visible; you don't have to
@@ -1554,10 +1738,10 @@ Normal/Hard purchases retain their listed level/coin requirements; Creative
 uses the same designs free. Ownership and colors follow each fish through
 Bank swaps and adventures.
 
-New exports use **schema 20** (schema 19 plus where each movable scenery piece
-stands); older schemas 1–19 and binary saves remain
+New exports use **schema 21** (schema 20 plus Reef Rhythm and creature stock);
+older schemas 1–20 and binary saves remain
 importable. The offline viewer displays the new placed/stored decorations and
-per-fish wardrobe. Older firmware cannot read schema-20 exports or the expanded
+per-fish wardrobe. Older firmware cannot read schema-21 exports or the expanded
 binary save; retain an older matching backup before deliberate downgrades.
 
 ## Fork maintenance
@@ -1565,11 +1749,13 @@ binary save; retain an older matching backup before deliberate downgrades.
 This is intentionally no longer a multi-board tree. Upstream gameplay changes
 can still be ported manually, but merges and release compatibility are not
 automatic. Preserve existing binary offsets and append new fields; the save
-is now 6424 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
+is now 6464 bytes (5848 through 1.3, 40 bytes of game records, 24 bytes of RPG
 progress, an 8-byte compatibility Creative marker, 40 more game-record bytes
 and 48 bytes of mode/starvation/unlock/refund state, plus 24 bytes of shared daily care,
 100 bytes of inventory, eight bytes of mussel state, 24 bytes of per-game income
-and four alignment bytes, then a 168-byte static-decoration tail and an 88-byte movable-scenery tail), with the previous 6336-byte prefix, 6168-byte prefix, 4520-byte layout and the
+and four alignment bytes, then a 168-byte static-decoration tail, an 88-byte
+movable-scenery tail and 40 bytes of Reef Rhythm/creature stock), with the
+previous 6424-byte prefix, 6336-byte prefix, 6168-byte prefix, 4520-byte layout and the
 original 1920-byte chest, 1952-byte palette, 2000-byte customization and
 2040-byte Journal and 3968-byte Fish Bank layouts intact. The new 32-byte
 aquarium metadata identifies the purchased collection, active slot, its name and
@@ -1620,14 +1806,13 @@ instead use the existing 128 KiB SPIFFS partition, with alternating CRC-checked,
 readback-verified copies and a durable wipe marker. Legacy NVS is migration
 input only; corrupt storage never silently falls back to stale NVS or formats
 nonblank data. No partition-table change or SD card is needed for the active save.
-The current binary save is 6,424 bytes: the previous 6,336-byte prefix
-is unchanged, with an 88-byte movable-scenery tail (position, depth and mirror
-of the fourteen scenery pieces) appended after the 168-byte static-decoration tail.
-JSON exports use schema 20 for an individual aquarium, including shared inventory,
+The current binary save is 6,464 bytes: the previous 6,424-byte prefix
+is unchanged, with independent 20-byte Reef Rhythm and 20-byte creature-stock tails.
+JSON exports use schema 21 for an individual aquarium, including shared inventory,
 pearl-mussel income, daily care, its fixed mode, individual game-income allowances,
 Lost Current progress and eighteen-game records,
 the polish and story tails and saved Enlarged/Normal scale; schema
-1 through 19 backups remain importable when valid for the selected mode.
+1 through 20 backups remain importable when valid for the selected mode.
 Cross-mode restores cannot bypass a
 chosen game mode: changing modes requires a confirmed full wipe.
 Older firmware cannot restore newer-schema backups; keep a matching

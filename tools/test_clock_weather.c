@@ -4,6 +4,8 @@
 #include "render.h"
 #include "weather.h"
 #include "update.h"
+#include "companion.h"
+#include "progression.h"
 #undef NDEBUG
 #include <assert.h>
 #include <stdio.h>
@@ -73,6 +75,28 @@ void test_clock_weather(void) {
     strcpy(config.city.name, "Saint-Remy-en-Bouzemont-Saint-Genest");
     const char *path = getenv("POCKET_TANK_WEATHER");
     assert(path);
+    for (int location = 0; location < 4; location++) {
+        config.located = location != 0;
+        config.city.latitude = location == 2 ? -33.9 : location == 3 ? 0 : 48.8;
+        config.enabled = 0;
+        FILE *file = fopen(path, "wb"); assert(file);
+        assert(fwrite(&config, 1, sizeof config, file) == sizeof config && !fclose(file));
+        weather_init();
+        bool south = true;
+        assert(weather_location_south(&south) == (location != 0));
+        if (location) assert(south == (location == 2));
+        tank.story.flags = location == 2 ? 0 : STORY_SEASONS_SOUTH;
+        uint8_t saved_flags = tank.story.flags;
+        companion_debug_season(&tank, -1);
+        int64_t local = clock_port_now_unix() + (int64_t)tank.aquariums.clock_utc_quarters * 900;
+        assert(tank.season == (location ? companion_season_for(local, location == 2 ? STORY_SEASONS_SOUTH : 0) : SEASON_NONE));
+        assert(tank.story.flags == saved_flags);
+        tank.story.flags |= STORY_SEASONS_OFF;
+        companion_debug_season(&tank, -1);
+        assert(tank.season == SEASON_NONE);
+    }
+    tank.story.flags = 0;
+    config.located = 1; config.city.latitude = 48.8;
     int STRIDE = TANK_W + 3, PIXELS = STRIDE * TANK_H;
     uint16_t *frame = malloc((PIXELS + 2) * sizeof *frame);
     uint16_t *cached = malloc((PIXELS + 2) * sizeof *cached);
@@ -111,11 +135,19 @@ void test_clock_weather(void) {
                         frame[0] = frame[PIXELS + 1] = 0xbeef;
                         render_clock_overlay(&tank, frame + 1, STRIDE, valid ? INT64_C(1735689600) : 0);
                         for (int y = 0; y < TANK_H; y++) for (int x = 0; x < STRIDE; x++)
-                            if (x < l.x || x >= l.x + l.w || y < l.y || y >= l.y + l.h)
+                            if (x < l.x || x >= l.x + l.w || y < l.y || y >= l.y + l.h) {
+                                if (frame[1 + y * STRIDE + x])
+                                    fprintf(stderr, "Clock overflow: theme %d size %d position %d hidden %d valid %d weather %d activity %d pixel %d,%d layout %d,%d %dx%d\n",
+                                            theme, size, position, hidden, valid, weather, activity, x, y, l.x, l.y, l.w, l.h);
                                 assert(!frame[1 + y * STRIDE + x]);
+                            }
                         if (l.rows) {
-                            assert(frame[1 + l.caption_y * STRIDE + l.x] != 0);
-                            assert(frame[1 + (l.caption_y + l.caption_h - 1) * STRIDE + l.x + l.w - 1] != 0);
+                            /* The weather card is rounded: its full width shows on the middle row and its
+                             * full height down the middle column. */
+                            int mid = l.caption_y + l.caption_h / 2;
+                            assert(frame[1 + mid * STRIDE + l.x] != 0 && frame[1 + mid * STRIDE + l.x + l.w - 1] != 0);
+                            assert(frame[1 + l.caption_y * STRIDE + l.x + l.w / 2] != 0);
+                            assert(frame[1 + (l.caption_y + l.caption_h - 1) * STRIDE + l.x + l.w / 2] != 0);
                         }
                         assert(frame[0] == 0xbeef && frame[PIXELS + 1] == 0xbeef);
                         memset(cached, 0, (PIXELS + 2) * sizeof *cached);

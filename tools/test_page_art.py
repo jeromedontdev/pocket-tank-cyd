@@ -12,13 +12,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="cc")
     parser.add_argument("--board", choices=("cyd", "elegoo"), default="cyd")
+    parser.add_argument("--harbor-only", action="store_true",
+                        help="Check replaced upstream fish/helpers/materials, guarded tiles and source icons only")
+    parser.add_argument("--build-dir", type=Path, help="Dedicated native build directory for parallel art validation")
     parser.add_argument("--gallery", type=Path, help="Capture audited menus, typography, fish, accessories and aquarium details from the actual renderer")
     parser.add_argument("--content-gallery", type=Path,
                         help="Capture all new tank decorations and wearable comparisons from the actual renderer")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
-    build = root / "firmware" / "build_page_art_native"
-    build.mkdir(exist_ok=True)
+    build = args.build_dir.resolve() if args.build_dir else root / "firmware" / "build_page_art_native"
+    build.mkdir(parents=True, exist_ok=True)
     common = root / "common"
     cjson = root / "firmware" / "managed_components" / "espressif__cjson" / "cJSON"
     try:
@@ -60,7 +63,8 @@ def main():
                        check=True, cwd=root, env=dict(os.environ,
                            POCKET_TANK_SAVE=str(build / "synthetic.sav"),
                            POCKET_TANK_WIFI=str(build / "wifi.txt"),
-                           POCKET_TANK_WEATHER=str(build / "weather.bin")))
+                           POCKET_TANK_WEATHER=str(build / "weather.bin"),
+                           POCKET_TANK_HARBOR_ART="1" if args.harbor_only else "0"))
         galleries = {path.resolve() for path in (args.gallery, args.content_gallery) if path}
         for gallery in galleries:
             from capture_cyd_gallery import png

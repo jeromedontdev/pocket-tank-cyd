@@ -47,20 +47,9 @@ void  tank_glass_clamp(float *x, float *y, float m);   /* (x,y) brought to at le
 #define MAX_FOOD   8
 #define MAX_BUBBLE 24
 
-/* upkeep: the vegetation beds keep growing - up toward the surface and out,
- * wider - and algae films the glass with time (both faster while the device
- * drowses); the keeper's thumb is the cure. Every frond has its own height
- * (2026-09-04, Strato: trimming was a chunk at a time): a sideways stroke
- * through a canopy cuts exactly the fronds it crosses, at the height where
- * it crosses them (never below nubs - little bits of green always remain);
- * a drag elsewhere wipes algae.
- * Vegetation is a comfort system (2026-09-04 rework): growth IS height - a
- * bed at growth g stands g of the way from the floor to the surface, so only
- * the tank ceiling limits it. Fish like cover: any canopy calms them (more
- * inside it), and NO cover anywhere
- * (every bed scalped) is a mild unease. Only a tank being truly smothered
- * presses back: two or more beds past VEG_SMOTHER height. Stress is already
- * in the advisor's schema, so the model reacts without any schema change. */
+/* Bed indices and old growth constants are reserved for historical saves.
+ * Beds 0..2 are retired; only bed 3 (the static sword plant) has geometry.
+ * Reef Rhythm uses authored refuges and gentle currents, not upkeep decay. */
 /* reef bed + two decor beds (the SAVE's
                                                 * bed count: baked into save_t's arrays) */
 #define VEG_BEDS   3
@@ -376,13 +365,13 @@ enum { SEASON_NONE, SEASON_SPRING, SEASON_SUMMER, SEASON_AUTUMN, SEASON_WINTER, 
 /* genetics (1.3): each fish carries a hidden second allele for its marking
  * and its body colour (0 = the same as the shown one, else index + 1), and
  * four recessive cosmetic traits - low nibble shown, high nibble carried.
- * mutation: GENE_MUTANT_* when this fish was born with a new marking/trait. */
+ * mutation: GENE_MUTANT_* when born with a new marking, trait or body color. */
 typedef struct {
     uint16_t parent[2];
     uint8_t generation, flags;
     uint8_t pattern2, color2, traits, mutation;
 } fish_lineage_t;
-enum { GENE_MUTANT_PATTERN = 1, GENE_MUTANT_TRAIT = 2 };
+enum { GENE_MUTANT_PATTERN = 1, GENE_MUTANT_TRAIT = 2, GENE_MUTANT_COLOR = 4 };
 typedef struct {
     uint16_t id;
     char name[FISH_NAME_MAX + 1];
@@ -394,8 +383,8 @@ typedef struct {
     uint16_t births;
     fish_lineage_t active[N_FISH_MAX], bank[FISH_BANK_CAP], traveler;
     ancestor_name_t names[STORY_NAME_BOOK];
-    uint16_t pad2;
-    uint32_t reserved;                        /* keeps save_t 8-byte exact */
+    uint16_t statue;                          /* shown champion statue: variety + 1, 0 = none */
+    uint32_t collection;                      /* bit variety*3+k: mutation k bred in that variety */
 } tank_story_t;
 _Static_assert(sizeof(fish_lineage_t) == 10, "lineage save layout");
 _Static_assert(sizeof(ancestor_name_t) == 10, "ancestor name save layout");
@@ -436,6 +425,34 @@ typedef struct {
 } care_state_t;
 _Static_assert(sizeof(care_state_t) == 24, "daily care save budget");
 
+typedef struct {
+    uint32_t currents, visits, current_base, visit_base;
+    uint8_t version, reserved[3];
+} reef_state_t;
+_Static_assert(sizeof(reef_state_t) == 20, "Reef Rhythm save budget");
+typedef struct {
+    uint8_t version, food_tier, theme_unlocks, reserved;
+    uint16_t variety_unlocks, pad;
+} progression_state_t;
+_Static_assert(sizeof(progression_state_t) == 8, "schema-22 progression economy tail");
+typedef struct {
+    uint8_t version, owned, planted, reserved;
+} foliage_state_t;
+_Static_assert(sizeof(foliage_state_t) == 4, "schema-23 ground-cover sets");
+enum { CREATURE_STOCK_COUNT = 3 };
+#define CREATURE_BREED_SECONDS 1800
+#define CREATURE_NURSERY_CAP 4
+typedef struct {
+    uint16_t active_s;
+    uint8_t adults, offspring;
+} creature_stock_t;
+typedef struct {
+    creature_stock_t stock[CREATURE_STOCK_COUNT];
+    uint32_t revision;
+    uint8_t version, paid_adults[CREATURE_STOCK_COUNT];
+} creature_state_t;
+_Static_assert(sizeof(creature_state_t) == 20, "Creature breeding save budget");
+
 /* a pellet: it sinks FOOD_SINK_PX_S from the surface to the floor (~43 s on
  * the 1.8, ~60 on the watch), then RESTS there FOOD_FLOOR_S before it
  * dissolves (2026-09-29, for the shrimp school - every tank alike; measured:
@@ -452,18 +469,10 @@ typedef struct { float x, y, age; bool alive, from_player; float floor_s, nibble
 #define FOOD_LIFE_S    (FOOD_FLOOR_Y / FOOD_SINK_PX_S + 5.0f)
 #define FOOD_FLOOR_S  15.0f          /* ... and how long it rests there (Strato, 2026-09-29) */
 
-/* the shrimp school (2026-09-29, the shop's sixth item, SD_ITEM_SHRIMP): cherry
- * shrimp that swim as a loose school with a pull toward the grass, swarm the
- * pellets that sink below the grass's top (falling or on the floor), drift up
- * to the canopy now and then, and scatter when the keeper taps near them.
- * Bought as SHRIMP_START grown adults; every SHRIMP_PER_JOIN pellets the school
- * eats brings one more, up to SHRIMP_MAX, never two within SHRIMP_COOLDOWN_S
- * (the count stops at SHRIMP_PER_JOIN while it waits - no burst). Over
- * SHRIMP_REFUSE_COVER of the glass fouled they refuse food: they stay in the
- * grass and turn away from pellets, so the school stops growing (never shrinks).
- * Strato's words throughout (2026-09-29): "they should just swarm pellets that
- * hit the ground", "a user cant spam this", "when there is too much algae,
- * shrimp will refuse to eat". Drawn procedurally (render.c draw_shrimp). */
+/* Shrimp school near reef/sand, occasionally rising through open water.
+ * Pellets within 36 px of the floor are fair game, including falling ones.
+ * Each SHRIMP_PER_JOIN eaten adds one shrimp, up to SHRIMP_MAX and at most
+ * once per SHRIMP_COOLDOWN_S. Taps scatter them; there is no algae refusal. */
 #define SHRIMP_START        4
 #define SHRIMP_MAX          10
 #define SHRIMP_PER_JOIN     10
@@ -628,6 +637,9 @@ typedef struct tank {
     bool     drag_has_prev;
     float    drag_px, drag_py;     /* previous drag point */
     float    drag_dist;            /* travel in this stroke; wiping engages past a threshold */
+    uint32_t reef_currents, reef_visits;
+    float    reef_flow_s, reef_flow_x, reef_flow_y, reef_flow_dir, reef_flow_cooldown, reef_flow_gain;
+    uint8_t  reef_flow_seen;
     bool     slash_armed;          /* the stroke STARTED on a bed's canopy */
     int8_t   slash_wall;           /* ... on no frond, but beside a wall frond: -1 left wall, +1 right (it runs on into that wall) */
     bool     slash_engaged;        /* ... and has travelled sideways enough to be scissors */
@@ -635,14 +647,7 @@ typedef struct tank {
     bool     slash_cut;            /* ... and has cut at least one frond (trims++ once) */
     float    slash_x0, slash_y0;   /* stroke start (the pre-engage travel is cut retroactively) */
     float    slash_h, slash_v;     /* travel this stroke: horizontal / vertical */
-    /* the toolbox under the stats card (2026-10-01): TOOL_HAND = a stroke
-     * guesses (the wipe / slash rules above); TOOL_SPONGE = it only wipes,
-     * TOOL_SCISSORS = it only cuts. Not saved; it goes back in the box after
-     * TOOL_IDLE_S without a stroke. A tool in hand owns the glass (2026-10-04,
-     * Strato: "it should prevent all other taps and interactions until the
-     * done button is pressed"): tank_touch_tap and tank_touch_hold do nothing,
-     * and the touch ports answer only the chip's DONE - no card, no feed, no
-     * light, no placement page. */
+    /* Historical toolbox state; active input always uses TOOL_HAND. */
     uint8_t  tool;
     float    tool_idle;            /* seconds since the tool last touched the glass */
     bool     tools_locked;         /* the toolbox's LOCK (0.3.5, saved): bare fingers never wipe or
@@ -885,6 +890,9 @@ typedef struct tank {
     game_records_t games_extra;
     profile_state_t profile;
     care_state_t care;
+    reef_state_t reef;
+    creature_state_t creatures;
+    float creature_tick_s;
     inventory_state_t inventory;
     decor_content_t content;
     decor_fixed_t fixed;
@@ -899,6 +907,8 @@ typedef struct tank {
                                     * (ROOM LIGHT = DIM+NIGHT); the tank rests with it. Not saved. */
     uint8_t visitor_species;       /* 1.3: the current/last visitor (VISITOR_*); not saved */
     uint8_t season;                /* 1.3: SEASON_* from the clock, for the seasonal floor; not saved */
+    progression_state_t progression;
+    foliage_state_t foliage;
 } tank_t;
 void tank_reframe(tank_t *t, bool compact);
 
@@ -1008,33 +1018,14 @@ bool  tank_orient(tank_t *t, bool live_inverted);
 #define FEED_ZONE_Y 26.0f
 void  tank_touch_hold(tank_t *t, float x, float y);
 void  tank_touch_tap(tank_t *t, float x, float y);
-/* tank_touch_drag: call EVERY FRAME while a finger is down at x,y (moving or
- * not; tank.c tracks travel). Once a stroke has moved far enough it becomes a
- * WIPE: algae cells along the path are squeegeed clean. A mostly-HORIZONTAL
- * stroke that STARTS on a vegetation bed is a SLASH: every frond it crosses
- * is cut to the height where the stroke crosses it (a lower pass cuts again;
- * nothing ever cuts below nubs) - a short sideways flick takes one or two
- * fronds, a sweep along the floor mows the bed. The finger is a pad: the
- * stroke reaches a few px past where it lands and where it lifts, so the
- * outer frond of a bed by the glass falls to a sweep that stops just short
- * of its spine (2026-09-14). Deliberately more travel than a tap, so aiming
- * at a fish can never shear the garden. */
+/* Call every frame a finger is down. A deliberate horizontal stroke starts
+ * one gentle current, with a cooldown; small movements remain taps/holds. */
 void  tank_touch_drag(tank_t *t, float x, float y);
-/* the toolbox (2026-10-01; folks found it too hard to scrub algae without
- * shearing the grass): a keeper who wants a precise hand picks a tool from
- * the box under the stats card. SPONGE: a stroke wipes and never cuts.
- * SCISSORS: a stroke cuts and never wipes, and it need not begin on a frond -
- * any mostly-sideways stroke cuts every frond it crosses, at the height it
- * crosses it. A tap still selects, feeds, flips the light. */
+/* Retired tool IDs/API remain for old console clients; selection is HAND. */
 enum { TOOL_HAND = 0, TOOL_SPONGE, TOOL_SCISSORS };
 #define TOOL_IDLE_S 120.0f
 void  tank_set_tool(tank_t *t, int tool);
-/* the LOCK beside the toolbox (0.3.5, 2026-10-14, Strato: "people only want
- * to be able to trim or clean algae when they are selected"): locked, a
- * bare-finger stroke neither wipes nor cuts - the guessing stroke is off and
- * only the SPONGE and the SCISSORS tend the glass. Taps, the drag-down feed
- * and the hold are untouched. Unlocked (the default, and every older save)
- * is the guessing stroke as before. Saved. */
+/* Historical saved flag only; it no longer gates aquarium interactions. */
 void  tank_lock_tools(tank_t *t, bool lock);
 /* a finger on the glass that has travelled like a stroke, not a press that
  * may yet be a tap (WIPE_ENGAGE_PX): the DONE chip steps aside for it */
@@ -1045,21 +1036,14 @@ void  tank_feed(tank_t *t, float x, int n);
  * Never alters behavior - the advisor owns every decision. */
 extern int tank_reflex_overrides;
 void  tank_scatter_food(tank_t *t, int n);      /* the tank's own trickle (random x) */
-/* upkeep hooks. tank_veg_bed gives bed b's canopy geometry - x span, top y
- * of its tallest frond, frond count - and tank_veg_frond one frond's spine x
- * and segment count, shared by render (what you see) and tank.c physics
- * (slow swimming inside, the cut test), so they can't drift apart.
- * tank_veg_set puts every frond of a bed at height g (tests, the sim's demo
- * key, old saves). tank_grow_algae runs n growth steps now (the same steps
- * time runs on its own; tests and the sim's demo key use it directly). */
+/* Historical bed APIs: retired grass has zero fronds; sword geometry is
+ * authored and static. Old setters normalize, never restart growth. */
 void  tank_veg_bed(const tank_t *t, int b, float *x0, float *x1, float *top_y, int *fronds);
 int   tank_veg_frond(const tank_t *t, int b, int i, float *x);
 void  tank_veg_set(tank_t *t, int b, float g);
-/* the tallest bed at VEG_NURSERY or better, -1 if none (progression gates
- * courtship and arrivals on it; tank.c stages the courtship there) */
+/* Legacy nursery index: sword 3 when owned, otherwise starter-refuge 0. */
 int   tank_nursery_bed(const tank_t *t);
-/* is (x, y) inside a SEAGRASS canopy with real cover (a bed past VEG_BARE;
- * the sword plant is no grass)? progression's MS_FIRST_GRASS asks */
+/* Legacy milestone API now detects shelter near the starter reef/decor. */
 bool  tank_in_grass(const tank_t *t, float x, float y);
 /* the fish's "reef" (the model's `reef` sighting, the inspect_reef goal): the
  * reef cluster once the keeper owns one - the point a fish circles, by its
@@ -1070,10 +1054,12 @@ bool  tank_in_grass(const tank_t *t, float x, float y);
 void  tank_reef_spot(const tank_t *t, float *x, float *y);
 /* a flirt of n bubbles rising from where the pair courts (the nursery) */
 void  tank_court_puff(tank_t *t, int n);
-/* the share of the glass wearing film, 0..1 (cells with any algae over all
- * cells - what the keeper sees covered, not how thick). > ALGAE_DIRTY = a
- * dirty tank: the fry checklist's GLASS gate (progression.c) */
+/* Retired diagnostic API: always zero, even for an unnormalized old tank. */
 float tank_algae_cover(const tank_t *t);
+int   tank_reef_shelters(const tank_t *t);
+float tank_reef_open_lane(const tank_t *t);
+bool  tank_reef_calm_near(const tank_t *t, float x, float y);
+bool  tank_reef_current(tank_t *t, float x0, float y0, float x1, float y1);
 void  tank_veg_sync(tank_t *t);                 /* veg_growth[] from veg_h[][] (after a load) */
 float tank_veg_cap(int b, int i);               /* frond i of bed b: the height it grows toward */
 void  tank_grow_algae(tank_t *t, int steps);
@@ -1084,6 +1070,9 @@ int   tank_nearest_food(const tank_t *t, const fish_t *f, float *dist_out);
 int   tank_nearest_friend(const tank_t *t, int fish_idx, float *dist_out);
 int   tank_familiar_friend(const tank_t *t, int fish_idx);
 int   tank_favorite_decor(const tank_t *t, int fish_idx);
+int   tank_fish_favorite_item(const tank_t *t, int fish_idx);   /* SD item this fish loves, from its life id */
+bool  tank_item_in_tank(const tank_t *t, int item);            /* decor placed or foliage planted */
+int   tank_fish_comfort(const tank_t *t, int fish_idx);         /* +1 favorite present, -1 missing */
 void  tank_mussel_pose(const tank_t *t, float *x, float *y, float *crawl);
 bool  tank_mussel_owned(const tank_t *t);
 bool  tank_interest_spot(const tank_t *t, int fish_idx, float *x, float *y);
@@ -1114,6 +1103,8 @@ enum { TRAIT_SHIMMER = 1, TRAIT_PAINTED_FINS = 2, TRAIT_PALE_BELLY = 4, TRAIT_GO
 extern const char *const FISH_TRAIT_NAMES[TRAIT_COUNT];
 /* genetics: seed a founder/arrival's hidden genes from a stable hash (the rng is untouched) */
 void tank_seed_genes(tank_t *t, int slot, uint32_t salt);
+/* hybrid vigor 0..10 from heterozygous loci; affects growth and trade value */
+int tank_line_vigor(const fish_lineage_t *l);
 void tank_seed_line(fish_lineage_t *l, uint32_t salt);
 void tank_sync_traits(tank_t *t);           /* fish[].traits from the story's lines */
 int  tank_body_index(uint32_t rgb);         /* nearest FISH_BODY_COLORS entry */
@@ -1152,6 +1143,18 @@ enum { SD_ITEM_PLANT = 1u << 0, SD_ITEM_SNAIL = 1u << 1, SD_ITEM_CASTLE = 1u << 
 #define SD_SHOP_MUSSEL 42
 #define SD_DECOR_FIRST 43
 #define SD_ITEM_COUNT (SD_DECOR_FIRST + DECOR_NEW_COUNT)
+#define SD_FOLIAGE_FIRST SD_ITEM_COUNT
+#define FOLIAGE_COUNT 4
+#define FOLIAGE_KELP 3
+#define KELP_PATCH_COUNT 2
+#define KELP_WIDTH 40
+#define KELP_HEIGHT 80
+#define KELP_SWAY_HEIGHT (KELP_HEIGHT / 2)
+#define KELP_CROWN_HEIGHT (KELP_SWAY_HEIGHT / 2 + 1)
+bool tank_kelp_anchor(const tank_t *t, int patch, float *x, float *y);
+int tank_kelp_sway(const tank_t *t, int patch);
+#define SD_CATALOG_COUNT (SD_ITEM_COUNT + FOLIAGE_COUNT)
+#define SD_IS_FOLIAGE(item) ((item) >= SD_FOLIAGE_FIRST && (item) < SD_CATALOG_COUNT)
 #define SD_IS_NEW_DECOR(item) ((item) >= SD_DECOR_FIRST && (item) < SD_ITEM_COUNT)
 #define SD_ITEM_MASK UINT32_MAX
 /* fixed sand scenery (1.2): IDs 36..41 own one bit each in
@@ -1335,29 +1338,15 @@ bool  tank_decor_shift(tank_t *t, int item, int dir);              /* move just 
 bool  tank_decor_mirrorable(int item);
 bool  tank_decor_mirrored(const tank_t *t, int item);
 void  tank_decor_set_mirrored(tank_t *t, int item, bool mirrored);
-/* the snail has two poses (Strato's sprites, 2026-09-15): UPRIGHT, walking
- * the tank floor (nothing to graze: it comes down and ambles along the
- * bottom, turning at the ends), and flat ON THE GLASS (crawling to film and
- * grazing it, its underside to the viewer). snail_y is the sprite's centre;
- * on the floor it is SNAIL_FLOOR_Y, the sole (6 px under the centre) on the
- * line the grass is rooted at, TANK_BOT - 14: at - 24 it stood 4 px above the
- * frond roots, and the roots of the fronds BEHIND it showed under its foot -
- * a snail afloat (Strato, 2026-10-02). */
+/* Ornamental snail: upright on the sand, with rests and turns at the ends. */
 #define SNAIL_FLOOR_Y (TANK_BOT - 20.0f)
 bool  tank_snail_upright(const tank_t *t);
+/* Shared center for a bounded second adult, used by drawing and touch. */
+bool  tank_creature_partner_pose(const tank_t *t, int creature, float *x, float *y);
 /* a tap on the snail (its card, 2026-09-16): placed, and within a fingertip
  * of the sprite's centre. Platforms test the fish first. */
 bool  tank_snail_hit(const tank_t *t, float x, float y);
-/* the urchin (2026-10-02, the episode 5 promise: "an urchin that keeps the
- * grass trimmed"): a rule-based grazer on the floor, drawn by code (render.c
- * draw_urchin, from Strato's sea-urchin-v1). Awake it gets hungry slowly,
- * crawls to the grass frond standing tallest over URCHIN_KEEP and chews it
- * down a bite, then rests or ambles the sand. Asleep it works the night
- * shift: a share of every grass frond's height over URCHIN_KEEP, so a
- * morning's grass is lower than it would be - never below the keep line, and
- * never the sword plant. Like the snail it makes the chores lighter, never
- * gone, and its eating never counts as the keeper's trimming. Its centre is
- * URCHIN_FLOOR_Y, its base on the root line. */
+/* Ornamental urchin: wanders/rests on sand; never eats plants or earns chores. */
 #define URCHIN_FLOOR_Y (TANK_BOT - 21.0f)
 #define URCHIN_KEEP     0.40f      /* it never takes a frond below this (a fresh tank's cover is 0.35) */
 void  tank_urchin_place(tank_t *t);
@@ -1386,7 +1375,7 @@ enum { SH_PERCH = 0, SH_DRIFT = 1, SH_HITCH = 2 };
  * nothing to hold it rests on the bottom with its tail curled under it, and
  * lifts off to look again now and then). Blades first, posts second, the
  * sand last. */
-enum { SH_ANCHOR_NONE = 0, SH_ANCHOR_BLADE = 1, SH_ANCHOR_POST = 2, SH_ANCHOR_SAND = 3 };
+enum { SH_ANCHOR_NONE = 0, SH_ANCHOR_BLADE = 1, SH_ANCHOR_POST = 2, SH_ANCHOR_SAND = 3, SH_ANCHOR_KELP = 4 };
 enum { SH_POSE_BLADE = 1, SH_POSE_GRIP = 2 };
 #define SH_LAND_S     0.7f
 #define SH_GRIP_FRAC  0.55f
@@ -1404,8 +1393,8 @@ enum { SH_POSE_BLADE = 1, SH_POSE_GRIP = 2 };
 #define SH_SNAP_REST  1.0f
 float tank_seahorse_jut(const tank_t *t);          /* the head's jut right now, px (the renderer) */
 #define SH_SNACK_COOL_S (10.0f * 60.0f)   /* one PAID snack per this long (Strato: "10 minute cooldown so it can't be abused") */
-void  tank_seahorse_place(tank_t *t);              /* fresh in the tank: on a blade, or adrift by the grass */
-const char *tank_seahorse_holding(const tank_t *t); /* its card: A BLADE / A LEAF / THE CASTLE / THE CORAL / THE REEF / THE SAND */
+void  tank_seahorse_place(tank_t *t);              /* real blade/post, otherwise upright open-water cruise */
+const char *tank_seahorse_holding(const tank_t *t); /* real anchor name, or OPEN WATER */
 bool  tank_seahorse_hit(const tank_t *t, float x, float y);
 float tank_seahorse_days(const tank_t *t);        /* its card: whole days with the keeper */
 

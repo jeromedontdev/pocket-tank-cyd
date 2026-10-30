@@ -8,6 +8,11 @@
 #include <string.h>
 
 static weather_config_t cfg;
+bool weather_location_south(bool *south) {
+    if (!cfg.located) return false;
+    *south = cfg.city.latitude < 0;
+    return true;
+}
 static weather_reading_t reading;
 static bool busy, dirty, have, failed, searching;
 static float due, age, search_wait, connect_wait;
@@ -279,7 +284,7 @@ static void bounded_text(uint16_t *fb, int st, int x, int y, int width, int scal
     render_text(fb, st, x, y, scale, color, line);
 }
 static void button(uint16_t *fb, int st, int x, int y, int w, int h, const char *s) {
-    render_rect(fb, st, x, y, w, h, BUTTON);
+    render_button(fb, st, x, y, w, h, BUTTON, MUTED, "", 1);
     text(fb, st, x + (w - render_text_w(s, 2)) / 2, y + (h - 14) / 2, s);
 }
 void weather_open(void) { page = 0; forget_confirm = false; message[0] = 0; cities_clear(); }
@@ -292,7 +297,7 @@ bool weather_size_hit(float x, float y) {
     return page == 0 && x >= 232 && x < 416 && y >= 268 && y < 308;
 }
 void weather_render(uint16_t *fb, int st, int text_size) {
-    render_rect(fb, st, 0, 0, PAGE_W, PAGE_H, BG);
+    render_menu_backdrop(fb, st, 0, 0, PAGE_W, PAGE_H);
     text(fb, st, 24, 18, page == 1 ? "CITY SEARCH" : page == 2 ? "CHOOSE CITY" : "WEATHER");
     button(fb, st, 326, 8, 112, 40, "BACK");
     if (page == 0) {
@@ -338,7 +343,7 @@ void weather_render(uint16_t *fb, int st, int text_size) {
         for (int i = 0; i < city_count; ++i) {
             int y = 56 + i * 56;
             char line[80];
-            render_rect(fb, st, 10, y, 428, 52, BUTTON);
+            render_button(fb, st, 10, y, 428, 52, BUTTON, MUTED, "", 1);
             bounded_text(fb, st, 18, y + 5, 412, 2, INK, cities[i].name);
             snprintf(line, sizeof line, "%.29s / %.28s", cities[i].region, cities[i].country);
             bounded_text(fb, st, 18, y + 29, 412, 1, MUTED, line);

@@ -22,7 +22,7 @@
 static bool s_active;
 static bool s_birth;           /* the birth flow (three pages about s_fish), not the first run */
 static bool s_place;           /* the placement page (one page about s_item) */
-static bool s_rename;          /* the rename page (one page about s_fish: the letter wheel, CANCEL / DONE) */
+static bool s_rename;          /* the rename page (one page about s_fish: CANCEL / DONE) */
 static char s_old_name[FISH_NAME_MAX + 1];   /* ... the name it came in with (CANCEL puts it back) */
 static uint32_t s_old_body, s_old_fin, s_old_accent;
 static uint8_t s_old_variety, s_old_pattern;
@@ -143,18 +143,33 @@ static bool place_cycle_copy_at(tank_t *t, float x, float y) {
     place_select_copy(t, next.item, next.copy);
     return true;
 }
+static void place_cycle_piece(tank_t *t, int direction) {
+    place_copy_t copies[SD_ITEM_COUNT + DECOR_EXTRA_CAP];
+    int count = 0, current = 0;
+    for (int item = 0; item < SD_ITEM_COUNT; item++) {
+        if (!tank_decor_movable(item)) continue;
+        if (progression_item_owned(t, item))
+            copies[count++] = (place_copy_t){item, -1};
+        for (int copy = 0; copy < DECOR_EXTRA_CAP; copy++)
+            if (t->inventory.extra[copy].item == item + 1)
+                copies[count++] = (place_copy_t){item, copy};
+    }
+    if (!count) return;
+    for (int i = 0; i < count; i++)
+        if (copies[i].item == s_item && copies[i].copy == s_extra) current = i;
+    place_copy_t next = copies[(current + count + direction) % count];
+    place_restore_preview(t);
+    place_select_copy(t, next.item, next.copy);
+}
 static int  s_fish;            /* birth flow: the newborn's slot */
 static int  s_birth_offered = -1;   /* setup_poll_birth: the arrival already opened for (-1 = none since boot) */
 static int  s_page;
 static int s_mode_pick;
 static char s_mode_error[80];
-static int  s_slot;            /* name pages: the slot the wheel turns */
 /* the finger (setup_touch) */
 static bool  s_down;
 static float s_px, s_py;       /* press point */
-static float s_ly;             /* last y, for the wheel */
-static float s_acc;            /* vertical travel toward the next step */
-static bool  s_spun;           /* this press has turned the wheel (or moved the column): no tap on release */
+static bool  s_spun;           /* this press moved the bubble column or placement preview */
 static bool  s_remove_armed;
 static bool  s_place_dragging;
 
@@ -168,7 +183,7 @@ static bool nav_on_top(void) { return page_is_name() || page_is_look() || s_page
 static int  place_y(void) { return s_item == 3 ? SETUP_PLACE_CORAL_Y : s_item == 4 ? SETUP_PLACE_CLUSTER_Y : SETUP_PLACE_Y; }   /* where the drag zone starts */
 static const char *fish_name(const tank_t *t, int i) { return i >= 0 && i < t->n_fish ? t->fish[i].name : "?"; }
 static void stage(tank_t *t);
-static void tidy_name(tank_t *t, int fish);
+static void finish_name(tank_t *t, int fish);
 
 static uint32_t sig_mix(uint32_t h, const void *data, size_t size) {
     const unsigned char *p = data;
@@ -208,7 +223,7 @@ bool setup_place_animated_rect(int *x0, int *y0, int *x1, int *y1) {
 void setup_begin(tank_t *t) {
     if (t->n_fish < 2) { progression_setup_done(t); s_active = false; return; }   /* nothing to name */
     s_save_error = false;
-    s_active = true; s_birth = false; s_place = false; s_rename = false; s_fish = -1; s_page = SETUP_PG_WELCOME; s_slot = 0; s_down = false;
+    s_active = true; s_birth = false; s_place = false; s_rename = false; s_fish = -1; s_page = SETUP_PG_WELCOME; s_down = false;
     if (!progression_mode_chosen(t)) s_page = SETUP_PG_MODE;
     s_mode_pick = GAME_MODE_NORMAL; s_mode_error[0] = 0;
     tank_emit(TEV_WELCOME, -1);
@@ -216,11 +231,11 @@ void setup_begin(tank_t *t) {
 void setup_begin_birth(tank_t *t, int slot) {
     if (slot < 0 || slot >= t->n_fish) { s_active = false; return; }
     s_save_error = false;
-    s_active = true; s_birth = true; s_place = false; s_rename = false; s_fish = slot; s_page = SETUP_PG_BORN; s_slot = 0; s_down = false;
+    s_active = true; s_birth = true; s_place = false; s_rename = false; s_fish = slot; s_page = SETUP_PG_BORN; s_down = false;
 }
 void setup_begin_rename(tank_t *t, int fish) {
     if (fish < 0 || fish >= t->n_fish || s_active) return;
-    s_active = true; s_birth = false; s_place = false; s_rename = true; s_fish = fish; s_page = SETUP_PG_RENAME; s_slot = 0; s_down = false;
+    s_active = true; s_birth = false; s_place = false; s_rename = true; s_fish = fish; s_page = SETUP_PG_RENAME; s_down = false;
     s_renamed = 0;
     memcpy(s_old_name, t->fish[fish].name, sizeof s_old_name);
     s_old_body = t->fish[fish].color; s_old_fin = t->fish[fish].fin; s_old_accent = t->fish[fish].accent;
@@ -228,8 +243,7 @@ void setup_begin_rename(tank_t *t, int fish) {
     stage(t);
 }
 void setup_begin_customize(tank_t *t, int fish) {
-    if (s_active || fish < 0 || fish >= t->n_fish) return;
-    setup_begin_rename(t, fish); s_custom_draft = t->fish[fish]; s_page = SETUP_PG_CUSTOM; stage(t);
+    (void)t; (void)fish;
 }
 bool setup_is_rename(void) { return s_active && s_rename; }
 int  setup_take_renamed(void) { int f = s_renamed - 1; s_renamed = 0; return f; }
@@ -250,7 +264,7 @@ void setup_begin_place(tank_t *t, int item) {
             s_place_base_z[i] = (uint8_t)tank_decor_z(t, i);
         }
     s_save_error = false; s_place_error = NULL;
-    s_active = true; s_birth = false; s_place = true; s_rename = false; s_item = item; s_fish = -1; s_page = SETUP_PG_PLACE; s_slot = 0; s_down = false;
+    s_active = true; s_birth = false; s_place = true; s_rename = false; s_item = item; s_fish = -1; s_page = SETUP_PG_PLACE; s_down = false;
     s_remove_armed = false;
     s_selected_original_x = placed_x(t);
     stage(t);
@@ -295,8 +309,8 @@ bool setup_is_birth(void) { return s_active && s_birth; }
 bool setup_is_place(void) { return s_active && s_place; }
 int  setup_item(void)     { return s_active && s_place ? s_item : -1; }
 int  setup_fish(void) { return s_active && (page_is_name() || page_is_look() || s_birth) ? page_fish() : -1; }
-/* the rename page closes: DONE keeps the wheel's name (tidied; nothing left =
-   the preset's) and saves it, anything else puts the old one back. Either
+/* the rename page closes: DONE saves the current name (empty = the preset),
+   anything else puts the old one back. Either
    way the platform is owed the way back to the fish's card (setup_take_renamed). */
 static void rename_end(tank_t *t, bool keep) {
     if (s_fish >= 0 && s_fish < t->n_fish) {
@@ -305,11 +319,11 @@ static void rename_end(tank_t *t, bool keep) {
             uint32_t body = f->color, fin = f->fin, accent = f->accent;
             uint32_t seen = t->journal.seen;
             uint8_t variety = f->variety, pattern = f->pattern;
-            if (s_page == SETUP_PG_CUSTOM) {
+            if (s_page == SETUP_PG_CUSTOM && progression_creative(t)) {
                 f->color = s_custom_draft.color; f->fin = s_custom_draft.fin; f->accent = s_custom_draft.accent;
                 f->variety = s_custom_draft.variety; f->pattern = s_custom_draft.pattern;
                 t->journal.seen |= (1u << variety) | (1u << f->variety);
-            } else tidy_name(t, s_fish);
+            } else finish_name(t, s_fish);
             if (!progression_save(t)) {
                 f->color = body; f->fin = fin; f->accent = accent; f->variety = variety; f->pattern = pattern;
                 t->journal.seen = seen;
@@ -338,13 +352,21 @@ void setup_cancel(tank_t *t) {
     s_active = false; stage(t);
 }
 int  setup_page(void)   { return s_page; }
-int  setup_slot(void)   { return s_slot; }
+int  setup_slot(void)   { return 0; }
 
 const char *setup_hit_name(int id) {
     static char buf[12];
     if (id == SETUP_HIT_NEXT) return "NEXT";
     if (id == SETUP_HIT_BACK) return "BACK";
+    if (id == '\b') return "DELETE";
+    if (id == ' ') return "SPACE";
+    if ((id >= 'A' && id <= 'Z') || (id >= '0' && id <= '9') || id == '-') {
+        snprintf(buf, sizeof buf, "key %c", id); return buf;
+    }
     if (id == SETUP_HIT_REMOVE) return "REMOVE";
+    if (id == SETUP_HIT_PREV_PIECE) return "PREV PIECE";
+    if (id == SETUP_HIT_NEXT_PIECE) return "NEXT PIECE";
+    if (id == SETUP_HIT_MIRROR) return "MIRROR";
     if (id == SETUP_HIT_BCK) return "SEND BACK";
     if (id == SETUP_HIT_FWD) return "BRING FORWARD";
     if (id == SETUP_HIT_UP)   return "up";
@@ -355,56 +377,124 @@ const char *setup_hit_name(int id) {
     return "nothing";
 }
 
-/* ---- the letter wheel over a fish's name ----
- * A slot holds one of 27 values: blank, A..Z (stored lowercase). The name string carries the
- * slots up to the last letter (blanks inside it are spaces); NEXT / BACK
- * tidy it - trailing blanks dropped, inner ones closed up, nothing left =
- * the preset's name again. */
-static int slot_val(const fish_t *f, int i) {           /* 0 = blank, 1..26 = A..Z */
-    if (i >= (int)strlen(f->name)) return 0;
-    char ch = f->name[i];
-    if (ch >= 'a' && ch <= 'z') ch -= 'a' - 'A';
-    return ch >= 'A' && ch <= 'Z' ? ch - 'A' + 1 : 0;
+/* Keep typed spaces and existing printable characters intact. Only an empty
+ * name takes tank_set_name's preset fallback. */
+static void finish_name(tank_t *t, int fish) {
+    if (!t->fish[fish].name[0]) tank_set_name(t, fish, "");
 }
-static void slot_set(fish_t *f, int i, int v) {
-    int n = (int)strlen(f->name);
-    if (v == 0) {
-        if (i >= n) return;
-        f->name[i] = ' ';
-        while (n > 0 && f->name[n - 1] == ' ') f->name[--n] = 0;   /* a blank at the end shortens */
-        return;
+
+enum { NAME_KEY_H = 30, NAME_KEY_GAP = 4, NAME_KEY_PITCH = NAME_KEY_H + NAME_KEY_GAP };
+static void keyboard_key(uint16_t *fb, int stride, int x, int y, int w, const char *label,
+                         uint32_t fill, uint32_t edge) {
+    render_button(fb, stride, x, y, w, NAME_KEY_H, fill, edge, label, 2);
+}
+static int keyboard_row_hit(float x, float y, int left, int top, int key_w, int count,
+                            const char *keys) {
+    if (y < top || y >= top + NAME_KEY_H) return 0;
+    for (int i = 0; i < count; i++) {
+        int kx = left + i * (key_w + NAME_KEY_GAP);
+        if (x >= kx && x < kx + key_w) return (unsigned char)keys[i];
     }
-    while (n < i) f->name[n++] = ' ';                               /* (unreachable: slots snap to <= len) */
-    f->name[i] = (char)('a' + v - 1);               /* names are lowercase inside (tank_set_name) */
-    if (i >= n) f->name[i + 1] = 0;
+    return 0;
 }
-static int name_len(const fish_t *f) { return (int)strlen(f->name); }
-static void pick_slot(const fish_t *f, int i) {         /* the first blank is the last pickable slot */
-    int n = name_len(f);
-    if (i > n) i = n;
-    if (i > FISH_NAME_MAX - 1) i = FISH_NAME_MAX - 1;
-    if (i < 0) i = 0;
-    s_slot = i;
+void setup_name_keyboard_draw(uint16_t *fb, int stride, int x, int y, int width,
+                              const char *name, int max_chars, bool extended,
+                              uint32_t fill, uint32_t edge, uint32_t text) {
+    static const char *const rows[] = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM" };
+    const int key_w = 32, row_counts[] = { 10, 9, 7 };
+    int rows_n = extended ? 5 : 4;
+    int total_h = rows_n * NAME_KEY_H + (rows_n - 1) * NAME_KEY_GAP;
+    render_rect_blend(fb, stride, x - 8, y - 42, width + 16, total_h + 54, C_PANEL, 205);
+    render_rect(fb, stride, x, y - 34, width, 28, C_KEY);
+    render_rect_edge(fb, stride, x, y - 34, width, 28, edge);
+    char shown[64] = {0};
+    int n = 0;
+    if (name) {
+        while (name[n] && n < (int)sizeof shown - 1 && n < max_chars) {
+            unsigned char ch = (unsigned char)name[n];
+            shown[n] = ch >= 'a' && ch <= 'z' ? (char)(ch - ('a' - 'A')) : (char)ch;
+            n++;
+        }
+    }
+    if (n) render_text(fb, stride, x + 7, y - 28, 2, text, shown);
+    else render_text(fb, stride, x + 7, y - 28, 2, edge, "TYPE A NAME");
+    for (int row = 0; row < 3; row++) {
+        int row_w = row_counts[row] * key_w + (row_counts[row] - 1) * NAME_KEY_GAP;
+        int left = x + (width - row_w) / 2;
+        for (int i = 0; i < row_counts[row]; i++) {
+            char label[2] = { rows[row][i], 0 };
+            keyboard_key(fb, stride, left + i * (key_w + NAME_KEY_GAP),
+                         y + row * NAME_KEY_PITCH, key_w, label, fill, edge);
+        }
+    }
+    int next_row = 3;
+    if (extended) {
+        static const char digits[] = "0123456789-";
+        int digit_w = 28, row_w = (int)sizeof digits - 1;
+        row_w = row_w * digit_w + (row_w - 1) * NAME_KEY_GAP;
+        int left = x + (width - row_w) / 2;
+        for (int i = 0; digits[i]; i++) {
+            char label[2] = { digits[i], 0 };
+            keyboard_key(fb, stride, left + i * (digit_w + NAME_KEY_GAP),
+                         y + next_row * NAME_KEY_PITCH, digit_w, label, fill, edge);
+        }
+        next_row++;
+    }
+    int space_w = width * 2 / 3, delete_w = width - space_w - NAME_KEY_GAP;
+    keyboard_key(fb, stride, x, y + next_row * NAME_KEY_PITCH, space_w, "SPACE", fill, edge);
+    keyboard_key(fb, stride, x + space_w + NAME_KEY_GAP, y + next_row * NAME_KEY_PITCH,
+                 delete_w, "DELETE", fill, edge);
 }
-static void spin(fish_t *f, int dir) {
-    tank_emit(TEV_WHEEL_TICK, -1);
-    if (name_len(f) < s_slot) pick_slot(f, s_slot);
-    slot_set(f, s_slot, (slot_val(f, s_slot) + 27 + dir) % 27);
+int setup_name_keyboard_hit(float x, float y, int left, int top, int width, bool extended) {
+    static const char *const rows[] = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM" };
+    const int counts[] = { 10, 9, 7 }, key_w = 32;
+    for (int row = 0; row < 3; row++) {
+        int row_w = counts[row] * key_w + (counts[row] - 1) * NAME_KEY_GAP;
+        int row_left = left + (width - row_w) / 2;
+        int key = keyboard_row_hit(x, y, row_left, top + row * NAME_KEY_PITCH, key_w,
+                                   counts[row], rows[row]);
+        if (key) return key;
+    }
+    int row = 3;
+    if (extended) {
+        static const char digits[] = "0123456789-";
+        const int key_w_digits = 28, count = (int)sizeof digits - 1;
+        int row_w = count * key_w_digits + (count - 1) * NAME_KEY_GAP;
+        int row_left = left + (width - row_w) / 2;
+        int key = keyboard_row_hit(x, y, row_left, top + row * NAME_KEY_PITCH,
+                                   key_w_digits, count, digits);
+        if (key) return key;
+        row++;
+    }
+    int space_w = width * 2 / 3;
+    int action_y = top + row * NAME_KEY_PITCH;
+    if (y >= action_y && y < action_y + NAME_KEY_H) {
+        if (x >= left && x < left + space_w) return ' ';
+        if (x >= left + space_w + NAME_KEY_GAP && x < left + width) return '\b';
+    }
+    return 0;
 }
-static void tidy_name(tank_t *t, int fish) {
-    fish_t *f = &t->fish[fish];
-    char out[FISH_NAME_MAX + 1]; int n = 0;
-    for (const char *p = f->name; *p; p++) if (*p != ' ' && n < FISH_NAME_MAX) out[n++] = *p;
-    out[n] = 0;
-    tank_set_name(t, fish, out);                        /* empty = the preset's */
+bool setup_name_keyboard_apply(char *name, size_t capacity, int key) {
+    if (!name || !capacity) return false;
+    size_t n = 0;
+    while (n < capacity && name[n]) n++;
+    if (n == capacity) { name[capacity - 1] = 0; n = capacity - 1; }
+    if (key == '\b') {
+        if (!n) return false;
+        name[n - 1] = 0;
+        return true;
+    }
+    if (!((key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z') || (key >= '0' && key <= '9') ||
+          key == '-' || key == ' '))
+        return false;
+    if (n + 1 >= capacity) return false;
+    name[n++] = (char)key;
+    name[n] = 0;
+    return true;
 }
 
 static bool in_box(float x, float y, int bx, int by, int bw, int bh, int m) {
     return x >= bx - m && x < bx + bw + m && y >= by - m && y < by + bh + m;
-}
-static int nearest_slot(float x) {
-    int i = (int)((x - SETUP_SLOT_X + (SETUP_SLOT_PX - SETUP_SLOT_W) * 0.5f) / SETUP_SLOT_PX);
-    return i < 0 ? 0 : i >= FISH_NAME_MAX ? FISH_NAME_MAX - 1 : i;
 }
 int setup_hit(float x, float y) {
     if (!s_active) return 0;
@@ -425,6 +515,8 @@ int setup_hit(float x, float y) {
     if (page_one_button())
         return in_box(x, y, SETUP_MID_X, SETUP_BTN_Y, SETUP_BTN_W, SETUP_BTN_H, m) ? SETUP_HIT_NEXT : 0;
     if (nav_on_top()) {
+        if (s_place && in_box(x, y, 24, SETUP_MIRROR_Y, 120, 26, 0)) return SETUP_HIT_PREV_PIECE;
+        if (s_place && in_box(x, y, 304, SETUP_MIRROR_Y, 120, 26, 0)) return SETUP_HIT_NEXT_PIECE;
         if (s_place && tank_decor_mirrorable(s_item) &&
             in_box(x, y, SETUP_MIRROR_X, SETUP_MIRROR_Y, SETUP_MIRROR_W, SETUP_MIRROR_H, 0)) return SETUP_HIT_MIRROR;
         if (in_box(x, y, SETUP_TOP_NEXT_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_NEXT;
@@ -437,16 +529,8 @@ int setup_hit(float x, float y) {
         if (in_box(x, y, SETUP_BACK_X, SETUP_BTN_Y, SETUP_BTN_W, SETUP_BTN_H, m)) return SETUP_HIT_BACK;
     }
     if (page_is_name()) {
-        int rw = (FISH_NAME_MAX - 1) * SETUP_SLOT_PX + SETUP_SLOT_W;
-        if (x < SETUP_SLOT_X - 24 || x >= SETUP_SLOT_X + rw + 24) return 0;
-        /* the row band picks a slot; the bands above and below are the
-           chevrons - over the active slot and its neighbours, a hand wide */
-        if (y >= SETUP_SLOT_Y - 16 && y < SETUP_SLOT_Y + SETUP_SLOT_H + 20) return SETUP_HIT_SLOT0 + nearest_slot(x);
-        float cx = SETUP_SLOT_X + s_slot * SETUP_SLOT_PX + SETUP_SLOT_W * 0.5f;
-        if (x < cx - 66 || x > cx + 66) return 0;
-        if (y >= SETUP_SLOT_Y - 16 - 70 && y < SETUP_SLOT_Y - 16) return SETUP_HIT_UP;
-        if (y >= SETUP_SLOT_Y + SETUP_SLOT_H + 20 && y < SETUP_SLOT_Y + SETUP_SLOT_H + 20 + 70) return SETUP_HIT_DOWN;
-        return 0;
+        return setup_name_keyboard_hit(x, y, SETUP_NAME_KB_X, s_rename ? SETUP_RENAME_KB_Y : SETUP_NAME_KB_Y,
+                                       SETUP_NAME_KB_W, false);
     }
     if (s_page == SETUP_PG_PLACE) {
         if (s_item == 4) {                              /* the cluster's LOOK row: the nearest tile along x */
@@ -502,6 +586,7 @@ void setup_activate(tank_t *t, int id) {
     if (!s_active || !id) return;
     fish_t *f = &t->fish[page_fish()];
     if (s_page == SETUP_PG_CUSTOM && id >= SETUP_HIT_CUSTOM0 && id < SETUP_HIT_CUSTOM0 + 4) {
+        if (!progression_creative(t)) return;
         f = &s_custom_draft;
         int which = id - SETUP_HIT_CUSTOM0;
         if (which == 0) {
@@ -521,6 +606,11 @@ void setup_activate(tank_t *t, int id) {
         return;
     }
     if (s_place) {
+        if (id == SETUP_HIT_PREV_PIECE || id == SETUP_HIT_NEXT_PIECE) {
+            place_cycle_piece(t, id == SETUP_HIT_PREV_PIECE ? -1 : 1);
+            s_remove_armed = false; s_save_error = false;
+            return;
+        }
         if (id == SETUP_HIT_BACK) { setup_cancel(t); return; }
         if (id == SETUP_HIT_REMOVE) {
             if (!s_remove_armed) { s_remove_armed = true; return; }
@@ -548,12 +638,18 @@ void setup_activate(tank_t *t, int id) {
             tank_cluster_set_scheme(t, id - SETUP_HIT_COLOR0);
         return;
     }
-    if (s_rename) {                                     /* one page: DONE keeps the name, CANCEL the old one; the wheel below */
+    if (s_rename) {                                     /* one page: DONE keeps the name, CANCEL restores the original */
         if (id == SETUP_HIT_NEXT) { rename_end(t, true); tank_emit(TEV_CONFIRM, -1); return; }
         if (id == SETUP_HIT_BACK) { rename_end(t, false); return; }
     }
+    int name_key = id >= 'A' && id <= 'Z' ? id + ('a' - 'A') :
+                   (id >= '0' && id <= '9') || id == '-' || id == ' ' || id == '\b' ? id : 0;
+    if (page_is_name() && name_key && setup_name_keyboard_apply(f->name, sizeof f->name, name_key)) {
+        tank_emit(TEV_WHEEL_TICK, -1);
+        return;
+    }
     if (id == SETUP_HIT_NEXT) {
-        if (page_is_name()) tidy_name(t, page_fish());
+        if (page_is_name()) finish_name(t, page_fish());
         if (page_is_last()) {                           /* BEGIN / DONE: the debt is paid, the names saved */
             bool saved = s_birth ? progression_newborn_done(t) : progression_setup_done(t);
             if (!saved) { s_save_error = true; return; }
@@ -561,22 +657,21 @@ void setup_activate(tank_t *t, int id) {
             tank_emit(TEV_CONFIRM, -1);
             return;
         }
-        s_page++; s_slot = 0; stage(t);
+        s_page++;
+        if (page_is_look()) s_page++;
+        if (s_page == SETUP_PG_BUBBLES) s_page++;
+        stage(t);
         return;
     }
     if (id == SETUP_HIT_BACK) {
-        if (page_is_name()) tidy_name(t, page_fish());
         if (s_page > first_page()) s_page--;
-        s_slot = 0; stage(t);
+        if (s_page == SETUP_PG_BUBBLES) s_page--;
+        if (page_is_look()) s_page--;
+        stage(t);
         return;
     }
-    if (page_is_name()) {
-        if (id >= SETUP_HIT_SLOT0 && id < SETUP_HIT_SLOT0 + FISH_NAME_MAX) pick_slot(f, id - SETUP_HIT_SLOT0);
-        else if (id == SETUP_HIT_UP)   spin(f, +1);
-        else if (id == SETUP_HIT_DOWN) spin(f, -1);
-        return;
-    }
-    if (page_is_look() && id >= SETUP_HIT_BODY0 && id < SETUP_HIT_BODY0 + LOOK_N)
+    if (page_is_name()) return;
+    if (progression_creative(t) && page_is_look() && id >= SETUP_HIT_BODY0 && id < SETUP_HIT_BODY0 + LOOK_N)
         tank_set_look(t, page_fish(), LOOK_BODY[id - SETUP_HIT_BODY0], 0);   /* the accent stays its secret */
 }
 
@@ -584,11 +679,9 @@ void setup_touch(tank_t *t, float x, float y, bool down) {
     stage(t);                                           /* every frame: the tank keeps the fish on stage */
     if (!s_active) { s_down = down; return; }
     if (down && !s_down) {                              /* press */
-        s_px = x; s_py = y; s_ly = y; s_acc = 0; s_spun = false;
+        s_px = x; s_py = y; s_spun = false;
         s_place_dragging = false;
         int h = setup_hit(x, y);
-        if (page_is_name() && h >= SETUP_HIT_SLOT0 && h < SETUP_HIT_SLOT0 + FISH_NAME_MAX)
-            pick_slot(&t->fish[page_fish()], h - SETUP_HIT_SLOT0);   /* picked on touch: the drag turns it */
         if (s_page == SETUP_PG_BUBBLES && !h && render_page_y(y) > SETUP_TOP_BTN_Y + SETUP_BTN_H + 8) {
             tank_set_bubble_x(t, x); s_spun = true;         /* the column comes to the finger */
         }
@@ -601,15 +694,7 @@ void setup_touch(tank_t *t, float x, float y, bool down) {
         if (s_place_dragging) placed_set(t, x, placed_z(t));
     } else if (down && s_page == SETUP_PG_BUBBLES && s_spun) {
         tank_set_bubble_x(t, x);                            /* ... and follows it */
-    } else if (down && page_is_name()) {                /* the wheel: vertical travel spins the letter */
-        int h0 = setup_hit(s_px, s_py);
-        if (h0 >= SETUP_HIT_SLOT0 && h0 < SETUP_HIT_SLOT0 + FISH_NAME_MAX) {
-            s_acc += y - s_ly;
-            while (s_acc <= -SETUP_SPIN_PX) { spin(&t->fish[page_fish()], +1); s_acc += SETUP_SPIN_PX; s_spun = true; }   /* up = next letter */
-            while (s_acc >=  SETUP_SPIN_PX) { spin(&t->fish[page_fish()], -1); s_acc -= SETUP_SPIN_PX; s_spun = true; }
-        }
-        s_ly = y;
-    } else if (!down && s_down) {                       /* release: a tap, unless the wheel turned */
+    } else if (!down && s_down) {                       /* release: a tap, unless dragging */
         if (!s_spun) {
             int h = setup_hit(s_px, s_py);
             if (s_page == SETUP_PG_PLACE && !h && !setup_hit(x, y) &&
@@ -812,9 +897,7 @@ static void ord_arrow(uint16_t *fb, int stride, int x, int y, bool right, bool o
     }
 }
 static void panel(uint16_t *fb, int stride) {
-    render_rect(fb, stride, SETUP_X, SETUP_Y, SETUP_W, SETUP_H, C_PANEL);
-    render_rect_edge(fb, stride, SETUP_X, SETUP_Y, SETUP_W, SETUP_H, C_EDGE);
-    render_rect_edge(fb, stride, SETUP_X + 1, SETUP_Y + 1, SETUP_W - 2, SETUP_H - 2, C_INNER);
+    render_menu_backdrop(fb, stride, SETUP_X, SETUP_Y, SETUP_W, SETUP_H);
 }
 
 void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
@@ -822,7 +905,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
     const int CX = PAGE_W / 2;
     const int FLOOR = render_page_y(TANK_BOT - 16);
     if (s_page == SETUP_PG_MODE) {
-        render_rect(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, C_PANEL);
+        render_menu_backdrop(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H);
         text_c(fb, stride, CX, 18, 3, C_TEXT, "CHOOSE YOUR MODE");
         text_c(fb, stride, CX, 52, 1, C_CAPT, "WIPE ALL PROGRESS TO CHANGE MODE");
         static const char *const labels[] = {
@@ -838,7 +921,7 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         render_button(fb, stride, 24, 282, 400, 38, C_INNER, C_EDGE, "START THIS MODE", 2);
         text_c(fb, stride, CX, 336, 1, C_CAPT, s_mode_error);
     } else if (s_page == SETUP_PG_CUSTOM) {
-        render_rect(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H, C_PANEL);
+        render_menu_backdrop(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H);
         text_c(fb, stride, CX, 10, 2, C_TEXT, s_save_error ? "SAVE FAILED - RETRY DONE" : "CUSTOMIZE YOUR FISH");
         nav(fb, stride, true, "DONE", true);
         fish_t preview = s_custom_draft; preview.stage = STAGE_ADULT;
@@ -887,6 +970,8 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
             render_button(fb, stride, SETUP_TOP_BACK_X, SETUP_TOP_BTN_Y, SETUP_TOP_BTN_W, SETUP_BTN_H,
                           C_INNER, s_remove_armed ? C_GO_E : C_DIM, s_remove_armed ? "REMOVE?" : "REMOVE", 2);
         bool surface = tank_decor_surface(s_item);
+        render_button(fb, stride, 24, SETUP_MIRROR_Y, 120, 26, C_INNER, C_EDGE, "< PREV", 2);
+        render_button(fb, stride, 304, SETUP_MIRROR_Y, 120, 26, C_INNER, C_EDGE, "NEXT >", 2);
         if (tank_decor_mirrorable(s_item))
             render_button(fb, stride, SETUP_MIRROR_X, SETUP_MIRROR_Y, SETUP_MIRROR_W, SETUP_MIRROR_H,
                           C_INNER, placed_mirrored(t) ? C_EDGE : C_DIM, "MIRROR", 2);
@@ -991,31 +1076,25 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         render_rect(fb, stride, original_x - 6, FLOOR - 17, 12, 2, C_TEXT);
         if (!surface) chevron(fb, stride, (int)((x0 + x1) * 0.5f), FLOOR - 34, true, C_EDGE);
     } else if (page_is_name()) {
-        /* straight on the tank: the fish being named wears a ring in its own
-           colour, its name spans the middle in that colour, the active slot
-           bright with the chevrons, the rest dimmed; slots past the first
-           blank are just faint underlines */
+        /* The fish remains staged behind the same shared QWERTY keyboard
+           used for aquarium naming. */
         const fish_t *f = &t->fish[page_fish()];
-        fish_ring(fb, stride, f, 17 * f->size + 6, f->color);
-        render_rect_blend(fb, stride, -PAGE_X, SETUP_SLOT_Y - SETUP_ARROW_GAP - 2, PAGE_FRAME_W, SETUP_SLOT_H + 2 * SETUP_ARROW_GAP + 36, C_PANEL, 150);
+        if (s_rename) {
+            /* Renaming from Fish Summary owns the whole page so the menu
+               underneath never competes with the keyboard. */
+            render_menu_backdrop(fb, stride, -PAGE_X, -PAGE_Y, PAGE_FRAME_W, PAGE_FRAME_H);
+            render_button(fb, stride, 24, 94, 400, 82, C_INNER, C_EDGE, "", 1);
+            fish_t preview = *f;
+            render_fish_portrait(fb, stride, 96, 135, 0.8f, &preview, clock);
+            render_text(fb, stride, 176, 108, 2, C_CAPT, FISH_VARIETY_NAMES[f->variety % FISH_VARIETY_COUNT]);
+            render_text(fb, stride, 176, 134, 1, C_TEXT, "TYPE A NEW NAME.");
+            render_text(fb, stride, 176, 150, 1, C_DIM, "DONE SAVES IT.");
+        } else fish_ring(fb, stride, f, 17 * f->size + 6, f->color);
         text_c(fb, stride, CX, SETUP_Y + 7, 2, C_CAPT, s_rename ? "RENAME YOUR FISH" : s_birth ? "NAME THE NEW FRY" : page_fish() == 0 ? "NAME THE FIRST FISH" : "NAME THE SECOND FISH");
         nav(fb, stride, true, s_rename ? "DONE" : "NEXT", s_rename);
-        int n = name_len(f);
-        if (s_slot > n) s_slot = n;
-        for (int i = 0; i < FISH_NAME_MAX; i++) {
-            int x = SETUP_SLOT_X + i * SETUP_SLOT_PX;
-            bool on = i == s_slot, reach = i <= n;
-            uint32_t col = on ? f->color : reach ? dim(f->color, 55) : C_DIM;
-            int v = slot_val(f, i);
-            if (v) { char ch[2] = { (char)('A' + v - 1), 0 }; render_text(fb, stride, x, SETUP_SLOT_Y, SETUP_SLOT_SCALE, col, ch); }
-            render_rect(fb, stride, x, SETUP_SLOT_Y + SETUP_SLOT_H + 8, SETUP_SLOT_W, 4,
-                        on && !v && ((int)(clock * 2) & 1) ? C_TEXT : col);
-            if (on) {
-                chevron(fb, stride, x + SETUP_SLOT_W / 2, SETUP_SLOT_Y - SETUP_ARROW_GAP, true, C_EDGE);
-                chevron(fb, stride, x + SETUP_SLOT_W / 2, SETUP_SLOT_Y + SETUP_SLOT_H + SETUP_ARROW_GAP + 4, false, C_EDGE);
-            }
-        }
-        text_c(fb, stride, CX, SETUP_SLOT_Y + SETUP_SLOT_H + 96, 2, C_CAPT, "SWIPE A LETTER UP OR DOWN");
+        setup_name_keyboard_draw(fb, stride, SETUP_NAME_KB_X, s_rename ? SETUP_RENAME_KB_Y : SETUP_NAME_KB_Y,
+                                 SETUP_NAME_KB_W, f->name, FISH_NAME_MAX, false,
+                                 C_KEY, C_EDGE, C_TEXT);
         dots(fb, stride, PAGE_H - 14);
     } else if (page_is_look()) {
         /* straight on the tank again: the ringed FRY is the preview (no

@@ -1,15 +1,16 @@
-/* setup.h — first-run setup (2026-09-13): the welcome, a name and colours for
+/* setup.h — first-run setup: the welcome and a name for
  * each of the two fry, then the care tips - for a fresh install and after a
  * reset. Platform-agnostic: the state machine, the gestures, the hit
  * geometry and the drawing all live here (the reset prompt kept its state in
  * each platform's touch code; a five-page flow would have been written
  * twice), built on render.h's UI primitives over the LIVE tank - the fish
- * keep swimming behind the pages and wear the colours as they are picked.
+ * keep swimming behind the pages. Historical color pages are skipped in all
+ * modes; resident looks come from purchased stock and inheritance.
  *
  * The platforms do three things: setup_begin when progression says the flow
  * is pending (boot, a reset YES, the director's cue); setup_touch every
- * frame with the finger's position and state while it is up (taps and the
- * letter-wheel drags are classified here); and render_setup after
+ * frame with the finger's position and state while it is up (taps are
+ * classified here); and render_setup after
  * render_tank while setup_active. Every other gesture is swallowed while it
  * is up. No timeout: it waits for the keeper.
  *
@@ -18,21 +19,18 @@
  * column to that x (tank_set_bubble_x keeps it clear of the grass corner the fish rest by); a translucent stripe marks the column, the airstone at its foot
  * moves with it, the bubbles already rising shift as one.
  *
- * Naming (third design, Strato: "seeing the fish while naming it is very
- * important" - and a keyboard's keys are too small for a 35 mm glass): NO
- * panel - the tank stays in view with a ring around the fish being named -
- * and seven big letter slots across the middle, arcade high-score style.
- * Touch a slot to pick it, then drag up / down on it (or tap the chevrons
- * above and below) to spin its letter through blank, A..Z. A blank at the
- * end shortens the name; NEXT trims blanks and puts the preset's name back
- * if nothing is left. Targets are a slot wide (44 px) and the whole band
- * tall, so nothing here needs aim.
+ * Naming (QWERTY, matching weather and network search): the tank stays in
+ * view with the fish ringed behind a compact keyboard. The shared keyboard
+ * draws and hit-tests staggered letter rows, with space and delete; aquarium
+ * names additionally expose digits and a hyphen. Keys append at the end,
+ * delete removes one trailing character, and the length is bounded by the
+ * name field. Existing characters are retained unless the keeper edits them.
  *
  * THE BIRTH FLOW (2026-09-14, Strato: an arrival "will be an exciting event
  * for the player"): when progression says a fry is owed its welcome
  * (progression_newborn), setup_poll_birth opens three pages over the live
  * tank - A NEW FRY! (the announcement: the fry ringed wherever it hatched,
- * its parents named), NAME THE NEW FRY (the letter wheel, as in the first
+ * its parents named), NAME THE NEW FRY (the QWERTY keyboard, as in the first
  * run) and the family page (a panel: the fry's portrait on its own, as it
  * is now; whose body and whose markings it wears; its boldness and
  * sociability on bars between its parents' marks). No colour picker - a
@@ -47,7 +45,9 @@
  * water drags the piece to that x (tank_decor_set clamps it inside the
  * window); a tap on overlapping placed decorations cycles through only
  * owned pieces and copies without moving them. Selecting another piece
- * drops the current preview back to its starting layout. The selected
+ * drops the current preview back to its starting layout. PREV/NEXT also
+ * cycle every placed original and extra copy, including fixed scenery,
+ * skipping absent pieces. The selected
  * footprint is outlined, and a marker stays at its starting position while
  * it is dragged. The page identifies the placed original or extra copy;
  * REMOVE returns the selected decoration to storage without a refund,
@@ -58,6 +58,7 @@
 #include "tank.h"
 #include "render.h"            /* PAGE_*: the page the layout below is on */
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
 void setup_begin(tank_t *t);             /* page 1 (needs 2 fish; fewer = done at once) */
@@ -81,7 +82,7 @@ const setup_place_snapshot_t *setup_place_original(void);
 void setup_begin_extra_place(tank_t *t, int copy);
 bool setup_begin_place_at(tank_t *t, float x, float y);
 /* RENAME A FISH (2026-10-01, Strato: "when you tap a fish and see its card
- * there should be a change name button"): the letter wheel again, one page
+ * there should be a change name button"): the shared QWERTY keyboard, one page
  * over the live tank with the fish ringed on its stage - the name page of
  * the first run and the birth flow, CANCEL / DONE on top. DONE keeps the
  * name and saves it (nothing left = the preset's again); CANCEL, or a flow
@@ -89,6 +90,7 @@ bool setup_begin_place_at(tank_t *t, float x, float y);
  * card opens it (MS_TAP_RENAME); when it closes, setup_take_renamed gives
  * the platform the fish once (else -1) so it can put that card back up. */
 void setup_begin_rename(tank_t *t, int fish);
+/* Compatibility no-op: resident looks are purchased or inherited in every mode. */
 void setup_begin_customize(tank_t *t, int fish);
 bool setup_is_rename(void);
 int  setup_take_renamed(void);
@@ -104,8 +106,7 @@ int  setup_fish(void);                   /* the fish the current page is about (
 void setup_cancel(tank_t *t);            /* drop the pages; the save still says pending */
 int  setup_page(void);                   /* SETUP_PG_* while active */
 /* the finger, every frame (or poll): x,y in tank coordinates, down = touching.
- * A press then release on one element taps it; a press on a letter slot and
- * a vertical drag spins that letter (SETUP_SPIN_PX of travel per step).
+ * A press then release on one element taps it.
  * Placement water taps cycle overlapping owned copies; horizontal drags move
  * only the selected copy. */
 void setup_touch(tank_t *t, float x, float y, bool down);
@@ -113,8 +114,16 @@ void setup_touch(tank_t *t, float x, float y, bool down);
  * current page (0 = none) and a tap on it */
 int  setup_hit(float x, float y);
 void setup_activate(tank_t *t, int id);
-const char *setup_hit_name(int id);      /* "NEXT", "slot 2", "up", "body 3"... */
-int  setup_slot(void);                   /* the active letter slot on a name page */
+const char *setup_hit_name(int id);      /* "NEXT", a keyboard character, "body 3"... */
+int  setup_slot(void);                   /* compatibility: name pages no longer select a slot */
+/* Shared QWERTY name input. Coordinates passed to hit are page coordinates;
+ * draw uses the same origin and width. Keys return uppercase letters, digits,
+ * '-' (extended layout), space, or '\b' for delete; zero means no key. */
+void setup_name_keyboard_draw(uint16_t *fb, int stride, int x, int y, int width,
+                              const char *name, int max_chars, bool extended,
+                              uint32_t fill, uint32_t edge, uint32_t text);
+int  setup_name_keyboard_hit(float x, float y, int left, int top, int width, bool extended);
+bool setup_name_keyboard_apply(char *name, size_t capacity, int key);
 void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock);
 
 /* pages, in order */
@@ -142,9 +151,11 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
 #define SETUP_HIT_BCK   6                /* the placement page's order arrows (2026-10-17): one step back in the stack ... */
 #define SETUP_HIT_FWD   7                /* ... and one step forward (tank_decor_shift) */
 #define SETUP_HIT_MIRROR 8               /* the placement page's MIRROR toggle, centred over the depth bar (sprite pieces) */
-#define SETUP_HIT_UP    3                /* the active slot's letter: next (A -> B) */
-#define SETUP_HIT_DOWN  4                /* ... previous */
-#define SETUP_HIT_SLOT0 10               /* + 0..FISH_NAME_MAX-1: pick that slot */
+#define SETUP_HIT_PREV_PIECE 230
+#define SETUP_HIT_NEXT_PIECE 231
+#define SETUP_HIT_UP    3                /* retired letter-wheel identifier */
+#define SETUP_HIT_DOWN  4                /* retired letter-wheel identifier */
+#define SETUP_HIT_SLOT0 10               /* retired letter-wheel identifiers */
 #define SETUP_HIT_BODY0 40               /* + swatch 0..LOOK_N-1 */
 #define SETUP_HIT_Z0    60               /* + DECOR_Z_BACK..FRONT: the placement page's layer row */
 #define SETUP_HIT_COLOR0 80              /* + 0..CORAL_N-1: the coral's colour swatches (its placement page) */
@@ -170,18 +181,14 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
 #define SETUP_ORD_W      36                                 /* the order arrows, between REMOVE and DONE (the placement page) */
 #define SETUP_ORD_X0     (PAGE_W / 2 - SETUP_ORD_W - 8)
 #define SETUP_ORD_X1     (PAGE_W / 2 + 8)
-/* the letter wheel: FISH_NAME_MAX slots of a 6x font (30 x 42 px glyphs) at
- * a 44 px pitch across the middle of the tank, chevrons 40 px above and
- * below the active one; a press in the row band picks the nearest slot, the
- * bands above / below it are the chevrons' */
-#define SETUP_SLOT_SCALE 6
-#define SETUP_SLOT_PX  44
-#define SETUP_SLOT_W   (5 * SETUP_SLOT_SCALE)
-#define SETUP_SLOT_H   (7 * SETUP_SLOT_SCALE)
-#define SETUP_SLOT_X   ((PAGE_W - ((FISH_NAME_MAX - 1) * SETUP_SLOT_PX + SETUP_SLOT_W)) / 2)
-#define SETUP_SLOT_Y   150
-#define SETUP_ARROW_GAP 40
-#define SETUP_SPIN_PX   30                                 /* drag travel per letter */
+/* shared name keyboard: staggered rows in the middle, large enough to hit
+ * at either display scale. Aquarium naming enables its numeric/punctuation
+ * row through setup_name_keyboard_draw/hit. */
+#define SETUP_NAME_KB_X 24
+#define SETUP_NAME_KB_Y 128
+#define SETUP_NAME_KB_W 400
+/* rename from the Fish menu owns the page: preview card on top, keyboard at the foot */
+#define SETUP_RENAME_KB_Y 224
 /* the colour page (third design too): no panel, the live FRY wears the pick
  * with a ring round it; one row of 8 body swatches, 42 x 60 px at a 46 px
  * pitch, a tall band around it so a low-landing finger still hits; the

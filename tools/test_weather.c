@@ -38,6 +38,15 @@ void render_rect(uint16_t *f, int s, int x, int y, int w, int h, uint32_t c) {
     assert(x >= 0 && y >= 0 && w >= 0 && h >= 0 && x + w <= PAGE_W && y + h <= PAGE_H);
     ++draw_calls;
 }
+void render_menu_backdrop(uint16_t *f, int s, int x, int y, int w, int h) {
+    render_rect(f, s, x, y, w, h, 0);
+}
+void render_button(uint16_t *f, int s, int x, int y, int w, int h,
+                   uint32_t bg, uint32_t edge, const char *label, int scale) {
+    (void)edge;
+    render_rect(f, s, x, y, w, h, bg);
+    if (*label) render_text(f, s, x, y, scale, bg, label);
+}
 extern void net_sim_advance(float dt);
 extern bool net_sim_radio_on(void);
 extern void net_sim_disconnect(void);

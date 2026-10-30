@@ -1,4 +1,5 @@
 #include "companion.h"
+#include "weather.h"
 #include "progression.h"
 #include <limits.h>
 #include <math.h>
@@ -8,7 +9,7 @@
 #include <time.h>
 
 const char *const COMPANION_DISCOVERIES[] = {
-    "Bubble watcher", "Little explorer", "Seagrass nap", "Swimming together",
+    "Bubble watcher", "Little explorer", "Sheltered nap", "Swimming together",
     "A playful dart", "Reef visitor", "A hello from you", "A learned trick",
     "Lantern shell postcard", "Pearl bookmark postcard", "Star stone postcard", "Growing up"
 };
@@ -23,7 +24,6 @@ static const uint32_t collection_masks[] = {0x3fu, 0xc0u, 0x700u};
 static const uint16_t trick_bonds[] = {10, 25, 50};
 const char *const WEAR_NAMES[WEAR_COUNT] = {"NONE", "TOP HAT", "PARTY HAT", "CROWN", "TIE", "BOWTIE", "BANDANA",
     "SAILOR CAP", "PIRATE HAT", "BERET", "SUN HAT", "VIKING HELM", "SCARF"};
-const uint8_t WEAR_LEVELS[WEAR_COUNT] = {0, 3, 2, 10, 5, 4, 2, 3, 6, 2, 4, 8, 2};
 const uint8_t WEAR_PRICES[WEAR_COUNT] = {0, 45, 20, 100, 35, 30, 20, 40, 65, 30, 45, 80, 25};
 
 const companion_visitor_t COMPANION_VISITORS[VISITOR_SPECIES] = {
@@ -63,7 +63,9 @@ bool companion_story_valid(const tank_story_t *s, int fish, int bank, bool away,
         tank_story_t empty = {0};
         return !memcmp(s, &empty, sizeof empty);
     }
-    if (s->version != 1 || (s->flags & ~3u) || s->last_species >= VISITOR_SPECIES || s->pad || s->pad2 || s->reserved) return false;
+    if (s->version != 1 || (s->flags & ~3u) || s->last_species >= VISITOR_SPECIES || s->pad || s->statue > FISH_VARIETY_COUNT ||
+        (s->statue && ((s->collection >> (3 * (s->statue - 1))) & 7u) != 7u) ||
+        (s->collection >> (3 * FISH_VARIETY_COUNT))) return false;
     for (int i = 0; i < N_FISH_MAX + FISH_BANK_CAP + 1; i++) {
         const fish_lineage_t *l = i < N_FISH_MAX ? &s->active[i] :
             i < N_FISH_MAX + FISH_BANK_CAP ? &s->bank[i - N_FISH_MAX] : &s->traveler;
@@ -71,7 +73,7 @@ bool companion_story_valid(const tank_story_t *s, int fish, int bank, bool away,
         if (!present ? !line_empty(l) : (l->flags || l->parent[0] >= next_id || l->parent[1] >= next_id ||
                                         (l->parent[0] && l->parent[0] == l->parent[1]) ||
                                         l->pattern2 > FISH_PATTERN_COUNT || l->color2 > FISH_COLOR_N ||
-                                        (l->mutation & ~3u))) return false;
+                                        (l->mutation & ~7u))) return false;
     }
     for (int i = 0; i < STORY_NAME_BOOK; i++) {
         const ancestor_name_t *a = &s->names[i];
@@ -140,7 +142,12 @@ int companion_season_for(int64_t local_unix, uint8_t flags) {
 static void season_tick(tank_t *t) {
     int64_t now = clock_port_now_unix();
     if (now > 0) now += (int64_t)t->aquariums.clock_utc_quarters * 900;
-    t->season = s_force_season >= 0 ? (uint8_t)s_force_season : (uint8_t)companion_season_for(now, t->story.version ? t->story.flags : 0);
+    bool south = false;
+    bool located = weather_location_south(&south);
+    uint8_t flags = t->story.flags & STORY_SEASONS_OFF;
+    if (south) flags |= STORY_SEASONS_SOUTH;
+    t->season = s_force_season >= 0 ? (uint8_t)s_force_season :
+                located ? (uint8_t)companion_season_for(now, flags) : SEASON_NONE;
 }
 bool companion_set_seasons(tank_t *t, uint8_t flags) {
     if (!t->story.version || (flags & ~3u)) return false;
@@ -152,12 +159,16 @@ bool companion_set_seasons(tank_t *t, uint8_t flags) {
 }
 
 const char *companion_subtitle(unsigned value) {
-    static const char *const names[] = {"", "A little ocean", "A quiet refuge", "A reef of friends", "Small wonders live here"};
-    return names[value < 5 ? value : 0];
+    static const char *const names[COMPANION_SUBTITLE_COUNT] = {
+        "", "A little ocean", "A quiet refuge", "A reef of friends", "Small wonders live here",
+        "Where the tide rests", "Lanterns under glass", "A harbor for small fins", "Moonlit shallows",
+        "The breeding grounds", "A garden of currents", "Pearls and patience", "Home of the tidekeepers"};
+    return names[value < COMPANION_SUBTITLE_COUNT ? value : 0];
 }
 const char *companion_emblem(unsigned value) {
-    static const char *const names[] = {"REEF", "SHELL", "PEARL", "STAR"};
-    return names[value < 4 ? value : 0];
+    static const char *const names[COMPANION_EMBLEM_COUNT] = {
+        "REEF", "SHELL", "PEARL", "STAR", "ANCHOR", "CRYSTAL", "BEACON", "HELM", "BELL", "LANTERN", "GATE", "MOON"};
+    return names[value < COMPANION_EMBLEM_COUNT ? value : 0];
 }
 void companion_memory(tank_t *t, int kind, int fish, int detail) {
     tank_polish_t *p = &t->polish;
@@ -202,7 +213,6 @@ void companion_polish_init(tank_t *t, bool fresh) {
         if (fresh) p->founded_unix = clock_port_now_unix();
         p->decor_owned = t->sd_unlocks;
         p->helper_meals = t->shrimp_eaten;
-        p->helper_trim = (uint32_t)t->urchin_grazed_px;
     }
     for (int i = 0; i < t->n_fish; i++) life_init(t, &p->active[i], &t->fish[i], fresh);
     for (int i = 0; i < t->bank_count; i++) {
@@ -230,7 +240,7 @@ bool companion_polish_valid(const tank_polish_t *p, int fish, int bank, bool awa
         tank_polish_t empty = {0};
         return !memcmp(p, &empty, sizeof empty);
     }
-    if (p->version != 1 || !p->next_id || p->subtitle >= 5 || p->emblem >= 4 ||
+    if (p->version != 1 || !p->next_id || p->subtitle >= COMPANION_SUBTITLE_COUNT || p->emblem >= COMPANION_EMBLEM_COUNT ||
         p->recap_count > TANK_RECAP_CAP || (p->scenery_unlocks & ~63u) ||
         p->founded_unix < 0 || p->founded_unix > 4102444800LL ||
         p->backup_unix < 0 || p->backup_unix > 4102444800LL ||
@@ -287,8 +297,8 @@ void companion_care_text(const tank_t *t, int i, char *text, size_t size) {
 }
 bool companion_identity(tank_t *t, bool emblem) {
     uint8_t old = emblem ? t->polish.emblem : t->polish.subtitle;
-    if (emblem) t->polish.emblem = (old + 1) % 4;
-    else t->polish.subtitle = (old + 1) % 5;
+    if (emblem) t->polish.emblem = (old + 1) % COMPANION_EMBLEM_COUNT;
+    else t->polish.subtitle = (old + 1) % COMPANION_SUBTITLE_COUNT;
     if (progression_save(t)) return true;
     if (emblem) t->polish.emblem = old; else t->polish.subtitle = old;
     return false;
@@ -339,10 +349,9 @@ static void polish_tick(tank_t *t, uint32_t seconds) {
     uint32_t old = p->viewed_s;
     p->viewed_s = UINT32_MAX - old < seconds ? UINT32_MAX : old + seconds;
     if (old / 600 != p->viewed_s / 600) {
-        uint32_t trim = (uint32_t)t->urchin_grazed_px;
-        if ((uint32_t)t->shrimp_eaten > p->helper_meals || trim > p->helper_trim)
+        if ((uint32_t)t->shrimp_eaten > p->helper_meals)
             companion_memory(t, MEMORY_HELPERS, -1, 0);
-        p->helper_meals = t->shrimp_eaten; p->helper_trim = trim;
+        p->helper_meals = t->shrimp_eaten;
     }
     if (p->viewed_s >= p->next_visit_s && !t->visitor_left && p->next_visit_s != UINT32_MAX) {
         t->visitor_left = 24;
@@ -668,7 +677,7 @@ void companion_tick(tank_t *t, float dt) {
         if (f->goal_age >= 2) {
             if (f->goal.id == GOAL_VISIT_BUBBLES && f->at_bubbles) discover(t, 0);
             if (f->goal.id == GOAL_EXPLORE) discover(t, 1);
-            if (f->goal.id == GOAL_REST && tank_in_grass(t, f->x, f->y)) discover(t, 2);
+            if (f->goal.id == GOAL_REST && tank_reef_calm_near(t, f->x, f->y)) discover(t, 2);
             if (f->goal.id == GOAL_FOLLOW_FRIEND && t->n_fish > 1) discover(t, 3);
             if (f->goal.id == GOAL_DART_PLAY) discover(t, 4);
             if (f->goal.id == GOAL_INSPECT_REEF && (f->ms_bits & MS_INSPECTED)) discover(t, 5);
@@ -701,8 +710,8 @@ bool companion_wearable(tank_t *t, int fish, int wearable) {
     unsigned bit = wearable ? 1u << (wearable - 1) : 0;
     bool buy = wearable && !(companion_wearables(b) & bit);
     int price = buy && !progression_creative(t) ? WEAR_PRICES[wearable] : 0;
-    if (buy && !progression_creative(t) && (journal_level(t) < WEAR_LEVELS[wearable] || t->sd_balance < price)) {
-        fprintf(stderr, "Wearable locked or insufficient sand dollars\n"); return false;
+    if (buy && !progression_creative(t) && t->sd_balance < price) {
+        fprintf(stderr, "Not enough Doubloons for wearable\n"); return false;
     }
     companion_state_t old = t->companion;
     t->companion.version = COMPANION_VERSION;
@@ -720,19 +729,21 @@ uint8_t companion_creature_colors(const companion_state_t *s, int creature) {
     return creature == CREATURE_MUSSEL ? s->mussel_colors : s->creature_colors[creature];
 }
 bool companion_colors(tank_t *t, bool wearable, int target, uint8_t colors) {
-    if (target < 0 || target >= (wearable ? t->n_fish : CREATURE_COUNT) ||
+    if (!t || !wearable) {
+        fprintf(stderr, "Creature colors come from acquired stock; free palette edits are disabled\n");
+        return false;
+    }
+    if (target < 0 || target >= t->n_fish ||
         (t->companion.version < 2 && t->companion.adventure)) {
         fprintf(stderr, "Invalid color target or unclaimed legacy postcard\n"); return false;
     }
     companion_state_t old = t->companion;
     t->companion.version = COMPANION_VERSION;
-    if (wearable) t->companion.active[target].wear_colors = colors;
-    else if (target == CREATURE_MUSSEL) t->companion.mussel_colors = colors;
-    else t->companion.creature_colors[target] = colors;
+    t->companion.active[target].wear_colors = colors;
     if (!commit(t, &old)) {
         fprintf(stderr, "Color save failed; changes rolled back\n"); return false;
     }
-    if (wearable) t->fish[target].wear_colors = colors;
+    t->fish[target].wear_colors = colors;
     return true;
 }
 bool companion_compact(tank_t *t, bool compact) {
@@ -765,23 +776,12 @@ bool companion_set_options(tank_t *t, bool cozy, bool captions, bool lively) {
     return commit(t, &old);
 }
 bool companion_greet(tank_t *t, int fish) {
-    if (fish < 0 || fish >= t->n_fish) return false;
-    companion_bond_t *b = &t->companion.active[fish];
-    if (b->next_greet_s && t->companion.powered_s < b->next_greet_s) return false;
-    progression_care_refresh(t);
-    care_state_t old_care = t->care;
-    companion_state_t old = t->companion;
-    b->bond = b->bond > 95 ? 100 : b->bond + 5;
-    if (b->greetings < UINT16_MAX) b->greetings++;
-    b->next_greet_s = t->companion.powered_s > UINT32_MAX - 30 ? UINT32_MAX : t->companion.powered_s + 30;
-    discover(t, 6);
-    progression_care_greet(t);
-    if (!commit(t, &old)) { t->care = old_care; return false; }
-    t->greet_timer = 12;
-    return true;
+    (void)t; (void)fish;
+    fprintf(stderr, "Say Hello is retired; no bond or reward changed\n");
+    return false;
 }
 bool companion_trick(tank_t *t, int fish, int trick) {
-    if (fish < 0 || fish >= t->n_fish || trick < 0 || trick > 2 || (trick == 2 && t->n_fish < 2) ||
+    if (fish < 0 || fish >= t->n_fish || trick < 0 || trick > 2 || trick == 1 || (trick == 2 && t->n_fish < 2) ||
         (!progression_creative(t) && t->companion.active[fish].bond < trick_bonds[trick])) return false;
     companion_state_t old = t->companion;
     t->companion.active[fish].tricks |= (uint8_t)(1u << trick);
@@ -933,12 +933,12 @@ int companion_favorite(const tank_t *t, int fish) {
     if (f->sociable0 >= 0.65f && f->sociable0 >= f->bold0) return GOAL_FOLLOW_FRIEND;
     if (f->bold0 >= 0.65f) return p & 1u ? GOAL_DART_PLAY : GOAL_EXPLORE;
     if (f->bold0 <= 0.35f) return p & 1u ? GOAL_INSPECT_REEF : GOAL_REST;
-    return p % 3u == 0 ? GOAL_VISIT_BUBBLES : p % 3u == 1 ? GOAL_EXPLORE : GOAL_INSPECT_REEF;
+    return p % 3u == 1 ? GOAL_EXPLORE : GOAL_INSPECT_REEF;
 }
 void companion_favorite_text(const tank_t *t, int fish, char *text, size_t size) {
     static const char *const names[GOAL_COUNT] = {
         [GOAL_VISIT_BUBBLES] = "the bubble column", [GOAL_FOLLOW_FRIEND] = "swimming with tankmates",
-        [GOAL_EXPLORE] = "exploring", [GOAL_REST] = "the seagrass", [GOAL_DART_PLAY] = "darting games",
+        [GOAL_EXPLORE] = "exploring", [GOAL_REST] = "a quiet refuge", [GOAL_DART_PLAY] = "darting games",
         [GOAL_INSPECT_REEF] = "the reef"
     };
     static const uint32_t seen[GOAL_COUNT] = {

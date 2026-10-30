@@ -46,6 +46,7 @@ bool weather_network_needed_after(float dt);
 void weather_caption(char *out, size_t cap);
 void weather_clock_lines(char *city, size_t city_cap, char *detail, size_t detail_cap);
 int weather_icon_code(void); /* -1 without an enabled, located cached reading */
+bool weather_location_south(bool *south); /* saved city, even with live forecasts off; false if unconfigured */
 void weather_open(void);
 void weather_render(uint16_t *fb, int stride, int text_size);
 bool weather_tap(float x, float y); /* frame coordinates; true = close */

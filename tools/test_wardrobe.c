@@ -38,7 +38,7 @@ static void fresh_wardrobe(tank_t *t, int mode) {
     tank_reframe(t, compact);
     t->companion.display_compact = compact;
     t->sd_balance = 100000;
-    t->journal.xp = 100000;
+    t->journal.xp = 0;
 }
 static void check_matrix(void) {
     assert(!companion_wearable_fits(-1, WEAR_NONE));
@@ -85,7 +85,7 @@ static void check_matrix(void) {
                     assert(companion_wearable(&t, 0, WEAR_NONE));
                 }
             }
-    puts("PASS: core/UI purchase, equip and color previews: 10 varieties x 4 stages x 12 items, Normal and Creative");
+    puts("PASS: core/UI Doubloons purchase, equip and color previews without XP gates: 10 varieties x 4 stages x 12 items, Normal and Creative");
 }
 static void check_legacy(void) {
     tank_t t, loaded;

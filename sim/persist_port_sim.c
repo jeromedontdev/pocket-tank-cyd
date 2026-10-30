@@ -29,6 +29,10 @@ void aquarium_port_id(uint32_t id[2]) {
 bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size) {
     return aquarium_port_ready() && aquarium_store_read(tank_directory, id, slot, data, size);
 }
+bool aquarium_port_read_sized(const uint32_t id[2], int slot, void *data, size_t size, size_t *got) {
+    if (got) *got = 0;
+    return aquarium_port_ready() && aquarium_store_read_sized(tank_directory, id, slot, data, size, got);
+}
 bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_t size) {
     return aquarium_port_ready() && aquarium_store_write(tank_directory, id, slot, data, size);
 }
@@ -85,7 +89,7 @@ bool persist_port_load(void *buf, size_t max, size_t *got) {
         if (state == 2) return false;
     }
     if (active) {
-        if (aquarium_store_read(profile_directory, profile_id, 0, buf, max)) { *got = max; return true; }
+        if (aquarium_store_read_sized(profile_directory, profile_id, 0, buf, max, got)) return true;
         save_blocked = true; return false;
     }
     if (marker) {

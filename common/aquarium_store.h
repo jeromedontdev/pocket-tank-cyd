@@ -6,6 +6,9 @@
 /* size is buffer capacity: checksum-verified older shorter saves zero-fill
  * their appended tails. The newest valid generation wins across migrations. */
 bool aquarium_store_read(const char *directory, const uint32_t id[2], int slot, void *data, size_t size);
+/* As above, and report the stored payload length before zero-filling its tail. */
+bool aquarium_store_read_sized(const char *directory, const uint32_t id[2], int slot,
+                               void *data, size_t capacity, size_t *stored_size);
 bool aquarium_store_write(const char *directory, const uint32_t id[2], int slot, const void *data, size_t size);
 /* -1 I/O error, 0 absent, 1 present (including corrupt records). */
 int aquarium_store_present(const char *directory, const uint32_t id[2], int slot);

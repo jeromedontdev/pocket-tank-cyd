@@ -11,7 +11,7 @@ HARNESS = r"""
 #include <stdio.h>
 #include "render.h"
 #define ESP_LOGI(...) ((void)0)
-static bool s_set, s_ms, s_life, s_from_home, s_child_from_keeper, s_back;
+static bool s_set, s_ms, s_life, s_back;
 static bool s_shop, s_upd;
 static int s_sel, s_set_what, s_set_val, result, result_value;
 static int calibrated, confirmed, update_reset, dismissed, synced, primed;

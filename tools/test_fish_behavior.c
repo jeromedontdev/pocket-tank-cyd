@@ -407,6 +407,157 @@ static void test_fluid_motion(void) {
         assert(top_speed <= top_target + 0.001f);
     }
 }
+static void test_reef_rhythm(void) {
+    tank_t t, control;
+    one_fish(&t, 981, 0, .5f, .5f);
+    t.fish[0].goal.id = GOAL_EXPLORE;
+    t.fish[0].x = TANK_W * .5f; t.fish[0].y = TANK_H * .4f;
+    t.sd_unlocks |= SD_ITEM_SNAIL | SD_ITEM_URCHIN | SD_ITEM_SEAHORSE;
+    assert(tank_reef_shelters(&t) == 0 && tank_reef_open_lane(&t) == 1);
+    t.inventory.extra[0] = (inventory_extra_t){.item = SD_DECOR_FIRST + 1, .x = TANK_W * .8f};
+    assert(tank_reef_shelters(&t) == 1 && tank_reef_open_lane(&t) < 1);
+    assert(tank_reef_calm_near(&t, TANK_W * .8f, TANK_BOT - 40));
+    memset(&t.inventory.extra[0], 0, sizeof t.inventory.extra[0]);
+    assert(!tank_reef_calm_near(&t, t.reef_x, TANK_BOT - 40));
+    assert(tank_nursery_bed(&t) >= 0);
+    assert(!tank_reef_current(&t, 20, 50, 22, 50));
+    assert(!tank_reef_current(&t, 20, 50, 30, TANK_BOT - 20));
+    assert(!tank_reef_current(&t, NAN, 50, 150, 50));
+    assert(!tank_reef_current(&t, -100, 50, TANK_W - 20, 50));
+    assert(!tank_reef_current(&t, 20, 50, TANK_W + 100, 50));
+    t.ui_cover = true;
+    assert(!tank_reef_current(&t, 20, 50, TANK_W - 20, 50));
+    t.ui_cover = false;
+    t.night = true;
+    assert(!tank_reef_current(&t, 20, 50, TANK_W - 20, 50));
+    t.night = false;
+    float y = t.fish[0].y;
+    control = t;
+    assert(!tank_reef_current(&t, 20, y, TANK_W - 20, y));
+    assert(!memcmp(&t, &control, sizeof t));
+    assert(!tank_reef_current(&t, 20, y, TANK_W - 20, y));
+    for (int i = 0; i < 10; i++) tank_tick(&t, .04f, hold_goal);
+    assert(t.reef_visits == 0);
+    assert(t.reef_flow_s == 0);
+    t.fish[0].goal.id = GOAL_VISIT_BUBBLES;
+    t.fish[0].at_bubbles = true;
+    tank_tick(&t, .04f, hold_goal);
+    assert(t.fish[0].goal.id == GOAL_EXPLORE && !t.fish[0].at_bubbles);
+    float sword[VEG_FRONDS_MAX];
+    t.sd_unlocks |= SD_ITEM_PLANT | SD_ITEM_CASTLE;
+    tank_veg_sync(&t);
+    memcpy(sword, t.veg_h[3], sizeof sword);
+    assert(tank_reef_shelters(&t) >= 2 && tank_reef_open_lane(&t) < 1);
+    assert(tank_reef_calm_near(&t, tank_decor_x(&t, 2), TANK_BOT - 40));
+    for (int b = 0; b < VEG_BEDS; b++) {
+        int n = -1; tank_veg_bed(&t, b, NULL, NULL, NULL, &n);
+        assert(n == 0 && tank_veg_frond(&t, b, 0, NULL) == 0);
+    }
+    memset(t.algae, 180, sizeof t.algae);
+    tank_grow_algae(&t, 1000000);
+    assert(tank_algae_cover(&t) == 0 && !tank_shrimp_refusing(&t));
+    control = t;
+    int32_t cleaned = t.cells_cleaned, grazed = t.snail_grazed;
+    float trim = t.trim_px, chewed = t.urchin_grazed_px;
+    for (int i = 0; i < 9000; i++) {
+        if (i % 800 == 0) {
+            t.fish[0].hunger = 3; t.fish[0].energy = 8;
+            (void)tank_reef_current(&t, 20, y, TANK_W - 20, y);
+        }
+        tank_tick(&t, .04f, hold_goal);
+        assert(isfinite(t.fish[0].x) && isfinite(t.fish[0].heading));
+        assert(t.reef_flow_s >= 0 && t.reef_flow_cooldown >= 0);
+    }
+    assert(!memcmp(sword, t.veg_h[3], sizeof sword));
+    assert(!memcmp(control.algae, t.algae, sizeof t.algae));
+    assert(t.cells_cleaned == cleaned && t.trim_px == trim &&
+        t.snail_grazed == grazed && t.urchin_grazed_px == chewed);
+    assert(!tank_urchin_chewing(&t) && t.snail_cell == -1);
+    for (int b = 0; b < VEG_BEDS; b++) assert(t.veg_growth[b] == 0);
+    tank_tick_sleep(&t, 86400 * 14);
+    assert(!memcmp(sword, t.veg_h[3], sizeof sword));
+    assert(!t.reef_flow_s && !t.reef_flow_cooldown);
+    t.night = false;
+    t.reef_currents = UINT32_MAX;
+    assert(!tank_reef_current(&t, 20, 50, TANK_W - 20, 50));
+    assert(t.reef_currents == UINT32_MAX);
+    tank_set_tool(&t, TOOL_SCISSORS);
+    assert(t.tool == TOOL_HAND);
+    puts("PASS: retired currents cannot mutate state; owned foliage/shelter, 9000-frame ornamental helpers and two-week no-upkeep sleep");
+}
+
+static void test_seahorse_open_water(void) {
+    tank_t t;
+    one_fish(&t, 993, 0, .5f, .5f);
+    t.sd_unlocks = SD_ITEM_SEAHORSE;
+    tank_seahorse_place(&t);
+    assert(t.sh_mode == SH_DRIFT && t.sh_akind == SH_ANCHOR_NONE);
+    float lo = t.sh_x, hi = t.sh_x;
+    for (int i = 0; i < 9000; i++) {
+        tank_tick(&t, .04f, hold_goal);
+        assert(t.sh_mode == SH_DRIFT && t.sh_akind == SH_ANCHOR_NONE);
+        assert(isfinite(t.sh_x) && isfinite(t.sh_y));
+        assert(t.sh_y >= 65 && t.sh_y <= TANK_BOT - 45);
+        lo = fminf(lo, t.sh_x); hi = fmaxf(hi, t.sh_x);
+    }
+    assert(hi - lo > TANK_W * .2f);
+    t.light_override = true; t.light_on = false; t.night = true;
+    float x = t.sh_x, y = t.sh_y;
+    for (int i = 0; i < 100; i++) tank_tick(&t, .04f, hold_goal);
+    assert(t.sh_x == x && t.sh_y == y);
+    t.light_on = true; t.night = false;
+    t.sd_unlocks |= SD_ITEM_PLANT;
+    tank_veg_sync(&t);
+    for (int i = 0; i < 3000 && t.sh_mode != SH_PERCH; i++)
+        tank_tick(&t, .04f, hold_goal);
+    assert(t.sh_mode == SH_PERCH && t.sh_akind == SH_ANCHOR_BLADE && t.sh_bed == 3);
+    t.sd_unlocks &= ~SD_ITEM_PLANT;
+    for (int i = 0; i < 3000; i++) tank_tick(&t, .04f, hold_goal);
+    assert(t.sh_mode == SH_DRIFT && t.sh_akind == SH_ANCHOR_NONE);
+    assert(t.sh_y < TANK_BOT - 45);
+    t.hold_active = true; t.hold_time = 3;
+    t.hold_x = TANK_W * .5f; t.hold_y = 90;
+    tank_tick(&t, .04f, hold_goal);
+    assert(t.sh_mode == SH_HITCH);
+    puts("PASS: seahorse cruises upright without anchors, rests in water at night, finds sword, recovers after removal and prioritizes a held finger");
+}
+
+static void test_variety_pair_guard(void) {
+    tank_t t, before;
+    tank_init(&t, 984);
+    tank_new_population(&t);
+    assert(t.n_fish == 2);
+    t.fish[0].variety = FISH_SHARK;
+    t.fish[1].variety = FISH_CLASSIC;
+    before = t;
+    assert(tank_add_fish(&t, 0, 1) == -1 && !memcmp(&t, &before, sizeof t));
+    assert(tank_add_fish(&t, 0, 0) == -1 && !memcmp(&t, &before, sizeof t));
+    assert(tank_add_fish(&t, -1, 1) == -1 && !memcmp(&t, &before, sizeof t));
+    assert(tank_add_fish(&t, 0, t.n_fish) == -1 && !memcmp(&t, &before, sizeof t));
+    t.fish[1].variety = FISH_SHARK;
+    int slot = tank_add_fish(&t, 0, 1);
+    assert(slot == 2 && t.fish[slot].variety == FISH_SHARK);
+    int mutated = 0;
+    for (uint32_t seed = 1; seed <= 512; seed++) {
+        tank_init(&t, seed);
+        tank_new_population(&t);
+        t.story.version = 1;
+        t.fish[0].variety = t.fish[1].variety = FISH_SHARK;
+        t.fish[1].color = t.fish[0].color;
+        t.story.active[0].color2 = t.story.active[1].color2 = 0;
+        uint32_t parent_color = t.fish[0].color;
+        slot = tank_add_fish(&t, 0, 1);
+        assert(slot == 2 && t.fish[slot].variety == FISH_SHARK);
+        if (t.story.active[slot].mutation & GENE_MUTANT_COLOR) {
+            assert(t.fish[slot].color != parent_color);
+            mutated++;
+        } else assert(t.fish[slot].color == parent_color);
+    }
+    assert(mutated >= 16 && mutated <= 64);
+    puts("PASS: direct spawning requires two distinct valid same-variety parents and rejected pairs leave state/RNG untouched");
+    puts("PASS: color mutations produce new inherited colors without changing variety or requiring free color editing");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     FILE *icons = fopen(argv[1], "rb");
@@ -415,6 +566,8 @@ int main(int argc, char **argv) {
     assert(!ferror(icons) && fclose(icons) == 0);
     for (int enlarged = 0; enlarged <= 1; enlarged++) {
         tank_resolution(enlarged != 0);
+        test_variety_pair_guard();
+        test_seahorse_open_water();
         test_rest_arrival_and_turn_continuity();
         test_rest_step_sizes();
         test_edge_steering_continuity();
@@ -425,6 +578,7 @@ int main(int argc, char **argv) {
         test_close_dive_threshold();
         test_tap_and_enrichment_reactions();
         test_species_edges_and_render_purity();
+        test_reef_rhythm();
     }
     puts("PASS: normal/enlarged resolutions, rest arrival/step sizes, smooth committed turns, continuous four-edge steering and surface cruising without seesaw, continuous tail beat with eased turns and sprung pace, food dives/personality, sand target offsets/dive threshold, tap sensitivity, enrichment, ten-variety edges, render purity");
     return 0;

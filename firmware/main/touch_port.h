@@ -21,6 +21,8 @@ void touch_port_life_tap(tank_t *t, float x, float y);
 void touch_port_show_games(void);
 void touch_port_show_bank(void);
 void touch_port_show_milestones(bool on);
+/* Games closed (or opened a story page): keep the companion state Games prepared. */
+void touch_port_games_closed(void);
 void touch_port_dismiss(void);    /* drop the card and the page: a flow (the birth flow) took the glass */
 void touch_port_set_inverted(bool inverted);   /* mirror coords when the screen is flipped */
 /* reset confirm prompt (render_confirm_reset): opened by main.c's chord -

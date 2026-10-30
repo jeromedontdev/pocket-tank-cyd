@@ -15,13 +15,6 @@
 
 #define SAVE_MAGIC 0x50544b32u   /* "PTK2" (PTK1 saves are 4-fish, pre-population: start fresh) */
 #define RAVENOUS_GIVE_UP_S 150.0f  /* begging window before the fish give up */
-/* AUTO FEED off (0.3.2): nobody dies, but a fish left starving (hunger at
- * STARVE_HUNGER or worse) in a lit, awake tank for longer than the grace
- * loses trust, slowly, down to a floor a few feedings and holds win back. */
-#define STARVE_HUNGER      8.5f
-#define STARVE_GRACE_S     300.0f
-#define STARVE_TRUST_PER_S (1.0f / 1200.0f)   /* a point of trust per 20 min */
-#define STARVE_TRUST_FLOOR 2.0f
 #define SAVE_HEARTBEAT_S 600.0f
 /* Routine event saves coalesce for 2 min: each one is a ~140-280 ms SPIFFS
  * write+sync on the render loop (measured on COM4), and buddy minutes, care
@@ -33,12 +26,12 @@ const char *const MS_NAMES[MS_FISH_COUNT] = {
     "arrived", "first meal from you", "first hold-approach", "first dart", "first bubbles",
     "(inspected)", "(retired)", "(retired)", "first follow",
     "reached juv", "reached adult", "reached elder",
-    "first rest in the seagrass",
+    "first sheltered rest",
 };
 const char *const TMS_NAMES[TMS_COUNT] = {
     "a pair", "a trio", "a quartet", "a quintet", "a sextet",
     "first full night's sleep", "first play session", "the tank changed someone", "first feeding",
-    "first trimming", "first glass cleaning", "a school of ten shrimp",
+    "(retired)", "(retired)", "a school of ten shrimp",
     "first visit to the reef",
     "first mutation",                    /* 0.4's (main); never set on 0.3.x */
     "first fish sold",
@@ -53,7 +46,12 @@ _Static_assert(ALGAE_CAP <= ALGAE_SAVE, "the film grid outgrew the 644 cells the
 
 typedef fish_record_t fish_save_t;
 
+/* The frozen prefix keeps its historical eight-byte layout; the appended
+ * four-byte tail must not introduce another four bytes of end padding. */
+#pragma pack(push, 4)
 typedef struct {
+#pragma pack(push, 8)
+    struct {
     uint32_t magic;
     int64_t  saved_unix;
     float    clock;
@@ -230,7 +228,14 @@ typedef struct {
     uint32_t pad_content; /* the schema-18 struct's frozen final alignment */
     decor_content_t content;
     decor_fixed_t fixed;   /* schema 20 (2.4): the fixed scenery's x / depth / rank / mirror; zero = the historical spots */
+    reef_state_t reef;     /* schema 21: independent counters; legacy chore ledgers stay frozen */
+    creature_state_t creatures;
+    progression_state_t progression; /* schema 22: food tier + migrated paid progression */
+    };
+#pragma pack(pop)
+    foliage_state_t foliage;
 } save_t;
+#pragma pack(pop)
 /* the smallest PTK2 save (pre-upkeep, 2026-08-30): anything shorter is not
  * ours. Every later build wrote sizeof(save_t) of its day - 448, 1112, 1304,
  * 1408, 1440, 1456 ... - and load_save takes ANY such length, so a tail only
@@ -353,7 +358,11 @@ SAVE_AT(mussel, 6132);
 SAVE_AT(game_income, 6140);
 SAVE_AT(content, 6168);
 SAVE_AT(fixed, 6336);
-_Static_assert(sizeof(save_t) == 6424, "schema-20 movable scenery tail");
+SAVE_AT(reef, 6424);
+SAVE_AT(creatures, 6444);
+SAVE_AT(progression, 6464);
+SAVE_AT(foliage, 6472);
+_Static_assert(sizeof(save_t) == 6476, "schema-23 ground-cover sets");
 _Static_assert(sizeof(save_t) == AQUARIUM_SAVE_BYTES, "SAVE LAYOUT LOCK: companion tail");
 /* Historical NVS budget: older saves were one blob in nvs (0x9000, 0x6000 =
  * 6 pages of 4096 B; tools/make_installer.py pins the row). A page is 126
@@ -399,26 +408,26 @@ static bool  s_wipe_save_pending;
 static bool  s_setup_pending;        /* the first-run flow still owed (setup.c) */
 static int   s_newborn = -1;         /* the arrival still owed its birth flow (setup.c), or -1 */
 static int   s_sd_pending;           /* dollars awarded and not yet shown (the toast) */
-static int32_t s_sale_need;               /* player_feedings the next fry waits for since a fish was sold (0 = none sold) */
+static int32_t s_sale_need;               /* next breeding meal threshold after a birth or sale */
 static uint16_t s_fry_seed;               /* the fry offer (progression_fry_*): its seed, 0 = none drawn */
 static double   s_fry_age;                /* ... its age in tank seconds (a double, as s_age) */
 static uint8_t  s_fry_sold;               /* ... bit k = fry k bought */
 
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; }
 static void mark_dirty(void) { if (!s_dirty) { s_dirty = true; s_dirty_since = 0; } }
-enum { JM_MEALS, JM_CLEAN, JM_TRIM, JM_HOLD, JM_TRUST, JM_GROWN, JM_SEEN, JM_DECOR, JM_POP };
+enum { JM_MEALS, JM_CURRENT, JM_RESPONSE, JM_HOLD, JM_TRUST, JM_GROWN, JM_SEEN, JM_DECOR, JM_POP };
 const journal_goal_t JOURNAL_GOALS[JOURNAL_GOAL_N] = {
     {"FIRST MEALS", "SERVE MEALS THAT GET EATEN", JM_MEALS, 3, 50, 25},
-    {"CLEAR VIEW", "CLEAN ALGAE COLONIES", JM_CLEAN, 5, 50, 25},
+    {"GENTLE FLOW", "MAKE FIVE GENTLE CURRENTS", JM_CURRENT, 5, 50, 25},
     {"MAKE IT YOURS", "OWN A PLACEABLE DECORATION", JM_DECOR, 1, 50, 30},
     {"A CALM HELLO", "LET A FISH APPROACH YOUR HOLD", JM_HOLD, 1, 60, 30},
     {"GROWING TOGETHER", "RECORD A LOOK ON AN ADULT FISH", JM_GROWN, 1, 80, 50},
-    {"GREEN THUMB", "TRIM 20 CM OF PLANTS", JM_TRIM, 20, 60, 30},
+    {"REEF RHYTHM", "SEE TWENTY FISH RESPONSES", JM_RESPONSE, 20, 60, 30},
     {"TRUSTED KEEPER", "REACH TRUST 4 WITH ANY FISH", JM_TRUST, 4, 90, 50},
     {"CREATURE COLLECTOR", "RECORD THREE DIFFERENT LOOKS", JM_SEEN, 3, 70, 40},
     {"REGULAR MEALS", "SERVE FIFTEEN EATEN MEALS", JM_MEALS, 15, 90, 50},
     {"A PERSONAL REEF", "OWN FOUR PLACEABLE DECORATIONS", JM_DECOR, 4, 100, 60},
-    {"HELPING HAND", "CLEAN 25 ALGAE COLONIES", JM_CLEAN, 25, 100, 60},
+    {"CURRENT COMPANION", "MAKE 25 GENTLE CURRENTS", JM_CURRENT, 25, 100, 60},
     {"CLOSE FRIEND", "REACH TRUST 6 WITH ANY FISH", JM_TRUST, 6, 130, 80},
     {"NEW GENERATION", "HAVE THREE FISH IN YOUR TANK", JM_POP, 3, 150, 100},
     {"OCEAN ALBUM", "RECORD SEVEN DIFFERENT LOOKS", JM_SEEN, 7, 130, 80},
@@ -430,6 +439,8 @@ const char *const JOURNAL_THEME_NAMES[JOURNAL_THEME_COUNT] = {
 };
 const uint8_t JOURNAL_THEME_LEVELS[JOURNAL_THEME_COUNT] = {1, 3, 6, 10, 5, 8, 12, 15};
 const uint8_t JOURNAL_VARIETY_LEVELS[FISH_VARIETY_COUNT] = {1, 6, 2, 3, 10, 12, 15, 14, 4, 8};
+/* Market/display tier 0..9: Tetra is the simple starter; Harborfin is mid-tier. */
+const uint8_t MARKET_VARIETY_TIERS[FISH_VARIETY_COUNT] = {3, 4, 1, 0, 6, 7, 9, 8, 2, 5};
 #define CREATIVE_MARKER 0x43525631u
 #define PROFILE_MARKER 0x50524631u
 #if defined(__GNUC__)
@@ -460,10 +471,47 @@ static bool creative_valid(const creative_state_t *s) {
 bool progression_creative(const tank_t *t) {
     return progression_mode(t) == GAME_MODE_CREATIVE;
 }
+static unsigned variety_mask(void) {
+    return FISH_VARIETY_COUNT >= 16 ? UINT16_MAX : (1u << FISH_VARIETY_COUNT) - 1u;
+}
+static unsigned theme_mask(void) {
+    return JOURNAL_THEME_COUNT >= 8 ? UINT8_MAX : (1u << JOURNAL_THEME_COUNT) - 1u;
+}
+static bool progression_state_valid(const progression_state_t *s) {
+    if (!s->version) {
+        progression_state_t empty = {0};
+        return !memcmp(s, &empty, sizeof empty);
+    }
+    return s->version == 1 && s->food_tier < PROGRESSION_FOOD_TIER_COUNT &&
+        !(s->theme_unlocks & ~theme_mask()) &&
+        !(s->variety_unlocks & ~variety_mask()) &&
+        (s->theme_unlocks & 1u) && (s->variety_unlocks & (1u << FISH_CLASSIC));
+}
+static int legacy_level_for_xp(uint32_t xp) {
+    int level = 1;
+    while (level < JOURNAL_LEVEL_MAX && xp >= journal_level_xp(level + 1)) level++;
+    return level;
+}
+static void progression_state_migrate(progression_state_t *s, uint32_t legacy_xp,
+                                      unsigned legacy_theme) {
+    if (s->version) return;
+    memset(s, 0, sizeof *s);
+    s->version = 1;
+    s->food_tier = PROGRESSION_FOOD_BASE;
+    s->theme_unlocks = 1u;
+    s->variety_unlocks = (uint16_t)(1u << FISH_CLASSIC);
+    int level = legacy_level_for_xp(legacy_xp);
+    for (int i = 0; i < FISH_VARIETY_COUNT; i++)
+        if (level >= JOURNAL_VARIETY_LEVELS[i]) s->variety_unlocks |= (uint16_t)(1u << i);
+    for (int i = 0; i < JOURNAL_THEME_COUNT; i++)
+        if (level >= JOURNAL_THEME_LEVELS[i]) s->theme_unlocks |= (uint8_t)(1u << i);
+    if (legacy_theme < JOURNAL_THEME_COUNT) s->theme_unlocks |= (uint8_t)(1u << legacy_theme);
+}
 bool journal_variety_unlocked(const tank_t *t, int variety) {
-    if (variety < 0 || variety >= FISH_VARIETY_COUNT) return false;
+    if (!t || variety < 0 || variety >= FISH_VARIETY_COUNT) return false;
     if (progression_creative(t)) return true;
-    if (journal_level(t) >= JOURNAL_VARIETY_LEVELS[variety] || (t->journal.seen & (1u << variety))) return true;
+    if (t->progression.variety_unlocks & (1u << variety)) return true;
+    if (t->journal.seen & (1u << variety)) return true;
     for (int i = 0; i < t->n_fish; i++) if (t->fish[i].variety == variety) return true;
     for (int i = 0; i < t->bank_count; i++) if (bank_variety(&t->bank[i]) == variety) return true;
     return false;
@@ -474,9 +522,74 @@ uint32_t journal_level_xp(int level) {
     return level <= 1 ? 0 : (uint32_t)(20 * level * (level - 1));
 }
 int journal_level(const tank_t *t) {
-    int level = 1;
-    while (level < JOURNAL_LEVEL_MAX && t->journal.xp >= journal_level_xp(level + 1)) level++;
-    return level;
+    (void)t;
+    return 1;
+}
+int journal_theme_price(int theme) {
+    static const int prices[JOURNAL_THEME_COUNT] = {0, 120, 180, 260, 160, 220, 300, 360};
+    return theme <= 0 || theme >= JOURNAL_THEME_COUNT ? 0 : prices[theme];
+}
+bool journal_theme_unlocked(const tank_t *t, int theme) {
+    return t && theme >= 0 && theme < JOURNAL_THEME_COUNT &&
+        (progression_creative(t) || (t->progression.theme_unlocks & (1u << theme)));
+}
+bool journal_theme_buy(tank_t *t, int theme) {
+    if (!t || theme <= 0 || theme >= JOURNAL_THEME_COUNT ||
+        !progression_state_valid(&t->progression) || journal_theme_unlocked(t, theme)) return false;
+    int price = journal_theme_price(theme);
+    if (price <= 0 || t->sd_balance < price) return false;
+    progression_state_t old = t->progression;
+    t->progression.theme_unlocks |= (uint8_t)(1u << theme);
+    t->sd_balance -= price;
+    if (progression_save(t)) return true;
+    t->progression = old;
+    t->sd_balance += price;
+    return false;
+}
+int progression_food_price(unsigned tier) {
+    static const int prices[PROGRESSION_FOOD_TIER_COUNT] = {0, 250, 750};
+    return tier < PROGRESSION_FOOD_TIER_COUNT ? prices[tier] : 0;
+}
+unsigned progression_food_tier(const tank_t *t) {
+    return t && t->progression.food_tier < PROGRESSION_FOOD_TIER_COUNT ?
+        t->progression.food_tier : PROGRESSION_FOOD_BASE;
+}
+float progression_food_growth_multiplier(const tank_t *t) {
+    static const float multipliers[PROGRESSION_FOOD_TIER_COUNT] = {1.0f, 1.25f, 1.5f};
+    return multipliers[progression_food_tier(t)];
+}
+bool progression_food_buy(tank_t *t, unsigned tier) {
+    if (!t || tier != progression_food_tier(t) + 1 || tier >= PROGRESSION_FOOD_TIER_COUNT ||
+        !progression_state_valid(&t->progression)) return false;
+    int price = progression_food_price(tier);
+    if (price <= 0 || t->sd_balance < price) return false;
+    progression_state_t old = t->progression;
+    t->progression.food_tier = (uint8_t)tier;
+    t->sd_balance -= price;
+    if (progression_save(t)) return true;
+    t->progression = old;
+    t->sd_balance += price;
+    return false;
+}
+bool progression_wallet_settle(tank_t *t, int delta) {
+    if (!t || progression_creative(t) || (delta < 0 && t->sd_balance < -delta)) return false;
+    if (!delta) return true;
+    t->sd_balance += delta;
+    if (progression_save(t)) return true;
+    t->sd_balance -= delta;
+    return false;
+}
+bool progression_collection_complete(const tank_t *t, int variety) {
+    return t && variety >= 0 && variety < FISH_VARIETY_COUNT &&
+        ((t->story.collection >> (3 * variety)) & 7u) == 7u;
+}
+bool progression_statue_show(tank_t *t, int variety) {
+    if (!t || variety >= FISH_VARIETY_COUNT || (variety >= 0 && !progression_collection_complete(t, variety))) return false;
+    uint16_t old = t->story.statue;
+    t->story.statue = (uint16_t)(variety + 1);
+    if (progression_save(t)) return true;
+    t->story.statue = old;
+    return false;
 }
 int journal_active(const tank_t *t, int slot) {
     if (slot < 0 || slot >= 3) return -1;
@@ -488,8 +601,15 @@ unsigned journal_progress(const tank_t *t, int goal) {
     unsigned n = 0;
     switch (JOURNAL_GOALS[goal].metric) {
         case JM_MEALS: n = t->player_feedings > 0 ? (unsigned)t->player_feedings : 0; break;
-        case JM_CLEAN: n = t->algae_colonies > 0 ? (unsigned)t->algae_colonies : 0; break;
-        case JM_TRIM: n = (unsigned)fminf(fmaxf(t->trim_px / PX_PER_CM, 0), 1000000); break;
+        /* Retired objective progress is a grandfathered floor, not new activity. */
+        case JM_CURRENT:
+            n = t->algae_colonies > 0 ? (unsigned)t->algae_colonies : 0;
+            if (t->reef_currents > n) n = t->reef_currents;
+            break;
+        case JM_RESPONSE:
+            n = (unsigned)fminf(fmaxf(t->trim_px / PX_PER_CM, 0), 1000000);
+            if (t->reef_visits > n) n = t->reef_visits;
+            break;
         case JM_HOLD: n = t->hold_approaches > 0 ? (unsigned)t->hold_approaches : 0; break;
         case JM_TRUST: n = t->journal.trust; break;
         case JM_GROWN: n = journal_bits(t->journal.grown); break;
@@ -501,14 +621,6 @@ unsigned journal_progress(const tank_t *t, int goal) {
         case JM_POP: n = t->journal.population; break;
     }
     return n > JOURNAL_GOALS[goal].target ? JOURNAL_GOALS[goal].target : n;
-}
-static void journal_add_xp(tank_t *t, uint32_t xp) {
-    if (progression_creative(t)) return;
-    t->journal.xp += xp > JOURNAL_XP_MAX - t->journal.xp ? JOURNAL_XP_MAX - t->journal.xp : xp;
-}
-bool journal_theme_unlocked(const tank_t *t, int theme) {
-    return theme >= 0 && theme < JOURNAL_THEME_COUNT &&
-        (progression_creative(t) || journal_level(t) >= JOURNAL_THEME_LEVELS[theme]);
 }
 bool journal_set_theme(tank_t *t, int theme) {
     if (!journal_theme_unlocked(t, theme)) return false;
@@ -524,20 +636,20 @@ bool journal_claim(tank_t *t, int goal) {
     int reward = JOURNAL_GOALS[goal].coins;
     if (t->sd_balance > INT_MAX - reward || t->sd_earned > INT_MAX - reward) return false;
     journal_state_t old = t->journal;
-    t->journal.claimed |= 1u << goal; journal_add_xp(t, JOURNAL_GOALS[goal].xp);
+    t->journal.claimed |= 1u << goal;
     t->sd_balance += reward; t->sd_earned += reward;
     if (progression_save(t)) return true;
     t->journal = old; t->sd_balance -= reward; t->sd_earned -= reward; return false;
 }
-const char *const CARE_TASK_NAMES[CARE_TASK_COUNT] = {"A GOOD MEAL", "A LITTLE CONNECTION", "YOUR DAILY REEF"};
+const char *const CARE_TASK_NAMES[CARE_TASK_COUNT] = {"A GOOD MEAL", "A LITTLE CONNECTION", "QUIET COMPANY"};
 const char *const CARE_TASK_DETAILS[CARE_TASK_COUNT] = {
     "ONE PLAYER FEEDING EATEN",
-    "SAY HELLO OR CALM HOLD 60S",
-    "TEND PLANTS/GLASS OR WATCH 5M"
+    "CALM HOLD FOR 60 SECONDS",
+    "WATCH YOUR FISH FOR 5 MINUTES"
 };
 static const char *s_shop_notice;
 const uint8_t CARE_COINS[CARE_TASK_COUNT] = {30, 30, 65};
-const uint8_t CARE_XP[CARE_TASK_COUNT] = {12, 13, 25};
+const uint8_t CARE_XP[CARE_TASK_COUNT] = {0, 0, 0};
 static bool care_valid(const care_state_t *s) {
     if (!s->version) {
         care_state_t empty = {0};
@@ -547,6 +659,179 @@ static bool care_valid(const care_state_t *s) {
         s->elapsed_s < 86400 && s->viewed_s <= CARE_VIEW_SECONDS &&
         s->calm_s <= CARE_CALM_SECONDS && !(s->ready & ~7u) &&
         !(s->claimed & ~s->ready) && s->game_paid <= GAME_DAILY_TOTAL && s->fallback <= 1;
+}
+static int creature_index(int species) {
+    return species >= CREATURE_SNAIL && species <= CREATURE_SEAHORSE ? species - CREATURE_SNAIL : -1;
+}
+static int creature_item(int species) {
+    static const int items[CREATURE_STOCK_COUNT] = {1, 6, 7};
+    int i = creature_index(species);
+    return i < 0 ? -1 : items[i];
+}
+static uint8_t *creature_color_slot(tank_t *t, int species) {
+    if (!t || species < CREATURE_SHRIMP || species >= CREATURE_COUNT) return NULL;
+    return species == CREATURE_MUSSEL ? &t->companion.mussel_colors : &t->companion.creature_colors[species];
+}
+/* Creature colors are rolled at purchase (low nibble body, high nibble
+ * detail; 0 = natural). Rarer rolls resell for more, so buying and selling
+ * stock is a small lottery with a negative expected flip (~72% back). */
+static const uint8_t creature_prized_palettes[] = {0x15, 0x5c, 0xda, 0x1e};
+const char *const CREATURE_RARITY_NAMES[CREATURE_RARITY_COUNT] = {"NATURAL", "TINTED", "TWO-TONE", "PRIZED"};
+static const int creature_rarity_pct[CREATURE_RARITY_COUNT] = {100, 140, 200, 350};
+int progression_creature_rarity(uint8_t colors) {
+    for (unsigned i = 0; i < sizeof creature_prized_palettes; i++)
+        if (creature_prized_palettes[i] == colors) return 3;
+    unsigned body = colors & 15u, detail = colors >> 4;
+    if (!body && !detail) return 0;
+    return body && detail && body != detail ? 2 : 1;
+}
+static void creature_palette_roll(tank_t *t, int species) {
+    uint8_t *colors = creature_color_slot(t, species);
+    if (!colors) return;
+    float r = tank_randf(t, 0, 100);
+    unsigned body = 1u + (unsigned)tank_randf(t, 0, 15) % 15u;
+    if (r < 45) *colors = 0;
+    else if (r < 75) *colors = (uint8_t)body;
+    else if (r < 95) {
+        unsigned detail = 1u + (body + (unsigned)tank_randf(t, 0, 14) % 14u) % 15u;
+        *colors = (uint8_t)(detail << 4 | body);
+    } else *colors = creature_prized_palettes[(unsigned)tank_randf(t, 0, 4) % sizeof creature_prized_palettes];
+    t->companion.version = COMPANION_VERSION;
+}
+static void creature_palette_from_paid_stock(tank_t *t, int species, int price) {
+    (void)price;
+    creature_palette_roll(t, species);
+}
+static int creature_species(int item) {
+    return item == 1 ? CREATURE_SNAIL : item == 6 ? CREATURE_URCHIN : item == 7 ? CREATURE_SEAHORSE : -1;
+}
+static bool creatures_valid(const creature_state_t *s, uint32_t unlocks) {
+    if (!s->version) {
+        creature_state_t empty = {0};
+        return !memcmp(s, &empty, sizeof empty);
+    }
+    if (s->version != 1) return false;
+    for (int i = 0; i < CREATURE_STOCK_COUNT; i++) {
+        const creature_stock_t *c = &s->stock[i];
+        if (c->adults > 2 || s->paid_adults[i] > c->adults || c->offspring > CREATURE_NURSERY_CAP ||
+            c->active_s >= CREATURE_BREED_SECONDS || (c->adults < 2 && c->active_s) ||
+            !!c->adults != !!(unlocks & SD_ITEMS[creature_item(i + CREATURE_SNAIL)].bit)) return false;
+    }
+    return true;
+}
+static void creatures_migrate(creature_state_t *s, uint32_t unlocks, uint64_t paid) {
+    if (s->version) return;
+    memset(s, 0, sizeof *s); s->version = 1;
+    for (int i = 0; i < CREATURE_STOCK_COUNT; i++) {
+        s->stock[i].adults = !!(unlocks & SD_ITEMS[creature_item(i + CREATURE_SNAIL)].bit);
+        s->paid_adults[i] = s->stock[i].adults && (paid & (UINT64_C(1) << creature_item(i + CREATURE_SNAIL)));
+    }
+}
+/* One of each ornamental creature per aquarium; the shrimp school is one
+ * whole school. Creatures no longer breed (2.4.0). */
+/* Every creature the market trades: shrimp school, snail, urchin, seahorse
+ * and the pearl mussel colony (one per aquarium; it still earns pearls). */
+static bool creature_traded(int species) {
+    return species == CREATURE_SHRIMP || species == CREATURE_MUSSEL || creature_index(species) >= 0;
+}
+int progression_creature_adults(const tank_t *t, int species) {
+    if (t && species == CREATURE_SHRIMP) return !!(t->sd_unlocks & SD_ITEM_SHRIMP);
+    if (t && species == CREATURE_MUSSEL) return progression_item_owned(t, SD_SHOP_MUSSEL) ? 1 : 0;
+    int i = creature_index(species);
+    if (!t || i < 0) return 0;
+    int n = t->creatures.version ? t->creatures.stock[i].adults :
+            !!(t->sd_unlocks & SD_ITEMS[creature_item(species)].bit);
+    return n > 1 ? 1 : n;
+}
+int progression_creature_offspring(const tank_t *t, int species) { (void)t; (void)species; return 0; }
+int progression_creature_seconds(const tank_t *t, int species) { (void)t; (void)species; return 0; }
+int progression_creature_price(const tank_t *t, int species) {
+    if (t && species == CREATURE_SHRIMP) return SD_ITEMS[5].price;
+    if (t && species == CREATURE_MUSSEL) return SD_PRICE_MUSSEL;
+    int item = creature_item(species);
+    return !t || item < 0 ? 0 : SD_ITEMS[item].price;
+}
+static bool creature_paid(const tank_t *t, int species) {
+    if (species == CREATURE_SHRIMP) return (t->profile.paid_items >> 5) & 1u;
+    if (species == CREATURE_MUSSEL) return (t->profile.paid_items >> SD_SHOP_MUSSEL) & 1u;
+    int i = creature_index(species);
+    return t->creatures.version ? t->creatures.paid_adults[i] > 0 :
+           !!(t->profile.paid_items & (UINT64_C(1) << creature_item(species)));
+}
+int progression_creature_rarity_of(const tank_t *t, int species) {
+    return t && species >= CREATURE_SHRIMP && species < CREATURE_COUNT ?
+        progression_creature_rarity(companion_creature_colors(&t->companion, species)) : 0;
+}
+static int creature_quote(const tank_t *t, int species) {
+    int value = progression_creature_price(t, species) / 2 * creature_rarity_pct[progression_creature_rarity_of(t, species)] / 100;
+    if (species == CREATURE_SHRIMP) {
+        int n = t->shrimp_n > SHRIMP_MAX ? SHRIMP_MAX : t->shrimp_n;
+        value = value * (50 + 50 * n / SHRIMP_MAX) / 100;   /* a full school is worth the most */
+    }
+    return value;
+}
+int progression_creature_value(const tank_t *t, int species, bool offspring) {
+    if (!t || offspring || progression_creative(t) || !progression_creature_adults(t, species)) return 0;
+    if (!creature_traded(species)) return 0;
+    if (!creature_paid(t, species)) return 0; /* Free legacy/sandbox copies leave without a payout. */
+    return creature_quote(t, species);
+}
+const char *progression_creature_status(const tank_t *t, int species) {
+    if (!t || !creature_traded(species)) return "NOT TRADED";
+    if (progression_creative(t)) return "CREATIVE - NO CREATURE TRADE";
+    static const char *const role[CREATURE_COUNT] = {
+        "SCHOOL FORAGES FALLEN FOOD", "KEEPS GLASS CLEAR: CALMER FISH", "NIGHT GRAZER: FISH REST BETTER",
+        "PERCHES ON KELP: MORE TRUST", "EARNS PEARLS WHEN FISH ARE FED"};
+    return role[species];
+}
+/* Legacy pairs and nurseries retire: the extra paid adult and any young are
+ * sold at today's quote, once, and the stock keeps a single adult. */
+static void creatures_retire_breeding(tank_t *t) {
+    for (int i = 0; i < CREATURE_STOCK_COUNT; i++) {
+        creature_stock_t *c = &t->creatures.stock[i];
+        if (c->adults <= 1 && !c->offspring && !c->active_s) continue;
+        int species = i + CREATURE_SNAIL, refund = 0;
+        if (!progression_creative(t)) {
+            int base = progression_creature_price(t, species);
+            if (c->adults > 1 && t->creatures.paid_adults[i] > 1) refund += creature_quote(t, species);
+            refund += c->offspring * (base / 5);
+        }
+        if (c->adults > 1) c->adults = 1;
+        if (t->creatures.paid_adults[i] > c->adults) t->creatures.paid_adults[i] = c->adults;
+        c->offspring = 0; c->active_s = 0;
+        if (t->creatures.revision < UINT32_MAX) t->creatures.revision++;
+        if (refund > 0 && t->sd_balance <= INT_MAX - refund && t->sd_earned <= INT_MAX - refund) {
+            t->sd_balance += refund; t->sd_earned += refund;
+        }
+        mark_dirty();
+    }
+}
+static void creatures_tick(tank_t *t, float dt) {
+    (void)dt;
+    creatures_migrate(&t->creatures, t->sd_unlocks, t->profile.paid_items);
+    creatures_retire_breeding(t);
+}static bool reef_valid(const reef_state_t *s) {
+    if (!s->version) {
+        reef_state_t empty = {0};
+        return !memcmp(s, &empty, sizeof empty);
+    }
+    return s->version == 1 && s->current_base <= s->currents &&
+        s->visit_base <= s->visits && !s->reserved[0] && !s->reserved[1] && !s->reserved[2];
+}
+static void reef_refresh(tank_t *t, bool new_day) {
+    if (!t->reef.version) {
+        memset(&t->reef, 0, sizeof t->reef);
+        t->reef.version = 1;
+        new_day = true;
+        mark_dirty();
+    }
+    if (new_day) {
+        t->reef.current_base = t->reef_currents;
+        t->reef.visit_base = t->reef_visits;
+    }
+    if (t->reef.currents != t->reef_currents || t->reef.visits != t->reef_visits) mark_dirty();
+    t->reef.currents = t->reef_currents;
+    t->reef.visits = t->reef_visits;
 }
 static bool game_income_valid(game_income_state_t *s, unsigned total) {
     if (!s->version) {
@@ -573,9 +858,11 @@ void progression_care_refresh(tank_t *t) {
     int64_t now = clock_port_now_unix();
     int64_t day = now >= INT64_C(1609459200) && now <= INT64_C(4102444800) ? now / 86400 : 0;
     care_state_t *s = &t->care;
+    bool new_day = false;
     if (!s->version) {
         memset(s, 0, sizeof *s);
         s->version = 1; s->day = day;
+        new_day = true;
         mark_dirty();
     } else if (day && (!s->day || s->fallback)) {
         /* Clock synchronization adopts an existing fallback allowance, never a second payout. */
@@ -585,15 +872,17 @@ void progression_care_refresh(tank_t *t) {
         int64_t high = day > s->day ? day : s->day;
         memset(s, 0, sizeof *s);
         s->version = 1; s->day = high; s->fallback = !day;
+        new_day = true;
         t->mussel.generated = 0;
         memset(&t->game_income, 0, sizeof t->game_income);
         t->game_income.version = 1;
         mark_dirty();
     }
+    reef_refresh(t, new_day);
 }
 void progression_care_greet(tank_t *t) {
-    progression_care_refresh(t);
-    if (!progression_creative(t)) { t->care.ready |= 2; mark_dirty(); }
+    (void)t;
+    fprintf(stderr, "Greeting rewards are retired\n");
 }
 bool progression_care_claim(tank_t *t, int task) {
     progression_care_refresh(t);
@@ -603,13 +892,11 @@ bool progression_care_claim(tank_t *t, int task) {
     if (t->sd_balance > INT_MAX - coins || t->sd_earned > INT_MAX - coins) {
         fprintf(stderr, "Daily care reward would overflow wallet\n"); return false;
     }
-    uint32_t xp = t->journal.xp;
     t->care.claimed |= (uint8_t)(1u << task);
     t->sd_balance += coins; t->sd_earned += coins;
-    journal_add_xp(t, CARE_XP[task]);
     if (progression_save(t)) return true;
     t->care.claimed &= (uint8_t)~(1u << task);
-    t->sd_balance -= coins; t->sd_earned -= coins; t->journal.xp = xp;
+    t->sd_balance -= coins; t->sd_earned -= coins;
     fprintf(stderr, "Daily care save failed; reward rolled back\n");
     return false;
 }
@@ -692,7 +979,6 @@ void journal_tick(tank_t *t) {
     for (int i = 0; i < 4; i++) {
         if (t->journal.initialized && values[i] > t->journal.baseline[i]) {
             if (i == 0) t->care.ready |= 1;
-            if (i == 1 || i == 2) t->care.ready |= 4;
             mark_dirty();
         }
         t->journal.baseline[i] = values[i];
@@ -737,16 +1023,15 @@ bool progression_newborn_done(tank_t *t) {
     return false;
 }
 
-static void set_ms(fish_t *f, uint32_t bit) { if (!(f->ms_bits & bit)) { f->ms_bits |= bit; mark_dirty(); } }
 /* ---- sand dollars ---- */
-const sd_item_t SD_ITEMS[SD_ITEM_COUNT] = {
+const sd_item_t SD_ITEMS[SD_CATALOG_COUNT] = {
     { SD_ITEM_PLANT, "SWORD PLANT", "BROAD, VERTICAL LEAVES", "MORE COVER FOR YOUR CRITTERS", SD_PRICE_PLANT },   /* Strato's words (2026-09-16); the second line is 28 chars, the shop modal is 352 wide for it */
-    { SD_ITEM_SNAIL, "SNAIL",       "GRAZES THE GLASS CLEAN,",   "EVEN WHILE THE TANK SLEEPS",  SD_PRICE_SNAIL },
+    { SD_ITEM_SNAIL, "SNAIL",       "KEEPS THE GLASS CLEAR", "FISH CALM 10% FASTER", SD_PRICE_SNAIL },
     { SD_ITEM_CASTLE, "CASTLE",     "STONE TOWERS AND AN ARCH",  "THE FISH SWIM THROUGH IT",    SD_PRICE_CASTLE },   /* 2026-09-16 */
     { SD_ITEM_CORAL,  "CORAL",      "A BRANCHING REEF CORAL,",   "GROWS FOR WEEKS, YOUR COLOR", SD_PRICE_CORAL },    /* 2026-09-23 */
     { SD_ITEM_CLUSTER, "REEF CLUSTER", "A MATURE REEF ON A ROCK,", "FILLS OUT, THEN IT BLOOMS",  SD_PRICE_CLUSTER },  /* 2026-09-24: the dearest; three looks on its page */
     { SD_ITEM_SHRIMP,  "SHRIMP",    "A SCHOOL OF CHERRY SHRIMP", "THEY EAT SCRAPS AND MULTIPLY", SD_PRICE_SHRIMP },
-    { SD_ITEM_URCHIN,  "SEA URCHIN", "NIBBLES THE TALL GRASS,",  "EVEN WHILE THE TANK SLEEPS",  SD_PRICE_URCHIN },  /* 2026-10-02: the episode 5 promise, a resident like the snail */  /* 2026-09-29: a resident, like the snail; Strato: "should mention that they multiply" (28 chars, as the plant's) */
+    { SD_ITEM_URCHIN,  "SEA URCHIN", "A QUIET NIGHT GRAZER", "RESTING FISH CALM 20% FASTER", SD_PRICE_URCHIN },
     { SD_ITEM_SEAHORSE, "SEAHORSE",  "HOLDS ON TO YOUR FINGER,",  "FISH TRUST YOU TWICE AS FAST", SD_PRICE_SEAHORSE },  /* 0.3.6: the tame one (28 chars, as the plant's) */
     { SD_ITEM_PUMPKIN, "PUMPKIN",    "GLOWS WHEN THE LIGHTS GO OUT", "FOR OCTOBER, YOURS TO KEEP", SD_PRICE_PUMPKIN },  /* 0.3.6: the seasonal lantern (Strato 10-17) */
     { SD_ITEM_CHEST, "TREASURE CHEST", "A SUNKEN CHEST OF GOLD", "DRAG IT TO YOUR FAVORITE SPOT", SD_PRICE_CHEST },
@@ -770,8 +1055,8 @@ const sd_item_t SD_ITEMS[SD_ITEM_COUNT] = {
     { SD_ITEM_HELMET, "DIVE HELMET", "A BRASS DEEP-SEA SOUVENIR", "SCENERY YOU CAN MOVE", 140 },
     { SD_ITEM_LILIES, "LILY PADS", "PADS AND A PINK WATER LILY", "SLIDES ALONG THE SURFACE", 80 },
     { SD_ITEM_DUCK, "DUCK FLOAT", "A LITTLE YELLOW BOBBING DUCK", "SLIDES ALONG THE SURFACE", 60 },
-    { SD_ITEM_FILTER, "BIO FILTER", "HALVES NEW ALGAE GROWTH", "WORKS AWAKE AND ASLEEP", 180 },
-    { SD_ITEM_GARDEN, "SLOW GARDEN", "HALVES GRASS GROWTH ONLY", "WORKS AWAKE AND ASLEEP", 160 },
+    { SD_ITEM_FILTER, "RETIRED", "LEGACY UPGRADE RETIRED", "PAID COPIES REFUNDED", 180 },
+    { SD_ITEM_GARDEN, "RETIRED", "LEGACY UPGRADE RETIRED", "PAID COPIES REFUNDED", 160 },
     { 0, "CALM CURRENT", "25% FASTER REST RECOVERY", "ENERGY ONLY, ALSO IN SLEEP", 160 },
     { 0, "COZY SHELTER", "25% FASTER STRESS DECAY", "BASE CALMING, ALSO IN SLEEP", 180 },
     { 0, "PLAY KIT", "25% MORE EXPLORE CURIOSITY", "NO CHANGE TO CURIOSITY USE", 200 },
@@ -804,8 +1089,13 @@ const sd_item_t SD_ITEMS[SD_ITEM_COUNT] = {
     { 0, "MESSAGE CHEST", "A MAILBOX FOR SEA POSTCARDS", "DECORATIVE, NO COLLECTION", 50 },
     { 0, "TREASURE MAP", "A ROLLED MAP ON THE SAND", "MARK A SECRET REEF SPOT", 45 },
     { 0, "SUBMARINE", "A YELLOW EXPLORER MODEL", "PARKED, NO MOTOR OR BUBBLES", 115 },
+    { 0, "ANUBIAS CARPET", "FULL-FLOOR BROAD-LEAF SET", "STORE AND REPLANT ANY TIME", 60 },
+    { 0, "MOSS CUSHIONS", "FULL-FLOOR SOFT MOSS SET", "STORE AND REPLANT ANY TIME", 85 },
+    { 0, "PEARLWEED", "FULL-FLOOR TINY-LEAF SET", "STORE AND REPLANT ANY TIME", 110 },
+    { 0, "KELP", "TWO GENTLY SWAYING STANDS", "REAL PERCHES FOR SEAHORSES", 95 },
 };
 _Static_assert(SD_ITEM_COUNT < 64, "profile validator reserves the top uint64_t ownership bit");
+_Static_assert(SD_ITEM_COUNT == 63, "ground cover must not enlarge legacy ownership masks");
 _Static_assert(SD_SCENERY_END == SD_SHOP_MUSSEL, "mussel follows the stable scenery IDs");
 _Static_assert(SD_SCENERY_N <= 8, "fixed scenery fits polish.scenery_unlocks");
 const char *progression_shop_notice(void) { return s_shop_notice; }
@@ -814,9 +1104,25 @@ static void shop_save_failed(const char *what, const char *name) {
     s_shop_notice = what;
     fprintf(stderr, "Shop save failed for %s; %s\n", name, what);
 }
+static bool item_retired(int item) { return item == 8 || item == 30 || item == 31; }
+static bool foliage_valid(const foliage_state_t *s) {
+    if (!s->version) return !s->owned && !s->planted && !s->reserved;
+    return s->version == 1 && !s->reserved &&
+        !(s->owned & ~((1u << FOLIAGE_COUNT) - 1)) && !(s->planted & ~s->owned);
+}
+static void foliage_migrate(foliage_state_t *s) {
+    if (!s->version) *s = (foliage_state_t){1, 1, 1, 0};
+}
+bool progression_foliage_planted(const tank_t *t, int item) {
+    return t && SD_IS_FOLIAGE(item) && t->foliage.version == 1 &&
+        foliage_valid(&t->foliage) && (t->foliage.planted & (1u << (item - SD_FOLIAGE_FIRST)));
+}
 bool progression_item_owned(const tank_t *t, int item) {
+    if (t && SD_IS_FOLIAGE(item))
+        return t->foliage.version == 1 && foliage_valid(&t->foliage) &&
+            (t->foliage.owned & (1u << (item - SD_FOLIAGE_FIRST)));
     if (!t || item < 0 || item >= SD_ITEM_COUNT) return false;
-    if (item == 8) return false;
+    if (item_retired(item)) return false;
     if (item == SD_SHOP_MUSSEL)
         return tank_mussel_owned(t);
     if (SD_IS_NEW_DECOR(item)) return tank_decor_owned(t, item);
@@ -825,18 +1131,27 @@ bool progression_item_owned(const tank_t *t, int item) {
         (t->aquariums.stat_upgrades & (1u << (item - 32))) != 0;
 }
 bool progression_item_unlocked(const tank_t *t, int item) {
-    return item >= 0 && item < SD_ITEM_COUNT && item != 8 &&
+    if (SD_IS_FOLIAGE(item)) return progression_item_owned(t, item);
+    return item >= 0 && item < SD_ITEM_COUNT && !item_retired(item) &&
         (progression_creative(t) || (t->profile.owned_items & (UINT64_C(1) << item)) ||
          progression_item_owned(t, item));
 }
+/* Creatures (shrimp, snail, urchin, seahorse, pearl mussel) are traded in
+ * Market > Creature Market, so the Decor shop lists only decor and foliage. */
+static bool shop_listed(int item) {
+    return !item_retired(item) && item != 5 && item != SD_SHOP_MUSSEL && creature_species(item) < 0;
+}
 int progression_shop_count(const tank_t *t) {
-    return SD_ITEM_COUNT - !progression_pumpkin_offered(t);
+    (void)t;
+    int n = 0;
+    for (int i = 0; i < SD_CATALOG_COUNT; i++) n += shop_listed(i);
+    return n;
 }
 int progression_shop_item(const tank_t *t, int row) {
     if (row < 0 || row >= progression_shop_count(t)) return -1;
-    int items[SD_ITEM_COUNT], count = 0;
-    for (int i = 0; i < SD_ITEM_COUNT; i++) {
-        if (i == 8 && !progression_pumpkin_offered(t)) continue;
+    int items[SD_CATALOG_COUNT], count = 0;
+    for (int i = 0; i < SD_CATALOG_COUNT; i++) {
+        if (!shop_listed(i)) continue;
         int j = count++;
         while (j > 0 && SD_ITEMS[items[j - 1]].price > SD_ITEMS[i].price) {
             items[j] = items[j - 1]; j--;
@@ -863,49 +1178,38 @@ void progression_sd_grant(tank_t *t, int n) {
 bool progression_game_reward(tank_t *t, int game, int dollars) {
     if (progression_creative(t)) return false;
     if (game < 0 || game >= GAME_INCOME_COUNT || dollars < 1 || dollars > 10 ||
-        t->sd_balance > INT_MAX - dollars || t->sd_earned > INT_MAX - dollars) {
+        t->sd_balance > INT_MAX - 12 || t->sd_earned > INT_MAX - 12) {
         fprintf(stderr, "Invalid or overflowing mini-game reward: %d\n", dollars); return false;
     }
     progression_care_refresh(t);
     game_income_state_t income_before = t->game_income;
     int paid = progression_game_payout(t, game, dollars);
+    int round = paid ? 1 : 0;
     t->game_income.version = 1;
-    t->game_income.paid[game] += (uint8_t)paid;
-    t->care.game_paid += (uint8_t)paid;
+    t->game_income.paid[game] += (uint8_t)round;
+    t->care.game_paid += (uint8_t)round;
     t->sd_balance += paid; t->sd_earned += paid;
     if (progression_save(t)) return true;
-    t->sd_balance -= paid; t->sd_earned -= paid; t->care.game_paid -= (uint8_t)paid;
+    t->sd_balance -= paid; t->sd_earned -= paid; t->care.game_paid -= (uint8_t)round;
     t->game_income = income_before;
     fprintf(stderr, "Mini-game reward save failed; wallet rolled back\n"); return false;
 }
+/* Up to CARE_GAME_LIMIT paid rounds per game per day; each pays its earned
+ * reward plus two doubloons (3..12). The saved counters still count rounds. */
 int progression_game_payout(const tank_t *t, int game, int dollars) {
     return game >= 0 && game < GAME_INCOME_COUNT && !progression_creative(t) && dollars > 0 &&
         t->game_income.paid[game] + t->game_income.legacy < CARE_GAME_LIMIT &&
-        t->care.game_paid < GAME_DAILY_TOTAL ? 1 : 0;
-}
-/* Fish firsts retain one-time rewards. Historical chore/snack ledgers keep
- * their frozen fields, but repeating care now pays through the daily checklist. */
-static void sd_tick(tank_t *t) {
-    if (progression_creative(t)) return;
-    for (int i = 0; i < t->n_fish; i++) {
-        fish_t *f = &t->fish[i]; uint32_t *paid = &t->sd_paid_fish[i];
-        if ((f->ms_bits & MS_REACHED_JUV)   && !(*paid & SD_PAID_JUV))   { *paid |= SD_PAID_JUV;   sd_award(t, SD_STAGE_JUV); }
-        if ((f->ms_bits & MS_REACHED_ADULT) && !(*paid & SD_PAID_ADULT)) { *paid |= SD_PAID_ADULT; sd_award(t, SD_STAGE_ADULT); }
-        if ((f->ms_bits & MS_REACHED_ELDER) && !(*paid & SD_PAID_ELDER)) { *paid |= SD_PAID_ELDER; sd_award(t, SD_STAGE_ELDER); }
-        if (f->trust >= 10.0f && !(*paid & SD_PAID_TRUST))               { *paid |= SD_PAID_TRUST; sd_award(t, SD_TRUST); }
-    }
-    int32_t hund = t->algae_colonies / SD_CHORE_EVERY;
-    if (hund > t->sd_colonies_paid) t->sd_colonies_paid = hund;
-    hund = (int32_t)(t->trim_px / (PX_PER_CM * SD_TRIM_CM));
-    if (hund > t->sd_inches_paid) t->sd_inches_paid = hund;
-    if (t->sh_snack_pay > t->sd_snacks_paid) t->sd_snacks_paid = t->sh_snack_pay;
+        t->care.game_paid < GAME_DAILY_TOTAL ? (dollars > 10 ? 10 : dollars) + 2 : 0;
 }
 int progression_sell_value(int item) { return item < 0 || item >= SD_ITEM_COUNT ? 0 : SD_ITEMS[item].price * SD_SELL_PCT / 100; }
 int progression_sell_value_for(const tank_t *t, int item) {
     if (!t || item < 0 || item >= SD_ITEM_COUNT || progression_creative(t) ||
         (!tank_decor_placeable(item) && !SD_IS_FIXED_SCENERY(item)) ||
-        !progression_item_owned(t, item) || !(t->profile.paid_items & (UINT64_C(1) << item))) return 0;
-    return progression_sell_value(item);
+        t->sd_balance < 0 || !progression_item_owned(t, item) ||
+        !(t->profile.paid_items & (UINT64_C(1) << item))) return 0;
+    int room = INT_MAX - t->sd_balance;
+    int value = progression_sell_value(item);
+    return room < value ? room : value;
 }
 /* A shop transaction's undo (2026-10-28): the tank changes in place and a
    failed save copies it back. The 8.5 KB copy goes to IRAM first - the ESP32
@@ -930,6 +1234,123 @@ static void undo_put(tank_t *t, const uint32_t *u) {
 }
 static void undo_drop(uint32_t *u) { free(u); }
 
+static bool creature_trade_ready(const tank_t *t, bool sandbox) {
+    if (!t || !progression_storage_ready()) { s_shop_notice = "SAVE UNAVAILABLE"; return false; }
+    if ((!sandbox && progression_creative(t)) || s_setup_pending || s_newborn >= 0) {
+        s_shop_notice = progression_creative(t) ? "CREATIVE - NO CREATURE TRADE" : "FINISH WELCOMING YOUR FISH";
+        return false;
+    }
+    if (!creatures_valid(&t->creatures, t->sd_unlocks) || t->creatures.revision == UINT32_MAX) {
+        s_shop_notice = "CREATURE STOCK LIMIT"; return false;
+    }
+    return true;
+}
+static bool creature_buy(tank_t *t, int species, bool sandbox) {
+    s_shop_notice = NULL;
+    int i = creature_index(species), item = creature_item(species);
+    if (i < 0 || !creature_trade_ready(t, sandbox)) return false;
+    if (progression_creature_adults(t, species) >= 1) { s_shop_notice = "ONE PER TANK - SELL TO REROLL"; return false; }
+    int price = sandbox && progression_creative(t) ? 0 : progression_creature_price(t, species);
+    if (t->sd_balance < price) { s_shop_notice = "NOT ENOUGH DOUBLOONS"; return false; }
+    uint32_t *before = undo_take(t);
+    if (!before) { s_shop_notice = "NOT ENOUGH MEMORY"; return false; }
+    creatures_migrate(&t->creatures, t->sd_unlocks, t->profile.paid_items);
+    bool first = !t->creatures.stock[i].adults;
+    t->creatures.stock[i].adults++; t->creatures.paid_adults[i] += price != 0;
+    t->creatures.revision++; t->sd_balance -= price;
+    t->sd_unlocks |= SD_ITEMS[item].bit;
+    t->profile.owned_items |= UINT64_C(1) << item;
+    if (price) t->profile.paid_items |= UINT64_C(1) << item;
+    creature_palette_from_paid_stock(t, species, price);
+    if (first) {
+        if (species == CREATURE_SNAIL) tank_snail_place(t);
+        else if (species == CREATURE_URCHIN) tank_urchin_place(t);
+        else tank_seahorse_place(t);
+    }
+    bool ok = progression_save(t);
+    if (!ok) { undo_put(t, before); s_shop_notice = "SAVE FAILED - NO CREATURE BOUGHT"; }
+    undo_drop(before);
+    return ok;
+}
+bool progression_creature_buy(tank_t *t, int species) {
+    if (species == CREATURE_SHRIMP) {
+        s_shop_notice = NULL;
+        if (!creature_trade_ready(t, false)) return false;
+        if (progression_creature_adults(t, species)) { s_shop_notice = "ONE SCHOOL PER TANK"; return false; }
+        bool ok = progression_buy(t, 5);
+        if (ok && t->creatures.revision < UINT32_MAX) { t->creatures.revision++; mark_dirty(); }
+        return ok;
+    }
+    if (species == CREATURE_MUSSEL) {
+        s_shop_notice = NULL;
+        if (!creature_trade_ready(t, false)) return false;
+        if (progression_creature_adults(t, species)) { s_shop_notice = "ONE COLONY PER TANK"; return false; }
+        if (t->sd_balance < progression_item_price_for(t, SD_SHOP_MUSSEL)) { s_shop_notice = "NOT ENOUGH DOUBLOONS"; return false; }
+        bool ok = progression_buy(t, SD_SHOP_MUSSEL);
+        if (ok && t->creatures.revision < UINT32_MAX) { t->creatures.revision++; mark_dirty(); }
+        else if (!ok && !s_shop_notice) s_shop_notice = "SAVE FAILED - NO CREATURE BOUGHT";
+        return ok;
+    }
+    return creature_buy(t, species, false);
+}
+bool progression_creature_sale_quote(const tank_t *t, int species, bool offspring, creature_sale_t *out) {
+    if (!out || offspring || !creature_traded(species) ||
+        !creature_trade_ready(t, false) || !progression_creature_adults(t, species)) return false;
+    int value = progression_creature_value(t, species, offspring);
+    if (t->sd_balance > INT_MAX - value || t->sd_earned > INT_MAX - value) return false;
+    *out = (creature_sale_t){.revision = t->creatures.revision, .species = species, .value = value,
+                            .aquarium = t->aquariums.active, .offspring = offspring};
+    return true;
+}
+bool progression_creature_sale_confirm(tank_t *t, const creature_sale_t *quote) {
+    creature_sale_t now;
+    s_shop_notice = NULL;
+    if (!quote || quote->offspring > 1 ||
+        !progression_creature_sale_quote(t, quote->species, quote->offspring != 0, &now) ||
+        quote->revision != now.revision || quote->aquarium != now.aquarium || quote->value != now.value) {
+        s_shop_notice = "STOCK CHANGED - CHECK SALE AGAIN"; return false;
+    }
+    uint32_t *before = undo_take(t);
+    if (!before) { s_shop_notice = "NOT ENOUGH MEMORY"; return false; }
+    creatures_migrate(&t->creatures, t->sd_unlocks, t->profile.paid_items);
+    if (quote->species == CREATURE_SHRIMP) {
+        t->sd_unlocks &= ~(uint32_t)SD_ITEM_SHRIMP;
+        t->profile.paid_items &= ~(UINT64_C(1) << 5);
+        t->profile.owned_items &= ~(UINT64_C(1) << 5);
+        t->shrimp_n = 0; t->shrimp_food = 0; t->shrimp_cool = 0;
+        t->companion.creature_colors[CREATURE_SHRIMP] = 0;
+    }
+    if (quote->species == CREATURE_MUSSEL) {
+        if (t->mussel.version < 2 && t->mussel.owned) t->mussel.owned = (uint8_t)(1u << t->aquariums.active);
+        t->mussel.version = 2;
+        t->mussel.owned &= (uint8_t)~(1u << t->aquariums.active);
+        if (!t->mussel.owned) {
+            t->profile.paid_items &= ~(UINT64_C(1) << SD_SHOP_MUSSEL);
+            t->profile.owned_items &= ~(UINT64_C(1) << SD_SHOP_MUSSEL);
+        }
+        t->companion.mussel_colors = 0;
+    }
+    int i = creature_index(quote->species), item = creature_item(quote->species);
+    if (i >= 0) {
+        creature_stock_t *c = &t->creatures.stock[i];
+        if (t->creatures.paid_adults[i] == c->adults) t->creatures.paid_adults[i]--;
+        c->adults--; c->active_s = 0;
+        if (!c->adults) {
+            t->sd_unlocks &= ~SD_ITEMS[item].bit;
+            t->profile.paid_items &= ~(UINT64_C(1) << item);
+            t->companion.creature_colors[quote->species] = 0;
+            if (quote->species == CREATURE_SNAIL) t->snail_x = -1;
+            else if (quote->species == CREATURE_URCHIN) t->urchin_x = -1;
+            else t->sh_x = -1;
+        }
+    }
+    t->creatures.revision++;
+    t->sd_balance += quote->value; t->sd_earned += quote->value;
+    bool ok = progression_save(t);
+    if (!ok) { undo_put(t, before); s_shop_notice = "SAVE FAILED - NO CREATURE SOLD"; }
+    undo_drop(before);
+    return ok;
+}
 bool progression_sell(tank_t *t, int item) {
     if (item < 0 || item >= SD_ITEM_COUNT || (!tank_decor_placeable(item) && !SD_IS_FIXED_SCENERY(item))) return false;   /* residents and functional upgrades stay */
     const sd_item_t *it = &SD_ITEMS[item];
@@ -950,12 +1371,15 @@ bool progression_sell(tank_t *t, int item) {
     if (SD_IS_SCENERY(item)) {
         uint8_t flag = (uint8_t)(1u << (item - SD_SCENERY_FIRST)), old = t->polish.scenery_unlocks;
         uint64_t paid = t->profile.paid_items, item_bit = UINT64_C(1) << item;
+        uint64_t owned = t->profile.owned_items;
         if (t->sd_balance > INT_MAX - back) return false;
         t->profile.paid_items &= ~item_bit;
+        t->profile.owned_items &= ~item_bit;
         t->polish.scenery_unlocks = (uint8_t)(old & ~flag); t->sd_balance += back; s_sd_pending += back;
         if (progression_save(t)) return true;
         t->polish.scenery_unlocks = old; t->sd_balance -= back; s_sd_pending -= back;
         t->profile.paid_items = paid;
+        t->profile.owned_items = owned;
         shop_save_failed("SAVE FAILED - NOT SOLD", it->name);
         return false;
     }
@@ -965,13 +1389,15 @@ bool progression_sell(tank_t *t, int item) {
         if (!before) { fprintf(stderr, "Shop sale needs more memory; no change\n"); return false; }
     }
     t->sd_unlocks &= ~it->bit;
-    uint64_t paid_before = t->profile.paid_items;
+    uint64_t paid_before = t->profile.paid_items, owned_before = t->profile.owned_items;
     t->profile.paid_items &= ~(uint64_t)it->bit;
+    if (item >= 22) t->profile.owned_items &= ~(UINT64_C(1) << item);
     t->sd_balance += back; s_sd_pending += back;
     if (item >= 22) {
         if (progression_save(t)) { undo_drop(before); return true; }
         t->sd_unlocks |= it->bit; t->sd_balance -= back; s_sd_pending -= back;
         t->profile.paid_items = paid_before;
+        t->profile.owned_items = owned_before;
         undo_drop(before);
         shop_save_failed("SAVE FAILED - NOT SOLD", it->name);
         return false;
@@ -982,16 +1408,205 @@ bool progression_sell(tank_t *t, int item) {
     shop_save_failed("SAVE FAILED - NOT SOLD", it->name);
     return false;
 }
-/* ---- a fish sold (2026-10-01) ---- */
-int progression_fish_value(const tank_t *t, int fish) {
+/* ---- fish trade value (2026-10-29 rebalance) ----
+ * value = stage worth x market tier x care condition x genetics.
+ * Care condition: trust, energy, fullness and calm (60..100%).
+ * Genetics: 100% + 4%/vigor + 15%/shown recessive trait + 25%/mutation
+ * + 10% for a rare (saddle..mask) marking. Fresh market stock has no shown
+ * traits or mutations, so its genetics stay <= 150% and the purchase price
+ * (150% of a perfect adult + 40) always exceeds any immediate resale. */
+static int fish_price(int variety, int stage, int quality, int gene_pct) {
     static const int worth[4] = { SD_FISH_FRY, SD_FISH_JUV, SD_FISH_ADULT, SD_FISH_ELDER };
-    return fish < 0 || fish >= t->n_fish ? 0 : worth[t->fish[fish].stage & 3];
+    if (variety < 0 || variety >= FISH_VARIETY_COUNT || stage < 0 || stage > STAGE_ELDER) return 0;
+    long value = (long)worth[stage] * (100 + 20 * MARKET_VARIETY_TIERS[variety]) * (60 + quality) / 10000;
+    return (int)(value * gene_pct / 100);
+}
+int progression_fish_vigor(const tank_t *t, int fish) {
+    if (!t || fish < 0 || fish >= t->n_fish || !t->story.version) return 0;
+    return tank_line_vigor(&t->story.active[fish]);
+}
+int progression_fish_gene_pct(const tank_t *t, int fish) {
+    if (!t || fish < 0 || fish >= t->n_fish) return 100;
+    const fish_t *f = &t->fish[fish];
+    int pct = 100 + (f->pattern >= PATTERN_SADDLE && f->pattern < FISH_PATTERN_COUNT ? 10 : 0);
+    for (int k = 0; k < TRAIT_COUNT; k++) pct += f->traits & (1u << k) ? 15 : 0;
+    if (t->story.version) {
+        const fish_lineage_t *l = &t->story.active[fish];
+        pct += 4 * tank_line_vigor(l);
+        for (int k = 0; k < 3; k++) pct += l->mutation & (1u << k) ? 25 : 0;
+    }
+    return pct;
+}
+const char *progression_fish_grade(int gene_pct) {
+    return gene_pct >= 190 ? "PRIZED" : gene_pct >= 150 ? "RARE" : gene_pct >= 125 ? "FINE" : "COMMON";
+}
+int progression_fish_care_quality(const tank_t *t, int fish) {
+    if (!t || fish < 0 || fish >= t->n_fish) return 0;
+    const fish_t *f = &t->fish[fish];
+    if (!isfinite(f->trust) || !isfinite(f->energy) || !isfinite(f->hunger) || !isfinite(f->stress)) return -1;
+    return (int)(clampf(f->trust, 0, 10) + clampf(f->energy, 0, 10) +
+                 10 - clampf(f->hunger, 0, 10) + 10 - clampf(f->stress, 0, 10));
+}
+int progression_demand_variety(const tank_t *t) {
+    if (!t) return -1;
+    uint32_t h = (uint32_t)t->care.day * 0x9e3779b1u ^ 0x5bd1e995u;
+    h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12;
+    return (int)(h % FISH_VARIETY_COUNT);
+}
+int progression_fish_pedigree_pct(const tank_t *t, int fish) {
+    if (!t || fish < 0 || fish >= t->n_fish || !t->story.version) return 0;
+    int gen = t->story.active[fish].generation;
+    if (gen > 5) gen = 5;
+    return gen * (progression_fish_gene_pct(t, fish) >= 150 ? 6 : 2);
+}
+int progression_fish_value(const tank_t *t, int fish) {
+    if (!t || fish < 0 || fish >= t->n_fish) return 0;
+    int quality = progression_fish_care_quality(t, fish);
+    if (quality < 0) return 0;
+    const fish_t *f = &t->fish[fish];
+    long base = fish_price(f->variety, f->stage, quality, progression_fish_gene_pct(t, fish));
+    int bred = t->story.version && t->story.active[fish].generation > 0;
+    int bonus = 100 + progression_fish_pedigree_pct(t, fish) +
+                (bred && f->variety == progression_demand_variety(t) ? PROGRESSION_DEMAND_PCT : 0);
+    return (int)(base * bonus / 100);
 }
 bool progression_fish_sellable(const tank_t *t, int fish) {
-    if (progression_creative(t)) return false;
-    return fish >= 0 && fish < t->n_fish && t->n_fish > FISH_KEEP_MIN && s_newborn < 0;
+    if (!t || progression_creative(t)) return false;
+    return fish >= 0 && fish < t->n_fish && t->n_fish > FISH_KEEP_MIN && s_newborn < 0 &&
+        !s_setup_pending && progression_storage_ready();
 }
-static fish_save_t capture_fish(const fish_t *f, double age) {
+bool progression_fish_sale_quote(const tank_t *t, int fish, fish_sale_t *out) {
+    if (!out || !progression_fish_sellable(t, fish) || !t->polish.active[fish].id) return false;
+    *out = (fish_sale_t){t->polish.active[fish].id, t->roster_gen, fish, progression_fish_value(t, fish)};
+    return out->value > 0;
+}
+bool progression_fish_sale_confirm(tank_t *t, const fish_sale_t *quote) {
+    s_shop_notice = NULL;
+    if (!quote || !progression_fish_sellable(t, quote->fish) ||
+        quote->roster_gen != t->roster_gen || quote->id != t->polish.active[quote->fish].id ||
+        quote->value != progression_fish_value(t, quote->fish)) {
+        s_shop_notice = "FISH CHANGED - REVIEW SALE"; return false;
+    }
+    if (progression_sell_fish(t, quote->fish)) return true;
+    s_shop_notice = "SAVE FAILED - FISH KEPT"; return false;
+}
+/* contract/auction: optional bookkeeping written in the same save as the sale */
+static bool sell_fish_at(tank_t *t, int fish, int worth, uint8_t contract_mark, uint16_t auction_mark);
+/* ---- breeding contracts and auction day (2.4.0) ----
+ * Both are derived from the calendar day, so no schema change is needed;
+ * progression.reserved/pad remember the filled contract window and sold
+ * auction week. Contracts want a fish you bred (generation >= 1) so buying
+ * stock and flipping it can never satisfy one. */
+const char *const PROGRESSION_TRADE_CLIENTS[PROGRESSION_TRADE_CLIENT_COUNT] = {
+    "HARBOR GUILD", "CORAL CLUB", "PEARL INN", "TIDE COLLECTOR", "REEF MUSEUM", "LIGHTHOUSE"};
+static uint32_t trade_hash(uint32_t a, uint32_t b) {
+    uint32_t h = a * 0x9e3779b1u ^ (b + 0x7f4a7c15u) * 0x85ebca6bu;
+    h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16;
+    return h;
+}
+static int64_t trade_day(const tank_t *t) { return t->care.day > 0 ? t->care.day : 0; }
+static bool trade_ready(const tank_t *t) {
+    return t && !progression_creative(t) && t->progression.version == 1;
+}
+bool progression_contract_today(const tank_t *t, fish_contract_t *out) {
+    if (!out || !trade_ready(t)) return false;
+    int64_t window = trade_day(t) / PROGRESSION_CONTRACT_DAYS;
+    uint32_t h = trade_hash((uint32_t)window, 0xc0de);
+    int open[FISH_VARIETY_COUNT], n = 0;
+    for (int v = 0; v < FISH_VARIETY_COUNT; v++) if (journal_variety_unlocked(t, v)) open[n++] = v;
+    if (!n) return false;
+    out->variety = open[h % (uint32_t)n];
+    out->need = (int)((h >> 8) % CONTRACT_NEED_COUNT);
+    out->client = (int)((h >> 16) % PROGRESSION_TRADE_CLIENT_COUNT);
+    out->days_left = PROGRESSION_CONTRACT_DAYS - (int)(trade_day(t) % PROGRESSION_CONTRACT_DAYS);
+    out->filled = t->progression.reserved == (uint8_t)(window % 255 + 1);
+    return true;
+}
+bool progression_contract_fits(const tank_t *t, int fish) {
+    fish_contract_t c;
+    if (!progression_contract_today(t, &c) || c.filled || !progression_fish_sellable(t, fish)) return false;
+    const fish_t *f = &t->fish[fish];
+    if (f->variety != c.variety || f->stage < STAGE_ADULT || !t->story.version ||
+        t->story.active[fish].generation < 1) return false;
+    int pct = progression_fish_gene_pct(t, fish);
+    return c.need == CONTRACT_NEED_FINE ? pct >= 125 :
+           c.need == CONTRACT_NEED_RARE ? pct >= 150 : t->story.active[fish].mutation != 0;
+}
+int progression_contract_pay(const tank_t *t, int fish) {
+    if (!progression_contract_fits(t, fish)) return 0;
+    long pay = (long)progression_fish_value(t, fish) * PROGRESSION_CONTRACT_PCT / 100 + PROGRESSION_CONTRACT_BONUS;
+    return pay > INT_MAX / 2 ? INT_MAX / 2 : (int)pay;
+}
+bool progression_contract_quote(const tank_t *t, int fish, fish_sale_t *out) {
+    if (!out || !progression_contract_fits(t, fish) || !t->polish.active[fish].id) return false;
+    *out = (fish_sale_t){t->polish.active[fish].id, t->roster_gen, fish, progression_contract_pay(t, fish)};
+    return out->value > 0;
+}
+bool progression_contract_fill(tank_t *t, const fish_sale_t *quote) {
+    s_shop_notice = NULL;
+    fish_sale_t now;
+    if (!quote || !progression_contract_quote(t, quote->fish, &now) || quote->roster_gen != now.roster_gen ||
+        quote->id != now.id || quote->value != now.value) {
+        s_shop_notice = "CONTRACT CHANGED - REVIEW IT"; return false;
+    }
+    uint8_t mark = (uint8_t)(trade_day(t) / PROGRESSION_CONTRACT_DAYS % 255 + 1);
+    if (sell_fish_at(t, quote->fish, now.value, mark, 0)) return true;
+    s_shop_notice = "SAVE FAILED - FISH KEPT"; return false;
+}
+static int64_t auction_week(const tank_t *t) { return (trade_day(t) + 3) / 7; }
+int progression_auction_days(const tank_t *t) {
+    if (!t) return 7;
+    return (int)((PROGRESSION_AUCTION_WEEKDAY - trade_day(t) % 7 + 7) % 7);
+}
+bool progression_auction_sold(const tank_t *t) {
+    return t && t->progression.pad == (uint16_t)(auction_week(t) % 65535 + 1);
+}
+bool progression_auction_open(const tank_t *t) {
+    return trade_ready(t) && !progression_auction_days(t) && !progression_auction_sold(t);
+}
+bool progression_auction_eligible(const tank_t *t, int fish) {
+    if (!progression_auction_open(t) || !progression_fish_sellable(t, fish) || t->fish[fish].stage < STAGE_ADULT) return false;
+    int gen = t->story.version ? t->story.active[fish].generation : 0;
+    return progression_fish_gene_pct(t, fish) >= 150 || gen >= 2;
+}
+int progression_auction_reserve(const tank_t *t, int fish) {
+    return progression_fish_value(t, fish) * PROGRESSION_AUCTION_RESERVE_PCT / 100;
+}
+bool progression_auction_quote(const tank_t *t, int fish, fish_sale_t *out) {
+    if (!out || !progression_auction_eligible(t, fish) || !t->polish.active[fish].id) return false;
+    *out = (fish_sale_t){t->polish.active[fish].id, t->roster_gen, fish, progression_fish_value(t, fish)};
+    return out->value > 0;
+}
+/* Rival bids climb from 80% of the quote to a hammer price of 95..165%;
+ * the outcome is fixed by the week and the fish's life ID. */
+static void auction_ladder(const tank_t *t, const fish_sale_t *q, fish_auction_t *out) {
+    uint32_t h = trade_hash((uint32_t)auction_week(t), q->id);
+    int quote = q->value;
+    out->hammer = (int)((long)quote * (95 + (int)(h % 71)) / 100);
+    int open = quote * 80 / 100;
+    for (int i = 0; i < PROGRESSION_AUCTION_BIDS; i++) {
+        out->bids[i] = open + (int)((long)(out->hammer - open) * (i + 1) / PROGRESSION_AUCTION_BIDS);
+        out->bidder[i] = (uint8_t)((h >> (4 + 3 * i)) % PROGRESSION_TRADE_CLIENT_COUNT);
+        if (i && out->bidder[i] == out->bidder[i - 1])
+            out->bidder[i] = (uint8_t)((out->bidder[i] + 1) % PROGRESSION_TRADE_CLIENT_COUNT);
+    }
+    out->bids[PROGRESSION_AUCTION_BIDS - 1] = out->hammer;
+    out->opening = open;
+}
+bool progression_auction_sell(tank_t *t, const fish_sale_t *quote, fish_auction_t *out) {
+    s_shop_notice = NULL;
+    fish_sale_t now;
+    if (!quote || !out || !progression_auction_quote(t, quote->fish, &now) || quote->roster_gen != now.roster_gen ||
+        quote->id != now.id || quote->value != now.value) {
+        s_shop_notice = "FISH CHANGED - REVIEW AUCTION"; return false;
+    }
+    fish_auction_t result;
+    auction_ladder(t, &now, &result);
+    uint16_t mark = (uint16_t)(auction_week(t) % 65535 + 1);
+    if (!sell_fish_at(t, quote->fish, result.hammer, 0, mark)) { s_shop_notice = "SAVE FAILED - FISH KEPT"; return false; }
+    *out = result;
+    return true;
+}static fish_save_t capture_fish(const fish_t *f, double age) {
     fish_save_t s = {0};
     s.preset = (uint8_t)f->preset; s.stage = (uint8_t)f->stage;
     s.size = f->size; s.trust = f->trust; s.bold = f->bold; s.sociable = f->sociable;
@@ -1174,12 +1789,14 @@ const char *progression_bank_move(tank_t *t, int bank, int active) {
     free(next);
     return saved ? NULL : "SAVE FAILED - NO FISH MOVED";
 }
-static void set_tms(tank_t *t, uint32_t bit);   /* (below) */
 static void fry_age(tank_t *t, float seconds);
 bool progression_sell_fish(tank_t *t, int fish) {
     if (progression_creative(t)) return false;
     if (!progression_fish_sellable(t, fish)) return false;
-    int worth = progression_fish_value(t, fish);
+    return sell_fish_at(t, fish, progression_fish_value(t, fish), 0, 0);
+}
+static bool sell_fish_at(tank_t *t, int fish, int worth, uint8_t contract_mark, uint16_t auction_mark) {
+    if (worth < 0) return false;
     if (t->sd_balance > INT_MAX - worth || t->sd_earned > INT_MAX - worth ||
         t->player_feedings > INT_MAX - SELL_FRY_MEALS) return false;
     tank_t *old = malloc(sizeof *old);
@@ -1199,10 +1816,12 @@ bool progression_sell_fish(tank_t *t, int fish) {
        ago in a grown tank, so without this the fry would be in the grass
        within the minute */
     s_arrival_pending = false; s_spawn_in = -1;
-    s_sale_need = t->player_feedings + SELL_FRY_MEALS;
-    set_tms(t, TMS_FIRST_SALE);                            /* the first sale opens the shop's fry (0.3.5) */
+    s_sale_need = t->player_feedings > INT_MAX - SELL_FRY_MEALS ? INT_MAX :
+                  t->player_feedings + SELL_FRY_MEALS;
     fry_age(t, 0);                                         /* ... and draws the first three */
     sd_award(t, worth);
+    if (contract_mark) t->progression.reserved = contract_mark;
+    if (auction_mark) t->progression.pad = auction_mark;
     bool ok = progression_save(t);
     if (!ok) {
         *t = *old;
@@ -1213,7 +1832,10 @@ bool progression_sell_fish(tank_t *t, int fish) {
     free(old); return ok;
 }
 int progression_item_price_for(const tank_t *t, int item) {
+    if (t && SD_IS_FOLIAGE(item))
+        return progression_creative(t) || progression_item_owned(t, item) ? 0 : SD_ITEMS[item].price;
     if (!t || item < 0 || item >= SD_ITEM_COUNT) return 0;
+    if (creature_species(item) >= 0 || item == 5) return progression_creative(t) ? 0 : SD_ITEMS[item].price;
     if (item == SD_SHOP_MUSSEL) return progression_creative(t) ? 0 : SD_PRICE_MUSSEL;
     if (progression_creative(t) || (tank_decor_placeable(item) &&
         progression_inventory_stored(t, item))) return 0;
@@ -1222,7 +1844,7 @@ int progression_item_price_for(const tank_t *t, int item) {
     return progression_item_unlocked(t, item) ? 0 : SD_ITEMS[item].price;
 }
 static bool buy_item(tank_t *t, int item) {
-    if (item < 0 || item >= SD_ITEM_COUNT) return false;
+    if (item < 0 || item >= SD_ITEM_COUNT || item_retired(item)) return false;
     const sd_item_t *it = &SD_ITEMS[item];
     uint64_t item_bit = UINT64_C(1) << item;
     int price = progression_item_price_for(t, item);
@@ -1243,6 +1865,7 @@ static bool buy_item(tank_t *t, int item) {
             t->mussel.owned = (uint8_t)(1u << t->aquariums.active);
         t->mussel.version = 2;
         t->mussel.owned |= (uint8_t)(1u << t->aquariums.active);
+        creature_palette_from_paid_stock(t, CREATURE_MUSSEL, price);
         return progression_save(t);
     }
     if (SD_IS_SCENERY(item)) {
@@ -1284,7 +1907,10 @@ static bool buy_item(tank_t *t, int item) {
     if (it->bit == SD_ITEM_CASTLE) tank_castle_place(t);
     if (it->bit == SD_ITEM_CORAL) tank_coral_place(t);
     if (it->bit == SD_ITEM_CLUSTER) tank_cluster_place(t);
-    if (it->bit == SD_ITEM_SHRIMP) { tank_shrimp_place(t, SHRIMP_START); t->shrimp_food = 0; t->shrimp_cool = 0; }
+    if (it->bit == SD_ITEM_SHRIMP) {
+        tank_shrimp_place(t, SHRIMP_START); t->shrimp_food = 0; t->shrimp_cool = 0;
+        creature_palette_from_paid_stock(t, CREATURE_SHRIMP, price);
+    }
     if (it->bit == SD_ITEM_URCHIN) tank_urchin_place(t);
     if (it->bit == SD_ITEM_SEAHORSE) { tank_seahorse_place(t); t->sh_s = 0; t->sh_hitches = 0; t->sh_trust_passed = 0; }
     if (it->bit == SD_ITEM_PUMPKIN) tank_pumpkin_place(t);
@@ -1296,14 +1922,36 @@ static bool buy_item(tank_t *t, int item) {
 }
 bool progression_buy(tank_t *t, int item) {
     s_shop_notice = NULL;
+    if (t && SD_IS_FOLIAGE(item)) {
+        if (t->foliage.version != 1 || !foliage_valid(&t->foliage)) {
+            s_shop_notice = "INVALID GROUND COVER"; return false;
+        }
+        int price = progression_item_price_for(t, item);
+        if (t->sd_balance < price) { s_shop_notice = "NOT ENOUGH DOUBLOONS"; return false; }
+        uint32_t *undo = undo_take(t);
+        if (!undo) { s_shop_notice = "NOT ENOUGH MEMORY - NO CHANGE"; return false; }
+        uint8_t bit = (uint8_t)(1u << (item - SD_FOLIAGE_FIRST));
+        t->sd_balance -= price;
+        t->foliage.owned |= bit;
+        t->foliage.planted ^= bit;
+        bool ok = progression_save(t);
+        if (!ok) {
+            undo_put(t, undo);
+            shop_save_failed("SAVE FAILED - NO CHANGE", SD_ITEMS[item].name);
+        }
+        undo_drop(undo);
+        return ok;
+    }
     if (!t || item < 0 || item >= SD_ITEM_COUNT) {
         s_shop_notice = "INVALID ITEM"; return false;
     }
+    if (item_retired(item)) { s_shop_notice = "ITEM RETIRED"; return false; }
+    if (creature_species(item) >= 0) return creature_buy(t, creature_species(item), true);
     if (t && tank_decor_placeable(item) && !progression_item_owned(t, item) &&
         progression_inventory_stored(t, item)) return progression_inventory_place(t, item);
     if (progression_item_owned(t, item)) { s_shop_notice = "ITEM ALREADY PLACED"; return false; }
     if (t->sd_balance < progression_item_price_for(t, item)) {
-        s_shop_notice = "NOT ENOUGH SAND DOLLARS"; return false;
+        s_shop_notice = "NOT ENOUGH DOUBLOONS"; return false;
     }
     uint32_t *undo = undo_take(t);
     if (!undo) { shop_save_failed("NOT ENOUGH MEMORY - NOT BOUGHT", SD_ITEMS[item].name); return false; }
@@ -1388,6 +2036,15 @@ static bool fixed_valid(const decor_fixed_t *f) {
 static bool inventory_restore_safe(const save_t *to, const save_t *current) {
     if (to->creative.enabled && current->creative.enabled &&
         to->profile.mode == GAME_MODE_CREATIVE && current->profile.mode == GAME_MODE_CREATIVE) return true;
+    creature_state_t a = to->creatures, b = current->creatures;
+    creatures_migrate(&a, to->sd_unlocks, to->profile.paid_items);
+    creatures_migrate(&b, current->sd_unlocks, current->profile.paid_items);
+    bool pristine = !b.revision && current->aquariums.count < 2;
+    for (int i = 0; i < CREATURE_STOCK_COUNT; i++)
+        pristine = pristine && !b.stock[i].adults && !b.stock[i].offspring && !b.stock[i].active_s;
+    /* A first restore into an empty, single tank is legitimate recovery.
+     * After any trade or in a multi-tank estate, snapshots cannot copy stock. */
+    if (memcmp(&a, &b, sizeof a) && !pristine) return false;
     if (current->aquariums.count < 2) return true;
     /* Portable snapshots have no per-copy identity. An old snapshot must not
      * reclaim an ornament that has since been transferred to another tank. */
@@ -1416,7 +2073,7 @@ static bool inventory_fail(const char *notice) { s_shop_notice = notice; return 
 static uint32_t *s_inventory_undo;              /* inventory_begin's, until commit or abort */
 static tank_t *inventory_begin(tank_t *t, int item) {
     s_shop_notice = NULL;
-    if (!t || item == 8 || inventory_slot(item) < 0) {
+    if (!t || item == 8 || creature_species(item) >= 0 || inventory_slot(item) < 0) {
         inventory_fail("THIS ITEM CANNOT BE STORED"); return NULL;
     }
     if (!inventory_valid(&t->inventory) || !content_valid(&t->content, &t->inventory)) {
@@ -1451,7 +2108,7 @@ bool progression_inventory_buy(tank_t *t, int item) {
     if (!inventory_room(t) || t->sd_balance < price || (item == 8 && !progression_pumpkin_offered(t))) {
         inventory_abort(t);
         return inventory_fail(!inventory_room(t) ? "DECORATION STORAGE FULL" :
-                              t->sd_balance < price ? "NOT ENOUGH SAND DOLLARS" : "ITEM NOT AVAILABLE");
+                              t->sd_balance < price ? "NOT ENOUGH DOUBLOONS" : "ITEM NOT AVAILABLE");
     }
     int slot = inventory_slot(item);
     (*inventory_stored(next, slot))++;
@@ -1529,10 +2186,10 @@ const char *const *progression_sd_earn_lines(void) {
     if (!made) {
         /* <= 25 chars each: the modal is 336 px wide at scale 2 */
         snprintf(lines[0], 30, "GOALS > TODAY: +125/DAY");
-        snprintf(lines[1], 30, "+%d/%d/%d  A FISH GROWS UP", SD_STAGE_JUV, SD_STAGE_ADULT, SD_STAGE_ELDER);
+        snprintf(lines[1], 30, "RAISE HEALTHY BREEDING PAIRS");
         snprintf(lines[2], 30, "+%d  A NEW FRY IS BORN", SD_BIRTH);
-        snprintf(lines[3], 30, "+%d  A FISH FULLY TRUSTS", SD_TRUST);
-        snprintf(lines[4], 30, "MILESTONE GOALS PAY ONCE");
+        snprintf(lines[3], 30, "GROWTH AND CARE RAISE VALUE");
+        snprintf(lines[4], 30, "SELL BRED FISH: TYPE+CARE");
         snprintf(lines[5], 30, "GAMES: +1, MAX 5 EACH/DAY");
         snprintf(lines[6], 30, "NO STREAKS OR DAILY DEBT");
         for (int i = 0; i < SD_EARN_LINES; i++) ptr[i] = lines[i];
@@ -1540,7 +2197,6 @@ const char *const *progression_sd_earn_lines(void) {
     }
     return ptr;
 }
-static void set_tms(tank_t *t, uint32_t bit) { if (!(t->tank_ms_bits & bit)) { t->tank_ms_bits |= bit; mark_dirty(); } }
 
 /* the stage the age has earned. Only the director's set_age (`down`) takes
  * one away: a fish grown up under shorter stage times (0.3.4 and before)
@@ -1550,9 +2206,6 @@ static void apply_stage(fish_t *f, double age, bool down) {
                : age >= STAGE_JUV_AGE ? STAGE_JUV : STAGE_FRY;
     if (st < f->stage && !down) st = f->stage;
     if (st != f->stage) { f->stage = st; mark_dirty(); }         /* silent surprise */
-    if (st >= STAGE_JUV)   set_ms(f, MS_REACHED_JUV);
-    if (st >= STAGE_ADULT) set_ms(f, MS_REACHED_ADULT);
-    if (st >= STAGE_ELDER) set_ms(f, MS_REACHED_ELDER);
 }
 
 /* size: base by stage, plus a meal-fed bonus; never shrinks below stage base */
@@ -1562,21 +2215,40 @@ static void apply_growth(fish_t *f) {
     f->size = f->base_size * stage_scale[f->stage] * fed;
 }
 
-static const uint32_t POP_TMS[N_FISH_MAX + 1] = { 0, 0, TMS_PAIR, TMS_TRIO, TMS_QUARTET, TMS_QUINTET, TMS_SEXTET };
 
-/* the parents: the two most trusting grown fish - or, with fewer than two
- * grown (at two fish no stage is gated), the most trusting of the rest fill
- * in, so there is always a pair to court (2026-09-24: the spawning needs
- * two fish in the grass; tank_add_fish already fell back to fish 0 and 1) */
-static float parent_rank(const fish_t *f) { return (f->stage >= STAGE_ADULT ? 100.0f : 0.0f) + f->trust; }
-static void pick_parents(const tank_t *t, int *pa, int *pb) {
+static bool breeding_healthy(const fish_t *f) {
+    return f->trust >= 4 && f->energy >= 4 && f->hunger <= 6 && f->stress <= 4;
+}
+static bool find_pair(const tank_t *t, bool healthy, int *pa, int *pb) {
     int a = -1, b = -1;
-    for (int i = 0; i < t->n_fish; i++) {
-        float r = parent_rank(&t->fish[i]);
-        if (a < 0 || r > parent_rank(&t->fish[a])) { b = a; a = i; }
-        else if (b < 0 || r > parent_rank(&t->fish[b])) b = i;
+    float best = -1;
+    for (int i = 0; t && i < t->n_fish; i++) for (int j = i + 1; j < t->n_fish; j++) {
+        const fish_t *x = &t->fish[i], *y = &t->fish[j];
+        if (x->stage < STAGE_ADULT || y->stage < STAGE_ADULT ||
+            x->variety != y->variety || (healthy && (!breeding_healthy(x) || !breeding_healthy(y)))) continue;
+        float score = x->trust + y->trust + x->energy + y->energy;
+        if (score > best) { best = score; a = i; b = j; }
     }
-    *pa = a; *pb = b;
+    if (pa) *pa = a;
+    if (pb) *pb = b;
+    return a >= 0;
+}
+bool progression_breeding_pair(const tank_t *t, int *pa, int *pb) {
+    return find_pair(t, true, pa, pb);
+}
+static void pick_parents(const tank_t *t, int *pa, int *pb) {
+    (void)progression_breeding_pair(t, pa, pb);
+}
+const char *progression_breeding_status(const tank_t *t) {
+    if (!t || !progression_storage_ready()) return "SAVE UNAVAILABLE";
+    if (progression_creative(t)) return "CREATIVE - BREEDING PAUSED";
+    if (s_setup_pending || s_newborn >= 0) return "FINISH WELCOMING YOUR FISH";
+    if (occupied_slots(t) >= POP_CAP || occupied_slots(t) >= N_FISH_MAX) return "TANK FULL - BANK OR SELL";
+    if (!find_pair(t, false, NULL, NULL)) return "NEED TWO ADULTS OF ONE TYPE";
+    if (!progression_breeding_pair(t, NULL, NULL)) return "PAIR NEEDS FOOD, REST AND TRUST";
+    if (tank_nursery_bed(t) < 0) return "ARRANGE A SHELTER";
+    if (t->player_feedings < (s_sale_need > 12 ? s_sale_need : 12)) return "PAIR READY - SHARE MORE MEALS";
+    return "PAIR READY - FRY ON THE WAY";
 }
 
 /* the arrival itself: a fry in the nursery grass, traits inherited from the
@@ -1585,21 +2257,21 @@ static void do_arrival(tank_t *t) {
     if (progression_creative(t)) return;
     int a, b;
     pick_parents(t, &a, &b);
+    if (a < 0 || b < 0 || !progression_fry_room(t) || s_setup_pending) return;
     int slot = tank_add_fish(t, a, b);
     s_arrival_pending = false;
     s_spawn_in = -1; t->spawning = false; t->spawn_danced = 0;
     if (slot < 0) return;
-    int nb = tank_nursery_bed(t);            /* born in the grass it was courted in */
-    if (nb >= 0) {
-        float x0, x1; tank_veg_bed(t, nb, &x0, &x1, NULL, NULL);
-        t->fish[slot].x = (x0 + x1) * 0.5f; t->fish[slot].y = TANK_BOT - 16 - 18;
-    }
+    tank_reef_spot(t, &t->fish[slot].x, &t->fish[slot].y);
+    if (tank_nursery_bed(t) == 3) t->fish[slot].x = t->plant_x;
+    t->fish[slot].y = TANK_BOT - 34;
     s_age[slot] = 0;
-    t->fish[slot].ms_bits = MS_ARRIVED;
+    t->fish[slot].ms_bits = 0;
     companion_polish_observe(t);
     t->sd_paid_fish[slot] = 0;               /* a new ledger for the new fish */
-    if (t->n_fish <= N_FISH_MAX) set_tms(t, POP_TMS[t->n_fish]);
     s_newborn = slot;                        /* owed its welcome: the birth flow (setup.c) */
+    s_sale_need = t->player_feedings > INT_MAX - SELL_FRY_MEALS ? INT_MAX :
+        t->player_feedings + SELL_FRY_MEALS;
     sd_award(t, SD_BIRTH);
     mark_dirty();
 }
@@ -1612,9 +2284,86 @@ static void do_arrival(tank_t *t) {
 static const uint32_t FRY_COLORS[9] = { 0x38dcc7, 0xff725c, 0x78d67d, 0xa799ff, 0xffd166, 0xf48fb1, 0x4da3ff, 0xe8f1f2, 0x23262c };
 #define FRY_BODY_N 8
 static uint32_t fry_hash(uint32_t x) { x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
+int progression_market_price(const tank_t *t, int variety) {
+    if (!t || variety < 0 || variety >= FISH_VARIETY_COUNT) return 0;
+    return progression_creative(t) ? 0 : fish_price(variety, STAGE_ADULT, 40, 150) + 40;
+}
+bool progression_market_preview(const tank_t *t, int variety, fish_t *out) {
+    if (!t || !out || variety < 0 || variety >= FISH_VARIETY_COUNT) return false;
+    memset(out, 0, sizeof *out);
+    out->variety = (uint8_t)variety;
+    out->pattern = (uint8_t)((variety * 3 + 1) % FISH_PATTERN_COUNT);
+    tank_fish_set_look(out, FRY_COLORS[variety % FRY_BODY_N], FRY_COLORS[(variety + 3) % FRY_BODY_N]);
+    out->stage = STAGE_ADULT;
+    out->base_size = 12; out->turn_rate = 2.5f;
+    out->bold = out->bold0 = 0.35f + (variety % 4) * 0.1f;
+    out->sociable = out->sociable0 = 0.4f + (variety % 3) * 0.12f;
+    out->lazy = 0.25f + (variety % 3) * 0.1f;
+    out->trust = 4; out->energy = 8; out->hunger = 2; out->curiosity = 5;
+    out->parent_a = out->parent_b = -1;
+    out->goal.id = GOAL_EXPLORE; out->goal.urgency = 3;
+    out->facing = 1; out->yaw = out->yaw_tail = 1;
+    apply_growth(out);
+    return true;
+}
+void progression_market_offer(const tank_t *t, int variety, fish_market_offer_t *out) {
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    fish_t fish;
+    if (!progression_market_preview(t, variety, &fish)) return;
+    out->body = fish.color; out->accent = fish.accent;
+    out->variety = fish.variety; out->pattern = fish.pattern;
+    out->price = progression_market_price(t, variety);
+}
+const char *progression_market_status(const tank_t *t) {
+    if (!t || !progression_storage_ready()) return "SAVE UNAVAILABLE";
+    if (progression_creative(t)) return "CREATIVE - USE THE SANDBOX";
+    if (s_setup_pending || s_newborn >= 0) return "FINISH WELCOMING YOUR FISH";
+    if (occupied_slots(t) >= POP_CAP || occupied_slots(t) >= N_FISH_MAX) return "TANK FULL - BANK OR SELL";
+    if (t->polish.next_id == UINT32_MAX) return "FISH IDENTITY LIMIT REACHED";
+    return NULL;
+}
+bool progression_market_buy(tank_t *t, int variety) {
+    s_shop_notice = progression_market_status(t);
+    if (s_shop_notice) return false;
+    fish_t preview;
+    if (!progression_market_preview(t, variety, &preview)) { s_shop_notice = "INVALID FISH TYPE"; return false; }
+    int price = progression_market_price(t, variety);
+    if (t->sd_balance < price) { s_shop_notice = "NOT ENOUGH DOUBLOONS"; return false; }
+    uint32_t *before = undo_take(t);
+    if (!before) { s_shop_notice = "NOT ENOUGH MEMORY"; return false; }
+    int slot = t->n_fish;
+    double age = s_age[slot]; float starve = s_starve_s[slot];
+    bool arrival = s_arrival_pending; float spawn = s_spawn_in;
+    int made = tank_add_bought_fry(t, preview.color, preview.accent);
+    if (made < 0) { undo_put(t, before); undo_drop(before); s_shop_notice = "NO FISH SLOT AVAILABLE"; return false; }
+    fish_t *f = &t->fish[slot];
+    t->progression.variety_unlocks |= (uint16_t)(1u << variety);
+    f->variety = preview.variety; f->pattern = preview.pattern;
+    f->stage = preview.stage;
+    f->bold = f->bold0 = preview.bold; f->sociable = f->sociable0 = preview.sociable;
+    f->trust = preview.trust; f->energy = preview.energy; f->hunger = preview.hunger;
+    f->stress = preview.stress; f->curiosity = preview.curiosity;
+    f->ms_bits = 0;
+    s_age[slot] = STAGE_ADULT_AGE; s_starve_s[slot] = 0;
+    apply_growth(f);
+    companion_polish_observe(t);
+    t->sd_paid_fish[slot] = 0;
+    t->sd_balance -= price;
+    t->roster_gen++;
+    s_arrival_pending = false; s_spawn_in = -1;
+    t->spawning = false; t->spawn_danced = 0;
+    if (!progression_save(t)) {
+        undo_put(t, before); s_age[slot] = age; s_starve_s[slot] = starve;
+        s_arrival_pending = arrival; s_spawn_in = spawn;
+        undo_drop(before); s_shop_notice = "SAVE FAILED - NO FISH BOUGHT"; return false;
+    }
+    undo_drop(before);
+    tank_emit(TEV_CONFIRM, -1);
+    return true;
+}
 bool progression_fry_for_sale(const tank_t *t) {
-    return !progression_creative(t) &&
-        ((t->tank_ms_bits & TMS_FIRST_SALE) != 0 || (progression_hard(t) && t->n_fish < 2));
+    return t && !progression_creative(t);
 }
 bool progression_fry_room(const tank_t *t) { return occupied_slots(t) < POP_CAP && occupied_slots(t) < N_FISH_MAX && s_newborn < 0; }
 int  progression_fry_left(void) { int n = 0; for (int k = 0; k < FRY_OFFER_N; k++) n += !(s_fry_sold >> k & 1); return n; }
@@ -1648,27 +2397,45 @@ static void fry_age(tank_t *t, float seconds) {
     s_fry_age += seconds;
     if (s_fry_age >= FRY_OFFER_S) progression_fry_roll(t);    /* a week away is one fresh three */
 }
-void progression_fry_open(tank_t *t) { set_tms(t, TMS_FIRST_SALE); fry_age(t, 0); }
+void progression_fry_open(tank_t *t) { fry_age(t, 0); }
+int progression_fry_price(const tank_t *t, int k) {
+    if (!t || k < 0 || k >= FRY_OFFER_N) return 0;
+    fry_offer_t offer; progression_fry_offer(t, k, &offer);
+    return progression_creative(t) ? 0 : fish_price(offer.variety, STAGE_FRY, 40, 150) + 20;
+}
 bool progression_buy_fry(tank_t *t, int k) {
     if (progression_creative(t)) return false;
     if (!progression_fry_for_sale(t) || !s_fry_seed || k < 0 || k >= FRY_OFFER_N || (s_fry_sold >> k & 1) ||
-        !progression_fry_room(t) || t->sd_balance < SD_PRICE_FRY) return false;
+        !progression_fry_room(t) || s_setup_pending || !progression_storage_ready() ||
+        t->sd_balance < progression_fry_price(t, k)) return false;
+    uint32_t *before = undo_take(t);
+    if (!before) return false;
+    int old_newborn = s_newborn, slot0 = t->n_fish;
+    double age0 = s_age[slot0]; float starve0 = s_starve_s[slot0];
+    uint8_t sold0 = s_fry_sold;
+    bool arrival0 = s_arrival_pending; float spawn0 = s_spawn_in;
     fry_offer_t o; progression_fry_offer(t, k, &o);
     int slot = tank_add_bought_fry(t, o.body, o.accent);
-    if (slot < 0) return false;
+    if (slot < 0) { undo_put(t, before); undo_drop(before); return false; }
     t->fish[slot].variety = o.variety; t->fish[slot].pattern = o.pattern;
-    t->sd_balance -= SD_PRICE_FRY;
+    t->sd_balance -= progression_fry_price(t, k);
     s_fry_sold |= (uint8_t)(1u << k);
     s_age[slot] = 0; s_starve_s[slot] = 0;
-    t->fish[slot].ms_bits = MS_ARRIVED;
+    t->fish[slot].ms_bits = 0;
     companion_polish_observe(t);
-    t->sd_paid_fish[slot] = 0;                     /* its stages pay; no birth dollars - it was bought */
+    t->sd_paid_fish[slot] = 0;
     apply_growth(&t->fish[slot]);
-    if (t->n_fish <= N_FISH_MAX) set_tms(t, POP_TMS[t->n_fish]);
     if (occupied_slots(t) >= POP_CAP) { s_arrival_pending = false; s_spawn_in = -1; t->spawning = false; t->spawn_danced = 0; }   /* the last slot: a staged fry is called off */
     s_newborn = slot;                              /* owed its welcome: the birth flow (setup.c) */
-    progression_save(t);
-    return true;
+    t->roster_gen++;
+    bool saved = progression_save(t);
+    if (!saved) {
+        undo_put(t, before); s_newborn = old_newborn; s_fry_sold = sold0;
+        s_age[slot0] = age0; s_starve_s[slot0] = starve0;
+        s_arrival_pending = arrival0; s_spawn_in = spawn0;
+    }
+    undo_drop(before);
+    return saved;
 }
 
 /* Care gates require earned attention, never time alone.
@@ -1679,64 +2446,17 @@ bool progression_buy_fry(tank_t *t, int k) {
 typedef struct { int kind; float have, need, frac; bool met; } gate_t;
 #define CARE_GATES_MAX 4                 /* the population's three + the glass */
 static int care_gates(const tank_t *t, gate_t g[CARE_GATES_MAX]) {
-    float min_trust = 10;
-    for (int i = 0; i < t->n_fish; i++)
-        if (t->fish[i].trust < min_trust) min_trust = t->fish[i].trust;
-    int last = t->n_fish - 1;
-    float age = last >= 0 ? (float)s_age[last] : 0;
+    bool pair = find_pair(t, false, NULL, NULL);
+    bool healthy = progression_breeding_pair(t, NULL, NULL);
     int n = 0;
     /* the MEALS gate after a sale: the table's count, or the meals owed since
        the fish was sold, whichever is further off */
 #define MEALS(tbl) ((float)((tbl) > s_sale_need ? (tbl) : s_sale_need))
 #define GATE(k, h, nd, m) do { g[n].kind = (k); g[n].have = (h); g[n].need = (nd); g[n].met = (m); \
         g[n].frac = g[n].met ? 1.0f : (nd) > 0 ? (h) / (nd) : 0; if (g[n].frac > 1) g[n].frac = 1; n++; } while (0)
-    switch (t->n_fish) {
-    case 2:
-        GATE(FRY_REQ_TRUST, min_trust, 6.0f, min_trust >= 6.0f);
-        GATE(FRY_REQ_FEED, (float)t->player_feedings, MEALS(12), t->player_feedings >= MEALS(12));
-        GATE(FRY_REQ_HOLD, (float)t->hold_approaches, 1, t->hold_approaches >= 1);
-        break;
-    case 3:
-        /* 2026-09-15 (Strato): MEALS and CHANGE were one "40 meals OR someone
-         * drifted 0.11" row - and the parents had always drifted long before,
-         * so it was dead weight. Now three rows, and CHANGE is the YOUNGEST
-         * fish's accumulated drift pressure (tank.h drift_acc): the same
-         * ~26 lit minutes fed and calm, and impossible to soft-lock for a fry
-         * born on a trait clamp (inheritance puts them there). */
-        GATE(FRY_REQ_GROW, age, (float)STAGE_JUV_AGE, t->fish[last].stage >= STAGE_JUV);
-        GATE(FRY_REQ_FEED, (float)t->player_feedings, MEALS(40), t->player_feedings >= MEALS(40));
-        GATE(FRY_REQ_CHANGE, t->fish[last].drift_acc, DRIFT_CHANGE, t->fish[last].drift_acc >= DRIFT_CHANGE);
-        break;
-    case 4:
-        GATE(FRY_REQ_GROW, age, (float)STAGE_ADULT_AGE, t->fish[last].stage >= STAGE_ADULT);
-        GATE(FRY_REQ_FEED, (float)t->player_feedings, MEALS(80), t->player_feedings >= MEALS(80));
-        GATE(FRY_REQ_TRUST, min_trust, 7.0f, min_trust >= 7.0f);
-        break;
-    default:
-        GATE(FRY_REQ_GROW, age, (float)STAGE_ADULT_AGE, t->fish[last].stage >= STAGE_ADULT);
-        GATE(FRY_REQ_FEED, (float)t->player_feedings, MEALS(140), t->player_feedings >= MEALS(140));
-        GATE(FRY_REQ_TRUST, min_trust, 8.0f, min_trust >= 8.0f);
-        break;
-    }
-    /* and a clean tank (Strato, 2026-09-16: "fish should not be able to
-     * breed in a dirty tank. Some algae is OK but if a certain percentage of
-     * glass crosses a threshold it will prevent new fries from spawning
-     * unless cleaned"): film on no more than ALGAE_DIRTY of the glass. A
-     * care gate like the others, so the parents court while only the glass
-     * holds them back, and the checklist lists it. The bar reads the other
-     * way from the rest - empty at the growth cap, full at the threshold -
-     * so it fills as the keeper wipes. Note the staged fry is NOT held by
-     * the glass at the light-on that brings it: a night's sleep films ~25%
-     * of the glass, so a fry conceived clean would otherwise never land on
-     * a morning (do_arrival waits for the nursery only). */
-    {
-        float cover = tank_algae_cover(t);
-        GATE(FRY_REQ_GLASS, cover, ALGAE_DIRTY, cover <= ALGAE_DIRTY);
-        if (!g[n - 1].met) {
-            float frac = 1.0f - (cover - ALGAE_DIRTY) / ALGAE_DIRTY;
-            g[n - 1].frac = frac < 0 ? 0 : frac > 1 ? 1 : frac;
-        }
-    }
+    GATE(FRY_REQ_GROW, pair ? 1.0f : 0, 1, pair);
+    GATE(FRY_REQ_TRUST, healthy ? 1.0f : 0, 1, healthy);
+    GATE(FRY_REQ_FEED, (float)t->player_feedings, MEALS(12), t->player_feedings >= MEALS(12));
 #undef GATE
 #undef MEALS
     return n;
@@ -1753,8 +2473,8 @@ static const char *const TIP_FEED[]   = { "TAP THE WATER AT THE TOP", "OF THE TA
 static const char *const TIP_HOLD[]   = { "REST A FINGER ON THE GLASS", "FOR A FEW SECONDS. A FISH", "THAT TRUSTS YOU SWIMS OVER", "AND STAYS. FEED FIRST: A", "HUNGRY FISH WON'T COME.", NULL };
 static const char *const TIP_GROW[]   = { "FISH GROW WITH TIME,", "SLOWER WHEN THE TANK IS", "IN SLEEP MODE.", NULL };
 static const char *const TIP_CHANGE[] = { "FISH PERSONALITIES WILL", "NATURALLY DRIFT AS THEY", "INTERACT WITH THE WORLD.", NULL };   /* Strato: intentionally vague */
-static const char *const TIP_GRASS[]  = { "GRASS REGROWS ON ITS OWN,", "FASTEST WHILE THE TANK", "SLEEPS.", NULL };
-static const char *const TIP_GLASS[]  = { "DRAG A FINGER ACROSS THE", "GLASS TO WIPE IT CLEAN.", "UNLOCKABLE CRITTERS CAN", "HELP KEEP IT CLEAN.", NULL };   /* Strato's words */
+static const char *const TIP_GRASS[]  = { "THE STARTER ROCK GIVES", "FRY A FREE SAFE REFUGE.", "SWORD PLANT AND DECOR", "ADD MORE SHELTER.", NULL };
+static const char *const TIP_GLASS[]  = { "GLASS CARE IS RETIRED.", "NO CLEANING IS NEEDED.", "GROUND COVER IS DECORATIVE.", "NO TRIMMING OR UPKEEP.", NULL };
 const char *const *progression_fry_tip(int kind) {
     switch (kind) {
     case FRY_REQ_TRUST:  return TIP_TRUST;
@@ -1768,7 +2488,6 @@ const char *const *progression_fry_tip(int kind) {
 }
 
 /* the checklist, in words. No %f: the device's printf may be the nano one. */
-static const char *const STAGE_WORDS[4] = { "A FRY", "A JUVENILE", "AN ADULT", "AN ELDER" };
 int progression_next_fry(const tank_t *t, fry_req_t out[FRY_REQ_MAX], bool *staged) {
     if (progression_creative(t)) { if (staged) *staged = false; return 0; }
     if (staged) *staged = s_arrival_pending;
@@ -1782,12 +2501,10 @@ int progression_next_fry(const tank_t *t, fry_req_t out[FRY_REQ_MAX], bool *stag
         int have = (int)g[i].have, need = (int)g[i].need;
         switch (g[i].kind) {
         case FRY_REQ_TRUST:
-            snprintf(r->title, sizeof r->title, "TRUST");
-            snprintf(r->words, sizeof r->words, "ALL FISH MUST HAVE TRUST");
-            snprintf(r->words2, sizeof r->words2, "OF AT LEAST %d OUT OF 10", need);
-            if (r->met) snprintf(r->progress, sizeof r->progress, "EVERY FISH DOES");
-            else { int tenths = (int)(g[i].have * 10 + 0.5f);
-                   snprintf(r->progress, sizeof r->progress, "LOWEST NOW %d.%d", tenths / 10, tenths % 10); }
+            snprintf(r->title, sizeof r->title, "HEALTH");
+            snprintf(r->words, sizeof r->words, "TRUST AND ENERGY AT LEAST 4");
+            snprintf(r->words2, sizeof r->words2, "HUNGER <=6 AND STRESS <=4");
+            snprintf(r->progress, sizeof r->progress, r->met ? "A HEALTHY PAIR IS READY" : "LET YOUR PAIR SETTLE");
             break;
         case FRY_REQ_FEED:
             snprintf(r->title, sizeof r->title, "MEALS");
@@ -1803,11 +2520,10 @@ int progression_next_fry(const tank_t *t, fry_req_t out[FRY_REQ_MAX], bool *stag
             snprintf(r->progress, sizeof r->progress, r->met ? "DONE" : "NOT YET");
             break;
         case FRY_REQ_GROW: {
-            const fish_t *f = &t->fish[t->n_fish - 1];
-            snprintf(r->title, sizeof r->title, "GROW");
-            snprintf(r->words, sizeof r->words, "THE YOUNGEST FISH MUST");
-            snprintf(r->words2, sizeof r->words2, need >= STAGE_ADULT_AGE ? "GROW INTO AN ADULT" : "GROW INTO A JUVENILE");
-            snprintf(r->progress, sizeof r->progress, "%s IS %s", f->name, STAGE_WORDS[f->stage & 3]);
+            snprintf(r->title, sizeof r->title, "PAIR");
+            snprintf(r->words, sizeof r->words, "TWO ADULTS OF THE SAME TYPE");
+            snprintf(r->words2, sizeof r->words2, "LIVING IN THIS AQUARIUM");
+            snprintf(r->progress, sizeof r->progress, r->met ? "A MATCHING PAIR IS READY" : "BUY A PAIR OR LET FRY GROW");
             break; }
         case FRY_REQ_CHANGE: {
             const fish_t *f = &t->fish[t->n_fish - 1];
@@ -1817,35 +2533,25 @@ int progression_next_fry(const tank_t *t, fry_req_t out[FRY_REQ_MAX], bool *stag
             if (r->met) snprintf(r->progress, sizeof r->progress, "DONE");
             else snprintf(r->progress, sizeof r->progress, "%d%% THERE", (int)(r->frac * 100 + 0.5f));
             break; }
-        case FRY_REQ_GLASS: {
-            int pct = (int)(g[i].have * 100 + 0.5f), limit = (int)(ALGAE_DIRTY * 100 + 0.5f);
-            snprintf(r->title, sizeof r->title, "GLASS");
-            snprintf(r->words, sizeof r->words, "NO MORE THAN %d%%", limit);          /* Strato's words, 2026-09-16 */
-            snprintf(r->words2, sizeof r->words2, "ALGAE COVERAGE");
-            if (r->met) snprintf(r->progress, sizeof r->progress, "CURRENTLY CLEAN ENOUGH");
-            else snprintf(r->progress, sizeof r->progress, "%d%% COVERED NOW", pct);
-            break; }
         }
     }
-    /* and the nursery: every arrival needs grass to be born in */
+    /* Keep the stable nursery requirement ID; the starter refuge makes it free. */
     {
         fry_req_t *r = &out[n++];
         memset(r, 0, sizeof *r);
-        float best = 0;
-        for (int b = 0; b < VEG_BEDS; b++) if (t->veg_growth[b] > best) best = t->veg_growth[b];
         r->kind = FRY_REQ_GRASS; r->met = tank_nursery_bed(t) >= 0;
-        r->frac = r->met ? 1.0f : best / VEG_NURSERY;
-        snprintf(r->title, sizeof r->title, "GRASS");
-        snprintf(r->words, sizeof r->words, "ONE GRASS BED MUST GROW");
-        snprintf(r->words2, sizeof r->words2, "TALL ENOUGH TO HIDE IN");
-        if (r->met) snprintf(r->progress, sizeof r->progress, "A NURSERY BED IS READY");
-        else snprintf(r->progress, sizeof r->progress, "TALLEST BED %d%% THERE", (int)(r->frac * 100 + 0.5f));
+        r->frac = r->met ? 1.0f : 0;
+        snprintf(r->title, sizeof r->title, "REFUGE");
+        snprintf(r->words, sizeof r->words, "A QUIET PLACE FOR FRY");
+        snprintf(r->words2, sizeof r->words2, "STARTER ROCK IS FREE");
+        snprintf(r->progress, sizeof r->progress, r->met ? "A SAFE REFUGE IS READY" : "ARRANGE A SHELTER");
     }
     return n;
 }
 
 static bool arrival_earned(const tank_t *t) {
     if (progression_creative(t)) return false;
+    if (s_setup_pending || s_newborn >= 0 || !progression_breeding_pair(t, NULL, NULL)) return false;
     if (occupied_slots(t) >= POP_CAP || occupied_slots(t) >= N_FISH_MAX) return false;
     if (tank_nursery_bed(t) < 0) return false;   /* no grass to be born in */
     int met, total;
@@ -1858,6 +2564,12 @@ void progression_woke(tank_t *t) { if (!progression_creative(t) && s_arrival_pen
 void progression_stage_arrival(tank_t *t) { (void)t; if (!s_arrival_pending) { s_arrival_pending = true; mark_dirty(); } }
 
 void progression_fresh(tank_t *t) {
+    t->foliage = (foliage_state_t){1, 0, 0, 0};
+    memset(&t->progression, 0, sizeof t->progression);
+    t->progression.version = 1;
+    t->progression.food_tier = PROGRESSION_FOOD_BASE;
+    t->progression.theme_unlocks = 1u;
+    t->progression.variety_unlocks = (uint16_t)(1u << FISH_CLASSIC);
     memset(&t->game_income, 0, sizeof t->game_income); t->game_income.version = 1;
     memset(&t->mussel, 0, sizeof t->mussel); t->mussel_fraction = 0; t->mussel_glint = 0;
     s_hard_save_failed = s_hard_departed = false;
@@ -1873,8 +2585,8 @@ void progression_fresh(tank_t *t) {
     tank_new_population(t);          /* a new tank: two FRY, contrasting -
                                       * the keeper watches them grow up */
     for (int i = 0; i < N_FISH_MAX; i++) s_age[i] = 0;
-    t->tank_ms_bits = TMS_PAIR;
-    for (int i = 0; i < t->n_fish; i++) { t->fish[i].ms_bits = MS_ARRIVED; apply_growth(&t->fish[i]); }
+    t->tank_ms_bits = 0;
+    for (int i = 0; i < t->n_fish; i++) { t->fish[i].ms_bits = 0; apply_growth(&t->fish[i]); }
     memset(&t->polish, 0, sizeof t->polish);
     companion_polish_init(t, true);
     s_arrival_pending = false; s_spawn_in = -1; s_prev_night = t->night;
@@ -1935,7 +2647,7 @@ static bool extra_games_valid(const game_records_t *s) {
     return companion_games_valid(s);
 }
 /* The one full save image for load, save, backup and restore: all run on the tank
- * task and none nests another, and each clears it before use. At 6424 bytes a stack
+ * task and none nests another, and each clears it before use. At 6448 bytes a stack
  * copy overflowed the tank stack under the director. On the ESP32 it lives in the
  * otherwise idle 8 KB of RTC slow memory: a DRAM copy cut the heap's largest block
  * from 10 KB to 3 KB, failing purchases (tank_t copies) and weather TLS. */
@@ -1972,6 +2684,23 @@ static bool retire_pumpkin(save_t *sv) {
     return changed;
 }
 
+static bool retire_upkeep(save_t *sv) {
+    bool changed = false;
+    for (int item = 30; item <= 31; item++) {
+        uint32_t local = SD_ITEMS[item].bit;
+        uint64_t bit = UINT64_C(1) << item;
+        bool owned = (sv->sd_unlocks & local) != 0;
+        bool paid = owned && (sv->profile.paid_items & bit);
+        changed |= owned || (sv->profile.owned_items & bit) || (sv->profile.paid_items & bit);
+        int refund = paid && sv->profile.mode != GAME_MODE_CREATIVE ? progression_sell_value(item) : 0;
+        if (refund > INT_MAX - sv->sd_balance) refund = INT_MAX - sv->sd_balance;
+        sv->sd_balance += refund;
+        sv->sd_unlocks &= ~local;
+        sv->profile.owned_items &= ~bit;
+        sv->profile.paid_items &= ~bit;
+    }
+    return changed;
+}
 static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     save_t *sv = &s_save_scratch; memset(sv, 0, sizeof *sv);
     *saved_unix = 0; s_loaded_release = 0; s_loaded_unix = 0;
@@ -1982,13 +2711,25 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     if (record) { *sv = *record; got = sizeof *sv; loaded = true; }
     else loaded = persist_port_load(sv, sizeof *sv, &got) && got >= SAVE_CORE_SIZE && got <= sizeof *sv;
     if (!loaded || (got > offsetof(save_t, care) && got < offsetof(save_t, inventory)) ||
-        (got > offsetof(save_t, inventory) && got != offsetof(save_t, content) && got != offsetof(save_t, fixed) && got != sizeof *sv) ||
+        (got > offsetof(save_t, inventory) && got != offsetof(save_t, content) && got != offsetof(save_t, fixed) &&
+         got != offsetof(save_t, reef) && got != offsetof(save_t, progression) &&
+         got != offsetof(save_t, foliage) && got != sizeof *sv) ||
         sv->magic != SAVE_MAGIC || !migrate_profile(sv) || !care_valid(&sv->care) ||
-        !inventory_valid(&sv->inventory) || !content_valid(&sv->content, &sv->inventory) || !fixed_valid(&sv->fixed) || sv->n_fish > N_FISH_MAX ||
+        !inventory_valid(&sv->inventory) || !content_valid(&sv->content, &sv->inventory) || !fixed_valid(&sv->fixed) ||
+        !reef_valid(&sv->reef) || !creatures_valid(&sv->creatures, sv->sd_unlocks) || sv->n_fish > N_FISH_MAX ||
+        !progression_state_valid(&sv->progression) ||
+        !foliage_valid(&sv->foliage) ||
         !mussel_valid(&sv->mussel) ||
         !game_income_valid(&sv->game_income, sv->care.game_paid) ||
         (sv->profile.mode != GAME_MODE_HARD && sv->n_fish < 2 && !sv->companion.away) ||
         sv->n_fish + sv->companion.away > N_FISH_MAX) return false;
+    if (got >= offsetof(save_t, foliage) && !sv->progression.version) return false;
+    if (got == sizeof *sv && !sv->foliage.version) return false;
+    if (!sv->foliage.version) { foliage_migrate(&sv->foliage); mark_dirty(); }
+    if (!sv->progression.version) {
+        progression_state_migrate(&sv->progression, sv->journal.xp, sv->journal.theme);
+        mark_dirty();
+    }
     if (!sv->aquariums.count) sv->aquariums.count = 1;
     if (sv->aquariums.count > AQUARIUM_CAP || sv->aquariums.active >= sv->aquariums.count ||
         (sv->aquariums.stat_upgrades & ~STAT_MASK) ||
@@ -2016,6 +2757,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     if (sv->companion.away && !bank_valid(&sv->companion.traveler)) return false;
     for (int i = 0; i < sv->bank_count; i++) if (!bank_valid(&sv->bank[i])) return false;
     if (retire_pumpkin(sv)) mark_dirty();
+    if (retire_upkeep(sv)) mark_dirty();
     tank_reframe(t, sv->companion.display_compact != 0);
     if (got == SAVE_PRE_BUBBLE_SIZE) {         /* the first public installer's layout: see SAVE_PRE_BUBBLE_SIZE */
         memmove(&sv->ms_seen, &sv->bubble_x, sizeof sv->ms_seen + sizeof sv->tank_ms_seen);
@@ -2067,7 +2809,7 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
         else if (sv->veg_growth[b] > 0) tank_veg_set(t, b, sv->veg_growth[b]);
     }
     tank_veg_sync(t);
-    memcpy(t->algae, sv->algae, ALGAE_CELLS);
+    memset(t->algae, 0, sizeof t->algae);
     t->trims = sv->trims; t->cells_cleaned = sv->cells_cleaned;
     /* the sand dollar tail (zeros for an older save: the ledger back-pays) */
     t->sd_balance = sv->sd_balance; t->sd_earned = sv->sd_earned; t->sd_unlocks = sv->sd_unlocks & SD_ITEM_MASK;
@@ -2135,6 +2877,16 @@ static bool load_save(tank_t *t, int64_t *saved_unix, const save_t *record) {
     }
     t->game_income = sv->game_income;
     t->care = sv->care; t->care_fraction = 0;
+    t->reef = sv->reef;
+    t->creatures = sv->creatures;
+    t->progression = sv->progression;
+    t->foliage = sv->foliage;
+    creatures_migrate(&t->creatures, sv->sd_unlocks, sv->profile.paid_items);
+    t->creature_tick_s = 0;
+    t->reef_currents = sv->reef.currents;
+    t->reef_visits = sv->reef.visits;
+    t->reef_flow_s = t->reef_flow_cooldown = 0;
+    t->reef_flow_seen = 0;
     s_hard_save_failed = s_hard_departed = false;
     t->visitor_left = 0;
     for (int i = 0; i < t->n_fish; i++) {
@@ -2209,18 +2961,20 @@ float progression_boot(tank_t *t) {
 
 void progression_settings_changed(void) { mark_dirty(); }
 
+/* favorite piece present +10%, missing -10%; hybrid vigor up to +10% */
+float progression_fish_growth_factor(const tank_t *t, int fish) {
+    if (!t || fish < 0 || fish >= t->n_fish) return 1;
+    int comfort = tank_fish_comfort(t, fish);
+    return (comfort > 0 ? 1.10f : comfort < 0 ? 0.90f : 1) * (1 + progression_fish_vigor(t, fish) * 0.01f);
+}
 void progression_slept(tank_t *t, float seconds) {
     if (seconds <= 0) return;
     tank_tick_sleep(t, seconds);
     fry_age(t, seconds);                      /* the fry offer ages asleep too, in full */
     for (int i = 0; i < t->n_fish; i++) {     /* and they grew, slowly, in the dark */
-        s_age[i] += seconds * SLEEP_GROWTH_FRAC;
+        s_age[i] += seconds * SLEEP_GROWTH_FRAC * progression_food_growth_multiplier(t) * progression_fish_growth_factor(t, i);
         apply_stage(&t->fish[i], s_age[i], false); apply_growth(&t->fish[i]);
     }
-    /* the tank milestone (2026-09-15, was "first quiet night" - every fish
-       resting under the old day/night cycle): one unbroken stretch of device
-       sleep as long as a night. The cap keeps a week's absence a single span. */
-    if (seconds >= FULL_NIGHT_S) set_tms(t, TMS_FIRST_FULL_NIGHT);
     mark_dirty();
 }
 
@@ -2299,16 +3053,16 @@ static void hard_tick(tank_t *t, float dt) {
 }
 void progression_tick(tank_t *t, float dt) {
     if (!s_booted || !isfinite(dt) || dt <= 0) return;
+    creatures_tick(t, dt);
     t->mussel_glint = fmaxf(0, t->mussel_glint - fminf(dt, 1));
     care_tick(t, dt);
     mussel_tick(t, dt);
     hard_tick(t, dt);
-    float aged = dt * progression_time_scale;                    /* growth: every awake second, lit or not */
+    float aged = dt * progression_time_scale * progression_food_growth_multiplier(t);
     float tended = t->night ? 0 : aged;                          /* drift: pressure only while lit and lived-in */
-    int n_dart = 0; bool changed_someone = false, reef_visit = false;
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
-        s_age[i] += aged;
+        s_age[i] += aged * progression_fish_growth_factor(t, i);
         apply_stage(f, s_age[i], false);
         apply_growth(f);
         /* trait drift, slow: calm + fed -> bolder/more social; startled -> shyer */
@@ -2319,44 +3073,8 @@ void progression_tick(tank_t *t, float dt) {
         if (f->goal.id == GOAL_FOLLOW_FRIEND) { f->sociable = clampf(f->sociable + k * 0.5f, 0.05f, 0.95f); pressure += k * 0.5f; }
         else if (f->goal.id == GOAL_EXPLORE) { f->sociable = clampf(f->sociable - k * 0.2f, 0.05f, 0.95f); pressure += k * 0.2f; }
         f->drift_acc += pressure;
-        if (fabsf(f->bold - f->bold0) >= 0.11f || fabsf(f->sociable - f->sociable0) >= 0.11f) changed_someone = true;
-
-        /* milestones: firsts the fish chose to do */
-        if (f->goal.id == GOAL_DART_PLAY && f->goal_age > 1.0f) set_ms(f, MS_FIRST_DART);
-        if (f->goal.id == GOAL_VISIT_BUBBLES && tank_dist(f->x, f->y, t->bubble_x, t->bubble_y) < 90) set_ms(f, MS_FIRST_BUBBLES);
-        if (f->goal.id == GOAL_INSPECT_REEF) {               /* its landmark: the reef cluster once there is one */
-            float rx, ry; tank_reef_spot(t, &rx, &ry);
-            if (tank_dist(f->x, f->y, rx, ry) < 90) {
-                set_ms(f, MS_INSPECTED);                      /* no badge (0.3.0): it reveals the curiosity slider */
-                if (t->sd_unlocks & SD_ITEM_CLUSTER) reef_visit = true;
-            }
-        }
-        /* the seagrass: resting inside a canopy, or tucked into one while
-           rattled - the grass as the place to be safe (2026-10-02, in the
-           badge slot "first reef" had) */
-        if (((f->goal.id == GOAL_REST && f->goal_age > 2.0f) || f->stress >= 5.0f || f->breather > 2.0f) && tank_in_grass(t, f->x, f->y))
-            set_ms(f, MS_FIRST_GRASS);
-        if (f->goal.id == GOAL_FOLLOW_FRIEND && f->goal_age > 2.0f) set_ms(f, MS_FIRST_FOLLOW);
-        if (f->goal.id == GOAL_DART_PLAY) n_dart++;
     }
-    if (n_dart >= 2) set_tms(t, TMS_FIRST_PLAY_SESSION);
-    if (changed_someone) set_tms(t, TMS_CHANGED_SOMEONE);
-    if (t->player_feedings > 0) set_tms(t, TMS_FIRST_FEEDING);
-    /* upkeep milestones + event saves (a chore done deserves to stick) */
-    static int32_t s_prev_trims, s_prev_cleaned;
-    if (t->trims > 0) set_tms(t, TMS_FIRST_TRIM);
-    if (t->algae_colonies > 0) set_tms(t, TMS_FIRST_CLEANING);   /* the first colony wiped away, as the first cut is the first trimming
-                                                                    (0.3.2; it was 30 cells, hours of film on a new tank) */
-    if ((t->sd_unlocks & SD_ITEM_SHRIMP) && t->shrimp_n >= SHRIMP_MAX) set_tms(t, TMS_FULL_SCHOOL);
-    if ((t->sd_unlocks & SD_ITEM_SEAHORSE) && t->sh_eaten > 0) set_tms(t, TMS_SEAHORSE_FED);   /* its first snack (0.3.6) */
-    if (reef_visit) set_tms(t, TMS_FIRST_REEF);  /* a fish chose to look at the reef cluster */
-    if (s_sale_need > 0) set_tms(t, TMS_FIRST_SALE);   /* a tank that sold a fish before 0.3.5: its badge, and the fry */
     fry_age(t, aged);
-    if (t->trims != s_prev_trims || t->cells_cleaned != s_prev_cleaned) {
-        s_prev_trims = t->trims; s_prev_cleaned = t->cells_cleaned;
-        mark_dirty();
-    }
-    sd_tick(t);                                  /* the sand dollars owed for all of the above */
     journal_tick(t);
 
     /* ravenous: a starving tank with empty water begs at the surface (tank.c
@@ -2382,15 +3100,6 @@ void progression_tick(tank_t *t, float dt) {
             else { s_gave_up = true; s_gave_feedings0 = t->player_feedings; }   /* AUTO FEED off: nothing falls; they
                                                                  stop begging and go hungry until the keeper feeds */
         }
-    }
-    /* AUTO FEED off: going hungry costs trust (the constants' note above) */
-    for (int i = 0; i < t->n_fish; i++) {
-        fish_t *f = &t->fish[i];
-        if (t->companion.cozy || !t->autofeed_off || f->hunger < STARVE_HUNGER) { s_starve_s[i] = 0; continue; }
-        if (t->night) continue;                               /* dark: they rest; the count holds */
-        s_starve_s[i] += dt;
-        if (s_starve_s[i] > STARVE_GRACE_S && f->trust > STARVE_TRUST_FLOOR)
-            f->trust = fmaxf(STARVE_TRUST_FLOOR, f->trust - STARVE_TRUST_PER_S * dt);
     }
     /* tank.c picks the presentation: empty water = beg at the surface; live
      * pellets = feeding-frenzy dash (real starving fish DART at fresh food) */
@@ -2463,6 +3172,14 @@ static void capture_save(const tank_t *t, save_t *sv) {
     sv->mussel = t->mussel;
     sv->game_income = t->game_income;
     sv->care = t->care;
+    sv->reef = t->reef;
+    sv->creatures = t->creatures;
+    creatures_migrate(&sv->creatures, t->sd_unlocks, t->profile.paid_items);
+    sv->progression = t->progression;
+    sv->foliage = t->foliage;
+    sv->reef.version = 1;
+    sv->reef.currents = t->reef_currents;
+    sv->reef.visits = t->reef_visits;
     if (sv->polish.version)
         snprintf(sv->polish.tank_name, sizeof sv->polish.tank_name, "%s", t->aquariums.name);
     sv->saved_release = PT_RELEASE_NUM;
@@ -2574,7 +3291,10 @@ static void capture_save(const tank_t *t, save_t *sv) {
     }
 }
 bool progression_save(tank_t *t) {
-    if (!s_booted || persist_port_blocked()) return false;
+    if (!t || !s_booted || persist_port_blocked()) return false;
+    progression_state_migrate(&t->progression, t->journal.xp, t->journal.theme);
+    if (!progression_state_valid(&t->progression) ||
+        t->foliage.version != 1 || !foliage_valid(&t->foliage)) return false;
     save_t *sv = &s_save_scratch; capture_save(t, sv);
     if (!persist_port_save(sv, sizeof *sv)) {
         if (!s_dirty) { s_dirty = true; s_dirty_since = 0; }
@@ -2714,7 +3434,7 @@ static const json_field_t POLISH_FIELDS[] = {
     P(decor_owned, J_U32, 1, 0, UINT32_MAX), P(decor_since, J_U32, 38, 0, UINT32_MAX),
     P(helper_meals, J_U32, 1, 0, UINT32_MAX), P(helper_trim, J_U32, 1, 0, UINT32_MAX),
     P(version, J_U8, 1, 0, 1), P(recap_count, J_U8, 1, 0, TANK_RECAP_CAP),
-    P(subtitle, J_U8, 1, 0, 4), P(emblem, J_U8, 1, 0, 3), P(scenery_unlocks, J_U8, 1, 0, 63),
+    P(subtitle, J_U8, 1, 0, COMPANION_SUBTITLE_COUNT - 1), P(emblem, J_U8, 1, 0, COMPANION_EMBLEM_COUNT - 1), P(scenery_unlocks, J_U8, 1, 0, 63),
     P(tank_name, J_HEX, 16, 0, 255),
 };
 #undef P
@@ -2784,6 +3504,41 @@ static const json_field_t CONTENT_FIELDS[] = {
 static const json_field_t FIXED_FIELDS[] = {
     FIXED(version, J_U8, 1, 1), FIXED(x, J_FLOAT, DECOR_FIXED_COUNT, TANK_MAX_W),
     FIXED(z, J_HEX, DECOR_FIXED_COUNT, 255), FIXED(rank, J_HEX, DECOR_FIXED_COUNT, 255)
+};
+static const json_field_t REEF_FIELDS[] = {
+    {"currents", offsetof(reef_state_t, currents), 1, J_U32, 0, UINT32_MAX},
+    {"visits", offsetof(reef_state_t, visits), 1, J_U32, 0, UINT32_MAX},
+    {"current_base", offsetof(reef_state_t, current_base), 1, J_U32, 0, UINT32_MAX},
+    {"visit_base", offsetof(reef_state_t, visit_base), 1, J_U32, 0, UINT32_MAX},
+    {"version", offsetof(reef_state_t, version), 1, J_U8, 1, 1},
+};
+static const json_field_t CREATURE_FIELDS[] = {
+#define CST(k, n, member, type, hi) {n, offsetof(creature_state_t, stock) + (k) * sizeof(creature_stock_t) + offsetof(creature_stock_t, member), 1, type, 0, hi}
+    CST(0, "snail_adults", adults, J_U8, 2),
+    CST(0, "snail_offspring", offspring, J_U8, CREATURE_NURSERY_CAP),
+    CST(0, "snail_seconds", active_s, J_U16, CREATURE_BREED_SECONDS - 1),
+    CST(1, "urchin_adults", adults, J_U8, 2),
+    CST(1, "urchin_offspring", offspring, J_U8, CREATURE_NURSERY_CAP),
+    CST(1, "urchin_seconds", active_s, J_U16, CREATURE_BREED_SECONDS - 1),
+    CST(2, "seahorse_adults", adults, J_U8, 2),
+    CST(2, "seahorse_offspring", offspring, J_U8, CREATURE_NURSERY_CAP),
+    CST(2, "seahorse_seconds", active_s, J_U16, CREATURE_BREED_SECONDS - 1),
+#undef CST
+    {"paid_adults", offsetof(creature_state_t, paid_adults), CREATURE_STOCK_COUNT, J_U8, 0, 2},
+    {"revision", offsetof(creature_state_t, revision), 1, J_U32, 0, UINT32_MAX},
+    {"version", offsetof(creature_state_t, version), 1, J_U8, 1, 1},
+};
+static const json_field_t PROGRESSION_FIELDS[] = {
+    {"version", offsetof(progression_state_t, version), 1, J_U8, 1, 1},
+    {"food_tier", offsetof(progression_state_t, food_tier), 1, J_U8, 0, PROGRESSION_FOOD_TIER_COUNT - 1},
+    {"theme_unlocks", offsetof(progression_state_t, theme_unlocks), 1, J_U8, 0, (1u << JOURNAL_THEME_COUNT) - 1},
+    {"variety_unlocks", offsetof(progression_state_t, variety_unlocks), 1, J_U16, 0, (1u << FISH_VARIETY_COUNT) - 1},
+};
+static const json_field_t FOLIAGE_FIELDS[] = {
+    {"version", offsetof(foliage_state_t, version), 1, J_U8, 1, 1},
+    {"owned", offsetof(foliage_state_t, owned), 1, J_U8, 0, (1u << FOLIAGE_COUNT) - 1},
+    {"planted", offsetof(foliage_state_t, planted), 1, J_U8, 0, (1u << FOLIAGE_COUNT) - 1},
+    {"reserved", offsetof(foliage_state_t, reserved), 1, J_U8, 0, 0},
 };
 #undef FIXED
 #define MUS(f, k, hi) { #f, offsetof(mussel_state_t, f), 1, k, 0, hi }
@@ -2886,6 +3641,24 @@ static bool json_append(char **text, size_t *used, const char *part) {
     *text = next; *used += n;
     return true;
 }
+/* Contract/auction marks are optional trailing keys, omitted while zero. */
+static cJSON *progression_json(const progression_state_t *p) {
+    cJSON *o = json_fields(p, PROGRESSION_FIELDS, FIELD_COUNT(PROGRESSION_FIELDS));
+    if (o && ((p->reserved && !cJSON_AddNumberToObject(o, "contract_done", p->reserved)) ||
+              (p->pad && !cJSON_AddNumberToObject(o, "auction_done", p->pad)))) {
+        cJSON_Delete(o); return NULL;
+    }
+    return o;
+}
+static bool json_optional_uint(const cJSON *obj, const char *name, double max, double *out) {
+    const cJSON *v = cJSON_GetObjectItemCaseSensitive(obj, name);
+    *out = 0;
+    if (!v) return true;
+    if (!cJSON_IsNumber(v) || !isfinite(v->valuedouble) || v->valuedouble < 1 || v->valuedouble > max ||
+        floor(v->valuedouble) != v->valuedouble) return false;
+    *out = v->valuedouble;
+    return true;
+}
 static bool json_append_value(char **text, size_t *used, cJSON *value) {
     if (!value) return false;
     char *part = cJSON_PrintUnformatted(value);
@@ -2899,7 +3672,7 @@ char *progression_backup_json(const tank_t *t) {
     save_t *sv = &s_save_scratch; capture_save(t, sv);
     char header[128], *text = NULL;
     size_t used = 0;
-    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":20,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
+    snprintf(header, sizeof header, "{\"format\":\"pocket-tank\",\"schema\":23,\"board\":\"cyd2432s028\",\"width\":%d,\"height\":%d,\"tank\":", TANK_W, TANK_H);
     if (!json_append(&text, &used, header)) goto fail;
     cJSON *tank = json_fields(sv, SAVE_FIELDS, FIELD_COUNT(SAVE_FIELDS));
     if (!tank) goto fail;
@@ -2923,8 +3696,14 @@ char *progression_backup_json(const tank_t *t) {
     if (!json_append_value(&text, &used, companion) ||
         !json_append(&text, &used, ",\"polish\":") ||
         !json_append_value(&text, &used, json_fields(&sv->polish, POLISH_FIELDS, FIELD_COUNT(POLISH_FIELDS))) ||
-        !json_append(&text, &used, ",\"story\":") ||
-        !json_append_value(&text, &used, json_fields(&sv->story, STORY_FIELDS, FIELD_COUNT(STORY_FIELDS))) ||
+        !json_append(&text, &used, ",\"story\":")) goto fail;
+    cJSON *story = json_fields(&sv->story, STORY_FIELDS, FIELD_COUNT(STORY_FIELDS));
+    if (!story || (sv->story.collection &&
+        !cJSON_AddNumberToObject(story, "collection", sv->story.collection)) ||
+        (sv->story.statue && !cJSON_AddNumberToObject(story, "statue", sv->story.statue))) {
+        cJSON_Delete(story); goto fail;
+    }
+    if (!json_append_value(&text, &used, story) ||
         !json_append(&text, &used, ",\"games\":") ||
         !json_append_value(&text, &used, json_fields(&sv->games, GAME_FIELDS, FIELD_COUNT(GAME_FIELDS))) ||
         !json_append(&text, &used, ",\"rpg\":") ||
@@ -2943,6 +3722,14 @@ char *progression_backup_json(const tank_t *t) {
         !json_append_value(&text, &used, json_fields(&sv->content, CONTENT_FIELDS, FIELD_COUNT(CONTENT_FIELDS))) ||
         !json_append(&text, &used, ",\"fixed\":") ||
         !json_append_value(&text, &used, json_fields(&sv->fixed, FIXED_FIELDS, FIELD_COUNT(FIXED_FIELDS))) ||
+        !json_append(&text, &used, ",\"reef\":") ||
+        !json_append_value(&text, &used, json_fields(&sv->reef, REEF_FIELDS, FIELD_COUNT(REEF_FIELDS))) ||
+        !json_append(&text, &used, ",\"creatures\":") ||
+        !json_append_value(&text, &used, json_fields(&sv->creatures, CREATURE_FIELDS, FIELD_COUNT(CREATURE_FIELDS))) ||
+        !json_append(&text, &used, ",\"progression\":") ||
+        !json_append_value(&text, &used, progression_json(&sv->progression)) ||
+        !json_append(&text, &used, ",\"foliage\":") ||
+        !json_append_value(&text, &used, json_fields(&sv->foliage, FOLIAGE_FIELDS, FIELD_COUNT(FOLIAGE_FIELDS))) ||
         !json_append(&text, &used, ",\"mussel\":") ||
         !json_append_value(&text, &used, json_fields(&sv->mussel, MUSSEL_FIELDS, FIELD_COUNT(MUSSEL_FIELDS))) ||
         !json_append(&text, &used, ",\"game_income\":") ||
@@ -2970,7 +3757,11 @@ static int json_hex_digit(char c) {
     return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
 }
 static bool json_read_fields(void *data, const cJSON *obj, const json_field_t *fields, size_t count, char *error, size_t size) {
-    int extra = fields == COMPANION_FIELDS && cJSON_GetObjectItemCaseSensitive(obj, "mussel_colors") ? 1 : 0;
+    int extra = (fields == COMPANION_FIELDS && cJSON_GetObjectItemCaseSensitive(obj, "mussel_colors")) ? 1 :
+                fields == STORY_FIELDS ? !!cJSON_GetObjectItemCaseSensitive(obj, "collection") +
+                                         !!cJSON_GetObjectItemCaseSensitive(obj, "statue") :
+                fields == PROGRESSION_FIELDS ? !!cJSON_GetObjectItemCaseSensitive(obj, "contract_done") +
+                                               !!cJSON_GetObjectItemCaseSensitive(obj, "auction_done") : 0;
     if (!cJSON_IsObject(obj) || cJSON_GetArraySize(obj) != (int)count + (fields == BANK_FIELDS ? 1 : 0) + extra) {
         snprintf(error, size, "Missing, extra or duplicate fields"); return false;
     }
@@ -3176,9 +3967,9 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     const cJSON *height = cJSON_GetObjectItemCaseSensitive(root, "height");
     const cJSON *fish = cJSON_GetObjectItemCaseSensitive(root, "fish");
     if (!cJSON_IsString(format) || strcmp(format->valuestring, "pocket-tank")
-        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 20 ||
+        || !cJSON_IsNumber(schema) || schema->valuedouble < 1 || schema->valuedouble > 23 ||
            schema->valuedouble != floor(schema->valuedouble)
-        || cJSON_GetArraySize(root) != (schema->valuedouble >= 20 ? 22 : schema->valuedouble >= 19 ? 21 : schema->valuedouble >= 18 ? 20 : schema->valuedouble >= 17 ? 17 : schema->valuedouble >= 16 ? 16 : schema->valuedouble >= 15 ? 14 : schema->valuedouble >= 14 ? 13 : schema->valuedouble >= 13 ? 12 : schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
+        || cJSON_GetArraySize(root) != (schema->valuedouble >= 23 ? 26 : schema->valuedouble >= 22 ? 25 : schema->valuedouble >= 21 ? 24 : schema->valuedouble >= 20 ? 22 : schema->valuedouble >= 19 ? 21 : schema->valuedouble >= 18 ? 20 : schema->valuedouble >= 17 ? 17 : schema->valuedouble >= 16 ? 16 : schema->valuedouble >= 15 ? 14 : schema->valuedouble >= 14 ? 13 : schema->valuedouble >= 13 ? 12 : schema->valuedouble >= 12 ? 11 : schema->valuedouble >= 11 ? 10 : schema->valuedouble >= 6 ? 9 : schema->valuedouble == 5 ? 8 : 7)
         || !cJSON_IsString(board) || strcmp(board->valuestring, "cyd2432s028")
         || !cJSON_IsNumber(width) || (width->valuedouble != 240 && width->valuedouble != 320)
         || !cJSON_IsNumber(height) || height->valuedouble * 4 != width->valuedouble * 3
@@ -3239,6 +4030,37 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
          !fixed_valid(&sv->fixed))) {
         snprintf(error, error_size, "Invalid scenery layout"); goto done;
     }
+    if (schema->valuedouble >= 21 &&
+        (!json_read_lazy(root, &lazy, "reef", &sv->reef,
+                        REEF_FIELDS, FIELD_COUNT(REEF_FIELDS), error, error_size) ||
+         !reef_valid(&sv->reef))) {
+        snprintf(error, error_size, "Invalid Reef Rhythm progress"); goto done;
+    }
+    if (schema->valuedouble >= 21 &&
+        (!json_read_lazy(root, &lazy, "creatures", &sv->creatures,
+                        CREATURE_FIELDS, FIELD_COUNT(CREATURE_FIELDS), error, error_size) ||
+         !creatures_valid(&sv->creatures, sv->sd_unlocks))) {
+        snprintf(error, error_size, "Invalid creature breeding stock"); goto done;
+    }
+    if (schema->valuedouble >= 22) {
+        const cJSON *prog_obj = json_expand(root, &lazy, "progression");
+        double contract = 0, auction = 0;
+        if (!json_optional_uint(prog_obj, "contract_done", 255, &contract) ||
+            !json_optional_uint(prog_obj, "auction_done", 65535, &auction) ||
+            !json_read_lazy(root, &lazy, "progression", &sv->progression,
+                            PROGRESSION_FIELDS, FIELD_COUNT(PROGRESSION_FIELDS), error, error_size) ||
+            (sv->progression.reserved = (uint8_t)contract, sv->progression.pad = (uint16_t)auction,
+             !progression_state_valid(&sv->progression))) {
+            snprintf(error, error_size, "Invalid paid progression state"); goto done;
+        }
+    } else progression_state_migrate(&sv->progression, sv->journal.xp, sv->journal.theme);
+    if (schema->valuedouble >= 23) {
+        if (!json_read_lazy(root, &lazy, "foliage", &sv->foliage,
+                           FOLIAGE_FIELDS, FIELD_COUNT(FOLIAGE_FIELDS), error, error_size) ||
+            !foliage_valid(&sv->foliage)) {
+            snprintf(error, error_size, "Invalid ground-cover sets"); goto done;
+        }
+    } else foliage_migrate(&sv->foliage);
     if (schema->valuedouble >= 18 &&
         (!json_read_lazy(root, &lazy, "inventory", &sv->inventory,
                            INVENTORY_FIELDS, FIELD_COUNT(INVENTORY_FIELDS), error, error_size) ||
@@ -3272,8 +4094,8 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
     if ((sv->sand_style && !(sv->sd_unlocks & SD_ITEM_SAND)) || (sv->water_style && !(sv->sd_unlocks & SD_ITEM_LIGHTS))) {
         snprintf(error, error_size, "Palette selected without its upgrade"); goto done;
     }
-    if ((sv->journal.grown & ~sv->journal.seen) ||
-        (!sv->creative.enabled && sv->journal.xp < journal_level_xp(JOURNAL_THEME_LEVELS[sv->journal.theme]))) {
+    if ((sv->journal.grown & ~sv->journal.seen) || sv->journal.theme >= JOURNAL_THEME_COUNT ||
+        (!sv->creative.enabled && !(sv->progression.theme_unlocks & (1u << sv->journal.theme)))) {
         snprintf(error, error_size, "Invalid journal album/theme"); goto done;
     }
     fish = json_expand(root, &lazy, "fish");
@@ -3321,11 +4143,26 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
          !companion_polish_valid(&sv->polish, sv->n_fish, sv->bank_count, sv->companion.away))) {
         snprintf(error, error_size, "Invalid aquarium memories"); goto done;
     }
-    if (schema->valuedouble >= 12 &&
-        (!json_read_lazy(root, &lazy, "story", &sv->story,
-                           STORY_FIELDS, FIELD_COUNT(STORY_FIELDS), error, error_size) ||
-         !companion_story_valid(&sv->story, sv->n_fish, sv->bank_count, sv->companion.away, sv->polish.next_id))) {
-        snprintf(error, error_size, "Invalid aquarium story"); goto done;
+    if (schema->valuedouble >= 12) {
+        const cJSON *story_obj = json_expand(root, &lazy, "story");
+        const cJSON *collection = cJSON_GetObjectItemCaseSensitive(story_obj, "collection");
+        const cJSON *statue = cJSON_GetObjectItemCaseSensitive(story_obj, "statue");
+        if ((collection && (!cJSON_IsNumber(collection) || !isfinite(collection->valuedouble) ||
+            collection->valuedouble < 1 || collection->valuedouble >= (double)(1u << (3 * FISH_VARIETY_COUNT)) ||
+            floor(collection->valuedouble) != collection->valuedouble)) ||
+            (statue && (!cJSON_IsNumber(statue) || !isfinite(statue->valuedouble) ||
+            statue->valuedouble < 1 || statue->valuedouble > FISH_VARIETY_COUNT ||
+            floor(statue->valuedouble) != statue->valuedouble))) {
+            snprintf(error, error_size, "Invalid variety collection"); goto done;
+        }
+        uint32_t found = collection ? (uint32_t)collection->valuedouble : 0;
+        uint16_t shown = statue ? (uint16_t)statue->valuedouble : 0;
+        if (!json_read_lazy(root, &lazy, "story", &sv->story,
+                            STORY_FIELDS, FIELD_COUNT(STORY_FIELDS), error, error_size) ||
+            (sv->story.collection = found, sv->story.statue = shown,
+             !companion_story_valid(&sv->story, sv->n_fish, sv->bank_count, sv->companion.away, sv->polish.next_id))) {
+            snprintf(error, error_size, "Invalid aquarium story"); goto done;
+        }
     }
     if (schema->valuedouble >= 13 &&
         (!json_read_lazy(root, &lazy, "games", &sv->games,
@@ -3379,7 +4216,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
             snprintf(error, error_size, "Backup mode differs or current save is unavailable"); goto done;
         }
         if (inventory_mismatch) {
-            snprintf(error, error_size, "Decoration inventory changed; cannot reclaim transferred copies"); goto done;
+            snprintf(error, error_size, "Inventory or creature stock changed; cannot rewind copies"); goto done;
         }
         if (identity_error) { snprintf(error, error_size, "%s", identity_error); goto done; }
     }
@@ -3397,7 +4234,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
             }
             if (!inventory_restore_safe(sv, current)) {
                 free(current);
-                snprintf(error, error_size, "Decoration inventory changed; cannot reclaim transferred copies"); goto done;
+                snprintf(error, error_size, "Inventory or creature stock changed; cannot rewind copies"); goto done;
             }
             const char *identity_error = restore_fish_identities(sv, current);
             if (identity_error) {
@@ -3409,6 +4246,7 @@ bool progression_restore_json(const char *json, size_t len, bool commit, char *e
             }
             sv->game_income = current->game_income;
             sv->care = current->care;
+            sv->reef = current->reef;
             /* A portable snapshot cannot rewind the shared creature or its
              * care-day allowance, including a snapshot from before unlock. */
             if (current->mussel.owned) {
@@ -3590,6 +4428,19 @@ static void share_progress(save_t *to, const save_t *from) {
     to->tank_ms_bits |= from->tank_ms_bits; to->tank_ms_seen |= from->tank_ms_seen;
     to->games = from->games; to->games_extra = from->games_extra;
     to->care = from->care;
+    to->reef = from->reef;
+    progression_state_t incoming_progression = to->progression;
+    progression_state_t active_progression = from->progression;
+    progression_state_migrate(&incoming_progression, to->journal.xp, to->journal.theme);
+    progression_state_migrate(&active_progression, from->journal.xp, from->journal.theme);
+    to->progression = incoming_progression;
+    if (active_progression.food_tier > to->progression.food_tier)
+        to->progression.food_tier = active_progression.food_tier;
+    to->progression.theme_unlocks |= active_progression.theme_unlocks | 1u;
+    to->progression.variety_unlocks |=
+        active_progression.variety_unlocks | (uint16_t)(1u << FISH_CLASSIC);
+    to->progression.reserved = active_progression.reserved;   /* contract / auction marks are profile-wide */
+    to->progression.pad = active_progression.pad;
     to->mussel = from->mussel;
     to->game_income = from->game_income;
     to->rpg = from->rpg;
@@ -3650,7 +4501,7 @@ static const char *aquarium_move(tank_t *t, int target) {
     bool buy = target == t->aquariums.count;
     bool creative_new = buy && progression_creative(t);
     if (!progression_mode_chosen(t)) return "CHOOSE YOUR GAME MODE FIRST";
-    if (buy && !creative_new && t->sd_balance < AQUARIUM_PRICE) return "NEED 500 SAND DOLLARS";
+    if (buy && !creative_new && t->sd_balance < AQUARIUM_PRICE) return "NEED 500 DOUBLOONS";
     struct { save_t outgoing, incoming; } *s = malloc(sizeof *s);
     if (!s) return "NOT ENOUGH MEMORY";
     const char *error = NULL;
@@ -3664,12 +4515,16 @@ static const char *aquarium_move(tank_t *t, int target) {
         bool compact = TANK_W == TANK_MAX_W;
         tank_resolution(true);
         tank_init(fresh, owned.id[0] ^ owned.id[1] ^ (uint32_t)target);
+        fresh->progression.version = 1;
+        fresh->progression.food_tier = PROGRESSION_FOOD_BASE;
+        fresh->progression.theme_unlocks = 1u;
+        fresh->progression.variety_unlocks = (uint16_t)(1u << FISH_CLASSIC);
         fresh->companion.version = COMPANION_VERSION;
         fresh->companion.display_compact = 1;
         tank_new_population(fresh);
-        fresh->tank_ms_bits = TMS_PAIR;
+        fresh->tank_ms_bits = 0;
         for (int i = 0; i < fresh->n_fish; i++) {
-            fresh->fish[i].ms_bits = MS_ARRIVED;
+            fresh->fish[i].ms_bits = 0;
             apply_growth(&fresh->fish[i]);
         }
         companion_polish_init(fresh, true);
@@ -3684,11 +4539,20 @@ static const char *aquarium_move(tank_t *t, int target) {
         owned.count++;
         if (!creative_new) s->outgoing.sd_balance -= AQUARIUM_PRICE;
     } else {
-        if (!aquarium_port_read(owned.id, target, &s->incoming, sizeof s->incoming)) {
+        size_t got = 0;
+        if (!aquarium_port_read_sized(owned.id, target, &s->incoming, sizeof s->incoming, &got)) {
             error = "TANK READ FAILED - NOT SWITCHED"; goto done;
         }
         save_t *v = &s->incoming;
-        if (v->magic != SAVE_MAGIC || !migrate_profile(v) || v->profile.mode != t->profile.mode ||
+        if (got < SAVE_CORE_SIZE || got > sizeof *v ||
+            (got > offsetof(save_t, care) && got < offsetof(save_t, inventory)) ||
+            (got > offsetof(save_t, inventory) && got != offsetof(save_t, content) &&
+             got != offsetof(save_t, fixed) && got != offsetof(save_t, reef) &&
+             got != offsetof(save_t, progression) && got != offsetof(save_t, foliage) && got != sizeof *v) ||
+            !foliage_valid(&v->foliage) ||
+            (got == sizeof *v && v->foliage.version != 1) ||
+            (got >= offsetof(save_t, foliage) && v->progression.version != 1) ||
+            v->magic != SAVE_MAGIC || !migrate_profile(v) || v->profile.mode != t->profile.mode ||
             (v->profile.mode != GAME_MODE_HARD && v->n_fish < 2 && !v->companion.away) ||
             v->n_fish + v->companion.away > POP_CAP || v->bank_count > FISH_BANK_CAP ||
             !companion_valid_mode(&v->companion, v->creative.enabled != 0) ||
@@ -3699,6 +4563,7 @@ static const char *aquarium_move(tank_t *t, int target) {
             !inventory_valid(&v->inventory) || !content_valid(&v->content, &v->inventory) || !fixed_valid(&v->fixed) ||
             !mussel_valid(&v->mussel) ||
             !game_income_valid(&v->game_income, v->care.game_paid) ||
+            !progression_state_valid(&v->progression) ||
             (v->creative.enabled && v->n_fish + v->companion.away > CREATIVE_FISH_CAP) ||
             (v->companion.away && !bank_valid(&v->companion.traveler)) ||
             (v->aquariums.stat_upgrades & ~STAT_MASK) ||
@@ -3718,6 +4583,7 @@ static const char *aquarium_move(tank_t *t, int target) {
         }
         for (int i = 0; i < v->bank_count; i++)
             if (!bank_valid(&v->bank[i])) { error = "INVALID TANK BANK"; goto done; }
+        foliage_migrate(&v->foliage);
     }
     char incoming_name[16];
     uint8_t incoming_stats = s->incoming.aquariums.stat_upgrades | s->outgoing.aquariums.stat_upgrades;
@@ -3731,6 +4597,7 @@ static const char *aquarium_move(tank_t *t, int target) {
     if (error) goto done;
     share_progress(&s->incoming, &s->outgoing);
     retire_pumpkin(&s->incoming);
+    retire_upkeep(&s->incoming);
     s->incoming.aquariums = owned; s->incoming.aquariums.active = (uint8_t)target;
     s->incoming.aquariums.stat_upgrades = incoming_stats;
     s->incoming.aquariums.clock_theme = incoming_clock;
@@ -3806,7 +4673,7 @@ const char *progression_hard_rescue(tank_t *t) {
     for (int i = 0; i < 2; i++) {
         int slot = tank_add_bought_fry(next, i, 0);
         if (slot < 0) { free(next); return "RESCUE FAILED - NO CHANGE"; }
-        next->fish[slot].ms_bits = MS_ARRIVED;
+        next->fish[slot].ms_bits = 0;
         next->profile.starvation_s[slot] = 0;
     }
     companion_polish_observe(next);
@@ -3830,7 +4697,7 @@ const char *progression_creative_add_fish(tank_t *t, int variety) {
     int slot = tank_add_bought_fry(next, 0, 0);
     if (slot < 0) { free(next); return "NO ROOM FOR ANOTHER FISH"; }
     next->fish[slot].variety = (uint8_t)variety;
-    next->fish[slot].ms_bits = MS_ARRIVED;
+    next->fish[slot].ms_bits = 0;
     next->sd_paid_fish[slot] = 0;
     double age = s_age[slot]; float starve = s_starve_s[slot];
     s_age[slot] = 0; s_starve_s[slot] = 0;

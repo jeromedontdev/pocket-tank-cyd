@@ -129,6 +129,14 @@ bool sd_port_aquarium_read(const uint32_t id[2], int slot, void *data, size_t si
     }
     return aquarium_store_read(SAVE_DIR "/tanks", id, slot, data, size);
 }
+bool sd_port_aquarium_read_sized(const uint32_t id[2], int slot, void *data, size_t size, size_t *got) {
+    if (got) *got = 0;
+    if (!legacy_aquarium_ready()) {
+        ESP_LOGE(TAG, "Legacy tank import needs the original SD card");
+        return false;
+    }
+    return aquarium_store_read_sized(SAVE_DIR "/tanks", id, slot, data, size, got);
+}
 static bool backup_latest(const char *prefix, char path[96], unsigned *number) {
     DIR *dir = opendir(SAVE_DIR);
     if (!dir) {

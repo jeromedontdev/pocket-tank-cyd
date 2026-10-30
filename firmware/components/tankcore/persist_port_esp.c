@@ -24,6 +24,7 @@ static bool s_save_blocked, s_mounted;
 static int s_marker = -1;
 static const char *tank_directory = "/profiles/tanks";
 bool sd_port_aquarium_read(const uint32_t id[2], int slot, void *data, size_t size);
+bool sd_port_aquarium_read_sized(const uint32_t id[2], int slot, void *data, size_t size, size_t *got);
 
 static bool blank_partition(const esp_partition_t *p) {
     unsigned char bytes[256];
@@ -126,16 +127,22 @@ static bool remove_archives(void) {
 }
 bool aquarium_port_ready(void) { return mount_store(); }
 bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size) {
+    return aquarium_port_read_sized(id, slot, data, size, NULL);
+}
+bool aquarium_port_read_sized(const uint32_t id[2], int slot, void *data, size_t size, size_t *got) {
+    if (got) *got = 0;
     if (!mount_store() || slot < 0 || slot >= AQUARIUM_CAP) return false;
     int present = aquarium_store_present(tank_directory, id, slot);
     if (present != 0)
-        return present > 0 && aquarium_store_read(tank_directory, id, slot, data, size);
-    if (!sd_port_aquarium_read(id, slot, data, size)) return false;
-    if (!aquarium_store_archive(tank_directory, id, slot, data, size)) {
+        return present > 0 && aquarium_store_read_sized(tank_directory, id, slot, data, size, got);
+    size_t stored_size = 0;
+    if (!sd_port_aquarium_read_sized(id, slot, data, size, &stored_size)) return false;
+    if (!aquarium_store_archive(tank_directory, id, slot, data, stored_size)) {
         ESP_LOGE(TAG, "Legacy tank %d import failed; SD source unchanged", slot + 1);
         return false;
     }
     ESP_LOGI(TAG, "Tank %d imported into internal flash; SD source retained", slot + 1);
+    if (got) *got = stored_size;
     return true;
 }
 bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_t size) {
@@ -173,7 +180,7 @@ bool persist_port_load(void *buf, size_t max, size_t *got) {
         s_marker = 1;
     }
     if (active) {
-        if (aquarium_store_read(directory, store_id, 0, buf, max)) { *got = max; return true; }
+        if (aquarium_store_read_sized(directory, store_id, 0, buf, max, got)) return true;
         s_save_blocked = true; return false;
     }
     if (marker_exists) {

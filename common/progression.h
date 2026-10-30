@@ -2,25 +2,22 @@
  * Current CYD behavior is documented in docs/CYD-FEATURES.md. Platform-agnostic;
  * persistence and wall-clock come in through two tiny port functions.
  *
- *  - Population: a new tank is two contrasting fry; the 3rd..POP_CAP-th
- *    fish ARRIVE as fry when care milestones are met (trust, feedings, a
- *    calm hold, a raised fry, drift). An arrival is staged when earned; a
- *    few seconds later the parents court down in the nursery grass and the
- *    fry is born there, in front of the keeper (2026-09-24 - it used to wait
- *    for the next light-on). A tank put to sleep first has it at the wake.
+ *  - Population: a new tank starts with two fry. Healthy, settled adult
+ *    pairs of the same variety breed after shared meals, up to POP_CAP.
+ *    Bought stock and inherited offspring are traded through the markets.
  *  - Growth: well-fed fish grow (size) and advance fry -> juv -> adult -> elder
  *    with time - every awake second, light on or off (2026-09-14, Strato:
  *    "fish don't stop growing with the light off"), and a slept span at
  *    SLEEP_GROWTH_FRAC of its length; stage changes are silent surprises.
  *  - Trait drift: bold and social creep with experience (hours of pressure).
- *  - Milestones: firsts are DETECTED from what the fish actually did (the
- *    rules-driven behavior), per fish and per tank; render shows them.
+ *  - Achievements: retired. Old bits and ledgers remain save-compatible,
+ *    but no new firsts, growth/trust payouts or achievement modals occur.
  *  - Habits: the tank remembers where you feed and greets you at light-on.
  *  - Ravenous boot: powered off >= 1 h -> fish are starving on return and wait
  *    near the surface (at your usual feeding spot) until the first feeding.
  *    Hard starvation deaths accrue only while running, never offline or from
  *    old age. Normal and Creative do not kill fish.
- *  - Saves: on events (arrival, stage, milestone, light change), coalesced to
+ *  - Saves: on events (arrival, stage, light change), coalesced to
  *    >= 2 min apart, plus a 10-minute heartbeat; explicit keeper actions save
  *    at once. Each routine save is a visible SPIFFS stall, so keep them rare. */
 #ifndef PROGRESSION_H
@@ -46,9 +43,24 @@ extern const journal_goal_t JOURNAL_GOALS[JOURNAL_GOAL_N];
 extern const char *const JOURNAL_THEME_NAMES[JOURNAL_THEME_COUNT];
 extern const uint8_t JOURNAL_THEME_LEVELS[JOURNAL_THEME_COUNT];
 extern const uint8_t JOURNAL_VARIETY_LEVELS[FISH_VARIETY_COUNT];
+extern const uint8_t MARKET_VARIETY_TIERS[FISH_VARIETY_COUNT];
 bool journal_variety_unlocked(const tank_t *t, int variety);
 int journal_level(const tank_t *t);
+/* Historical XP remains in the frozen save field for migration/audit only.
+ * The active progression is paid in doubloons and never grants XP. */
 uint32_t journal_level_xp(int level);
+int journal_theme_price(int theme);
+bool journal_theme_buy(tank_t *t, int theme);
+typedef enum {
+    PROGRESSION_FOOD_BASE = 0,
+    PROGRESSION_FOOD_PLUS = 1,
+    PROGRESSION_FOOD_PREMIUM = 2,
+    PROGRESSION_FOOD_TIER_COUNT = 3
+} progression_food_tier_t;
+int progression_food_price(unsigned tier);
+bool progression_food_buy(tank_t *t, unsigned tier);
+unsigned progression_food_tier(const tank_t *t);
+float progression_food_growth_multiplier(const tank_t *t);
 int journal_active(const tank_t *t, int slot);
 unsigned journal_progress(const tank_t *t, int goal);
 bool journal_claim(tank_t *t, int goal);
@@ -57,7 +69,7 @@ bool journal_claim(tank_t *t, int goal);
 const char *progression_bank_move(tank_t *t, int bank, int active);
 #define AQUARIUM_CAP 8
 #define AQUARIUM_PRICE 500
-#define AQUARIUM_SAVE_BYTES (6032 + sizeof(inventory_state_t) + sizeof(mussel_state_t) + sizeof(game_income_state_t) + 4 + sizeof(decor_content_t) + sizeof(decor_fixed_t))
+#define AQUARIUM_SAVE_BYTES (6032 + sizeof(inventory_state_t) + sizeof(mussel_state_t) + sizeof(game_income_state_t) + 4 + sizeof(decor_content_t) + sizeof(decor_fixed_t) + sizeof(reef_state_t) + sizeof(creature_state_t) + sizeof(progression_state_t) + sizeof(foliage_state_t))
 #define MUSSEL_SECONDS 600
 #define MUSSEL_DAILY_LIMIT 15
 bool progression_mussel_collect(tank_t *t);
@@ -110,6 +122,8 @@ bool progression_aquarium_summary(const tank_t *t, int slot, aquarium_summary_t 
 bool aquarium_port_ready(void);
 void aquarium_port_id(uint32_t id[2]);
 bool aquarium_port_read(const uint32_t id[2], int slot, void *data, size_t size);
+/* Zero-fill absent legacy tails and report the verified payload length, not capacity. */
+bool aquarium_port_read_sized(const uint32_t id[2], int slot, void *data, size_t size, size_t *got);
 bool aquarium_port_write(const uint32_t id[2], int slot, const void *data, size_t size);
 bool journal_theme_unlocked(const tank_t *t, int theme);
 bool journal_set_theme(tank_t *t, int theme);
@@ -136,19 +150,16 @@ const char *version_port_string(void);                     /* the build's git de
 float progression_boot(tank_t *t);
 /* the device waking from DEEP sleep (2026-09-14): restore the save, then live
  * through the dark stretch since it was written - tank_tick_sleep for
- * (now_unix - saved_unix), capped at PROGRESSION_SLEEP_CAP_S. Hunger, energy,
- * grass and algae land where a night of drowse would have put them; a long
- * enough night ends in ravenous begging by itself. Returns the hours
+ * (now_unix - saved_unix), capped at PROGRESSION_SLEEP_CAP_S. Offline time
+ * gives quiet growth and rest, never upkeep or neglect penalties. Returns the hours
  * simulated, or -1 when no clock was available (restore only). */
 #define PROGRESSION_SLEEP_CAP_S (7 * 24 * 3600)
 /* how much of a slept span the fish grow through (2026-09-14, Strato: "an
  * eight-hour sleep should be worth 2 hours of growth") */
 #define SLEEP_GROWTH_FRAC 0.25f
 float progression_wake(tank_t *t, int64_t now_unix);
-/* live through one stretch of device sleep: tank_tick_sleep, growth at
- * SLEEP_GROWTH_FRAC, and the tank's "first full night's sleep" milestone once
- * a single stretch reaches FULL_NIGHT_S (progression_wake's path; the director's
- * `sleep H` stages the same). */
+/* Live through device sleep with tank_tick_sleep and growth at
+ * SLEEP_GROWTH_FRAC. FULL_NIGHT_S remains a historical duration constant. */
 #define FULL_NIGHT_S (6 * 3600.0f)
 void progression_slept(tank_t *t, float seconds);
 /* the settings page changed something that rides in the save (the light's
@@ -176,7 +187,7 @@ void progression_stage_arrival(tank_t *t);
 /* the spawning (2026-09-24, Strato: "new fry comes at next light on" felt
  * unintuitive - there's no real need to turn the light on or off): once an
  * arrival is staged, SPAWN_WAIT_MIN_S..SPAWN_WAIT_MAX_S awake seconds pass
- * (not at once), then the courting pair swims down into the nursery grass;
+ * (not at once), then the courting pair swims down into a sheltered refuge;
  * after SPAWN_DANCE_S of circling there together the fry is born between
  * them. Lit or dark. The wait and the dance hold while a page covers the
  * tank (tank_t.ui_cover) or no bed is tall enough to be born in. */
@@ -184,7 +195,7 @@ void progression_stage_arrival(tank_t *t);
 #define SPAWN_WAIT_MAX_S 20.0f   /* + the swim down: the courtship starts within ~30 s */
 #define SPAWN_DANCE_S    10.0f
 /* the device woke (a deep-sleep boot, or the grace's quick wake): a staged
- * fry that missed its live birth is born now, in the grass */
+ * fry that missed its live birth is born now, by its refuge */
 void progression_woke(tank_t *t);
 bool progression_arrival_pending(void);
 float progression_age_s(const tank_t *t, int idx);        /* grown seconds */
@@ -251,12 +262,12 @@ int progression_next_fry(const tank_t *t, fry_req_t out[FRY_REQ_MAX], bool *stag
  * keeper moves it, in up to FRY_TIP_LINES lines of <= 26 chars, NULL-
  * terminated. Written from the rules in tank.c / progression.c (trust
  * only rises under a resting finger; quick taps cost it; fish age only
- * while lit; grass regrows by itself; the glass is wiped by a drag). */
+ * while lit; the starter rock always provides a free nursery refuge). */
 #define FRY_TIP_LINES 5
 const char *const *progression_fry_tip(int kind);
 
-/* Daily care is the repeatable income. Fish stage/birth/full-trust firsts
- * still pay once; frozen chore ledgers remain for save compatibility. */
+/* Births, daily care, games and trading provide income. Stage/trust firsts
+ * no longer pay; their constants and ledgers remain for save compatibility. */
 #define SD_STAGE_JUV   5
 #define SD_STAGE_ADULT 10
 #define SD_STAGE_ELDER 25
@@ -271,19 +282,22 @@ const char *const *progression_fry_tip(int kind);
 #define SD_PRICE_CORAL 100
 #define SD_PRICE_CLUSTER 240
 #define SD_PRICE_SHRIMP 180       /* 2026-09-29, Strato (first 300, then 180) */
-#define SD_PRICE_URCHIN 120       /* 2026-10-02: the grass's snail (the snail is 80, the grass pays 25 per 250 cm) */
+#define SD_PRICE_URCHIN 120       /* ornamental sand wanderer */
 #define SD_PRICE_SEAHORSE 220     /* 0.3.6, Strato 2026-10-15: between the shrimp (180) and the cluster (240) */
 #define SD_PRICE_PUMPKIN 75       /* 0.3.6, Strato 2026-10-17: the seasonal lantern, "affordable" */
 typedef struct {
     uint32_t    bit;               /* SD_ITEM_*, zero for separately stored fish-care flags */
-    const char *name;              /* <= 12 chars, the pixel font */
-    const char *words, *words2;    /* what it does, two lines of <= 25 chars */
+    const char *name;              /* shop label, the pixel font */
+    const char *words, *words2;    /* what it does, two lines of <= 28 chars */
     int         price;
 } sd_item_t;
-extern const sd_item_t SD_ITEMS[SD_ITEM_COUNT];
+extern const sd_item_t SD_ITEMS[SD_CATALOG_COUNT];
+/* Foliage IDs never enter legacy ownership masks or decoration inventory slots. */
+bool progression_foliage_planted(const tank_t *t, int item);
 /* Stable IDs stay fixed in saves; only the shop's presentation is price-sorted. */
 int progression_shop_item(const tank_t *t, int row);
 int progression_shop_count(const tank_t *t);
+/* For ground-cover sets, owned/unlocked means purchased, even while stored. */
 bool progression_item_owned(const tank_t *t, int item);
 /* the last shop save failure ("SAVE FAILED - NOT BOUGHT" / "... NOT SOLD"),
  * after the purchase or sale was rolled back; NULL = none. The shop page
@@ -297,12 +311,15 @@ void progression_shop_notice_clear(void);
 #define SD_PRICE_BUOY 80
 #define SD_PRICE_SAND 300
 #define SD_PRICE_LIGHTS 300
-/* the shop's sale: false when the balance is short or it is already owned;
+/* Ground-cover sets buy-and-plant once, then toggle stored/planted for free.
+ * Every action saves transactionally; sets never sell or occupy inventory.
+ * Other items: false when the balance is short or it is already owned;
  * true = unlocked, placed in the tank (tank_plant_place / tank_snail_place)
  * and saved at once */
 bool progression_buy(tank_t *t, int item);
 int progression_item_price_for(const tank_t *t, int item);
-/* Retired item 8 remains reserved for old binary/JSON saves; never reassign it. */
+/* Retired IDs 8, 30 and 31 remain reserved for old saves; never reassign them.
+ * Paid local copies receive the normal sell value once on migration. */
 #define SD_PUMPKIN_IN_SHOP 0
 bool progression_pumpkin_offered(const tank_t *t);
 /* the sale back (2026-09-24, Strato): a placeable piece sells for SD_SELL_PCT
@@ -335,34 +352,23 @@ bool progression_inventory_duplicate(int item);
  * SELL_FRY_MEALS meals more than the tank had eaten at the sale (the first
  * fry's dozen), so a grown tank - every other gate long met - does not hand
  * a fry straight back. Saved at once. */
-#define SD_FISH_FRY    5
-#define SD_FISH_JUV    15
-#define SD_FISH_ADULT  30
-#define SD_FISH_ELDER  60
+#define SD_FISH_FRY    8
+#define SD_FISH_JUV    20
+#define SD_FISH_ADULT  40
+#define SD_FISH_ELDER  64
 #define FISH_KEEP_MIN  2
 #define SELL_FRY_MEALS 12
-/* FRY FOR SALE (0.3.5, Strato: "when a player sells a fish for the first
- * time it should award a tank milestone badge and also open up fry
- * purchasing in the shop as long as there is at least one open slot"). The
- * first sale earns TMS_FIRST_SALE (a tank that sold before 0.3.5 gets it at
- * its first boot), and from then on the shop's first row is FRY: three fry,
- * each a look of its own, SD_PRICE_FRY apiece. A bought fry leaves a blank
- * where it stood - any number can be bought while slots and dollars last -
- * and nothing comes back until FRY_OFFER_S of tank time (awake or asleep,
- * no wall clock needed: the pendant may have none) brings a fresh three.
- * A bought fry is a newborn without parents: the birth flow welcomes it
- * (announce, name, family), no birth dollars, its stages pay as any fish's.
- * Taking the tank's last slot calls off a staged arrival.
- * The offer is a seed: each fry's look is a hash of it and its place, so
- * the save keeps two bytes for the seed, two for the clock, one for the
- * blanks - in padding 0.4 (main) leaves free. 0.3.x rolls the colors from
- * 0.4's nine (main: LOOK_COLORS), so a bought fry is an exact genome there;
- * 0.4 rolls the form (shape, fins, pattern) from the same hash. */
-#define SD_PRICE_FRY   200
+/* The adult type market is always available in Normal/Hard. Its fixed
+ * authored stock can form matching pairs without waiting for a refresh.
+ * The older three-offer fry shop remains, with saved seed/sold/age fields:
+ * each ask is progression_fry_price(), never the retired flat 200 price.
+ * Bought fry still receive the naming welcome, no birth reward, and normal
+ * later growth rewards. Both purchase paths reserve the traveler's place. */
+#define SD_PRICE_FRY   200       /* historical flat price; never charge/display this */
 #define FRY_OFFER_N    3
 #define FRY_OFFER_S    (24 * 3600.0f)
 typedef struct { uint32_t body, accent; bool sold; uint8_t variety, pattern; } fry_offer_t;
-bool  progression_fry_for_sale(const tank_t *t);   /* the first sale's badge is earned */
+bool  progression_fry_for_sale(const tank_t *t);   /* Normal/Hard, no first-sale prerequisite */
 bool  progression_fry_room(const tank_t *t);       /* a slot free and no welcome owed */
 void  progression_fry_offer(const tank_t *t, int k, fry_offer_t *o);
 int   progression_fry_left(void);                  /* fry not yet bought in this offer */
@@ -371,8 +377,102 @@ bool  progression_buy_fry(tank_t *t, int k);
 void  progression_fry_roll(tank_t *t);             /* director / tests: a fresh three now */
 void  progression_fry_open(tank_t *t);             /* director / tests: the shop's fry, as if a fish was sold */
 int  progression_fish_value(const tank_t *t, int fish);      /* what it would fetch now */
+int  progression_fish_vigor(const tank_t *t, int fish);      /* hybrid vigor 0..10 */
+int  progression_fish_gene_pct(const tank_t *t, int fish);   /* genetic price factor, percent */
+int  progression_fish_care_quality(const tank_t *t, int fish); /* 0..40, -1 invalid */
+const char *progression_fish_grade(int gene_pct);
+/* Bred fish (generation >= 1) of the day's demand variety sell for 25% more;
+ * pedigree adds 2% per generation (6% for RARE+ bloodlines), up to five. */
+#define PROGRESSION_DEMAND_PCT 25
+int  progression_demand_variety(const tank_t *t);
+int  progression_fish_pedigree_pct(const tank_t *t, int fish);
+/* Casino and other signed wallet changes; saves, reverts on failure, no-op in Creative. */
+bool progression_wallet_settle(tank_t *t, int delta);
+bool progression_collection_complete(const tank_t *t, int variety);
+bool progression_statue_show(tank_t *t, int variety);   /* -1 hides it */
+float progression_fish_growth_factor(const tank_t *t, int fish); /* favorite decor and vigor */
 bool progression_fish_sellable(const tank_t *t, int fish);   /* false: the last pair, or a welcome is owed */
 bool progression_sell_fish(tank_t *t, int fish);
+/* Type premium is 100 + 12*variety percent. Condition adds up to 50% from
+ * trust, energy, fullness and calm. Market asks exceed the best same-stage
+ * resale by 40 (adult) / 20 (fry), so only breeding/growth can earn a profit. */
+typedef struct {
+    uint32_t id, roster_gen;
+    int fish, value;
+} fish_sale_t;
+typedef struct {
+    uint32_t body, accent;
+    uint8_t variety, pattern;
+    int price;
+} fish_market_offer_t;
+int progression_market_price(const tank_t *t, int variety);
+void progression_market_offer(const tank_t *t, int variety, fish_market_offer_t *out);
+bool progression_market_preview(const tank_t *t, int variety, fish_t *out);
+/* NULL means purchasing is allowed; failures also set progression_shop_notice. */
+const char *progression_market_status(const tank_t *t);
+bool progression_market_buy(tank_t *t, int variety);
+/* Ornamental stock: one snail, urchin and seahorse and one shrimp school per
+ * aquarium; creatures do not breed. Colors are rolled at purchase and their
+ * rarity scales the resale quote (half price x 1.0/1.4/2.0/3.5; a shrimp
+ * school also scales with its size). Legacy pairs/nurseries are sold off
+ * once at today's quote. Pearl mussels are an income colony, not stock. */
+typedef struct {
+    uint32_t revision;
+    int species, value;
+    uint8_t aquarium, offspring;
+} creature_sale_t;
+enum { CREATURE_RARITY_COUNT = 4 };
+extern const char *const CREATURE_RARITY_NAMES[CREATURE_RARITY_COUNT];
+int progression_creature_rarity(uint8_t colors);
+int progression_creature_rarity_of(const tank_t *t, int species);
+int progression_creature_adults(const tank_t *t, int species);
+int progression_creature_offspring(const tank_t *t, int species);
+int progression_creature_price(const tank_t *t, int species);
+int progression_creature_value(const tank_t *t, int species, bool offspring);
+int progression_creature_seconds(const tank_t *t, int species);
+const char *progression_creature_status(const tank_t *t, int species);
+bool progression_creature_buy(tank_t *t, int species);
+bool progression_creature_sale_quote(const tank_t *t, int species, bool offspring, creature_sale_t *out);
+bool progression_creature_sale_confirm(tank_t *t, const creature_sale_t *quote);
+int progression_fry_price(const tank_t *t, int offer);
+bool progression_fish_sale_quote(const tank_t *t, int fish, fish_sale_t *out);
+bool progression_fish_sale_confirm(tank_t *t, const fish_sale_t *quote);
+/* Breeding contracts: every 3 days a visitor orders a bred adult of one
+ * unlocked variety that is FINE+, RARE+ or carries a mutation, paying the
+ * quote x1.6 + 50 once per window. */
+#define PROGRESSION_CONTRACT_DAYS 3
+#define PROGRESSION_CONTRACT_PCT 160
+#define PROGRESSION_CONTRACT_BONUS 50
+enum { CONTRACT_NEED_FINE, CONTRACT_NEED_RARE, CONTRACT_NEED_MUTANT, CONTRACT_NEED_COUNT };
+#define PROGRESSION_TRADE_CLIENT_COUNT 6
+extern const char *const PROGRESSION_TRADE_CLIENTS[PROGRESSION_TRADE_CLIENT_COUNT];
+typedef struct { int variety, need, client, days_left; bool filled; } fish_contract_t;
+bool progression_contract_today(const tank_t *t, fish_contract_t *out);
+bool progression_contract_fits(const tank_t *t, int fish);
+int  progression_contract_pay(const tank_t *t, int fish);
+bool progression_contract_quote(const tank_t *t, int fish, fish_sale_t *out);
+bool progression_contract_fill(tank_t *t, const fish_sale_t *quote);
+/* Auction day: Saturdays (unix day % 7 == 2), one RARE+ or 2nd-generation
+ * adult a week sells to rival bidders for 95..165% of its quote, committed
+ * before the ladder is revealed. */
+#define PROGRESSION_AUCTION_WEEKDAY 2
+#define PROGRESSION_AUCTION_BIDS 5
+#define PROGRESSION_AUCTION_RESERVE_PCT 95
+typedef struct {
+    int opening, hammer, bids[PROGRESSION_AUCTION_BIDS];
+    uint8_t bidder[PROGRESSION_AUCTION_BIDS];
+} fish_auction_t;
+int  progression_auction_days(const tank_t *t);      /* 0 = today */
+bool progression_auction_sold(const tank_t *t);      /* this week's lot is gone */
+bool progression_auction_open(const tank_t *t);
+bool progression_auction_eligible(const tank_t *t, int fish);
+int  progression_auction_reserve(const tank_t *t, int fish);
+bool progression_auction_quote(const tank_t *t, int fish, fish_sale_t *out);
+bool progression_auction_sell(tank_t *t, const fish_sale_t *quote, fish_auction_t *out);
+/* A pair is two local healthy adult/elder fish of the same variety.
+ * Banked fish and the traveler never breed or consume a second active slot. */
+bool progression_breeding_pair(const tank_t *t, int *a, int *b);
+const char *progression_breeding_status(const tank_t *t);
 /* dollars awarded since the last call (the toast over the live tank) */
 int  progression_sd_take_award(void);
 /* director / tests: dollars from nowhere (negative takes them away) */
@@ -396,9 +496,9 @@ const char *const *progression_sd_earn_lines(void);
  * tank now starts as FRY, so the first growth spurt lands in the keeper's
  * first session and elder stays a multi-day achievement). 0.3.5 (2026-10-14,
  * Strato: "all of the age stages should last longer, they happen quite fast
- * now"): four times as long - 2 h / 12 h / 4 days. The fry gates read the
- * same numbers (a new fry waits on the youngest growing up), so the tank
- * fills more slowly too. A fish already past a stage under the old numbers
+ * now"): four times as long - 2 h / 12 h / 4 days. Breeding now needs two
+ * healthy adults of the same type, rather than the youngest resident's age.
+ * A fish already past a stage under the old numbers
  * keeps it (apply_stage never takes a stage away). */
 #define STAGE_JUV_AGE    (2 * 3600)
 #define STAGE_ADULT_AGE  (12 * 3600)
@@ -406,8 +506,7 @@ const char *const *progression_sd_earn_lines(void);
 /* trait drift: one full unit (0.11 of the 0..1 trait) per this many hours of
  * sustained pressure */
 #define DRIFT_HOURS      2.0f
-/* CHANGE gate: this much accumulated drift pressure on the
-                                 * youngest fish (~26 lit minutes fed and calm, or following) */
+/* Historical CHANGE threshold; retained for legacy requirement IDs/data. */
 #define DRIFT_CHANGE     0.11f
 
 /* milestone labels (UI / logs); order = bit order in tank.h */

@@ -38,6 +38,10 @@ void game_practice_tap(float x, float y);
 int game_merge_cell(int direction, int line, int offset);
 void game_merge_move(int direction);
 void game_thumb(render_ctx_t *c, int x, int y, int game);
+extern const int casino_bets[4], casino_odds[4], casino_reel_weight[5], casino_triple_pay[5];
+int casino_reel_symbol(uint32_t r);
+int casino_reel_pay(const uint8_t r[3]);
+int casino_race_winner(uint32_t r);
 #endif
 
 #endif

@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <string.h>
 #include "../common/update.h"
+#include "../common/advisor.h"
 #include "../common/render.c"
 
 static uint16_t pixels[448 * 368];
@@ -74,14 +75,14 @@ static void menu_end(const char *gallery) {
 }
 static void check_menu_layout(const char *gallery) {
     menu_width = TANK_W;
-    tank_t t; tank_init(&t, 77); tank_new_population(&t);
+    tank_t t = {0}; tank_init(&t, 77); tank_new_population(&t);
     t.companion.display_compact = TANK_W == 320;
     t.aquariums.clock_theme = CLOCK_COMPACT;
     t.sd_balance = 100000; t.journal.xp = 20000;
     snprintf(t.fish[0].name, sizeof t.fish[0].name, "WIDEWWW");
     char name[64];
     for (int category = 0; category < 5; category++) {
-        for (int p = 0; p < (category == 1 ? 2 : 1); p++) {
+        for (int p = 0; p < 1; p++) {
             render_life_open(); g_home_category = category; g_home_page = p;
             snprintf(name, sizeof name, "home-%d-%d", category, p); menu_begin(name);
             render_life(&t, full_frame, TANK_W); menu_end(gallery);
@@ -100,12 +101,21 @@ static void check_menu_layout(const char *gallery) {
         snprintf(name, sizeof name, "clock-%d", p); menu_begin(name);
         render_settings(&t, full_frame, TANK_W, 100); menu_end(gallery);
     }
-    for (int section = COMPANION_SECTION_CARE; section <= COMPANION_SECTION_SYMBOLS; section++) {
+    for (int section = COMPANION_SECTION_CARE; section <= COMPANION_SECTION_FOOD; section++) {
         if (section == 17) continue;
         companion_open_section(section);
         snprintf(name, sizeof name, "companion-%d", section); menu_begin(name);
         companion_render(&t, full_frame, TANK_W); menu_end(gallery);
     }
+    fish_lineage_t lineage_before = t.story.active[0];
+    t.story.active[0].mutation = GENE_MUTANT_PATTERN | GENE_MUTANT_TRAIT | GENE_MUTANT_COLOR;
+    t.story.active[0].traits = 0x77;
+    t.story.active[0].color2 = 1;
+    t.story.active[0].pattern2 = 2;
+    companion_open_section(COMPANION_SECTION_GENES);
+    menu_begin("genes-all-mutations");
+    companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+    t.story.active[0] = lineage_before;
     companion_open_section(COMPANION_SECTION_SYMBOLS);
     for (int p = 0; p < 3; p++) {
         snprintf(name, sizeof name, "symbol-guide-%d", p); menu_begin(name);
@@ -210,26 +220,53 @@ static void check_menu_layout(const char *gallery) {
         snprintf(name, sizeof name, "game-result-%d", game); menu_begin(name);
         render_games(&t, full_frame, TANK_W); menu_end(gallery);
     }
-    for (int section = 0; section < 3; section++) {
-        companion_open_section(COMPANION_SECTION_COLLECTIONS);
-        for (int p = 0; p < section; p++)
-            companion_tap(&t, render_frame_x(100), render_frame_y(300));
-        snprintf(name, sizeof name, "discoveries-%d", section); menu_begin(name);
+    companion_open_section(COMPANION_SECTION_MARKET);
+    for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++) {
+        snprintf(name, sizeof name, "market-stock-%d", variety); menu_begin(name);
         companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+        companion_tap(&t, render_frame_x(400), render_frame_y(160));
     }
-    for (int hint = 0; hint < COMPANION_DISCOVERY_COUNT; hint++) {
-        companion_open_section(COMPANION_SECTION_HINTS);
-        for (int p = 0; p < hint; p++)
-            companion_tap(&t, render_frame_x(300), render_frame_y(250));
-        snprintf(name, sizeof name, "hint-%d", hint); menu_begin(name);
+    companion_open_section(COMPANION_SECTION_CREATURE_MARKET);
+    for (int kind = 0; kind < CREATURE_COUNT; kind++) {
+        snprintf(name, sizeof name, "creature-market-%d", kind); menu_begin(name);
         companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+        companion_tap(&t, render_frame_x(400), render_frame_y(116));
     }
-    for (int item = 0; item < SD_ITEM_COUNT; item++) {
-        companion_open_section(COMPANION_SECTION_OBJECTS);
-        for (int p = 0; p < item; p++)
-            companion_tap(&t, render_frame_x(300), render_frame_y(270));
-        snprintf(name, sizeof name, "object-%d", item); menu_begin(name);
-        companion_render(&t, full_frame, TANK_W); menu_end(gallery);
+    static const int trade_pages[2] = {COMPANION_SECTION_CONTRACT, COMPANION_SECTION_AUCTION};
+    for (int k = 0; k < 2; k++) {
+        static tank_t trade;
+        trade = t;
+        trade.care.day = 20000 - 20000 % 7 + PROGRESSION_AUCTION_WEEKDAY;
+        trade.progression = (progression_state_t){.version = 1, .food_tier = PROGRESSION_FOOD_BASE, .theme_unlocks = 1,
+            .variety_unlocks = (uint16_t)((1u << FISH_VARIETY_COUNT) - 1)};
+        trade.story.version = trade.story.version ? trade.story.version : 1;
+        while (trade.n_fish && trade.n_fish < 4) {
+            int n = trade.n_fish++;
+            trade.fish[n] = trade.fish[0]; trade.story.active[n] = trade.story.active[0];
+            trade.polish.active[n] = trade.polish.active[0]; trade.polish.active[n].id += 900u + (uint32_t)n;
+        }
+        fish_contract_t order;
+        if (trade.n_fish && progression_contract_today(&trade, &order)) {
+            int f = trade.n_fish - 1;
+            trade.fish[f].variety = (uint8_t)order.variety; trade.fish[f].stage = STAGE_ADULT;
+            trade.story.active[f].generation = 2; trade.story.active[f].mutation = 7;
+        }
+        {
+            companion_open_section(trade_pages[k]);
+            companion_select_fish(trade.n_fish - 1);
+            snprintf(name, sizeof name, "trade-%s", k ? "auction" : "contract"); menu_begin(name);
+            companion_render(&trade, full_frame, TANK_W); menu_end(gallery);
+            companion_tap(&trade, render_frame_x(200), render_frame_y(310));
+            if (companion_current_section() == COMPANION_SECTION_TRADE_CONFIRM) {
+                snprintf(name, sizeof name, "trade-%s-confirm", k ? "auction" : "contract"); menu_begin(name);
+                companion_render(&trade, full_frame, TANK_W); menu_end(gallery);
+                companion_tap(&trade, render_frame_x(330), render_frame_y(288));
+                if (k && companion_current_section() == COMPANION_SECTION_AUCTION_RESULT) {
+                    menu_begin("trade-auction-result");
+                    companion_render(&trade, full_frame, TANK_W); menu_end(gallery);
+                }
+            }
+        }
     }
     setup_begin(&t);
     if (setup_page() == SETUP_PG_MODE) {
@@ -358,14 +395,18 @@ static void check_menu_layout(const char *gallery) {
     net_port_creds_forget();
 }
 
+static void page_art_boot(tank_t *t) {
+    static bool booted;
+    if (!booted) { progression_boot(t); booted = true; }
+}
+
 static int inventory_touch(const tank_t *t, float x, float y) {
     return render_shop_tap(t, x * TANK_W / PAGE_W, y * TANK_H / PAGE_H);
 }
 static void check_inventory_ui(void) {
-    static bool booted;
     bool normal = TANK_W == 320;
     tank_t t; memset(&t, 0, sizeof t); tank_init(&t, 42);
-    if (!booted) { progression_boot(&t); booted = true; }
+    page_art_boot(&t);
     tank_resolution(normal);
     tank_init(&t, 42); tank_new_population(&t);
     t.companion.display_compact = TANK_W == 320;
@@ -413,6 +454,28 @@ static void check_inventory_ui(void) {
     setup_cancel(&t);
     assert(!memcmp(&before, &t.inventory.extra[copy], sizeof before));
     setup_begin_extra_place(&t, copy);
+    tank_t before_cycle = t;
+    assert(setup_hit(render_frame_x(360), render_frame_y(SETUP_MIRROR_Y + 12)) == SETUP_HIT_NEXT_PIECE);
+    assert(setup_hit(render_frame_x(80), render_frame_y(SETUP_MIRROR_Y + 12)) == SETUP_HIT_PREV_PIECE);
+    setup_activate(&t, SETUP_HIT_NEXT_PIECE);
+    assert(setup_item() == 9 && setup_place_original());
+    setup_activate(&t, SETUP_HIT_PREV_PIECE);
+    assert(setup_item() == 9 && !setup_place_original());
+    assert(!memcmp(&t, &before_cycle, sizeof t));
+    setup_cancel(&t);
+    tank_t fixed_cycle = t;
+    fixed_cycle.sd_unlocks |= 1u << 22;
+    fixed_cycle.profile.owned_items |= UINT64_C(1) << 22;
+    tank_decor_set(&fixed_cycle, 22, 123, 1);
+    setup_begin_place(&fixed_cycle, 22);
+    tank_t before_fixed_cycle = fixed_cycle;
+    setup_activate(&fixed_cycle, SETUP_HIT_NEXT_PIECE);
+    assert(setup_item() == 9 && setup_place_original());
+    setup_activate(&fixed_cycle, SETUP_HIT_PREV_PIECE);
+    assert(setup_item() == 22 && setup_place_original());
+    assert(!memcmp(&fixed_cycle, &before_fixed_cycle, sizeof fixed_cycle));
+    setup_cancel(&fixed_cycle);
+    setup_begin_extra_place(&t, copy);
     setup_activate(&t, SETUP_HIT_REMOVE);
     assert(setup_is_place() && progression_inventory_placed(&t, 9) == 2);
     setup_activate(&t, SETUP_HIT_REMOVE);
@@ -431,16 +494,10 @@ static void check_inventory_ui(void) {
     assert(g_inventory_item == 9 && !g_shp_sell_armed);
     render_shop_leave();
     assert(inventory_touch(&t, 350, 77) == SHOP_TAP_KEPT && g_shp_modal == -1);
-    row = 0;
-    while (shp_item(&t, row) != SD_SHOP_MUSSEL) { row++; assert(row < shp_rows(&t)); }
-    g_shp_page = row / SHP_PER_PAGE;
-    assert(inventory_touch(&t, 120, SHP_ROW_Y0 + row % SHP_PER_PAGE * SHP_ROW_DY + 10) == SHOP_TAP_KEPT);
-    assert(g_shp_modal == SD_SHOP_MUSSEL);
-    action = inventory_touch(&t, SHP_MODAL_X + SHP_MODAL_W / 2,
-        SHP_MODAL_Y + SHP_MODAL_H - 12 - MSP_HOW_H + 10);
-    assert(action == SHOP_TAP_BUY + SD_SHOP_MUSSEL);
-    assert(progression_buy(&t, action - SHOP_TAP_BUY));
-    assert(progression_item_owned(&t, SD_SHOP_MUSSEL));
+    for (row = 0; row < shp_rows(&t); row++)   /* creatures trade in the Creature Market, not the Decor shop */
+        assert(shp_item(&t, row) != SD_SHOP_MUSSEL && shp_item(&t, row) != 5 && shp_item(&t, row) != 1);
+    assert(progression_buy(&t, SD_SHOP_MUSSEL));   /* (the fixture is mid-welcome, which pauses creature trades) */
+    assert(progression_item_owned(&t, SD_SHOP_MUSSEL) && progression_creature_adults(&t, CREATURE_MUSSEL) == 1);
     t.mussel.generated = t.mussel.bank = 3;
     int wallet = t.sd_balance; uint32_t xp = t.journal.xp;
     progression_tick(&t, 1);
@@ -603,6 +660,10 @@ static void check_clock_replay_pixels(void) {
                 clock_overlay_live(&tank, full_frame, TANK_W, now);
                 render_work_caches(true);
                 render_clock_overlay(&tank, repeated, TANK_W, now);
+                bool known_live_flip = TANK_W == 320 && theme == CLOCK_FLIP && size == CLOCK_JUMBO;
+                if (g_record_overflow && !known_live_flip)
+                    fprintf(stderr, "Unexpected clock cache fallback %dx%d theme %d size %d flags %d\n", TANK_W, TANK_H, theme, size, flags);
+                assert(!g_record_overflow || known_live_flip);
                 assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
                 if (!g_record_overflow) for (size_t i = 0; i < g_clock_run_count; i++) {
                     const paint_run_t *run = clock_run(i);
@@ -662,9 +723,149 @@ static void check_ornament_spans(void) {
 
 /* companion_ui.c's bevelled key: face, lit lip, shadowed foot */
 static void companion_key_face(uint16_t *fb, int x, int y, int w) {
-    render_rect(fb, TANK_W, x, y, w, 30, 0x264d55);
-    render_rect(fb, TANK_W, x, y, w, 2, 0x4f8a93);
-    render_rect(fb, TANK_W, x, y + 28, w, 2, 0x163238);
+    render_button(fb, TANK_W, x, y, w, 30, 0x183a43, 0x739c99, "", 1);
+}
+
+static void check_casino(void) {
+    /* exact return-to-player over every reel stop and every race roll */
+    long total = 0, stops = 0;
+    for (uint32_t a = 0; a < 18; a++) for (uint32_t b = 0; b < 18; b++) for (uint32_t c = 0; c < 18; c++) {
+        uint8_t r[3] = {(uint8_t)casino_reel_symbol(a), (uint8_t)casino_reel_symbol(b), (uint8_t)casino_reel_symbol(c)};
+        total += casino_reel_pay(r); stops++;
+    }
+    double reels = (double)total / (double)stops;
+    assert(reels > 0.90 && reels < 0.97);
+    int wins[4] = {0};
+    for (uint32_t r = 0; r < 10000; r++) wins[casino_race_winner(r)]++;
+    for (int i = 0; i < 4; i++) {
+        double rtp = wins[i] * casino_odds[i] / 10000.0;
+        assert(rtp > 0.88 && rtp < 0.91);
+    }
+    tank_t t;
+    bool normal = TANK_W == 320;
+    tank_init(&t, 31);
+    page_art_boot(&t);
+    tank_resolution(normal);
+    tank_init(&t, 31);
+    tank_new_population(&t);
+    t.sd_balance = 100;
+    render_casino_open();
+    assert(render_casino_active());
+    render_games(&t, full_frame, TANK_W);
+    assert(!render_games_tap(&t, render_frame_x(320), render_frame_y(140)));   /* REEF REELS */
+    render_games(&t, full_frame, TANK_W);
+    int before = (int)t.sd_balance;
+    assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));   /* SPIN at 10 */
+    int delta = (int)t.sd_balance - before;
+    assert(delta >= -10 && delta % 10 == 0);   /* stake lost, returned, or a fixed multiple won */
+    for (int i = 0; i < 30; i++) render_games_tick(0.1f);
+    render_games(&t, full_frame, TANK_W);
+    assert(!render_games_tap(&t, render_frame_x(390), render_frame_y(24)));    /* back to the lobby */
+    assert(!render_games_tap(&t, render_frame_x(100), render_frame_y(140)));   /* FISH RACES */
+    before = (int)t.sd_balance;
+    assert(!render_games_tap(&t, render_frame_x(100), render_frame_y(110)));   /* back lane 0 */
+    assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));   /* RACE */
+    delta = (int)t.sd_balance - before;
+    assert(delta == -10 || delta == 10);
+    for (int i = 0; i < 60; i++) render_games_tick(0.1f);
+    render_games(&t, full_frame, TANK_W);
+    t.sd_balance = 3;
+    assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));
+    assert(t.sd_balance == 3);                                                    /* not enough: no bet */
+    assert(!render_games_tap(&t, render_frame_x(390), render_frame_y(24)));
+    assert(render_games_tap(&t, render_frame_x(390), render_frame_y(24)));      /* lobby BACK closes */
+    assert(!render_casino_active());
+    render_casino_open(); render_games_open();
+    assert(!render_casino_active());
+    extern int casino_hilo_pay(int, int, int, int);
+    extern int casino_shell_pay(int, int, uint32_t);
+    extern bool casino_dive_survive(int, uint32_t);
+    extern int casino_wheel_pay(int, int, uint32_t);
+    extern int casino_test_return(void);
+    double returns[4] = {0}, dive_depths[5] = {0};
+    uint32_t rng = 0x1234abcdu;
+    for (int n = 0; n < 100000; n++) {
+        rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+        int pearl = 2 + n % 11;
+        returns[0] += casino_hilo_pay(50, pearl, n % 2, 1 + (int)(rng % 13u));
+        rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+        returns[1] += casino_shell_pay(50, n % 3, rng);
+        returns[3] += casino_wheel_pay(50, n % 3, rng);
+        bool alive = true;
+        for (int depth = 0; depth < 5; depth++) {
+            rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+            if (!casino_dive_survive(depth, rng)) alive = false;
+            /* Test every cash-out depth, not just a single strategy. */
+            static const int pay[5] = {14, 16, 20, 26, 34};
+            if (alive) dive_depths[depth] += 50 * pay[depth] / 10;
+            if (alive && depth == n % 5) returns[2] += 50 * pay[depth] / 10;
+        }
+    }
+    for (int i = 0; i < 4; i++) {
+        returns[i] /= 5000000.0;
+        assert(returns[i] > 0.85 && returns[i] < 0.995);
+    }
+    for (int depth = 0; depth < 5; depth++) {
+        double rtp = dive_depths[depth] / 5000000.0;
+        assert(rtp > 0.92 && rtp < 0.95);
+        printf("Dive depth %d RTP %.2f%%\n", depth + 1, rtp * 100);
+    }
+    /* Exact Hi-Lo edge at every visible value, direction and stake. */
+    for (int pearl = 2; pearl <= 12; pearl++) for (int pick = 0; pick < 2; pick++)
+        for (int k = 0; k < 4; k++) {
+            int pay = 0;
+            for (int next = 1; next <= 13; next++) pay += casino_hilo_pay(casino_bets[k], pearl, pick, next);
+            assert(pay < 13 * casino_bets[k]);
+        }
+    /* Each new page: refusal, stake selection, one settlement and no replay
+     * on result ticks or BACK. Tests use revealed outcomes, not wallet deltas. */
+    render_casino_open();
+    for (int game = 0; game < 4; game++) {
+        t.sd_balance = 1000;
+        assert(!render_games_tap(&t, render_frame_x(game % 2 ? 320 : 100), render_frame_y(game < 2 ? 190 : 266)));
+        render_games(&t, full_frame, TANK_W);
+        profile_state_t saved = t.profile;
+        t.profile = (profile_state_t){.marker = 0x50524631u, .version = 1, .mode = GAME_MODE_CREATIVE, .chosen = 1, .reserved = 2};
+        t.creative = (creative_state_t){0x43525631u, 1, 1, 0};
+        before = (int)t.sd_balance;
+        assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));
+        assert(t.sd_balance == before);
+        t.profile = saved; memset(&t.creative, 0, sizeof t.creative);
+        t.sd_balance = 3;
+        assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));
+        assert(t.sd_balance == 3);
+        t.sd_balance = 1000;
+        assert(!render_games_tap(&t, render_frame_x(240), render_frame_y(285))); /* 50 */
+        before = (int)t.sd_balance;
+        assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));
+        if (game == 2) {
+            /* If the first step survives, wallet is unchanged until SURFACE. */
+            assert(t.sd_balance == before || t.sd_balance == before - 50);
+            assert(!render_games_tap(&t, render_frame_x(330), render_frame_y(234)));
+        }
+        int payout = casino_test_return();
+        assert(t.sd_balance == before - 50 + payout);
+        for (int i = 0; i < 30; i++) render_games_tick(0.1f);
+        render_games(&t, full_frame, TANK_W);
+        assert(t.sd_balance == before - 50 + payout);
+        assert(!render_games_tap(&t, render_frame_x(390), render_frame_y(24)));
+        assert(t.sd_balance == before - 50 + payout);
+    }
+    /* A live Dive also settles exactly once when BACK surfaces it. */
+    for (int n = 0; n < 20; n++) {
+        t.sd_balance = 1000;
+        assert(!render_games_tap(&t, render_frame_x(100), render_frame_y(266)));
+        before = (int)t.sd_balance;
+        assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));
+        bool live = t.sd_balance == before;
+        assert(!render_games_tap(&t, render_frame_x(390), render_frame_y(24)));
+        assert(t.sd_balance == before + (live ? 20 : -50));
+        if (live) break;
+        assert(n < 19);
+    }
+    render_games_open();
+    printf("PASS: casino reels %.2f%%, races ~89.5%%; Hi-Lo %.2f%%, shells %.2f%%, dive %.2f%%, wheel %.2f%% RTP; once-only settlements and refusals\n",
+        reels * 100, returns[0] * 100, returns[1] * 100, returns[2] * 100, returns[3] * 100);
 }
 
 static void check_companion_navigation(void) {
@@ -673,16 +874,34 @@ static void check_companion_navigation(void) {
     tank_new_population(&tank);
     tank_t before = tank;
     render_life_open();
-    assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(100)) == HOME_KEEPER);
-    assert(!g_home_category && !g_life_page);
-    assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(336)) == HOME_NONE);
+    /* FISH opens the Fish hub; SUMMARY opens the companion and its BACK returns to the hub */
+    assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(100)) == HOME_NONE);
     assert(g_home_category == 1 && !g_life_page);
-    assert(render_life_tap(&tank, render_frame_x(330), render_frame_y(100)) == HOME_BANK);
+    assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(100)) == HOME_NONE);
+    assert(g_home_category == 1 && g_life_page && companion_current_section() == COMPANION_SECTION_SUMMARY);
+    assert(render_life_tap(&tank, render_frame_x(390), render_frame_y(24)) == HOME_NONE);
+    assert(!g_life_page && g_home_category == 1);
+    assert(render_life_tap(&tank, render_frame_x(370), render_frame_y(332)) == HOME_BANK);
+    assert(!g_life_page && g_home_category == 1);
+    assert(render_life_tap(&tank, render_frame_x(390), render_frame_y(24)) == HOME_NONE);
+    assert(!g_life_page && g_home_category == 0);
+    assert(render_life_tap(&tank, render_frame_x(400), render_frame_y(334)) == HOME_SETTINGS);
     render_life_open();
-    assert(render_life_tap(&tank, render_frame_x(330), render_frame_y(336)) == HOME_NONE);
+    assert(render_life_tap(&tank, render_frame_x(330), render_frame_y(180)) == HOME_GAMES);
+    assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(260)) == HOME_CASINO);
+    assert(render_life_tap(&tank, render_frame_x(330), render_frame_y(260)) == HOME_NONE);
+    assert(g_life_page && companion_current_section() == COMPANION_SECTION_HELP);
+    assert(render_life_tap(&tank, render_frame_x(390), render_frame_y(24)) == HOME_NONE);
+    assert(!g_life_page && g_home_category == 0);
+    render_life_story_open(true, 0);
+    assert(render_life_take_story() && !render_life_take_story());
+    assert(g_life_page && companion_current_section() == COMPANION_SECTION_RPG);
+    assert(render_life_tap(&tank, render_frame_x(390), render_frame_y(24)) == HOME_GAMES);
+    render_life_open();
+    assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(180)) == HOME_NONE);
     assert(g_life_page);
     assert(render_life_tap(&tank, render_frame_x(390), render_frame_y(24)) == HOME_NONE);
-    assert(!g_life_page && !g_home_category);
+    assert(!g_life_page && g_home_category == 3);
     assert(!memcmp(&before, &tank, sizeof tank));
     for (int section = COMPANION_SECTION_CARE; section <= COMPANION_SECTION_SYMBOLS; section++) {
         if (section == 17) continue;
@@ -697,14 +916,205 @@ static void check_companion_navigation(void) {
     companion_tap(&tank, render_frame_x(60), render_frame_y(180));
     companion_render(&tank, full_frame, TANK_W);
     memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * 2);
-    render_rect(repeated, TANK_W, 304, 86, 132, 30, 0x102b36);
+    companion_tap(&tank, render_frame_x(370), render_frame_y(100));
+    companion_render(&tank, repeated, TANK_W);
     assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
     companion_open_section(COMPANION_SECTION_CREATURE_COLORS);
-    companion_render(&tank, full_frame, TANK_W);
-    memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * 2);
-    companion_key_face(repeated, 304, 86, 132);
-    render_text(repeated, TANK_W, 312, 93, 2, 0xe7f4dc, "NEXT TYPE");
-    assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * 2));
+    assert(companion_current_section() == COMPANION_SECTION_SUMMARY);
+    assert(!render_lock_hit(render_frame_x(RENDER_LOCK_X + 2), render_frame_y(RENDER_TOOLS_Y + 2)));
+    assert(render_creature_colors_hit(&tank, RENDER_CARD_SHRIMP, 160, 200) == -1);
+    render_shop_leave();
+    assert(shp_rows(&tank) == progression_shop_count(&tank));
+}
+
+static void check_ground_cover_mask(unsigned planted) {
+    tank_t t = help_tank;
+    size_t bytes = (size_t)TANK_W * TANK_H * sizeof *full_frame;
+    t.foliage = (foliage_state_t){1, (1u << FOLIAGE_COUNT) - 1, planted, 0};
+    memset(full_frame, 0, bytes);
+    ctx_t c = ctx_full(full_frame, TANK_W, 1);
+    draw_ground_cover(&c, &t, false);
+    int colored = 0;
+    for (int y = 0; y < TANK_H; y++) for (int x = 0; x < TANK_W; x++) {
+        if (!full_frame[y * TANK_W + x]) continue;
+        assert(y >= TANK_SAND_TOP - 12 && y <= TANK_SAND_TOP + 19);
+        colored++;
+    }
+    if (planted & ((1u << FOLIAGE_KELP) - 1)) assert(colored > TANK_W * 2 && colored < TANK_W * 22);
+    else assert(!colored);
+    memset(repeated, 0, bytes);
+    for (int y = 0; y < TANK_H; y++) {
+        render_tile(y, 1);
+        ctx_t row = ctx_full(repeated + y * TANK_W, TANK_W, 1);
+        draw_ground_cover(&row, &t, false);
+    }
+    render_tile(0, 0);
+    assert(!memcmp(full_frame, repeated, bytes));
+    memset(repeated, 0, bytes);
+    for (int x = 0; x < TANK_W; x++) {
+        render_region(x, 1);
+        ctx_t column = ctx_full(repeated, TANK_W, 1);
+        draw_ground_cover(&column, &t, false);
+    }
+    render_region(0, 0);
+    assert(!memcmp(full_frame, repeated, bytes));
+}
+
+static void check_ground_cover(void) {
+    menu_width = TANK_W;
+    tank_t t = help_tank;
+    t.foliage = (foliage_state_t){1, (1u << FOLIAGE_COUNT) - 1, (1u << FOLIAGE_COUNT) - 1, 0};
+    uint32_t hashes[FOLIAGE_COUNT];
+    for (int kind = 0; kind < FOLIAGE_KELP; kind++) {
+        unsigned tones = 0;
+        uint32_t hash = 2166136261u;
+        for (int y = 0; y < GROUND_COVER_H; y++) for (int x = 0; x < GROUND_COVER_W; x++) {
+            unsigned index = GROUND_COVER_ART[kind][y][x];
+            assert(index < 16);
+            if (index) tones |= 1u << index;
+            hash = (hash ^ index) * 16777619u;
+        }
+        int colors = 0;
+        for (; tones; tones >>= 1) colors += tones & 1;
+        assert(colors >= 8);
+        for (int prior = 0; prior < kind; prior++) assert(hashes[prior] != hash);
+        hashes[kind] = hash;
+    }
+    for (unsigned planted = 0; planted < (1u << FOLIAGE_COUNT); planted++)
+        check_ground_cover_mask(planted);
+    for (int kind = 0; kind < FOLIAGE_COUNT; kind++) {
+        int item = SD_FOLIAGE_FIRST + kind, row = -1;
+        for (int r = 0; r < progression_shop_count(&t); r++)
+            if (progression_shop_item(&t, r) == item) row = r;
+        assert(row >= 0);
+        render_shop_leave(); g_shp_page = row / SHP_PER_PAGE;
+        assert(inventory_touch(&t, 120, SHP_ROW_Y0 + row % SHP_PER_PAGE * SHP_ROW_DY + 10) == SHOP_TAP_KEPT);
+        assert(g_shp_modal == item && g_inventory_item < 0);
+        assert(inventory_touch(&t, 224, SHP_MODAL_Y + SHP_MODAL_H - 28) == SHOP_TAP_BUY + item);
+        assert(SHOP_TAP_BUY + item < SHOP_TAP_MOVE);
+        render_shop_leave(); g_shp_modal = item;
+        char name[32]; snprintf(name, sizeof name, "ground-cover-%d", kind);
+        menu_begin(name); render_shop(&t, full_frame, TANK_W); menu_end(NULL);
+    }
+    render_shop_leave();
+    const char *const *income = progression_sd_earn_lines();
+    for (int line = 0; income[line]; line++) {
+        assert(text_w(income[line], 2) <= SHP_MODAL_W - 16);
+        assert(!strstr(income[line], "FULLY TRUSTS") && !strstr(income[line], "GROWS UP"));
+    }
+    g_shp_earn = true;
+    menu_begin("shop-income"); render_shop(&t, full_frame, TANK_W); menu_end(NULL);
+    render_shop_leave();
+    puts("PASS: all ground-cover mixtures stay low with exact clipped rows/columns; catalog actions do not alias movement");
+}
+
+static void check_kelp_forest(void) {
+    for (int cell = 0; cell < TANK_W / 32; cell++) {
+        int top = TANK_BOT - 14 - (75 + cell % 4 * 21);
+        int tip_pixels = 0, leaf_pixels = 0;
+        for (int local = 0; local < 32; local++) {
+            assert(!kelp_forest_material(cell * 32 + local, top - 1));
+            tip_pixels += kelp_forest_material(cell * 32 + local, top) != 0;
+        }
+        assert(tip_pixels == 1);
+        for (int down = 4; down <= 20; down++) {
+            int y = top + down;
+            int bend = (int)(sinf(y * .08f) * 3);
+            int center = cell * 32 + 15 + bend + (cell % 2 ? 6 : -6);
+            int dy = down - 12;
+            for (int dx = -7; dx <= 7; dx++) {
+                if (dx * dx * 2 + dy * dy >= 80) continue;
+                uint32_t material = kelp_forest_material(center + dx, y);
+                assert(material == 0x82ad80 || material == 0x315e51 ||
+                       material == 0xb3c293 || material == 0x4c7e60);
+                leaf_pixels++;
+            }
+        }
+        assert(leaf_pixels > 150);
+    }
+    puts("PASS: Kelp Forest tips taper and the entire first leaf survives every stalk height without horizontal cuts");
+}
+
+static void check_kelp(void) {
+    tank_t t;
+    tank_init(&t, 177); tank_new_population(&t);
+    t.foliage = (foliage_state_t){1, 1u << FOLIAGE_KELP, 1u << FOLIAGE_KELP, 0};
+    t.sd_unlocks = SD_ITEM_SEAHORSE;
+    tank_seahorse_place(&t);
+    assert(t.sh_mode == SH_PERCH && t.sh_akind == SH_ANCHOR_KELP && t.sh_bed == -1);
+    float x, y;
+    assert(tank_kelp_anchor(&t, t.sh_frond, &x, &y));
+    assert(fabsf(t.sh_x - x) < .01f && fabsf(t.sh_y - y) < .01f);
+    assert(!strcmp(tank_seahorse_holding(&t), "KELP"));
+    tank_t before = t;
+    size_t bytes = (size_t)TANK_W * TANK_H * sizeof *full_frame;
+    uint32_t first = 0;
+    bool changed = false;
+    int expected = 0;
+    for (int row = 0; row < KELP_HEIGHT; row++)
+        for (int col = 0; col < KELP_WIDTH; col++)
+            if (KELP_ART[row][col]) expected += KELP_PATCH_COUNT;
+    assert(expected > 500 && expected < KELP_WIDTH * KELP_HEIGHT * KELP_PATCH_COUNT);
+    for (int phase = 0; phase < 6; phase++) {
+        t.clock = phase * .5f;
+        memset(full_frame, 0, bytes);
+        ctx_t c = ctx_full(full_frame, TANK_W, 1);
+        draw_kelp(&c, &t, false, false);
+        draw_kelp(&c, &t, false, true);
+        uint32_t hash = 2166136261u;
+        int colored = 0;
+        for (int row = 0; row < TANK_H; row++) for (int col = 0; col < TANK_W; col++) {
+            uint16_t pixel = full_frame[row * TANK_W + col];
+            hash = (hash ^ pixel) * 16777619u;
+            if (!pixel) continue;
+            colored++;
+            assert(row >= TANK_SAND_TOP + 10 - KELP_HEIGHT && row <= TANK_SAND_TOP + 10);
+        }
+        assert(colored == expected);
+        if (!phase) first = hash;
+        else if (hash != first) changed = true;
+        memset(repeated, 0, bytes);
+        for (int row = 0; row < TANK_H; row++) {
+            render_tile(row, 1);
+            ctx_t clip = ctx_full(repeated + row * TANK_W, TANK_W, 1);
+            draw_kelp(&clip, &t, false, false);
+            draw_kelp(&clip, &t, false, true);
+        }
+        render_tile(0, 0);
+        assert(!memcmp(full_frame, repeated, bytes));
+        memset(repeated, 0, bytes);
+        for (int col = 0; col < TANK_W; col++) {
+            render_region(col, 1);
+            ctx_t clip = ctx_full(repeated, TANK_W, 1);
+            draw_kelp(&clip, &t, false, false);
+            draw_kelp(&clip, &t, false, true);
+        }
+        render_region(0, 0);
+        assert(!memcmp(full_frame, repeated, bytes));
+        assert(abs(tank_kelp_sway(&t, 0)) <= 1);
+    }
+    assert(changed);
+    static const float clocks[] = {-1, 0, .499f, .5f, .999f, 1, 2.5f, 3, 1e9f, 1e12f};
+    static const int sway[] = {0, 1, 1, 0, -1, -1};
+    for (size_t i = 0; i < sizeof clocks / sizeof *clocks; i++) {
+        t.clock = clocks[i];
+        int phase = (int)fmodf(floorf(fmaxf(t.clock, 0) * 2), 6);
+        for (int patch = 0; patch < KELP_PATCH_COUNT; patch++)
+            assert(tank_kelp_sway(&t, patch) == sway[(phase + patch * 2) % 6]);
+    }
+    t.clock = before.clock;
+    assert(!memcmp(&before, &t, sizeof t));
+    t.foliage.planted = 0;
+    tank_tick(&t, .04f, advisor_rules);
+    assert(t.sh_akind != SH_ANCHOR_KELP && t.sh_mode != SH_PERCH);
+    t.sd_unlocks |= SD_ITEM_PLANT;
+    tank_plant_place(&t);
+    float top;
+    tank_veg_bed(&t, 3, NULL, NULL, &top, NULL);
+    float sword_height = TANK_BOT - 16 - top;
+    assert(KELP_HEIGHT >= sword_height * .4f && KELP_HEIGHT <= sword_height * .6f);
+    assert(!tank_kelp_anchor(&t, 0, NULL, NULL));
+    puts("PASS: kelp is half-height sword foliage, animates gently, clips exactly and supports/relinquishes real seahorse perches");
 }
 
 static void check_retired_lantern(void) {
@@ -780,7 +1190,7 @@ static void check_content_page_tiles(void) {
     tank_t t; tank_init(&t, 799); tank_new_population(&t);
     t.sd_balance = 100000; t.journal.xp = 20000;
     for (int kind = 0; kind < 3; kind++) {
-        int count = kind == 0 ? DECOR_NEW_COUNT : WEAR_COUNT - 1;
+        int count = kind == 0 ? DECOR_NEW_COUNT + FOLIAGE_COUNT : WEAR_COUNT - 1;
         if (kind) companion_open_section(COMPANION_SECTION_WARDROBE);
         for (int item = 0; item < count; item++) {
             if (!kind) {
@@ -811,7 +1221,7 @@ static void check_content_page_tiles(void) {
         }
     }
     render_shop_leave(); render_tile(0, 0); render_region(0, 0);
-    puts("PASS: all twenty new shop modals and twelve wardrobe/color pages match exact guarded 40-row rendering");
+    puts("PASS: all new decor/foliage modals and twelve wardrobe/color pages match exact guarded 40-row rendering");
 }
 
 static void check_fish_material(void) {
@@ -1092,7 +1502,11 @@ static void draw_test_effect(ctx_t *c, int kind, int pose) {
     } else if (kind == 5 || kind == 6) {
         bubble_t b = {.x = 40.3f, .y = 48.7f, .column = kind == 6};
         draw_water_bubble(c, &b);
-    } else draw_food_pellet(c, 40.3f, 48.7f);
+    } else {
+        tank_t food = help_tank;
+        food.food[0].x = 40.3f; food.food[0].y = 48.7f;
+        draw_food_pellet(c, &food, 0);
+    }
 }
 
 static void check_aquarium_effects(void) {
@@ -1129,15 +1543,17 @@ static void check_aquarium_effects(void) {
     draw_care_stroke(&t, full_frame, TANK_W);
     for (int i = 0; i < TANK_W * TANK_H; i++) assert(!full_frame[i]);
     t.wipe_sounded = true;
-    assert(care_stroke_visible(&t));
+    assert(!care_stroke_visible(&t));
     tank_t before = t;
     draw_care_stroke(&t, full_frame, TANK_W);
     assert(!memcmp(&t, &before, sizeof t));
-    assert(full_frame[47 * TANK_W + 40]);
+    for (int i = 0; i < TANK_W * TANK_H; i++) assert(!full_frame[i]);
     t.drag_has_prev = false; assert(!care_stroke_visible(&t));
     t.drag_has_prev = true; t.tool = TOOL_SCISSORS;
     assert(!care_stroke_visible(&t));
-    t.slash_cut = true; assert(care_stroke_visible(&t));
+    t.slash_cut = true; assert(!care_stroke_visible(&t));
+    draw_care_stroke(&t, full_frame, TANK_W);
+    for (int i = 0; i < TANK_W * TANK_H; i++) assert(!full_frame[i]);
     t.tool = TOOL_HAND; assert(!care_stroke_visible(&t));
 }
 
@@ -1154,7 +1570,9 @@ static void capture_aquarium_details(const char *directory) {
         }
         draw_text(&c, 140, 12 + kind * 29, 1, 0xb6d3ce, names[kind]);
     }
-    draw_food_pellet(&c, 25, 155);
+    tank_t food = help_tank;
+    food.food[0].x = 25; food.food[0].y = 155;
+    draw_food_pellet(&c, &food, 0);
     bubble_t b = {.x = 45, .y = 155, .column = true};
     draw_water_bubble(&c, &b);
     b.x = 60; b.column = false; draw_water_bubble(&c, &b);
@@ -1570,14 +1988,13 @@ static void check_packed_urchin(void) {
     t.urchin_frond = 0;
     ctx_t c = {pixels, 448, 1.0f, 0, 0, 448, 368, false};
     render_work_caches(true);
-    for (int chewing = 0; chewing < 2; chewing++) {
-        t.urchin_chew = chewing;
-        float speed = chewing ? 2.6f : .8f;
+    {
+        float speed = .8f;
         for (int pose = 0; pose < 16; pose++) {
             t.clock = pose * (TAU / 16) / speed;
             draw_urchin(&c, &t);
             assert(g_urchin_art);
-            ur_pose_t p; urchin_pose(&p, t.clock, chewing != 0);
+            ur_pose_t p; urchin_pose(&p, t.clock, false);
             const uint8_t *art = g_urchin_art + pose * URCHIN_POSE_BYTES;
             for (int i = 0; i < 37 * 24; i++)
                 assert(((art[i / 2] >> ((i & 1) * 4)) & 15) ==
@@ -1588,8 +2005,607 @@ static void check_packed_urchin(void) {
     render_work_caches(false);
     assert(!g_urchin_art);
     memset(pixels, 0, sizeof pixels);
-    puts("PASS: all 32 packed urchin poses preserve every tone including odd-row nibble boundaries; 7104-byte cache and release");
+    puts("PASS: all 16 ornamental urchin poses preserve every tone including odd-row nibble boundaries; 7104-byte cache and release");
 }
+static void check_harbor_fish(void) {
+    ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = .8f};
+    for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++)
+        for (int stage = STAGE_FRY; stage <= STAGE_ELDER; stage++)
+            for (int pose = 0; pose < 4; pose++) {
+                fish_t f = help_tank.fish[0];
+                f.variety = variety; f.stage = stage;
+                f.x = TANK_W * .5f; f.y = TANK_H * .5f; f.size = .9f;
+                f.yaw = f.yaw_tail = pose == 0 ? 1 : pose == 1 ? -1 : .15f;
+                f.heading = pose == 3 ? -.6f : .4f;
+                f.color = 0x72afa9; f.fin = 0xcb9b74; f.accent = 0xe9d8a2;
+                f.pattern = PATTERN_TIGER; f.wearable = WEAR_NONE;
+                memset(full_frame, 0x26, sizeof full_frame);
+                draw_fish_core(&c, &f, 3.125f, false, f.size);
+                if (variety == FISH_CLASSIC) {
+                    float width = tank_fish_half_width(&f), top = tank_fish_top_clearance(&f);
+                    float bottom = tank_fish_clearance(&f);
+                    for (int y = 0; y < TANK_H; y++) for (int x = 0; x < TANK_W; x++) {
+                        if (full_frame[y * TANK_W + x] == 0x2626) continue;
+                        assert(x >= floorf(f.x - width) - 1 && x <= ceilf(f.x + width) + 1);
+                        assert(y >= floorf(f.y - top) - 1 && y <= ceilf(f.y + bottom) + 1);
+                    }
+                }
+                for (int row = 0; row < TANK_H; row += 7) {
+                    int height = TANK_H - row < 7 ? TANK_H - row : 7;
+                    int length = TANK_W * height;
+                    memset(tile_frame, 0x26, sizeof tile_frame);
+                    tile_frame[0] = tile_frame[length + 1] = 0xc59a;
+                    ctx_t tile = c; tile.fb = tile_frame + 1; tile.oy = row; tile.h = height;
+                    draw_fish_core(&tile, &f, 3.125f, false, f.size);
+                    assert(tile_frame[0] == 0xc59a && tile_frame[length + 1] == 0xc59a);
+                    assert(!memcmp(tile_frame + 1, full_frame + row * TANK_W,
+                                   (size_t)length * sizeof *full_frame));
+                }
+            }
+    const char *const *frames[] = {SHRIMP_IDLE_A, SHRIMP_IDLE_B, SHRIMP_PECK, SHRIMP_DART};
+    for (unsigned frame = 0; frame < sizeof frames / sizeof *frames; frame++)
+        for (int y = 0; y < 8; y++) {
+            assert(strlen(frames[frame][y]) == 18);
+            for (int x = 0; x < 18; x++)
+                assert(frames[frame][y][x] == '.' || strchr(SHRIMP_KEYS, frames[frame][y][x]));
+        }
+    printf("PASS: %dpx all species/stages/turns/pitches match guarded 7-row fish tiles; four segmented shrimp poses\n", TANK_W);
+}
+
+static void check_shark_web(const char *gallery) {
+    ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+    for (int small = 0; small < 2; small++) for (int turn = -10; turn <= 10; turn++)
+        for (int dive = -1; dive <= 1; dive++) {
+            fish_t f = help_tank.fish[0];
+            f.x = TANK_W / 2; f.y = TANK_H / 2; f.variety = FISH_SHARK;
+            f.size = small ? .32f : 1; f.stage = small ? STAGE_FRY : STAGE_ADULT;
+            f.yaw = turn / 10.0f; f.yaw_tail = -f.yaw;
+            f.heading = dive * .7f; f.swim_phase = turn * .37f;
+            fish_t before = f;
+            fish_motion_t motion = fish_motion(&f);
+            memset(full_frame, 0, sizeof full_frame);
+            draw_shark_tail(&c, &f, &motion, 0xd8b37a);
+            int painted = 0;
+            for (int i = 0; i < TANK_W * TANK_H; i++) painted += full_frame[i] != 0;
+            assert(painted >= (small ? 3 : 8));
+            int solid_rows = 0;
+            for (int y = 0; y < TANK_H; y++) {
+                int first = TANK_W, last = -1;
+                for (int x = 0; x < TANK_W; x++) if (full_frame[y * TANK_W + x]) {
+                    if (first == TANK_W) first = x;
+                    last = x;
+                }
+                for (int x = first; x <= last; x++) assert(full_frame[y * TANK_W + x]);
+                solid_rows += last - first >= 1;
+            }
+            if (!small && abs(turn) >= 5) assert(solid_rows >= 2);
+            for (int row = 0; row < TANK_H; row += 7) {
+                int height = TANK_H - row < 7 ? TANK_H - row : 7, length = TANK_W * height;
+                memset(tile_frame, 0, sizeof tile_frame);
+                tile_frame[0] = tile_frame[length + 1] = 0xc59a;
+                ctx_t tile = c; tile.fb = tile_frame + 1; tile.oy = row; tile.h = height;
+                draw_shark_tail(&tile, &f, &motion, 0xd8b37a);
+                assert(tile_frame[0] == 0xc59a && tile_frame[length + 1] == 0xc59a);
+                assert(!memcmp(tile_frame + 1, full_frame + row * TANK_W, (size_t)length * 2));
+            }
+            assert(!memcmp(&before, &f, sizeof f));
+        }
+    if (gallery) {
+        for (int i = 0; i < TANK_W * TANK_H; i++) full_frame[i] = rgb565(0x10232b, 1);
+        for (int pose = 0; pose < 12; pose++) {
+            fish_t f = help_tank.fish[0];
+            f.x = (pose % 4 + .5f) * TANK_W / 4;
+            f.y = (pose / 4 + .5f) * TANK_H / 3;
+            f.variety = FISH_SHARK; f.stage = pose >= 8 ? STAGE_FRY : STAGE_ADULT;
+            f.size = pose >= 8 ? .36f : .68f; f.wearable = WEAR_NONE;
+            f.yaw = pose % 4 == 0 ? 1 : pose % 4 == 1 ? -1 : pose % 4 == 2 ? .1f : -.1f;
+            f.yaw_tail = pose >= 4 ? -f.yaw : f.yaw;
+            f.heading = pose / 4 == 1 ? -.65f : .45f;
+            draw_fish_core(&c, &f, 3.125f, false, 1);
+        }
+        capture_content_raw(gallery, "shark-turn-dive-fry");
+        for (int i = 0; i < TANK_W * TANK_H; i++) full_frame[i] = rgb565(0x10232b, 1);
+        for (int pose = 0; pose < 6; pose++) {
+            fish_t f = help_tank.fish[0];
+            f.x = (pose % 3 + .5f) * TANK_W / 3;
+            f.y = (pose / 3 + .5f) * TANK_H / 2;
+            f.variety = FISH_SHARK; f.stage = STAGE_ADULT; f.size = .83f;
+            f.wearable = WEAR_NONE; f.fin = 0x7dafa9; f.color = 0x738fa0;
+            f.yaw = f.yaw_tail = pose % 3 == 1 ? -1 : 1;
+            f.heading = pose % 3 == 0 ? 0 : pose % 3 == 1 ? -.45f : .45f;
+            f.swim_phase = pose < 3 ? 0 : 2;
+            if (pose < 3) draw_fish_core(&c, &f, 3.125f, false, 1);
+            else {
+                fish_motion_t motion = fish_motion(&f);
+                draw_shark_tail(&c, &f, &motion, f.fin);
+            }
+            const char *label = pose % 3 == 0 ? "LEVEL RIGHT" : pose % 3 == 1 ? "CLIMB LEFT" : "DIVE RIGHT";
+            draw_text(&c, (int)f.x - text_w(label, 1) / 2, (int)f.y + 32, 1, 0xf0d4a0, label);
+        }
+        capture_content_raw(gallery, "shark-side-on-tail-isolated");
+    }
+    printf("PASS: %dpx shark web stays filled through 126 opposing-yaw turn/dive/fry poses; guarded tiles and no mutation\n", TANK_W);
+}
+
+static void draw_live_creature_fixture(ctx_t *c, const tank_t *t) {
+    src_t palette[SHRIMP_TONES];
+    for (int i = 0; i < SHRIMP_TONES; i++) palette[i] = src_color(SHRIMP_RGB[i], c->dim);
+    for (int i = 0; i < t->shrimp_n; i++) draw_shrimp(c, &t->shrimp[i], palette);
+    draw_snail(c, t, tank_snail_upright(t));
+    draw_urchin(c, t); draw_seahorse(c, t);
+}
+
+static void check_live_creature_art(const char *gallery) {
+    tank_t t; tank_init(&t, 542);
+    t.n_fish = 0; t.sd_unlocks = SD_ITEM_SNAIL | SD_ITEM_SHRIMP | SD_ITEM_URCHIN | SD_ITEM_SEAHORSE;
+    t.snail_x = TANK_W / 4; t.urchin_x = TANK_W * .72f;
+    t.sh_x = TANK_W * .72f; t.sh_y = TANK_H * .48f; t.sh_hidden = false;
+    t.shrimp_n = 3;
+    for (int pose = 0; pose < 4; pose++) {
+        t.clock = 1.25f + pose * .43f;
+        t.snail_y = pose & 1 ? TANK_H * .45f : SNAIL_FLOOR_Y;
+        t.snail_heading = pose * TAU / 4;
+        t.sh_facing = pose & 1 ? -1 : 1; t.sh_mode = SH_DRIFT;
+        t.sh_vx = pose & 1 ? 30 : 0; t.sh_vy = pose & 1 ? -10 : 0;
+        t.sh_land = 0; t.sh_akind = SH_ANCHOR_NONE;
+        for (int i = 0; i < 3; i++) {
+            shrimp_t *q = &t.shrimp[i];
+            q->x = TANK_W * .2f + i * 22; q->y = TANK_H * .22f;
+            q->yaw = i == 1 ? -1 : 1; q->ph = t.clock;
+            q->dart = pose == 3; q->pecking = pose == 2;
+        }
+        tank_t before = t;
+        ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+        for (int i = 0; i < TANK_W * TANK_H; i++) full_frame[i] = rgb565(0x10232b, 1);
+        draw_live_creature_fixture(&c, &t);
+        for (int row = 0; row < TANK_H; row += 7) {
+            int height = TANK_H - row < 7 ? TANK_H - row : 7, length = TANK_W * height;
+            for (int i = 0; i < length + 2; i++) tile_frame[i] = rgb565(0x10232b, 1);
+            tile_frame[0] = tile_frame[length + 1] = 0xc59a;
+            ctx_t tile = c; tile.fb = tile_frame + 1; tile.oy = row; tile.h = height;
+            draw_live_creature_fixture(&tile, &t);
+            assert(tile_frame[0] == 0xc59a && tile_frame[length + 1] == 0xc59a);
+            assert(!memcmp(tile_frame + 1, full_frame + row * TANK_W, (size_t)length * 2));
+        }
+        assert(!memcmp(&before, &t, sizeof t));
+        if (gallery) {
+            char name[48]; snprintf(name, sizeof name, "live-creatures-pose-%d", pose);
+            capture_content_raw(gallery, name);
+        }
+    }
+    puts("PASS: live shrimp/snail floor/urchin/seahorse cruise fixtures have exact guarded 7-row pixels and no state mutation");
+}
+
+static void check_instrument_themes(const char *gallery) {
+    tank_t t; tank_init(&t, 542);
+    t.n_fish = 0; t.tool = TOOL_HAND; t.clock_requested = false;
+    t.progression.theme_unlocks = (1u << JOURNAL_THEME_COUNT) - 1;
+    t.aquariums.clock_theme = CLOCK_OFF;
+    render_tile(0, 0); render_region(0, 0); render_work_caches(true);
+    uint32_t theme_hashes[JOURNAL_THEME_COUNT];
+    for (int theme = 0; theme < JOURNAL_THEME_COUNT; theme++) {
+        t.journal.theme = (uint8_t)theme;
+        tank_t before = t;
+        render_tank(&t, full_frame, TANK_W);
+        theme_hashes[theme] = 0;
+        for (int i = 0; i < TANK_W * TANK_H; i++) theme_hashes[theme] = theme_hashes[theme] * 33u + full_frame[i];
+        for (int previous = 0; previous < theme; previous++) assert(theme_hashes[theme] != theme_hashes[previous]);
+        memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * 2);
+        for (int row = 0; row < TANK_H; row += 7) {
+            int height = TANK_H - row < 7 ? TANK_H - row : 7, length = TANK_W * height;
+            tile_frame[0] = tile_frame[length + 1] = 0xc59a;
+            render_tile(row, height); render_tank(&t, tile_frame + 1, TANK_W);
+            assert(tile_frame[0] == 0xc59a && tile_frame[length + 1] == 0xc59a);
+            assert(!memcmp(tile_frame + 1, repeated + row * TANK_W, (size_t)length * 2));
+        }
+        render_tile(0, 0);
+        assert(!memcmp(&before, &t, sizeof t));
+        if (gallery) {
+            memcpy(full_frame, repeated, (size_t)TANK_W * TANK_H * 2);
+            char name[40]; snprintf(name, sizeof name, "crafted-theme-%d", theme);
+            capture_content_raw(gallery, name);
+        }
+    }
+    for (int theme = CLOCK_OFF + 1; theme < CLOCK_THEME_COUNT; theme++) {
+        t.aquariums.clock_theme = (uint8_t)theme;
+        t.aquariums.clock_layout = clock_layout_set_size(0, CLOCK_LARGE);
+        for (int i = 0; i < TANK_W * TANK_H; i++) full_frame[i] = rgb565(0x10232b, 1);
+        render_clock_overlay(&t, full_frame, TANK_W, INT64_C(1792803600));
+        if (gallery) {
+            char name[40]; snprintf(name, sizeof name, "crafted-clock-%d", theme);
+            capture_content_raw(gallery, name);
+        }
+    }
+    for (int i = 0; i < TANK_W * TANK_H; i++) full_frame[i] = rgb565(0x10232b, 1);
+    ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+    uint32_t hashes[3];
+    for (unsigned tier = 0; tier < 3; tier++) {
+        memset(repeated, 0, sizeof repeated);
+        ctx_t pellet = c; pellet.fb = repeated;
+        draw_food_tier(&pellet, 10, 10, tier, 0);
+        hashes[tier] = 0;
+        for (int i = 0; i < TANK_W * TANK_H; i++) hashes[tier] = hashes[tier] * 33u + repeated[i];
+        draw_food_tier(&c, 30 + tier * 70, 40, tier, 0);
+    }
+    assert(hashes[0] != hashes[1] && hashes[1] != hashes[2] && hashes[0] != hashes[2]);
+    if (gallery) capture_content_raw(gallery, "food-tiers");
+    puts("PASS: eight crafted themes have guarded tiled pixels/no mutation; all three live pellet tiers have distinct pixels");
+}
+
+static void check_serene_interface(const char *gallery) {
+    size_t bytes = (size_t)TANK_W * TANK_H * sizeof *full_frame;
+    assert(48 + render_text_w("FULLNESS", 1) < 149);
+    render_tile(0, 0); render_region(0, 0);
+    ctx_t c = ctx_page(full_frame, TANK_W);
+    page_backdrop(&c, 0, 0, PAGE_W, PAGE_H);
+    for (int x = 196; x < 252; x++)
+        assert(full_frame[(int)render_frame_y(358) * TANK_W + (int)render_frame_x((float)x)] != rgb565(0x577570, 1));
+    uint32_t hashes[COMPANION_EMBLEM_COUNT];
+    for (unsigned emblem = 0; emblem < COMPANION_EMBLEM_COUNT; emblem++) {
+        memset(full_frame, 0, bytes);
+        render_tank_emblem(full_frame, TANK_W, 100, 100, emblem);
+        uint16_t colors[64]; int count = 0, painted = 0;
+        hashes[emblem] = 0;
+        for (int i = 0; i < TANK_W * TANK_H; i++) {
+            uint16_t pixel = full_frame[i];
+            hashes[emblem] = hashes[emblem] * 33u + pixel;
+            if (!pixel) continue;
+            painted++;
+            int j = 0; while (j < count && colors[j] != pixel) j++;
+            if (j == count && count < 64) colors[count++] = pixel;
+        }
+        if (painted < 20 || count < 4) fprintf(stderr, "emblem %u: %d pixels, %d colors\n", emblem, painted, count);
+        assert(painted >= 20 && count >= 4);
+        for (unsigned prior = 0; prior < emblem; prior++) assert(hashes[emblem] != hashes[prior]);
+        memcpy(repeated, full_frame, bytes);
+        for (int y = 0; y < TANK_H; y++) {
+            render_tile(y, 1);
+            memset(tile_frame, 0, sizeof tile_frame);
+            render_tank_emblem(tile_frame + 1, TANK_W, 100, 100, emblem);
+            assert(!memcmp(tile_frame + 1, repeated + y * TANK_W, TANK_W * sizeof *repeated));
+        }
+        render_tile(0, 0);
+    }
+    static const uint32_t flake_colors[] = {0xef725f, 0xecc65a, 0x65b887, 0x71b9ce, 0xc98cbc};
+    ctx_t food = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+    for (unsigned variant = 0; variant < 5; variant++) {
+        memset(full_frame, 0, bytes);
+        draw_food_tier(&food, 30, 30, PROGRESSION_FOOD_PLUS, variant);
+        bool found = false;
+        for (int i = 0; i < TANK_W * TANK_H; i++) found |= full_frame[i] == rgb565(flake_colors[variant], 1);
+        assert(found);
+    }
+    tank_t t; tank_init(&t, 542); tank_new_population(&t);
+    for (unsigned kind = 0; kind < 4; kind++) for (int level = 0; level <= 10; level++) {
+        memset(full_frame, 0, bytes);
+        render_fish_meter(full_frame, TANK_W, 100, kind, level);
+        if (!kind && level == 10) {
+            uint16_t lit = rgb565(0xe4b96c, 1);
+            int runs = 0, row = (int)render_frame_y(114);
+            bool previous = false;
+            for (int x = (int)render_frame_x(149); x < (int)render_frame_x(364); x++) {
+                bool on = full_frame[row * TANK_W + x] == lit;
+                if (on && !previous) runs++;
+                previous = on;
+            }
+            assert(runs == 10);
+        }
+        memcpy(repeated, full_frame, bytes);
+        for (int y = 0; y < TANK_H; y++) {
+            render_tile(y, 1);
+            memset(tile_frame, 0, sizeof tile_frame);
+            render_fish_meter(tile_frame + 1, TANK_W, 100, kind, level);
+            assert(!memcmp(tile_frame + 1, repeated + y * TANK_W, TANK_W * sizeof *repeated));
+        }
+        render_tile(0, 0);
+    }
+    companion_open_section(COMPANION_SECTION_SUMMARY);
+    companion_render(&t, full_frame, TANK_W);
+    if (gallery) capture_content_raw(gallery, "serene-fish-summary");
+    companion_open_section(COMPANION_SECTION_IDENTITY);
+    companion_render(&t, full_frame, TANK_W);
+    if (gallery) capture_content_raw(gallery, "serene-tank-identity");
+    page_backdrop(&c, 0, 0, PAGE_W, PAGE_H);
+    for (unsigned i = 0; i < COMPANION_EMBLEM_COUNT; i++) {
+        int ex = 30 + (int)(i % 6) * 72, ey = 70 + (int)(i / 6) * 70;
+        render_tank_emblem(full_frame, TANK_W, ex, ey, i);
+        render_text(full_frame, TANK_W, ex, ey + 32, 1, 0xe7d8bb, companion_emblem(i));
+    }
+    for (unsigned i = 0; i < 3; i++)
+        render_food_sample(full_frame, TANK_W, 100 + (int)i * 110, 250, i);
+    if (gallery) capture_content_raw(gallery, "serene-emblems-food");
+    puts("PASS: no decorative page dots; twelve distinct multicolor emblems; five stable rainbow flakes; all 44 meter levels match one-row clipping");
+}
+
+static void check_harbor_scene(const char *gallery) {
+    tank_t t; tank_init(&t, 542); tank_new_population(&t);
+    t.sd_unlocks |= SD_ITEM_CASTLE | SD_ITEM_CORAL | SD_ITEM_CLUSTER | SD_ITEM_PLANT |
+                    SD_ITEM_SNAIL | SD_ITEM_SHRIMP | SD_ITEM_URCHIN | SD_ITEM_SEAHORSE;
+    t.snail_x = TANK_W * .2f; t.snail_y = SNAIL_FLOOR_Y;
+    t.urchin_x = TANK_W * .75f;
+    t.sh_x = TANK_W * .85f; t.sh_y = TANK_H * .5f; t.sh_hidden = false;
+    t.shrimp_n = 3;
+    for (int i = 0; i < t.shrimp_n; i++) {
+        t.shrimp[i].x = TANK_W * .2f + i * 18;
+        t.shrimp[i].y = TANK_H * .8f;
+        t.shrimp[i].yaw = 1;
+    }
+    t.clock_requested = false; t.aquariums.clock_theme = CLOCK_OFF;
+    t.tool = TOOL_HAND; t.clock = 3.125f;
+    tank_t snapshot = t;
+    size_t bytes = (size_t)TANK_W * TANK_H * sizeof *full_frame;
+    for (int cached = 0; cached < 2; cached++) {
+        render_work_caches(cached != 0);
+        for (int night = 0; night < 2; night++) {
+            t.night = night != 0;
+            render_tile(0, 0); render_region(0, 0);
+            render_tank(&t, full_frame, TANK_W);
+            memcpy(repeated, full_frame, bytes);
+            for (int row = 0; row < TANK_H; row += 40) {
+                int height = TANK_H - row < 40 ? TANK_H - row : 40;
+                int length = TANK_W * height;
+                memset(tile_frame, 0, sizeof tile_frame);
+                tile_frame[0] = tile_frame[length + 1] = 0xc59a;
+                render_tile(row, height);
+                render_tank(&t, tile_frame + 1, TANK_W);
+                assert(tile_frame[0] == 0xc59a && tile_frame[length + 1] == 0xc59a);
+                assert(!memcmp(tile_frame + 1, repeated + row * TANK_W,
+                               (size_t)length * sizeof *full_frame));
+            }
+            render_tile(0, 0);
+            if (gallery && cached) {
+                memcpy(full_frame, repeated, bytes);
+                capture_content_raw(gallery, night ? "harbor-night" : "harbor-scene");
+            }
+        }
+    }
+    t.night = snapshot.night;
+    assert(!memcmp(&t, &snapshot, sizeof t));
+    render_work_caches(true);
+    render_tile(0, 0);
+    const int draws = 200;
+    clock_t start = clock();
+    for (int i = 0; i < draws; i++) render_tank(&t, full_frame, TANK_W);
+    printf("HOST ART %dx%d: %.3fms full uncached-background scene, helpers+castle+coral+cluster+sword; work caches %zu bytes\n",
+           TANK_W, TANK_H, (double)(clock() - start) * 1000 / CLOCKS_PER_SEC / draws,
+           render_work_cache_bytes());
+    printf("PASS: %dpx day/night live+work-cache scenes match guarded 40-row tiles; render leaves tank unchanged\n", TANK_W);
+}
+
+static void check_harbor_helpers(const char *gallery) {
+    static const char *names[] = {"SHRIMP", "NERITE", "URCHIN", "SEAHORSE"};
+    ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+    uint16_t background = rgb565(0x102b34, 1);
+    for (int i = 0; i < TANK_W * TANK_H; i++) full_frame[i] = background;
+    for (int creature = CREATURE_SHRIMP; creature <= CREATURE_SEAHORSE; creature++) {
+        float x = TANK_W * (creature % 2 ? .75f : .25f);
+        float y = TANK_H * (creature / 2 ? .70f : .25f);
+        draw_creature_portrait(&c, x, y, creature == CREATURE_SHRIMP ? 3 : 2, creature, 0, 3.125f);
+    }
+    for (int row = 0; row < TANK_H; row += 7) {
+        int height = TANK_H - row < 7 ? TANK_H - row : 7, length = TANK_W * height;
+        for (int i = 1; i <= length; i++) tile_frame[i] = background;
+        tile_frame[0] = tile_frame[length + 1] = 0xc59a;
+        ctx_t tile = c; tile.fb = tile_frame + 1; tile.oy = row; tile.h = height;
+        for (int creature = CREATURE_SHRIMP; creature <= CREATURE_SEAHORSE; creature++) {
+            float x = TANK_W * (creature % 2 ? .75f : .25f);
+            float y = TANK_H * (creature / 2 ? .70f : .25f);
+            draw_creature_portrait(&tile, x, y, creature == CREATURE_SHRIMP ? 3 : 2, creature, 0, 3.125f);
+        }
+        assert(tile_frame[0] == 0xc59a && tile_frame[length + 1] == 0xc59a);
+        assert(!memcmp(tile_frame + 1, full_frame + row * TANK_W,
+                       (size_t)length * sizeof *full_frame));
+    }
+    if (gallery) {
+        for (int creature = 0; creature < 4; creature++) {
+            int x = (int)(TANK_W * (creature % 2 ? .75f : .25f));
+            int y = (int)(TANK_H * (creature / 2 ? .70f : .25f)) + (creature / 2 ? 42 : 28);
+            draw_text(&c, x - text_w(names[creature], 1) / 2, y, 1, 0xc5d5c7, names[creature]);
+        }
+        capture_content_raw(gallery, "harbor-helpers");
+    }
+    printf("PASS: %dpx helper portraits match guarded 7-row tiles\n", TANK_W);
+}
+
+static void check_harbor_castle(void) {
+    render_tile(0, 0); render_region(0, 0);
+    g_npc = 0;
+    ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+    cst_t k = {.c = &c, .cx = TANK_W / 2, .layer = 0, .final = false};
+    castle_tint_fill(c.dim);
+    render_work_caches(false);
+    memset(full_frame, 0x26, sizeof full_frame);
+    castle_front_row(&k);
+    memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * sizeof *full_frame);
+    render_work_caches(true);
+    memset(full_frame, 0x26, sizeof full_frame);
+    castle_front_cached(&k);
+    assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * sizeof *full_frame));
+    assert(full_frame[(CASTLE_FY - 5) * TANK_W + k.cx] == 0x2626);
+    assert(g_castle_art);
+    printf("PASS: %dpx harbor gatehouse live/packed pixels identical; gateway remains transparent\n", TANK_W);
+}
+
+static void check_starter_refuge(const char *gallery) {
+    tank_t t; tank_init(&t, 542);
+    t.n_fish = 0; t.sd_unlocks = 0;
+    t.tool = TOOL_HAND; t.clock_requested = false;
+    t.aquariums.clock_theme = CLOCK_OFF;
+    render_tile(0, 0); render_region(0, 0);
+    render_set_scene_cache(NULL); render_set_dirty_mask(NULL);
+    uint16_t *backdrop = malloc(12000);
+    assert(backdrop);
+    for (int detail = SCENE_BALANCED; detail <= SCENE_SIMPLE; detail++) {
+        render_device_t device = {0, 0, false, -1, (uint8_t)detail};
+        render_set_device(&device);
+        for (int move = 0; move < 2; move++) {
+            if (move) memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * sizeof *full_frame);
+            t.reef_x = TANK_W * (move ? .6f : .2f);
+            if (move) {
+                render_tank(&t, full_frame, TANK_W);
+                assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * sizeof *full_frame));
+                memcpy(tile_frame, full_frame, (size_t)TANK_W * TANK_H * sizeof *full_frame);
+            }
+            render_set_backdrop_cache(NULL, 0);
+            render_tank(&t, full_frame, TANK_W);
+            if (move) assert(!memcmp(full_frame, tile_frame, (size_t)TANK_W * TANK_H * sizeof *full_frame));
+            memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * sizeof *full_frame);
+            render_set_backdrop_cache(backdrop, 12000);
+            render_tank(&t, full_frame, TANK_W);
+            assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * sizeof *full_frame));
+            for (int row = 0; row < TANK_H; row += 7) {
+                int height = TANK_H - row < 7 ? TANK_H - row : 7, length = TANK_W * height;
+                tile_frame[0] = tile_frame[length + 1] = 0xc59a;
+                render_tile(row, height);
+                render_tank(&t, tile_frame + 1, TANK_W);
+                assert(tile_frame[0] == 0xc59a && tile_frame[length + 1] == 0xc59a);
+                assert(!memcmp(tile_frame + 1, repeated + row * TANK_W,
+                               (size_t)length * sizeof *full_frame));
+            }
+            render_tile(0, 0);
+            if (gallery && !move && detail == SCENE_BALANCED)
+                capture_content_raw(gallery, "open-sand-nursery");
+        }
+    }
+    render_set_backdrop_cache(NULL, 0); free(backdrop);
+    render_device_t device = {0, 0, false, -1, SCENE_BALANCED};
+    render_set_device(&device);
+    uint16_t *scene = malloc((size_t)TANK_W * TANK_H * sizeof *scene);
+    uint32_t *dirty = calloc(RENDER_DIRTY_WORDS, sizeof *dirty);
+    assert(scene && dirty);
+    render_set_scene_cache(scene); render_set_dirty_mask(dirty);
+    t.reef_x = TANK_W * .2f;
+    render_tank(&t, full_frame, TANK_W);
+    t.reef_x = TANK_W * .6f;
+    render_tank(&t, full_frame, TANK_W);
+    memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * sizeof *full_frame);
+    render_set_scene_cache(NULL); render_set_scene_cache(scene);
+    render_tank(&t, full_frame, TANK_W);
+    assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * sizeof *full_frame));
+    render_set_scene_cache(NULL); render_set_dirty_mask(NULL);
+    free(scene); free(dirty);
+    t.sd_unlocks = SD_ITEM_PLANT;
+    t.reef_x = TANK_W * .2f;
+    render_tank(&t, full_frame, TANK_W);
+    if (gallery) capture_content_raw(gallery, "sword-refuge");
+    render_work_caches(false); render_work_caches(true);
+    ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+    memset(full_frame, 0, sizeof full_frame);
+    g_veg_mask_cx = -1; g_veg_arch_pass = 0; g_veg_skip = 0;
+    draw_veg(&c, &t, 3, VEG_SEED[3], -1, false);
+    uint16_t colors[16]; int count = 0;
+    for (int i = 0; i < TANK_W * TANK_H; i++) if (full_frame[i]) {
+        int j = 0; while (j < count && colors[j] != full_frame[i]) j++;
+        if (j == count && count < 16) colors[count++] = full_frame[i];
+    }
+    assert(count >= 5);
+    clock_t start = clock();
+    for (int i = 0; i < 500; i++) draw_veg(&c, &t, 3, VEG_SEED[3], -1, false);
+    printf("HOST SWORD %dx%d: %.3fms authored veins/crown; no new cache bank\n",
+           TANK_W, TANK_H, (double)(clock() - start) * 1000 / CLOCKS_PER_SEC / 500);
+    t.sd_unlocks |= SD_ITEM_CASTLE | SD_ITEM_CORAL | SD_ITEM_CLUSTER |
+                    (UINT64_C(1) << 10) | (UINT64_C(1) << 19);
+    render_tank(&t, full_frame, TANK_W);
+    for (int pass = -1; pass <= 1; pass++) for (int subset = 0; subset < 2; subset++) {
+        g_veg_arch_pass = pass;
+        g_veg_mask_cx = TANK_W / 2;
+        g_veg_skip = subset ? UINT64_C(0xaaaaaaaaaaaaaaaa) : UINT64_MAX;
+        for (int y = 0; y < TANK_H; y += 7) for (int x = -10; x < TANK_W + 10; x += 13) {
+            uint32_t expected = 0;
+            for (int i = 0; i < 21; i++) {
+                bool blocked = pass < 0 ? !castle_arch(x + i, y) :
+                               pass > 0 && castle_arch(x + i, y);
+                for (int k = 0; k < g_npc && !blocked; k++)
+                    if (((g_veg_skip >> k) & 1) && pc_covers(k, x + i, y)) blocked = true;
+                if (blocked) expected |= 1u << i;
+            }
+            assert(veg_row_mask(x, x + 20, y) == expected);
+        }
+    }
+    g_veg_arch_pass = 0; g_veg_mask_cx = -1; g_veg_skip = 0;
+    puts("PASS: shared sword row masks match scalar piece/arch visibility, both passes, subsets and offscreen edges");
+    printf("PASS: %dpx reserved reef anchor paints no structure; live/backdrop7-row pixels match at two positions and scene details\n", TANK_W);
+}
+
+static void check_creature_pairs(const char *gallery) {
+    tank_t t; tank_init(&t, 542);
+    t.n_fish = 0;
+    t.sd_unlocks = SD_ITEM_SNAIL | SD_ITEM_URCHIN | SD_ITEM_SEAHORSE;
+    t.tool = TOOL_HAND; t.clock_requested = false;
+    t.aquariums.clock_theme = CLOCK_OFF;
+    t.snail_x = TANK_W * .24f; t.snail_y = SNAIL_FLOOR_Y;
+    t.urchin_x = TANK_W * .7f;
+    t.sh_x = TANK_W * .5f; t.sh_y = TANK_H * .48f; t.sh_hidden = false;
+    t.clock = 3.125f;
+    t.creatures.version = 1;
+    for (int stock = 0; stock < CREATURE_STOCK_COUNT; stock++) t.creatures.stock[stock].adults = 1;
+    for (int adults = 1; adults <= 2; adults++) {
+        for (int stock = 0; stock < CREATURE_STOCK_COUNT; stock++) t.creatures.stock[stock].adults = adults;
+        for (int creature = CREATURE_SNAIL; creature <= CREATURE_SEAHORSE; creature++) {
+            float x, y;
+            assert(tank_creature_partner_pose(&t, creature, &x, &y) == (adults == 2));
+            if (adults == 2) {
+                assert(x >= 20 && x <= TANK_W - 20 && y >= 20 && y <= TANK_H - 10);
+                assert(creature == CREATURE_SNAIL ? tank_snail_hit(&t, x, y) :
+                       creature == CREATURE_URCHIN ? tank_urchin_hit(&t, x, y) : tank_seahorse_hit(&t, x, y));
+            }
+            memset(full_frame, 0x26, sizeof full_frame);
+            ctx_t c = {.fb = full_frame, .stride = TANK_W, .w = TANK_W, .h = TANK_H, .dim = 1};
+            draw_creature_partner(&c, &t, creature);
+            int painted = 0;
+            for (int i = 0; i < TANK_W * TANK_H; i++) painted += full_frame[i] != 0x2626;
+            assert(adults == 1 ? painted == 0 : painted > 30);
+        }
+        float x, y;
+        assert(!tank_creature_partner_pose(&t, CREATURE_SHRIMP, &x, &y));
+        assert(!tank_creature_partner_pose(&t, CREATURE_MUSSEL, &x, &y));
+        for (int front = 0; front < 2; front++) {
+            t.snail_front = t.sh_front = front != 0;
+            render_tile(0, 0); render_region(0, 0);
+            render_tank(&t, full_frame, TANK_W);
+            memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * sizeof *full_frame);
+            for (int row = 0; row < TANK_H; row += 7) {
+                int height = TANK_H - row < 7 ? TANK_H - row : 7, length = TANK_W * height;
+                tile_frame[0] = tile_frame[length + 1] = 0xc59a;
+                render_tile(row, height);
+                render_tank(&t, tile_frame + 1, TANK_W);
+                assert(tile_frame[0] == 0xc59a && tile_frame[length + 1] == 0xc59a);
+                assert(!memcmp(tile_frame + 1, repeated + row * TANK_W,
+                               (size_t)length * sizeof *full_frame));
+            }
+            render_tile(0, 0);
+            if (gallery && !front) capture_content_raw(gallery, adults == 2 ? "creature-pairs" : "creature-singles");
+        }
+    }
+    clock_t start = clock();
+    for (int stock = 0; stock < CREATURE_STOCK_COUNT; stock++) t.creatures.stock[stock].adults = 1;
+    for (int i = 0; i < 500; i++) render_tank(&t, full_frame, TANK_W);
+    double singles_ms = (double)(clock() - start) * 1000 / CLOCKS_PER_SEC / 500;
+    for (int stock = 0; stock < CREATURE_STOCK_COUNT; stock++) t.creatures.stock[stock].adults = 2;
+    start = clock();
+    for (int i = 0; i < 500; i++) render_tank(&t, full_frame, TANK_W);
+    printf("HOST PAIRS %dx%d: singles %.3fms / pairs %.3fms three bounded second adults; no new state/cache allocation\n",
+           TANK_W, TANK_H, singles_ms, (double)(clock() - start) * 1000 / CLOCKS_PER_SEC / 500);
+    uint16_t *scene = malloc((size_t)TANK_W * TANK_H * sizeof *scene);
+    uint32_t *dirty = calloc(RENDER_DIRTY_WORDS, sizeof *dirty);
+    assert(scene && dirty);
+    render_set_scene_cache(scene); render_set_dirty_mask(dirty);
+    render_tank(&t, full_frame, TANK_W);
+    for (int adults = 2; adults >= 0; adults--) {
+        for (int stock = 0; stock < CREATURE_STOCK_COUNT; stock++) t.creatures.stock[stock].adults = adults;
+        if (!adults) t.sd_unlocks = 0;
+        t.snail_x += 3; t.urchin_x -= 4; t.sh_x += 2;
+        render_tank(&t, full_frame, TANK_W);
+        memcpy(repeated, full_frame, (size_t)TANK_W * TANK_H * sizeof *full_frame);
+        render_set_scene_cache(NULL); render_set_scene_cache(scene);
+        render_tank(&t, full_frame, TANK_W);
+        assert(!memcmp(full_frame, repeated, (size_t)TANK_W * TANK_H * sizeof *full_frame));
+    }
+    render_set_scene_cache(NULL); render_set_dirty_mask(NULL);
+    free(scene); free(dirty);
+    printf("PASS: %dpx one adult never paints a partner; actual pairs have shared hit geometry and exact foreground/backlane7-row pixels\n", TANK_W);
+}
+
 int main(int argc, char **argv) {
     assert(argc >= 2 && argc <= 4);
     const char *gallery = argc > 2 && strcmp(argv[2], "-") ? argv[2] : NULL;
@@ -1599,6 +2615,29 @@ int main(int argc, char **argv) {
     icon_bank_bytes = fread(icon_bank, 1, sizeof icon_bank, icons);
     assert(!ferror(icons) && feof(icons));
     assert(!fclose(icons));
+    if (getenv("POCKET_TANK_HARBOR_ART") && !strcmp(getenv("POCKET_TANK_HARBOR_ART"), "1")) {
+        tank_init(&help_tank, 542); tank_new_population(&help_tank);
+        for (int resolution = 0; resolution < 2; resolution++) {
+            tank_resolution(resolution != 0);
+            check_packed_urchin();
+            check_fish_material();
+            check_harbor_fish();
+            check_serene_interface(gallery);
+            check_shark_web(gallery);
+            check_live_creature_art(gallery);
+            check_harbor_castle();
+            check_harbor_scene(gallery);
+            check_harbor_helpers(gallery);
+            check_starter_refuge(gallery);
+            check_creature_pairs(gallery);
+            check_instrument_themes(gallery);
+            check_font_clock_cache();
+            check_clock_replay_pixels();
+            if (gallery) capture_fish_materials(gallery);
+        }
+        render_work_caches(false);
+        return 0;
+    }
     check_packed_urchin();
     ctx_t c = {pixels, 448, 1.0f, 0, 0, 448, 368, false};
     check_puzzle_games();
@@ -1636,11 +2675,23 @@ int main(int argc, char **argv) {
             assert((pixel & 31) <= (dim & 31));
         }
     }
+    uint32_t theme_hashes[JOURNAL_THEME_COUNT];
     for (int theme = 0; theme < JOURNAL_THEME_COUNT; theme++) {
         for (int unlocked = 0; unlocked < 2; unlocked++) {
             memset(pixels, 0, sizeof pixels);
             page_theme_thumb(&c, 100, 100, theme, unlocked != 0);
-            check_box(100, 100, 40, 26);
+            check_box(100, 100, 46, 28);
+            if (!unlocked) continue;
+            uint16_t colors[32]; int count = 0; uint32_t hash = 2166136261u;
+            for (int row = 100; row < 128; row++) for (int col = 100; col < 146; col++) {
+                uint16_t pixel = pixels[row * 448 + col];
+                hash = (hash ^ pixel) * 16777619u;
+                int j = 0; while (j < count && colors[j] != pixel) j++;
+                if (j == count && count < 32) colors[count++] = pixel;
+            }
+            assert(count >= 10);                 /* a diorama, not a flat glyph */
+            for (int prior = 0; prior < theme; prior++) assert(theme_hashes[prior] != hash);
+            theme_hashes[theme] = hash;
         }
     }
     for (unsigned medal = 0; medal < 5; medal++) {
@@ -1665,6 +2716,11 @@ int main(int argc, char **argv) {
         check_clock_replay_pixels();
         check_ornament_spans();
         check_companion_navigation();
+        check_casino();
+        check_ground_cover();
+        check_serene_interface(gallery);
+        check_kelp_forest();
+        check_kelp();
         check_retired_lantern();
         check_content_page_tiles();
         check_inventory_ui();
@@ -1705,7 +2761,7 @@ int main(int argc, char **argv) {
                 check_wrapper(-10, -8, 0, species, seen != 0, 0);
                 check_wrapper(PAGE_W - 15, PAGE_H - 9, 0, species, seen != 0, 0);
             }
-            for (int item = 0; item < SD_ITEM_COUNT; item++) {
+            for (int item = 0; item < SD_CATALOG_COUNT; item++) {
                 check_wrapper(100, 100, 1, item, seen != 0, 24);
                 check_wrapper(-10, -8, 1, item, seen != 0, 24);
                 check_wrapper(PAGE_W - 15, PAGE_H - 9, 1, item, seen != 0, 24);
@@ -1721,8 +2777,8 @@ int main(int argc, char **argv) {
     puts("Polished art: distinct stamps, four-plus tones, clipped bounds and guarded 1/17-row tile parity at both resolutions.");
     puts("Tank materials: 45 dimensional ornaments, RGB565 contrast, night dimming, original bounds and arch opening.");
     puts("Fish materials: five RGB565 tones with unchanged polygon coverage and guarded one-row tile equality.");
-    puts("Aquarium details: five visitors and food/bubbles stay bounded with guarded row parity; care feedback requires a successful stroke.");
+    puts("Aquarium details: five visitors and food/bubbles stay bounded with guarded row parity; retired tools paint no stroke feedback.");
     puts("Typography: exact coverage/ink conservation for every UI glyph at native and fractional sizes; guarded row/region parity, identical ASCII/UI metrics at scales 1-6, and no new Jumbo clock cache fallbacks.");
-    puts("Navigation: all companion sections share the same header BACK; gear colors has no duplicate button and creature colors retains NEXT TYPE at both resolutions.");
+    puts("Navigation: unified categories and companion BACK, no creature color route or historical lock targets; placement cycles originals and extra copies at both resolutions.");
     return 0;
 }

@@ -25,9 +25,9 @@ static const char *sd_directory;
 static bool mounted = true, card = true;
 static unsigned imports;
 static bool mount_store(void) { return mounted; }
-static bool sd_port_aquarium_read(const uint32_t id[2], int slot, void *data, size_t size) {
+static bool sd_port_aquarium_read_sized(const uint32_t id[2], int slot, void *data, size_t size, size_t *got) {
     imports++;
-    return card && aquarium_store_read(sd_directory, id, slot, data, size);
+    return card && aquarium_store_read_sized(sd_directory, id, slot, data, size, got);
 }
 '''
 TEST = r'''
@@ -41,6 +41,14 @@ int main(int argc, char **argv) {
     assert(aquarium_store_write(sd_directory, id, 0, in, sizeof in));
     assert(aquarium_port_read(id, 0, out, sizeof out) && !memcmp(in, out, sizeof in));
     assert(imports == 1);
+    memset(out, 0xa5, sizeof out);
+    assert(aquarium_store_write(sd_directory, id, 1, in, 6472));
+    size_t got = 0;
+    assert(aquarium_port_read_sized(id, 1, out, sizeof out, &got) && got == 6472);
+    assert(!memcmp(in, out, got));
+    for (size_t i = got; i < sizeof out; i++) assert(!out[i]);
+    assert(aquarium_port_read_sized(id, 1, out, sizeof out, &got) && got == 6472);
+    assert(imports == 2);
     card = false;
     for (int slot = 0; slot < AQUARIUM_CAP; slot++) {
         memset(in, 30 + slot, sizeof in);
@@ -53,7 +61,7 @@ int main(int argc, char **argv) {
             assert(aquarium_port_read(id, slot, out, sizeof out) && !memcmp(in, out, sizeof in));
         }
     }
-    assert(imports == 1);
+    assert(imports == 2);
     char path[512];
     /* Power loss during an alternate write must leave the complete archive readable. */
     snprintf(path, sizeof path, "%s/1234567887654321-2.b", tank_directory);
@@ -70,14 +78,18 @@ int main(int argc, char **argv) {
     }
     card = true;
     assert(!aquarium_port_read(id, 0, out, sizeof out));
-    assert(imports == 1); /* Never resurrect the stale SD generation. */
+    assert(imports == 2); /* Never resurrect the stale SD generation. */
     mounted = false;
     assert(!aquarium_port_ready());
     assert(!aquarium_port_write(id, 1, in, sizeof in));
     assert(!aquarium_port_read(id, 1, out, sizeof out));
+    got = 123;
+    assert(!aquarium_port_read_sized(id, 1, out, sizeof out, &got) && !got);
     mounted = true;
     assert(!aquarium_port_write(id, -1, in, sizeof in));
     assert(!aquarium_port_read(id, 8, out, sizeof out));
+    got = 123;
+    assert(!aquarium_port_read_sized(id, 8, out, sizeof out, &got) && !got);
     const char *original = tank_directory;
     char missing[512];
     snprintf(missing, sizeof missing, "%s/missing", original);
@@ -100,7 +112,7 @@ def main():
     args = parser.parse_args()
     source = (ROOT / "firmware" / "components" / "tankcore" / "persist_port_esp.c").read_text()
     port = source[source.index("static bool remove_archives("):source.index("static bool legacy_load(")]
-    with tempfile.TemporaryDirectory(prefix="cyd-internal-tanks-") as work:
+    with tempfile.TemporaryDirectory(prefix=".cyd-internal-tanks-", dir=Path.cwd()) as work:
         work = Path(work)
         local, sd = work / "internal", work / "sd"
         local.mkdir()
@@ -116,7 +128,7 @@ def main():
             "-o", str(executable)], check=True)
         subprocess.run([str(executable), str(local), str(sd)], check=True)
         assert not list(local.iterdir())
-        assert len(list(sd.iterdir())) == 1
+        assert len(list(sd.iterdir())) == 2
         if args.idf:
             spec = importlib.util.spec_from_file_location("spiffsgen", args.idf / "components" / "spiffs" / "spiffsgen.py")
             generator = importlib.util.module_from_spec(spec)

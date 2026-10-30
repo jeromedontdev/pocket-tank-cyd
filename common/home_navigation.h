@@ -24,6 +24,9 @@ static inline home_destination_t home_open(tank_t *t, int action) {
     case HOME_GAMES:
         render_games_open();
         return HOME_DEST_GAMES;
+    case HOME_CASINO:
+        render_casino_open();
+        return HOME_DEST_GAMES;
     case HOME_SETTINGS:
         render_settings_open();
         return HOME_DEST_SETTINGS;
@@ -33,6 +36,7 @@ static inline home_destination_t home_open(tank_t *t, int action) {
     case HOME_KEEPER:
         return HOME_DEST_KEEPER;
     case HOME_SHOP:
+        render_shop_leave();
         return HOME_DEST_SHOP;
     case HOME_TANKS:
         render_aquariums_open(t);
