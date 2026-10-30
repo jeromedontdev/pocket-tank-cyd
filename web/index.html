@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A living pixel aquarium for your Cheap Yellow Display. Meet your fish, grow a family, play games, and install Pocket Tank CYD from your browser.">
+  <meta name="description" content="A living pixel aquarium for your Cheap Yellow Display. Raise and breed fish, trade at the harbor market, play games, and install Pocket Tank CYD from your browser.">
   <title>Pocket Tank CYD - a little aquarium with a life of its own</title>
   <link rel="icon" href="./logo.svg" type="image/svg+xml">
   <style>
@@ -38,6 +38,7 @@
     .card { border: 1px solid #355d68; background: #0e2630; border-radius: .8rem; padding: 1.25rem; min-width: 0; }
     .card h3 { margin-top: .25rem; }
     .split { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: center; }
+    .grid4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     .badge { display: inline-block; border-radius: 1rem; padding: .15rem .65rem; background: #3c3320; color: #ffda9e; font-size: .85rem; font-weight: 700; }
     ul, ol { padding-left: 1.35rem; }
@@ -45,6 +46,7 @@
     @media (max-width: 48rem) {
       .hero, .split { grid-template-columns: 1fr; }
       .grid { grid-template-columns: 1fr; }
+      .grid4 { grid-template-columns: 1fr 1fr; }
       .hero { padding-top: .5rem; }
     }
     @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
@@ -54,7 +56,7 @@
 <nav aria-label="Main navigation">
   <strong>Pocket Tank CYD</strong>
   <a href="#features">Features</a>
-  <a href="#menu-updates">What's new</a>
+  <a href="#latest-features">What's new</a>
   <a href="./play.html">Play</a>
   <a href="./viewer.html">Save viewer</a>
   <a class="button" href="./flash.html">USB flasher</a>
@@ -65,13 +67,14 @@
       <img class="logo" src="./logo.svg" width="320" height="240" alt="Pocket Tank CYD: a little aquarium inside a yellow display">
       <p class="eyebrow">A tiny world for your desk</p>
       <h1>A little aquarium.<br>A life of its own.</h1>
-      <p class="lead">Meet your fish, grow a family, decorate their home, and watch
-        a calm pixel world unfold on your Cheap Yellow Display. No cloud AI.
-        No subscriptions. Just your tank.</p>
+      <p class="lead">Raise fish, breed new generations, trade at the harbor
+        market and decorate a calm pixel aquarium on your Cheap Yellow Display.
+        No cloud AI. No subscriptions. Just your tank.</p>
       <p>Originally a hardware port of Pocket Tank, CYD has grown into a
-        <strong>distinct aquarium game</strong>: permanent game modes, a shared
-        multi-tank collection, inherited genetics, illustrated stories and
-        eighteen games. Its original simulation and authors remain credited.</p>
+        <strong>distinct aquarium game</strong>: a serene breeding-and-trading
+        game with inherited genetics, one currency (doubloons), up to eight
+        aquariums, eighteen games, stories and a small casino. Its original
+        simulation and authors remain credited.</p>
       <div class="actions">
         <a class="button primary" href="./flash.html">Install or update your CYD</a>
         <a class="button" href="./play.html">Play in your browser</a>
@@ -82,328 +85,30 @@
         4 MB flash, no PSRAM required.</p>
     </div>
     <figure>
-      <img class="screen" src="./media/tank-normal.png" width="320" height="240" alt="Pixel fish and planted scenery in a Pocket Tank CYD aquarium">
-      <figcaption>Your aquarium is the main event. Stories and games are optional extras.</figcaption>
+      <img class="screen" src="./media/tank-normal.png" width="320" height="240" alt="Fish, a jellyfish, sword grass and a treasure chest in a Pocket Tank CYD aquarium">
+      <figcaption>Your aquarium is the main event. Markets, games and stories are optional extras.</figcaption>
     </figure>
   </header>
 
   <aside class="note" aria-label="Release information">
     <strong>Published firmware: <span id="release-version">see the latest release</span>.</strong>
-    The flasher uses the latest stable
+    The flasher installs the latest stable
     <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest">GitHub release</a>.
-    The current release includes all eight internally stored aquariums, shared
-    inventory, pearl-mussel income, eighteen games and the audited menus below.
-    <strong>2.4.0</strong> turns the aquarium into a serene breeding-and-trading
-    game with one currency, doubloons. Buy fish in the Fish Market, raise
-    same-variety pairs and sell their offspring; genetics, vigor, pedigree and a
-    shifting daily demand set the price. Breeding contracts from six harbor
-    clients pay a premium for a variety, grade or mutation by a deadline, and
-    every Saturday one prized fish goes to auction with rival bids. All
-    creatures, the shrimp school, snail, urchin, seahorse and pearl mussel,
-    share one Creature Market: one of each per tank, no creature breeding, and
-    colors rolled at purchase (natural, tinted, two-tone or prized) so rarer
-    colors resell for more. The new Casino holds Fish Races, Reef Reels,
-    Pearl Hi-Lo, a Shell Game, Treasure Dive and the Tide Wheel.
-    Collections reward every mutation of a variety with a gold statue; fish
-    hint at their favorite decor, which keeps them calm. Pellets, flakes and
-    bloodworms are permanent food upgrades; foliage and kelp are buyable ground
-    cover. XP, firsts, greetings, currents and the bubbler are retired, and
-    Help explains every part of the game.
-    <strong>2.3.20</strong> puts Names &amp; Looks first on Home, adds a
-    Symbol Guide, labels fish cards, refreshes all seven clock faces, and
-    retires the pumpkin and its animated night lighting
-    to keep rendering work focused on your fish. Existing saves remain readable;
-    paid copies receive their usual sell-back value once on loading.
-    <strong>2.3.19</strong> makes fish swim more fluidly, illustrates every
-    mini-game and menu, and lets every decoration be moved, mirrored and layered
-    behind or in front of nearby pieces, including the surface floats. The flash
-    now runs at the standard 80 MHz, raising the CYD's controlled fixtures from
-    about 14-17 to 17-22 FPS. Saves grow to schema 20: back up before updating
-    and do not downgrade afterwards.
-    <strong>2.3.18</strong> focuses on the aquarium: fish movement, care
-    feedback and less repeated rendering work, without new currencies or games.
-    Frame-scoped clocks, exact shaded spans and reused LCD scaling rows preserve
-    detailed artwork and full-rate fish simulation. The preceding clock/decor
-    fixture improved from 13.88 to 15.43 FPS; gains elsewhere were only 1-2%.
-    Performance remains scene-dependent, not a 30-FPS promise.
-    Fish ease into rest spots; existing boldness and laziness affect hovering,
-    food pursuit and tap-startle reactions.
-    <strong>2.3.17</strong> checks weather at boot and hourly, reuses exact
-    clock/decoration/helper rendering work, and moves SD backup storage/readback
-    into a background worker. Tested tank-task backup blocking fell from 718 to
-    109 ms; snapshot validation still briefly pauses a frame. Regular FPS gains
-    are modest and scene-dependent, not a universal speedup. Saves and partitions
-    are unchanged from 2.3.14.
-    <strong>2.3.14</strong> adds twenty detailed static decorations and six
-    wearables, species-aware accessory fitting, and 33% smaller aquarium fish.
-    Jellyfish keep ties, bowties and bandanas; only the wraparound scarf is unavailable.
-    Hold decorations to move them; REMOVE stores them without selling.
-    Alternating LCD tiles overlap drawing/transfer, cost-based damage avoids
-    unnecessary full frames, and slower scenery cadence prioritizes fish motion.
-    Back up first: schema-19 saves migrate older data but cannot be opened by older firmware.
-    Partitions and calibration are unchanged.
-    <strong>2.3.11</strong> improves overlapping-creature selection, snail activity
-    information and COLORS gestures. Exact helper/fish/decoration caches,
-    selective LCD updates and lossless artwork compression preserve visual detail
-    while freeing firmware space. The unified preview is 1,728,176 bytes, with
-    237,904 bytes of OTA headroom; controlled scene timings are not a universal
-    live-gameplay FPS guarantee. Saves, partitions and hardware profiles stay unchanged.
-    <strong>2.3.10</strong> adds tappable mussel information, visible creature-card
-    cycling arrows and free saved shell/mantle colors through the same creature
-    editor. Back up first; do not downgrade after saving with 2.3.10 because
-    older firmware cannot read the new companion record.
-    <strong>2.3.9</strong> adds a center grass clearing, rendering-work reductions,
-    clearer overlapping-decoration placement, occasional social fish behaviors
-    and a subtle sparkle when the mussel pays. No hardware FPS increase is claimed.
-    <strong>2.3.6</strong> adds one shared CYD/ELEGOO application with saved
-    hardware profiles and save-preserving USB migration. Select the actual board
-    in the installer; legacy board-specific update downloads remain available.
-    <strong>2.3.5</strong> clarifies update navigation and removes duplicate
-    controls; GitHub Wi-Fi updating requires 2.3.2 or newer, and SD-free tank
-    switching requires 2.3.4 or newer.
-    Check the published version above before installing. Older releases remain
-    available, but cannot load the expanded current save format.
+    <strong>2.4.0</strong> turns the aquarium into a breeding-and-trading game
+    with one currency, doubloons. XP, sand dollars, firsts, trophies, greetings,
+    the bubbler and Reef Rhythm are retired. It uses a newer save format: back up
+    from Settings &gt; SD Backups before updating and do not downgrade afterwards.
+    Earlier changes are listed in the
+    <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases">release history</a>.
   </aside>
 
-  <section class="card" aria-labelledby="harbor-heading">
-    <h2 id="harbor-heading">A more detailed little harbor and garden</h2>
-    <p>Twenty static ornaments feature carved masonry, bronze fittings, layered
-      roofs, a twisted bonsai, crystal facets and other individual details.
-      No extra ambient animation competes with your fish.</p>
-    <img class="screen" src="./media/harbor-garden-decorations.png" width="1200" height="576"
-      loading="lazy" alt="All twenty detailed harbor and garden decorations from the actual renderer">
-    <p>The six new wearables scale through every life stage. Accessories use
-      species-aware fitting, with incompatible items clearly unavailable.</p>
-    <img class="screen" src="./media/jellyfish-wardrobe.png" width="1408" height="840"
-      loading="lazy" alt="Jellyfish wearing hats, tie, bowtie and bandana; only scarf unavailable">
-  </section>
-
-  <section class="card" aria-labelledby="boards-heading">
-    <p class="eyebrow">New in 2.3.6</p>
-    <h2 id="boards-heading">Two displays, the same little aquarium</h2>
-    <p>CYD and ELEGOO CYD use the same firmware application. Choose your hardware
-      profile in the USB installer; it remembers the correct display setup.
-      Reliable automatic board detection is not available on these displays.
-      Setup requires an explicit choice, with no preselected default; the board
-      retains that profile across reboots and firmware updates. When using the
-      web updater again, select the matching board so it can verify the saved profile.
-      Factory images set that profile for new boards. After migration, both use
-      the unified SD update and GitHub Wi-Fi channel; legacy update downloads
-      remain available.</p>
-    <p>ELEGOO CYD needs different LCD initialization, not different touch pins.
-      Its GPIO34 senses a battery, so automatic room-light dimming is unavailable;
-      manual brightness, touch, games and internal tanks still work.
-      No battery or audio application is included. CYD is a family of boards,
-      not a guarantee that every display variant is compatible.</p>
-    <a href="./flash.html">Choose your exact board in the installer</a>
-  </section>
-
-  <section id="menu-updates" aria-labelledby="menu-updates-heading">
-    <p class="eyebrow">New in 2.3.5</p>
-    <h2 id="menu-updates-heading">Clearer menus, easier updates</h2>
-    <p><strong>Settings &gt; Device &gt; Firmware Updates</strong> puts
-      <strong>Check GitHub via Wi-Fi</strong> and <strong>Check SD Card</strong>
-      side by side. Versions 2.3.4 and older called this entry SD Updates.</p>
-    <p>Screenshot to SD now has one home under Device; weather text size has one
-      home under Clock/Weather &gt; Weather. Aligned buttons, corrected clipped
-      text and cleaner inventory panels make both Normal and Enlarged easier
-      to use. The audit checks 434 rendered menu states across both scales.</p>
-    <div class="gallery">
-      <figure>
-        <img class="screen" src="./media/settings-device.png" width="320" height="240" alt="Device settings with screenshot, firmware updates, touch calibration and a separated wipe action">
-        <figcaption>One place for screenshots, updates and device maintenance.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/sd-updates.png" width="320" height="240" alt="Firmware Updates with separate SD card and GitHub Wi-Fi actions">
-        <figcaption>Wi-Fi and SD updates remain separate choices on the same page.</figcaption>
-      </figure>
-    </div>
-  </section>
-  <section id="internal-aquariums" aria-labelledby="internal-aquariums-heading">
-    <p class="eyebrow">New in 2.3.4</p>
-    <h2 id="internal-aquariums-heading">Eight aquariums, no card required</h2>
-    <p>Buying and switching aquariums now uses internal flash. Your Fish Bank,
-      inventory and active aquarium already save internally. Keep an existing
-      multi-tank installation's original SD inserted for the first upgraded boot
-      to import inactive tanks; the original files are retained.</p>
-    <p>SD stays useful for backups, screenshots and offline updates. Imported SD
-      snapshots are historical copies, not kept in sync. Visit each aquarium
-      to make current backups. No partition or save-schema changes.</p>
-  </section>
-  <section id="screenshot-shortcut" aria-labelledby="screenshot-shortcut-heading">
-    <p class="eyebrow">New in 2.3.3</p>
-    <h2 id="screenshot-shortcut-heading">Keep a picture of your aquarium</h2>
-    <p><strong>Settings &gt; Device &gt; Screenshot to SD</strong> saves a BMP
-      image to <code>pocket-tank/photos/</code>. The old duplicate under
-      SD Backups was removed in 2.3.5; the screenshot feature remains.</p>
-    <p>Wi-Fi update mode also leaves more ESP32 memory free for GitHub's TLS
-      certificate verification, while retaining all download checks and the
-      separate offline SD update option.</p>
-  </section>
-  <section id="github-updates" aria-labelledby="github-updates-heading">
-    <p class="eyebrow">New in 2.3.2</p>
-    <h2 id="github-updates-heading">The next update, without the cable</h2>
-    <p>After installing 2.3.2 once, open <strong>Settings &gt; Device &gt;
-      Firmware Updates &gt; Check GitHub via Wi-Fi</strong> (called SD Updates
-      in 2.3.4 and older). The tank checks the latest
-      stable CYD release and asks before downloading a newer version.</p>
-    <p>Certificate-verified HTTPS, an exact-release app URL, board/version/size
-      checks and SHA-256 verification protect the download before switching
-      boot slots. Your aquarium is saved first; factory images are never used.
-      Keep power connected and make an SD backup first when available.</p>
-    <p>Release files are trusted downloads, not publisher-signed firmware.
-      USB and offline SD updates remain available.</p>
-  </section>
-
-  <section id="firmware-polish" aria-labelledby="firmware-polish-heading">
-    <p class="eyebrow">New in 2.3.1</p>
-    <h2 id="firmware-polish-heading">A little leaner, a little clearer</h2>
-    <p>Inventory item panels now have one explicit <strong>Back</strong> button,
-      which cancels an unconfirmed sale without changing your items or money.
-      The pearl mussel explains when coin growth is paused for hungry or
-      stressed fish.</p>
-    <p>Selective size optimization and client-only TLS recover
-      <strong>19,312 bytes versus 2.3.0</strong>, without removing artwork,
-      gameplay features, certificate verification or either safe-update slot.
-      Weather and GitHub Pages HTTPS certificate validation were checked on
-      a real CYD. Existing aquarium saves and layouts remain compatible.</p>
-  </section>
-
-  <section id="inventory-income" aria-labelledby="inventory-income-heading">
-    <p class="eyebrow">New in 2.3.0</p>
-    <h2 id="inventory-income-heading">Make room for more little treasures</h2>
-    <p><strong>Shop &gt; Inventory</strong> lets you buy duplicate decorations,
-      store pieces without selling, and move them between aquariums. Shared
-      storage holds 64 pieces; each tank can display eight extra basic ornaments
-      with independent positions and front/back depth. Complex growing decorations
-      remain one placed copy of each type per tank.</p>
-    <p>Daily care now pays <strong>125 sand dollars and 50 XP</strong>. Claim all
-      three tasks to welcome a free <strong>pearl mussel</strong>: it grows one
-      coin per ten healthy running minutes, up to 15 per day and 15 banked.
-      Collect through Shop or Inventory. No offline earnings; it usually rests,
-      with a gentle crawl along the sand roughly every six minutes.</p>
-    <p>Games pay one dollar per qualifying saved round, up to
-      <strong>five per game per day — 90 across all eighteen</strong>.
-      Challenge and Relaxed share each game's allowance across all tanks; no
-      game XP. Established fish no longer reopen obsolete “new fry” welcomes,
-      and a failed welcome save stays open for retry.</p>
-    <p>Existing layouts and purchases migrate automatically. Back up before
-      upgrading: schema 19 saves cannot be read by older firmware. Use
-      <strong>Update / keep aquarium</strong>, not Factory reset.</p>
-  </section>
-
-  <section id="hardware-performance" aria-labelledby="hardware-performance-heading">
-    <p class="eyebrow">New in 2.2.7</p>
-    <h2 id="hardware-performance-heading">More room in the frame budget</h2>
-    <p>Fuller use of existing LCD DMA buffers, reused fish/helper math and
-      clipped clock spans improve performance without reducing artwork,
-      changing care or increasing the 40 MHz SPI clock. The optimizations
-      apply across display scales, scene details and gameplay modes;
-      LCD transfer savings are CYD-only.</p>
-    <p>A five-fish RAM copy of a decorated aquarium with its clock enabled
-      measured <strong>10.79 FPS</strong> on a real CYD in
-      <strong>Normal / Balanced</strong> over 1,200 frames.
-      The slowest 120-frame window was 10.22 FPS, including a
-      5 ms/frame allowance for normal services.</p>
-    <p>This is a bounded diagnostic, not the full gameplay/network loop or
-      a guaranteed minimum. Ordinary four-fish monitoring still included
-      sub-10 FPS windows. Both scales and all scene details retain matching
-      reference images, with no extra image buffers or save-format changes.</p>
-    <p><a href="https://github.com/jeromedontdev/pocket-tank-cyd/blob/main/firmware/CYD.md#five-fish-hardware-follow-up-227">Read the hardware test scope and reproducible diagnostics</a>.</p>
-  </section>
-
-  <section id="features" aria-labelledby="features-heading">
-    <p class="eyebrow">Already in the published tank</p>
-    <h2 id="features-heading">More than fish on a screen</h2>
-    <div class="grid">
-      <article class="card">
-        <h3>Living, growing fish</h3>
-        <p>Feed and watch your fish grow through life stages. Give them names,
-          discover different looks, choose colors and accessories, and get to know
-          their personalities.</p>
-      </article>
-      <article class="card">
-        <h3>Families &amp; inherited looks</h3>
-        <p>New generations inherit colors, markings, and traits. A family tree,
-          fish biographies, buddies, and keepsakes let your aquarium build a history.</p>
-      </article>
-      <article class="card">
-        <h3>Make it your aquarium</h3>
-        <p>Collect themes, place decorations, unlock scenic effects, and keep
-          multiple named aquariums. Snails, shrimp, seahorses, and urchins bring
-          more life to the sand and water.</p>
-      </article>
-      <article class="card">
-        <h3>Small adventures &amp; games</h3>
-        <p>Send fish on optional adventures and collect postcards. Play eighteen touch
-          games, earn coins, and keep records without replacing the relaxed aquarium.</p>
-      </article>
-      <article class="card">
-        <h3>A useful desk companion</h3>
-        <p>Choose a clock face, check weather, enjoy seasons and rare visitors,
-          and use the CYD's room-light sensor and rear RGB LED. No built-in speaker
-          or audio setup needed.</p>
-      </article>
-      <article class="card">
-        <h3>Your tank stays yours</h3>
-        <p>Local saves, SD JSON backups, daily backup options, SD photos, and a
-          browser save viewer. Wi-Fi is optional for the aquarium; time and weather
-          use it when enabled.</p>
-      </article>
-    </div>
-  </section>
-
-  <section class="note" aria-labelledby="browser-heading">
-    <h2 id="browser-heading">No CYD yet? Play here.</h2>
-    <p>The browser simulator runs the actual game, with mouse and touchscreen
-      controls and its own locally saved aquarium. No board, USB cable or
-      account is needed. Your browser game is separate from a physical CYD;
-      it does not automatically synchronize device saves.</p>
-    <p>Fullscreen keeps the controls handy. Choose Place food and tap a feeding
-      column; Touch hints show your taps.
-      These browser controls require 2.1.1. Version 2.1.2 also fixes the
-      fish-card padlock, sponge/scissors and DONE controls: lock bare-hand
-      cleaning/trimming without disabling explicit tools.
-      The public game is compiled from
-      the latest stable release source, not the ESP32 binary. Its release tag
-      and source commit are shown above the game and checked against the USB
-      installer's version before deployment.</p>
-    <p>In 2.1.3, a simpler Clock/Weather hub groups Face, Colors, Text / Effects,
-      Time / Zone and Weather, with one Show Clock preview. Weather has its own
-      Small/Medium/Large text control, plus simple condition icons. BACK returns
-      one level, and city removal requires confirmation. Live weather remains a
-      CYD hardware feature; the browser does not contact weather services.</p>
-    <p>Progress stays in this browser on this device. Clearing site data,
-      private browsing or browser storage eviction can remove it. Hardware-only
-      features are not emulated.</p>
-    <a class="button primary" href="./play.html">Launch the browser simulator</a>
-  </section>
-
-  <section class="split" aria-labelledby="family-heading">
-    <div>
-      <p class="eyebrow">Little fish, long memories</p>
-      <h2 id="family-heading">A family worth following</h2>
-      <p>A fish is more than its color. Follow its milestones, inherited markings,
-        relationships, and descendants. Names and family connections give each
-        generation a place in your tank's story.</p>
-      <p>Open an exported JSON backup in the save viewer to explore your fish,
-        family tree, and genes on a larger screen. The viewer reads it locally
-        in your browser; it does not upload your backup.</p>
-      <a class="button" href="./viewer.html">Open the save viewer</a>
-    </div>
-    <figure>
-      <img class="screen" src="./media/family-tree.png" loading="lazy" width="320" height="240" alt="Fish family tree showing ancestors and family connections">
-      <figcaption>Family connections live alongside your aquarium, not in a separate account.</figcaption>
-    </figure>
-  </section>
-
   <section id="latest-features" aria-labelledby="latest-heading">
-    <span class="badge">Breed, trade and play: 2.4.0</span>
+    <span class="badge">New in 2.4.0: breed, trade and play</span>
     <h2 id="latest-heading">A harbor market around your aquarium.</h2>
     <p>Market groups the Fish Market, one Creature Market for every creature,
       variety Collections, timed breeding Contracts and a Saturday Auction.
       Creatures stay one per tank with colors rolled at purchase, and the
-      Casino now offers six small games for doubloons.</p>
+      Casino offers six small games for doubloons.</p>
     <figure class="demo-video">
       <video controls preload="metadata" playsinline width="1280" height="720" style="width:100%;height:auto;max-width:960px;display:block;border-radius:8px">
         <source src="./media/pocket-tank-2.4.0-demo.mp4" type="video/mp4">
@@ -411,7 +116,7 @@
       </video>
       <figcaption>A five-minute feature tour of 2.4.0, with sound, captured from the real CYD renderer.</figcaption>
     </figure>
-    <div class="gallery">
+    <div class="grid">
       <figure>
         <img class="screen" src="./media/v240-market-hub.png" loading="lazy" width="320" height="240" alt="Market hub with Fish Market, Creatures, Collection, Contracts and Auction tiles">
         <figcaption>One Market hub for buying, selling and orders.</figcaption>
@@ -437,251 +142,271 @@
         <figcaption>Tide Wheel, one of the four new casino games.</figcaption>
       </figure>
     </div>
-    <span class="badge">Consistent typography: 2.2.5</span>
-    <h2 id="typography-heading">Clearer letters, throughout your aquarium.</h2>
-    <p>Normal and Enlarged now share consistent font stroke weight, without
-      unevenly doubled rows and columns. Native-size letters stay crisp;
-      fractional sizes get coverage-correct edges. Menus, cards, stories,
-      games, Wi-Fi, weather and clock captions use the same treatment.
-      Familiar sizes, layouts and touch controls stay put.</p>
-    <div class="gallery">
-      <figure>
-        <img class="screen" src="./media/typography-normal.png" loading="lazy" width="320" height="240" alt="Normal-mode font sample with consistently weighted headings, labels, numbers and buttons">
-        <figcaption>Normal: balanced strokes instead of arbitrary thick/thin columns.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/typography-enlarged.png" loading="lazy" width="240" height="180" alt="Enlarged-mode sample of the same font, with sharp native-size labels">
-        <figcaption>Enlarged: the same font family, retaining crisp small text.</figcaption>
-      </figure>
-    </div>
-    <span class="badge">Little aquarium details: 2.2.4</span>
-    <h2>A quieter, richer little ocean.</h2>
-    <p>Soft sand grain, scattered pebbles and layered distant scenery give the
-      tank depth without crowding it. Lily pad, duck, floating log, buoy and
-      jelly lantern gain material detail; rare visitors bring scuted shells,
-      folded wings and glassy fins. Readable pellets, fine bubble rims and
-      small successful wipe/trim marks make everyday care feel more considered.
-      Your residents, owned decorations, saves and daily progression stay yours.</p>
-    <div class="gallery">
-      <figure>
-        <img class="screen" src="./media/tank-crafted-floats.png" loading="lazy" width="320" height="240" alt="Aquarium with refined lily pad veins, floating-log wood rings, shaded duck, buoy and jelly lantern">
-        <figcaption>Familiar floating decorations, with softer material details.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/aquarium-details.png" loading="lazy" width="320" height="240" alt="Actual renderer lineup of five rare visitors in both poses, food, bubbles and tool-stroke feedback">
-        <figcaption>Special visitors and the small details you see every day.</figcaption>
-      </figure>
-    </div>
-    <span class="badge">Fish and accessories: 2.2.3</span>
-    <h2>More life in every little swimmer.</h2>
-    <p>All ten fish varieties now have soft back highlights, body midtones and
-      underside shadows, with coordinated shading on fins, tails and jellyfish
-      bells. All six wearable accessories get lit faces and shaded folds.
-      Your chosen colors, inherited markings, growth and swimming stay intact.</p>
-    <div class="gallery">
-      <figure>
-        <img class="screen" src="./media/fish-bodies.png" loading="lazy" width="320" height="240" alt="Actual renderer lineup of ten fish varieties with shaded bodies and fins in a shared comparison palette">
-        <figcaption>Ten familiar silhouettes, with more depth. Your own colors stay yours.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/fish-accessories.png" loading="lazy" width="320" height="240" alt="Shaded top hat, party hat, crown, tie, bowtie and bandana on fish">
-        <figcaption>All six accessories, shared between swimming fish and wardrobe previews.</figcaption>
-      </figure>
-    </div>
-    <span class="badge">Aquarium art polish: 2.2.2</span>
-    <h2>A more crafted little aquarium.</h2>
-    <p>The polish is now inside the tank: twenty ornaments and sand scenery
-      pieces gain rounded shapes, material-specific shading and quieter
-      highlights. Wood grain, brass fittings, faceted crystals, pearl sheen
-      and ceramic details sit among jade seagrass and folded sword leaves.
-      Your owned decorations, placement, growth, daily care and saves stay yours.</p>
-    <div class="gallery">
-      <figure>
-        <img class="screen" src="./media/tank-crafted-ornaments.png" loading="lazy" width="320" height="240" alt="Aquarium with brass-fitted wooden chest, scallop shell, faceted crystals and beveled stone arch">
-        <figcaption>Different materials, shared attention to depth and light.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/tank-crafted-seabed.png" loading="lazy" width="320" height="240" alt="Rounded pebbles, pearl clam, porous sponges, wooden barrel and dive helmet">
-        <figcaption>Small seabed objects feel rounded, worn and grounded.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/tank-crafted-reef.png" loading="lazy" width="320" height="240" alt="Sea glass, brain coral, wooden tiki, message bottle, anemone and ceramic teapot">
-        <figcaption>Six fixed sand ornaments with softer, more natural details.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/tank-crafted-plants.png" loading="lazy" width="320" height="240" alt="Shaded sword leaves and jade seagrass around an urn and sea fan">
-        <figcaption>Quieter foliage, with a lit face and shaded leaf fold.</figcaption>
-      </figure>
-    </div>
-    <span class="badge">Interface art polish: 2.2.1</span>
-    <h2>Small details. A more finished world.</h2>
-    <p>Shaded menu icons, coordinated game thumbnails and faceted medals bring
-      a consistent cozy pixel-art style to the interface. Clear silhouettes,
-      gentle highlights and restrained aqua, gold and rose colors stay crisp
-      on the CYD and in your browser. Your aquarium and daily care are unchanged.</p>
-    <div class="gallery">
-      <figure>
-        <img class="screen" src="./media/home-collections.png" loading="lazy" width="320" height="240" alt="Collections menu with refined shaded pixel-art book, map, trophy and fish icons">
-        <figcaption>Fifteen shared icons, one visual language.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/games-page-three.png" loading="lazy" width="320" height="240" alt="Six puzzle games with coordinated shaded thumbnails">
-        <figcaption>Distinct game identities in a quieter, consistent palette.</figcaption>
-      </figure>
-    </div>
-    <span class="badge">Care-first progression: 2.2.0</span>
-    <h2>A little care. A reason to return.</h2>
-    <p>Feed, connect with a fish, and tend or quietly watch your reef.
-      Three flexible daily activities offer up to 125 sand dollars and 50 XP,
-      with no streak penalties or missed-day debt. The budget aims at weeks of
-      short daily visits, not grinding.</p>
-    <p>Games are optional fun: unlimited play, continued Challenge records and
-      medals, with up to five bonus dollars per game per day (90 across
-      eighteen games), shared across tanks and difficulty, and no Journal XP.
-      Existing progress stays yours.</p>
-    <p><strong>2.3.19:</strong> Buying a decoration opens its placement page
-      straight away. Drag it, MIRROR it, and choose BEHIND or IN FRONT among the
-      pieces it actually overlaps; every scenery piece, float included, can move.</p>
-    <div class="gallery">
-      <figure>
-        <img class="screen" src="./media/shop.png" loading="lazy" width="320" height="240" alt="Illustrated shop with full-colour decoration previews on cards">
-        <figcaption>Illustrated shop cards with full-colour previews.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/game-reef-defender.png" loading="lazy" width="320" height="240" alt="Reef Defender mini-game with water gradient, kelp, sand and crab props">
-        <figcaption>Every mini-game shares the new illustrated art kit.</figcaption>
-      </figure>
-    </div>
-    <p><strong>2.3.18:</strong> Fish Interaction explains the next bond milestone
-      and +5 greetings, including the 30-second cooldown. A Fish's Life shows
-      the next stage in growth-hours, notes slower growth during sleep, and
-      explains decoration rest/interest spots. Creative skips bond locks;
-      Follow still needs a tankmate. No new checklist or missed-day penalty.</p>
-    <div class="gallery">
-      <figure>
-        <img class="screen" src="./media/fish-interaction-feedback.png" loading="lazy" width="240" height="180" alt="Fish Interaction showing the next trick bond target and greeting cooldown">
-        <figcaption>Know what your next greeting contributes.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/fish-life-feedback.png" loading="lazy" width="320" height="240" alt="A Fish's Life showing growth-hours until the next stage and decoration rest spots">
-        <figcaption>Growth explained without adding chores.</figcaption>
-      </figure>
-    </div>
-    <figure>
-      <img class="screen" src="./media/journal-goals.png" loading="lazy" width="320" height="240" alt="Pocket Tank CYD daily care checklist with feeding, connection and reef care rewards">
-      <figcaption>Collections → Goals opens TODAY. Milestones remain one tap away.</figcaption>
-    </figure>
-    <span class="badge">Settings refresh: 2.1.3</span>
-    <h2>Clearer menus. Weather you can read.</h2>
-    <p>Clock/Weather now has one clean hub and one preview action. Weather text
-      has a visible Small/Medium/Large control, with simple icons for actual
-      cached conditions. City search goes back one level, and forgetting a city
-      needs confirmation.</p>
-    <div class="gallery">
-      <figure>
-        <img class="screen" src="./media/clock-settings.png" loading="lazy" width="320" height="240" alt="Pocket Tank CYD Clock and Weather hub with six clear actions">
-        <figcaption>One hub; one BACK path.</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/weather-settings.png" loading="lazy" width="320" height="240" alt="Weather settings showing a rain icon, large temperature text and visible Text Large control">
-        <figcaption>Native renderer with fixture weather: visible sizing and a condition icon.</figcaption>
-      </figure>
-    </div>
-    <span class="badge">New in 2.1.0</span>
-    <h2>Your scene. Your clock. Comfortable light.</h2>
-    <p>Available in <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v2.1.0">Pocket Tank CYD 2.1.0</a>,
-      alongside all the game features below.</p>
-    <div class="grid">
-      <article class="card">
-        <h3>Three scene-detail levels</h3>
-        <p>Normal size and Balanced detail are the defaults. Choose Simple for
-          stationary real seagrass and decorations without helper creatures,
-          bubbles or ambient effects; their benefits continue. Enhanced keeps
-          smooth animations. Size and detail are independent.</p>
-        <p>Populated-device samples at either size: about 20 FPS Simple, 10 FPS
-          Balanced and 8-9 FPS Enhanced. Results depend on your aquarium.</p>
-      </article>
-      <article class="card">
-        <h3>Jumbo clocks that keep their style</h3>
-        <p>Tiny also joins the size choices. Clock/Weather &gt; Text / Effects has separate
-          Small/Medium/Large controls for date/AM-PM/seconds and weather/activity.
-          Captions wrap and sizes fit down when necessary to prevent overlap
-          at either screen resolution.</p>
-        <p>Make the time easier to read from across the room. Jumbo respects
-          Minimal, Digital, Analog, Neon, Flip, Binary and Orbit designs, plus
-          your colors, date/seconds options and enabled weather captions.
-          Large, Medium and Small remain available.</p>
-      </article>
-      <article class="card">
-        <h3>Quieter in a dark room</h3>
-        <p>Room-light dimming now controls both the screen and rear LED, with
-          much stronger low-light reduction: about 27% output at half room light,
-          8% at a quarter, and 2% in darkness. The screen keeps a small usable
-          minimum, while filtering softens brief shadows. Pagination buttons
-          use clear arrows instead of page labels.</p>
-      </article>
+  </section>
+
+  <section id="features" aria-labelledby="features-heading">
+    <p class="eyebrow">What is in the tank today</p>
+    <h2 id="features-heading">More than fish on a screen</h2>
+    <p>Every screenshot below comes from the current firmware's actual renderer.
+      MENU opens Fish, Tank, Market, Games, Casino and Help; the cog in the
+      corner opens Settings.</p>
+    <img class="screen" src="./media/main-menu.png" loading="lazy" width="320" height="240" style="max-width:480px" alt="Main menu with Fish, Tank, Market, Games, Casino and Help tiles, a doubloon balance and a settings cog">
+  </section>
+
+  <section class="split" aria-labelledby="aquarium-heading">
+    <div>
+      <p class="eyebrow">A calm, living aquarium</p>
+      <h2 id="aquarium-heading">Fish that swim, rest and grow</h2>
+      <p>You start with two Tetras. Swipe down from the top of the glass to drop
+        food and tap a fish to open its summary. Fish ease into rest spots, hover
+        near cover and grow from fry to juvenile, adult and elder.</p>
+      <p>Ten varieties unlock as you go: Tetra, Guppy, Clownfish, Betta,
+        Harborfin, Angel, Puffer, Jellyfish, Stingray and Shark. Rare visitors
+        occasionally pass the glass, and seasonal accents follow the hemisphere
+        of your weather city.</p>
     </div>
     <div class="gallery">
       <figure>
-        <img class="screen" src="./media/clock-jumbo-digital.png" loading="lazy" width="320" height="240" alt="Jumbo Digital clock with large seven-segment numerals">
-        <figcaption>Jumbo Digital</figcaption>
+        <img class="screen" src="./media/tank-kelp.png" loading="lazy" width="320" height="240" alt="Kelp Forest theme with fish, a jellyfish and sword grass">
+        <figcaption>Kelp Forest backdrop.</figcaption>
       </figure>
       <figure>
-        <img class="screen" src="./media/clock-jumbo-flip.png" loading="lazy" width="320" height="240" alt="Jumbo Flip clock with separate split-flap digit tiles">
-        <figcaption>Jumbo Flip</figcaption>
-      </figure>
-      <figure>
-        <img class="screen" src="./media/clock-jumbo-analog.png" loading="lazy" width="320" height="240" alt="Jumbo Analog clock with a round numbered dial and hands">
-        <figcaption>Jumbo Analog</figcaption>
+        <img class="screen" src="./media/tank-rare-visitor.png" loading="lazy" width="320" height="240" alt="A small jellyfish visitor drifting near the surface of the tank">
+        <figcaption>A rare visitor drifts by.</figcaption>
       </figure>
     </div>
   </section>
 
-  <section id="expanded-game" aria-labelledby="game-heading">
-    <span class="badge">New in 2.0.0</span>
-    <h2 id="game-heading">Deeper adventures. Still your quiet tank.</h2>
-    <p>These additions are included in
-      <a href="https://github.com/jeromedontdev/pocket-tank-cyd/releases/tag/v2.0.0">Pocket Tank CYD 2.0.0</a>.
-      The flasher shows the exact published version it will install.</p>
-    <div class="split">
-      <div>
-        <h3>The Lost Current</h3>
-        <p>An optional six-chapter, 18-encounter story RPG. Choose a fish guide
-          and use courage, curiosity, or kindness to find your path to one of
-          three endings.</p>
-        <p>Your fish's bonds, inherited traits, family legacy, decorations,
-          visitors, and past adventures can offer help. No fish leaves home or
-          gets hurt, no purchases are required, and no deadlines or background
-          simulation change the aquarium you already love.</p>
-        <h3>Eighteen games, three pages</h3>
-        <p>Lighthouse, Shell Slide, Sonar Sweep, Tide 2048, Harbor Stack and
-          Echo Reef join the original twelve.
-          Help, pause, saved records, medals, and carefully saved rewards are included.</p>
-        <h3>Clearer menus &amp; finishing touches</h3>
-        <p>Illustrated destinations and fish information, flatter menus and
-          consistent BACK navigation. Choose Normal, Creative or Hard on first
-          run; changing mode requires a full wipe. Money and progression follow
-          every aquarium; the global Bank transfers fish and their histories.</p>
-      </div>
-      <div class="gallery">
-        <figure>
-          <img class="screen" src="./media/rpg-story.png" loading="lazy" width="320" height="240" alt="The Lost Current encounter with a fish guide and three choices">
-          <figcaption>The Lost Current</figcaption>
-        </figure>
-        <figure>
-          <img class="screen" src="./media/game-tide-tactics.png" loading="lazy" width="320" height="240" alt="Tide Tactics turn-based board with flags and creatures">
-          <figcaption>Tide Tactics</figcaption>
-        </figure>
-        <figure>
-          <img class="screen" src="./media/game-reef-architect.png" loading="lazy" width="320" height="240" alt="Reef Architect planting puzzle">
-          <figcaption>Reef Architect</figcaption>
-        </figure>
-        <figure>
-          <img class="screen" src="./media/games-page-two.png" loading="lazy" width="320" height="240" alt="Second game page showing the six new games">
-          <figcaption>Six more ways to play</figcaption>
-        </figure>
-      </div>
+  <section aria-labelledby="fish-heading">
+    <p class="eyebrow">Get to know each fish</p>
+    <h2 id="fish-heading">Care, genetics and family</h2>
+    <p>A fish's summary shows Trust, Energy, Fullness, Calm and Vigor, its
+      genes and worth, and the decoration it LOVES. Keep that favorite piece in
+      the tank and calm recovers 30% faster while the fish grows 10% faster;
+      without it the fish stays a little restless and grows 10% slower.</p>
+    <p>Each fish carries two marking alleles, two body-color alleles and four
+      recessive traits. Two healthy adults of the same variety can breed, and
+      fry inherit one allele of each gene from each parent, sometimes with a
+      rare mutation. The Fish menu adds Rename (with an on-screen keyboard),
+      Family, Genes, Life, Wardrobe and the Fish Bank.</p>
+    <div class="grid">
+      <figure>
+        <img class="screen" src="./media/fish-summary.png" loading="lazy" width="320" height="240" alt="Fish summary with trust, energy, fullness, calm and vigor bars">
+        <figcaption>Fish Summary with five care bars.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/fish-genes.png" loading="lazy" width="320" height="240" alt="Genes page listing marking, color and trait alleles">
+        <figcaption>Genes: what shows and what is carried.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/fish-life.png" loading="lazy" width="320" height="240" alt="A fish's life page showing buddy, next growth stage and favorite decoration">
+        <figcaption>Life: growth, buddies and favorites.</figcaption>
+      </figure>
     </div>
+  </section>
+
+  <section aria-labelledby="market-heading">
+    <p class="eyebrow">Breed, raise and sell</p>
+    <h2 id="market-heading">A market that rewards good lines</h2>
+    <p>Value is life stage &times; variety tier &times; care &times; genes.
+      Grades run Common, Fine (125%), Rare (150%) and Prized (190%), and one
+      variety is in demand each day for a 25% bonus. Market stock is plain and
+      costs more than its resale, so profit comes from breeding and raising.
+      A pedigree certificate shows ancestry, genes and vigor on every sale.</p>
+    <p>Collections reward finding every mutation of a variety with a gold
+      statue for your tank. Contracts arrive every three days, and the Saturday
+      Auction sells one prized fish to rival bidders.</p>
+    <div class="grid">
+      <figure>
+        <img class="screen" src="./media/fish-market.png" loading="lazy" width="320" height="240" alt="Fish Market with Buy Stock, Residents and Nursery tabs">
+        <figcaption>Fish Market: stock, residents and nursery.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/fish-sale.png" loading="lazy" width="320" height="240" alt="Fish sale confirmation with a pedigree certificate">
+        <figcaption>Every sale shows a pedigree certificate.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/collection.png" loading="lazy" width="320" height="240" alt="Collection table of markings, traits and colors for each variety">
+        <figcaption>Collections: one statue per finished variety.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="decor-heading">
+    <p class="eyebrow">Make it your aquarium</p>
+    <h2 id="decor-heading">Decor, foliage, food and themes</h2>
+    <p>Tank &gt; Decor &amp; Storage buys, places, stores and sells pieces; hold
+      a piece in the tank to move it. Ground-cover foliage and kelp are permanent
+      sets that never need trimming, and seahorses perch on the kelp.
+      Pellets, Flakes and Bloodworms are permanent diets that speed up growth.
+      Themes are bought once with doubloons and stay unlocked for every tank;
+      Original is free.</p>
+    <div class="grid grid4">
+      <figure>
+        <img class="screen" src="./media/ground-cover-mixed.png" loading="lazy" width="320" height="240" alt="Aquarium floor with mixed ground-cover foliage and tall grass">
+        <figcaption>Ground cover and taller plants soften the seabed.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/shop-decorations.png" loading="lazy" width="320" height="240" alt="Decor shop listing decorations with prices in doubloons">
+        <figcaption>Decor &amp; Storage.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/food-upgrades.png" loading="lazy" width="320" height="240" alt="Fish Food page with Pellets, Flakes and Bloodworms">
+        <figcaption>Pellets 1&times;, Flakes 1.25&times;, Bloodworms 1.5&times; growth.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/journal-themes.png" loading="lazy" width="320" height="240" alt="Tank Themes page listing Original, Kelp Forest, Coral Reef and Deep Glow">
+        <figcaption>Themes change the backdrop of the current tank.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="split" aria-labelledby="tanks-heading">
+    <div>
+      <p class="eyebrow">Up to eight aquariums</p>
+      <h2 id="tanks-heading">Every tank its own little world</h2>
+      <p>Keep up to eight aquariums, each with its own residents, decor and
+        theme. Tank Summary switches, adds and reviews tanks; Name &amp;
+        Identity renames a tank and picks a subtitle and an illustrated
+        emblem, with enough of each for every tank to be unique.</p>
+    </div>
+    <div class="gallery">
+      <figure>
+        <img class="screen" src="./media/aquarium-summary.png" loading="lazy" width="320" height="240" alt="Tank Summary page for the active tank">
+        <figcaption>Tank Summary.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/tank-identity.png" loading="lazy" width="320" height="240" alt="Name and Identity page with rename, subtitle and emblem">
+        <figcaption>Name &amp; Identity.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="games-heading">
+    <p class="eyebrow">Play with your fish</p>
+    <h2 id="games-heading">Games, stories and The Lost Current</h2>
+    <p>Main Menu &gt; Games lists all eighteen touch games, the Stories trips
+      and The Lost Current RPG together in one paged list. Each game pays its
+      score reward plus 2 doubloons for up to five rounds a day. The Casino
+      holds Fish Races, Reef Reels, Pearl Hi-Lo, a Shell Game, Treasure Dive
+      and the Tide Wheel, with bets of 5 to 50 doubloons.</p>
+    <div class="grid">
+      <figure>
+        <img class="screen" src="./media/games-menu.png" loading="lazy" width="320" height="240" alt="Mini Games page with six illustrated game tiles">
+        <figcaption>Every game in one list.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/game-reef-defender.png" loading="lazy" width="320" height="240" alt="Reef Defender game in progress">
+        <figcaption>Reef Defender.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/rpg-chapter-1.png" loading="lazy" width="320" height="240" alt="The Lost Current chapter one with courage, curiosity and kindness choices">
+        <figcaption>The Lost Current, an optional story RPG.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="clock-heading">
+    <p class="eyebrow">A useful desk companion</p>
+    <h2 id="clock-heading">Clock faces and weather</h2>
+    <p>Choose from seven clock faces: Minimal, Digital, Analog, Neon, Flip,
+      Binary and Orbit. Analog keeps a brass dial; the others sit on rounded
+      sea glass. Set a weather city to show live conditions in a matching
+      weather box. Time and weather use Wi-Fi when enabled; the aquarium itself
+      works offline. The room-light sensor and rear RGB LED are supported, and
+      no speaker or audio setup is needed.</p>
+    <div class="grid">
+      <figure>
+        <img class="screen" src="./media/clock-analog.png" loading="lazy" width="320" height="240" alt="Analog clock face with a brass dial over the aquarium">
+        <figcaption>Analog.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/clock-flip.png" loading="lazy" width="320" height="240" alt="Flip clock face over the aquarium">
+        <figcaption>Flip.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/clock-weather.png" loading="lazy" width="320" height="240" alt="Flip clock with a weather box showing Paris and the temperature">
+        <figcaption>Clock with the weather box.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="help-heading">
+    <p class="eyebrow">Your tank stays yours</p>
+    <h2 id="help-heading">Help, settings and backups</h2>
+    <p>Help explains every part of the game, one topic at a time. Settings
+      holds display, clock and weather, Wi-Fi, SD backups, aquarium care and
+      device options. Creative mode removes prices; Hard mode adds real
+      starvation risk. Saves stay on the board, an SD card can back up and
+      restore the whole save, and firmware updates come from GitHub over Wi-Fi
+      or from an SD card.</p>
+    <div class="grid">
+      <figure>
+        <img class="screen" src="./media/help.png" loading="lazy" width="320" height="240" alt="Help topics list">
+        <figcaption>Help topics.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/settings.png" loading="lazy" width="320" height="240" alt="Settings menu with Display, Clock/Weather, Wi-Fi, SD Backups, Aquarium Care and Device">
+        <figcaption>Settings.</figcaption>
+      </figure>
+      <figure>
+        <img class="screen" src="./media/sd-updates.png" loading="lazy" width="320" height="240" alt="Firmware Updates page with Check SD Card and Check GitHub via Wi-Fi">
+        <figcaption>Settings &gt; Device &gt; Firmware Updates.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="boards-heading">
+    <p class="eyebrow">Supported boards</p>
+    <h2 id="boards-heading">Two displays, the same little aquarium</h2>
+    <p>CYD and ELEGOO CYD use the same firmware application. Choose your hardware
+      profile in the USB installer; it remembers the correct display setup.
+      Reliable automatic board detection is not available on these displays.
+      Setup requires an explicit choice, with no preselected default; the board
+      retains that profile across reboots and firmware updates. When using the
+      web updater again, select the matching board so it can verify the saved profile.
+      Factory images set that profile for new boards. Both use the same SD
+      update and GitHub Wi-Fi channel; legacy update downloads remain available.</p>
+    <p>ELEGOO CYD needs different LCD initialization, not different touch pins.
+      Its GPIO34 senses a battery, so automatic room-light dimming is unavailable;
+      manual brightness, touch, games and internal tanks still work.
+      No battery or audio application is included. CYD is a family of boards,
+      not a guarantee that every display variant is compatible.</p>
+    <a href="./flash.html">Choose your exact board in the installer</a>
+  </section>
+
+  <section class="note" aria-labelledby="browser-heading">
+    <h2 id="browser-heading">No CYD yet? Play here.</h2>
+    <p>The browser simulator runs the actual game, with mouse and touchscreen
+      controls and its own locally saved aquarium. No board, USB cable or
+      account is needed. Your browser game is separate from a physical CYD;
+      it does not automatically synchronize device saves.</p>
+    <p>The public game is compiled from the latest stable release source, not
+      the ESP32 binary. Its release tag and source commit are shown above the
+      game and checked against the USB installer's version before deployment.
+      Fullscreen keeps the controls handy. Live weather, Wi-Fi updates and other
+      hardware-only features are not emulated.</p>
+    <p>Progress stays in this browser on this device. Clearing site data,
+      private browsing or browser storage eviction can remove it.</p>
+    <a class="button primary" href="./play.html">Launch the browser simulator</a>
+  </section>
+
+  <section class="split" aria-labelledby="family-heading">
+    <div>
+      <p class="eyebrow">Little fish, long memories</p>
+      <h2 id="family-heading">A family worth following</h2>
+      <p>Follow each fish's parents, grandparents and descendants in Fish &gt;
+        Family. Names, genes and family connections give each generation a
+        place in your tank's story.</p>
+      <p>Open an exported JSON backup in the save viewer to explore your fish,
+        family tree, and genes on a larger screen. The viewer reads it locally
+        in your browser; it does not upload your backup.</p>
+      <a class="button" href="./viewer.html">Open the save viewer</a>
+    </div>
+    <figure>
+      <img class="screen" src="./media/family-tree.png" loading="lazy" width="320" height="240" alt="Fish family tree showing parents and grandparents">
+      <figcaption>Family connections live alongside your aquarium, not in a separate account.</figcaption>
+    </figure>
   </section>
 
   <section class="card" aria-labelledby="install-heading">
@@ -698,7 +423,7 @@
       board/layout checks and confirmation. Nothing flashes from this home page.</p>
     <div class="actions">
       <a class="button primary" href="./flash.html">Open the USB flasher</a>
-      <a class="button" href="https://github.com/jeromedontdev/pocket-tank-cyd/blob/main/docs/CYD-FEATURES.md">Full illustrated feature guide</a>
+      <a class="button" href="https://github.com/jeromedontdev/pocket-tank-cyd/releases">Release notes and downloads</a>
     </div>
   </section>
 </main>

@@ -117,7 +117,7 @@ async function main() {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.deepEqual(errors, []);
       await page.goto(base + "/index.html");
-      for (const name of ["harbor-garden-decorations.png", "jellyfish-wardrobe.png"]) {
+      for (const name of ["tank-normal.png", "fish-summary.png", "family-tree.png"]) {
         const image = page.locator(`img[src="./media/${name}"]`);
         await image.scrollIntoViewIfNeeded();
         await page.waitForFunction(name => {

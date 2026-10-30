@@ -15,24 +15,18 @@ APP = "pocket-tank-cyd-app.bin"
 BOARD_MARKER = b"PTBOARD\0" + b"cyd2432s028".ljust(24, b"\0")
 SLOT_SIZE = 0x1e0000
 FEATURE_IMAGES = (
+    "tank-normal.png", "pocket-tank-2.4.0-demo.mp4",
     "v240-market-hub.png", "v240-creature-market.png", "v240-contract.png",
-    "v240-auction.png", "v240-casino.png", "v240-tide-wheel.png", "pocket-tank-2.4.0-demo.mp4",
-    "fish-interaction-feedback.png", "fish-life-feedback.png",
-    "harbor-garden-decorations.png", "jellyfish-wardrobe.png",
-    "tank-normal.png", "family-tree.png", "rpg-story.png",
-    "game-tide-tactics.png", "game-reef-architect.png", "games-page-two.png",
-    "clock-jumbo-digital.png", "clock-jumbo-flip.png", "clock-jumbo-analog.png",
-    "clock-settings.png", "weather-settings.png", "journal-goals.png",
-    "settings-device.png", "sd-updates.png",
-    "home-collections.png", "games-page-three.png",
-    "tank-crafted-ornaments.png", "tank-crafted-seabed.png",
-    "tank-crafted-reef.png", "tank-crafted-plants.png",
-    "fish-bodies.png", "fish-accessories.png", "aquarium-details.png", "tank-crafted-floats.png",
-    "typography-normal.png", "typography-enlarged.png",
-    "shop.png", "game-reef-defender.png",
+    "v240-auction.png", "v240-casino.png", "v240-tide-wheel.png",
+    "main-menu.png", "tank-kelp.png", "tank-rare-visitor.png",
+    "fish-summary.png", "fish-genes.png", "fish-life.png",
+    "fish-market.png", "fish-sale.png", "collection.png",
+    "ground-cover-mixed.png", "shop-decorations.png", "food-upgrades.png", "journal-themes.png",
+    "aquarium-summary.png", "tank-identity.png",
+    "games-menu.png", "game-reef-defender.png", "rpg-chapter-1.png",
+    "clock-analog.png", "clock-flip.png", "clock-weather.png",
+    "help.png", "settings.png", "sd-updates.png", "family-tree.png",
 )
-
-
 def validate_images(profile, image, checksums, app):
     factory, application = f"{profile.image_prefix}-factory.bin", f"{profile.image_prefix}-app.bin"
     expected = dict(line.split("  ", 1)[::-1] for line in checksums.splitlines() if line)

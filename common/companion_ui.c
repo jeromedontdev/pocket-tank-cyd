@@ -1014,7 +1014,7 @@ static void market_render(const tank_t *t, uint16_t *fb, int stride) {
 typedef struct { const char *title; int icon; const char *body[2]; } help_topic_t;
 static const help_topic_t HELP_TOPICS[] = {
     {"GETTING STARTED", STAMP_STAR, {
-        "Your aquarium begins with two Tetras. Swipe down from the top of the glass to drop food and tap a fish to open its summary. MENU opens Fish, Tank, Market, Games, Help and Settings from anywhere.",
+        "Your aquarium begins with two Tetras. Swipe down from the top of the glass to drop food; tap a fish for its summary. MENU opens Fish, Tank, Market, Games, Casino, Help and the Settings cog.",
         "Doubloons are the only currency. Earn them from games, fish and creature sales, and a pearl mussel; spend them on stock, decor, foliage, food and themes."}},
     {"FISH NEEDS", STAMP_HEART, {
         "TRUST grows with meals and gentle holds. ENERGY drains while swimming and refills with rest. FULLNESS falls over time; feed when it runs low. CALM drops when startled.",
@@ -1052,6 +1052,9 @@ static const help_topic_t HELP_TOPICS[] = {
     {"GAMES", STAMP_STAR, {
         "Main Menu > Games lists every arcade game, the Stories trips and The Lost Current RPG together. Page through with the arrow.",
         "Each game pays its score reward plus 2 doubloons for up to five rounds a day. Stories and the RPG are calm, story-driven trips."}},
+    {"CASINO", STAMP_COIN, {
+        "Main Menu > Casino holds Fish Races, Reef Reels, Pearl Hi-Lo, a Shell Game, Treasure Dive and the Tide Wheel. Choose a bet of 5, 10, 25 or 50 doubloons before each round.",
+        "Results are random, and every win or loss is saved at once. Bet only spare doubloons; your fish, decor and creatures are never at stake."}},
     {"CLOCK & WEATHER", STAMP_CLOCK, {
         "Settings > Clock chooses a face, style, text size and time, and whether the clock and weather box show over the tank. Analog faces keep a brass dial; the others sit on rounded sea glass.",
         "Set a weather city to show live conditions. The same city decides which hemisphere's seasonal accents appear."}},

@@ -132,10 +132,14 @@ old bullets only as history and evidence.
 ### Handoff baseline
 
 - Current verified COM4 2.4.0 app (Creature Market, contracts, auction, six
-  casino games) is 1,795,840 bytes (0x1b6700, 9% app partition free), SHA256
-  `4ac91891c508aea2b2c5b70106f767634b716a6a9dbd990dcb6323ab2c0d9d92`; app-only
+  casino games, Tide Wheel icon, 16 Help topics incl. Casino) is 1,796,384
+  bytes (0x1b6920, 9% app partition free), SHA256
+  `fd8b771c679b37f8fa9dbaf3f213d4ace1d895be5c1bcd4021297fb78de00143`; app-only
   ota_0 write with full backup and exact readback. Live tank ~22.2 fps; fixtures
   1/2/3 at 22.41/16.41/19.44 fps, matching the previous image.
+- The public homepage (web/index.html) is a current-feature tour built from
+  renderer captures listed in FEATURE_IMAGES; keep version history in GitHub
+  Releases rather than re-adding per-version sections or retired screenshots.
 - Previous identity/serenity app was 1,759,520 bytes, SHA256
   `c339283c2b1e30e77703963e39a9b55b32ebed0681efab74f4cdab20b8986aed`.
   Full recovery backup, app-only ota_0 write, exact readback, all sixteen
