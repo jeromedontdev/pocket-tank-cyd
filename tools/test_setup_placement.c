@@ -116,6 +116,70 @@ static void test_sword_copy_depth_bar_and_arrows(void) {
     puts("PASS: a sword-plant copy's placement page offers all three depths, its order arrows work and AMONG survives a reload");
 }
 
+/* The order arrows were disabled for EVERY copy, not just the sword plant
+ * (2026-11-03: "I don't know that this is exclusive to the sword grass"). Walk
+ * every duplicable item's copy and prove the arrows are live whenever the copy
+ * overlaps a piece at its own depth, and correctly dead when it overlaps
+ * nothing - the same rule the primary follows. */
+static void test_every_copy_orders(void) {
+    int checked = 0;
+    for (int item = 0; item < SD_ITEM_COUNT; item++) {
+        if (item == 8 || !tank_decor_placeable(item) || !progression_inventory_duplicate(item)) continue;
+        if (tank_decor_surface(item)) continue;          /* the floats have no stack */
+        tank_t t;
+        saved_size = 0;
+        tank_init(&t, 843);
+        boot_enlarged(&t);
+        t.inventory.version = 1;
+        if (SD_IS_NEW_DECOR(item)) t.content.owned |= 1u << (item - SD_DECOR_FIRST);
+        else t.sd_unlocks |= SD_ITEMS[item].bit;
+        t.profile.owned_items |= UINT64_C(1) << item;
+        /* the primary and a copy at the same spot, both BEHIND */
+        tank_decor_set(&t, item, 120, DECOR_Z_BACK);
+        tank_decor_raise(&t, item);
+        t.inventory.extra[0] = (inventory_extra_t){
+            .item = (uint8_t)(item + 1), .z = DECOR_Z_BACK, .rank = 1, .x = 120 };
+        /* the copy overlaps the primary, so both arrows must be live */
+        assert(tank_decor_copy_neighbor(&t, item, 0, 1) == item);
+        assert(tank_decor_copy_neighbor(&t, item, 0, -1) == -1);
+        setup_begin_extra_place(&t, 0);
+        assert(setup_active() && setup_is_place() && setup_item() == item && !setup_place_original());
+        int before = t.inventory.extra[0].rank & DECOR_RANK_MASK;
+        setup_activate(&t, SETUP_HIT_FWD);
+        if ((int)(t.inventory.extra[0].rank & DECOR_RANK_MASK) <= before)
+            fprintf(stderr, "Item %d (%s) copy: BRING FORWARD did nothing\n", item, SD_ITEMS[item].name);
+        assert((int)(t.inventory.extra[0].rank & DECOR_RANK_MASK) > before);
+        assert(tank_decor_copy_neighbor(&t, item, 0, -1) == item);
+        setup_activate(&t, SETUP_HIT_BCK);
+        assert((int)(t.inventory.extra[0].rank & DECOR_RANK_MASK) == before);
+        /* the depth bar offers the item's own depths for a copy too */
+        int n = tank_decor_copy_z_count(item, 0);
+        assert(n == tank_decor_z_count(item));
+        for (int i = 0; i < n; i++) {
+            /* segment i's centre: the bar is centred, so offset by half a segment */
+            float cx = PAGE_W / 2.0f + (i - (n - 1) / 2.0f) * SETUP_DEPTH_SEG_W;
+            int hit = setup_hit(render_frame_x(cx), render_frame_y(SETUP_DEPTH_Y + SETUP_DEPTH_H / 2));
+            assert(hit == SETUP_HIT_Z0 + tank_decor_copy_z_at(item, 0, i));
+        }
+        setup_cancel(&t);
+        /* moved apart, the arrows are dead exactly when the footprints stop
+           overlapping - the same rule the primary follows */
+        t.inventory.extra[0].x = TANK_W - 20;
+        tank_decor_set(&t, item, 20, DECOR_Z_BACK);
+        bool overlap = fabsf(tank_decor_x(&t, item) - t.inventory.extra[0].x) <
+                       2 * tank_decor_half_w(item);
+        /* the copy sits at the bottom rank, so only the forward arrow can find
+           the primary; both must agree with the footprint test */
+        assert((tank_decor_copy_neighbor(&t, item, 0, 1) >= 0) == overlap);
+        assert(tank_decor_copy_neighbor(&t, item, 0, -1) == -1);
+        assert(tank_decor_copy_shift(&t, item, 0, 1) == overlap);
+        checked++;
+    }
+    assert(checked >= 8);                                /* the plant, chest, ornaments and content decor */
+    saved_size = 0;
+    puts("PASS: every duplicable item's copy orders against the pieces it overlaps, and only then");
+}
+
 static void test_all_placeable_cancel_roundtrip(void) {
     for (int compact = 0; compact < 2; compact++) {
         tank_resolution(compact != 0);
@@ -377,6 +441,7 @@ static void test_every_item_buys_and_moves(void) {
 
 int main(void) {    test_overlapping_copy_selection_and_rollback();
     test_sword_copy_depth_bar_and_arrows();
+    test_every_copy_orders();
     test_all_placeable_cancel_roundtrip();
     test_remove_to_storage();
     test_layers_and_mirror();

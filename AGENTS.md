@@ -199,6 +199,10 @@ old bullets only as history and evidence.
   it. `test_setup_placement.c::test_sword_copy_depth_bar_and_arrows` walks all
   three segments, both arrows and a save/reload of the AMONG lane;
   `test_fish_behavior.c::test_sword_copy_depth_and_order` covers the API.
+  The arrows were dead for **every** copy, not just the plant, so
+  `test_setup_placement.c::test_every_copy_orders` walks every duplicable
+  item's copy and asserts the arrows are live exactly when the footprints
+  overlap - the same rule the primary follows.
 - Kelp crowns were still clipping the stone bridge: `kelp_span` indexed the
   occlusion mask from the span's start while `kelp_row_mask` builds it from
   the sprite's left edge, so every span after the first was shifted. It now
