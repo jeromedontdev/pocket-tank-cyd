@@ -2582,7 +2582,18 @@ bool tank_item_in_tank(const tank_t *t, int item) {
      * and could never be satisfied. Creatures live in the sd_unlocks bitmask,
      * so ask it directly. Every field read here is per-aquarium, so a piece
      * placed in another tank never comforts this one. */
-    if (tank_decor_slot(item) < 0) return item >= 0 && item < 32 && (t->sd_unlocks & (1u << item)) != 0;
+    if (tank_decor_slot(item) < 0) {
+        /* Only creatures (1, 5, 6, 7, 42) and the tank-wide upgrades (32..35)
+         * reach here. Creatures 1/5/6/7 are owned through sd_unlocks, the
+         * mussel through its own per-aquarium mask, and the upgrades through
+         * stat_upgrades. Retired IDs keep their historical bits but are never
+         * owned. */
+        if (item < 0 || item >= SD_ITEM_COUNT) return false;
+        if (item == 8 || item == 30 || item == 31) return false;
+        if (item == SD_SHOP_MUSSEL) return tank_mussel_owned(t);
+        if (item >= 32) return (t->aquariums.stat_upgrades & (1u << (item - 32))) != 0;
+        return (t->sd_unlocks & (1u << item)) != 0;
+    }
     return tank_decor_owned(t, item);
 }
 int tank_fish_comfort(const tank_t *t, int idx) {
