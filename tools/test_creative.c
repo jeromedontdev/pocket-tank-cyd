@@ -55,6 +55,9 @@ bool persist_port_erase(void) { saved_size = 0; return true; }
 int64_t clock_port_now_unix(void) { return 2000000000; }
 const char *version_port_string(void) { return "test"; }
 const setup_place_snapshot_t *setup_place_original(void) { return NULL; }
+/* This suite links progression.c without setup.c: the boot hook that clears
+ * the dropped-welcome latch is a no-op here (the latch is setup.c's static). */
+void setup_boot(void) {}
 
 static void reload(tank_t *t) { tank_init(t, 456); progression_boot(t); }
 static void wallet(const tank_t *t, int balance, int earned, uint32_t xp) {
@@ -182,7 +185,9 @@ int main(void) {
         creature_sale_t quote;
         assert(!progression_creature_sale_quote(&t, species, false, &quote));
         assert(!progression_creature_sale_quote(&t, species, true, &quote));
-        assert(!progression_creature_buy(&t, species)); /* Cash market is not a sandbox loophole. */
+        /* Creative allows free first purchases, but one per tank still applies. */
+        assert(!progression_creature_buy(&t, species));
+        assert(progression_creature_adults(&t, species) == 1);
         wallet(&t, 37, 59, 0);
     }
     for (int i = 0; i < JOURNAL_THEME_COUNT; i++) assert(journal_set_theme(&t, i));
@@ -192,7 +197,10 @@ int main(void) {
     assert(progression_sell(&t, 2)); wallet(&t, 37, 59, 0);
     assert(progression_buy(&t, 2)); wallet(&t, 37, 59, 0);
     assert(!progression_sell_fish(&t, 0));
-    assert(!progression_buy_fry(&t, 0));
+    assert(!progression_creative_remove_fish(&t, t.n_fish - 1)); /* make room for a fry */
+    progression_fry_open(&t); /* roll the fry offer before buying */
+    assert(progression_buy_fry(&t, 0)); /* Creative allows free fry purchases. */
+    assert(!progression_creative_remove_fish(&t, t.n_fish - 1)); /* back under the cap */
     assert(!progression_game_reward(&t, 0, 10));
     assert(!companion_game_claim(&t, 0, 99, 2, 10, false));
     assert(!journal_claim(&t, 0));

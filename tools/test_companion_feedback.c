@@ -9,7 +9,7 @@ static char observed[8192];
 static int observed_count;
 static struct { int x, y, w, h; } observed_bounds[160];
 
-void menu_test_panel(int w, int h) { (void)w; (void)h; }
+void menu_test_panel(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; }
 void menu_test_text(int x, int y, int scale, const char *label) {
     if (!*label) return;
     int w = render_text_w(label, scale);

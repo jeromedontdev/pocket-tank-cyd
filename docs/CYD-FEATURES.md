@@ -141,11 +141,17 @@ The art has rounded veined leaves, textured moss domes or fine paired
 pearlweed leaves, with shaded roots and sandy gaps. Low cover uses the static
 backdrop; kelp's folded blades animate separately without rebuilding it.
 The sword plant also has broader emerald/teal folded planes, detailed veins
-and an updated preview. There is no growth, trimming, upkeep or shelter
-bonus. Existing tanks retain free Anubias on migration; new aquariums start
-bare. There is no separate Foliage shop or shortcut.
+and an updated preview. It is **duplicable**: buy extra copies in Decor &
+Storage and each one is planted as its own clump, with its own position,
+depth lane and sway, so a tank can hold a row of sword grass instead of one.
+Every copy is a real seahorse perch and a real shelter. There is no growth,
+trimming, upkeep or shelter bonus. Existing tanks retain free Anubias on
+migration; new aquariums start bare. There is no separate Foliage shop or
+shortcut.
 The Kelp Forest theme's background leaves are placed relative to each
 stalk's tapered tip, so different stalk heights no longer slice leaves in half.
+A kelp crown that sways behind a piece standing in front of it is clipped by
+that piece, so a stalk no longer shows through the stone bridge's deck.
 Purchased sword plants and sufficiently wide floor decorations provide
 shelter, including placed extra copies. The mandatory starter arch is gone;
 bare tanks can breed over open sand without a hidden shelter bonus.
@@ -231,6 +237,17 @@ sell-back value once on loading; free and Creative copies receive no refund.
 and out, and pace follows a damped spring, so speed changes and late frames no
 longer make fins or headings jump. Edge avoidance ramps in, so fish stop
 seesawing along the surface, sides and sand. None of this is saved state.
+
+**Swimming and turning polish:** a turn now reads as a body roll rather than a
+flat mirror flip. The visible width narrows through the turn and the yaw target
+follows the heading, with a per-variety floor so narrow fish such as the
+jellyfish never collapse to a line. Vertical travel squashes the body far less
+than before, and a vertical brake keeps long fish from pumping up and down.
+The caudal fin breathes: its fan scales about a third larger and smaller on a
+slow cycle, so the tail reads as swimming rather than a fixed shape. Jellyfish
+drift and bob instead of steering, and they are exempt from fish separation so
+they no longer rock left and right against a neighbour. None of this is saved
+state or a new animation bank.
 
 **2.3.19 illustrated games and menus:** all eighteen mini-games share water
 gradients, light shafts, kelp, sand, bevelled blocks and game-specific props,
@@ -493,7 +510,12 @@ income. Games allow **five dollars per game per day** (one per qualifying
 saved round, 90 across all 18), with Challenge/Relaxed and all tanks sharing
 each game's allowance. No game XP. Most of the time the
 mussel rests; roughly every six minutes it slowly crawls to a nearby sand
-position over 16 seconds, with a small foot movement and shell bob.
+position over 16 seconds. The crawl is four short heaves: the pale foot reaches
+ahead and drags, the shell lifts about a pixel and rocks nose-down as it pulls,
+then plants nose-up. Resting, it settles onto the sand and its two valves open
+and close in one slow four-second breath. The shell's open phase and its crawl
+rock both change pixels without moving the mussel's position, so both join the
+damage comparison; without that a tiled frame keeps a stale shell lip.
 
 In 2.3.9, successful payouts produce a subtle
 1.6-second gold sparkle above the shell. The effect is live-only and not saved;
@@ -513,6 +535,20 @@ Obsolete pending “new fry” flags are retired when that fish is no longer a
 fry; fish, names and family history are not reset. Genuine unfinished fry
 welcomes still resume. Finishing the welcome now requires a successful save,
 with an explicit retry message on storage failure instead of silently closing.
+Dismissing a fry welcome leaves it dismissed for the rest of that session, but
+it is offered again after the next boot, so a dropped welcome is never lost.
+If the fry grew up while the welcome was dropped, the stale flag is retired
+instead of blocking the pair from breeding again.
+
+The birth flow's last page now describes the genetics the game actually uses.
+Instead of naming one parent for the body and the other for the markings, it
+lists the **marking** and **traits** the fry shows, the alleles it only
+**carries** (a hidden marking, a hidden body color, recessive traits), and a
+gold **BORN WITH:** line when the birth rolled a mutation. The **PARENTS** row
+names both in their own body colors, or reads **FROM THE SHOP** for a bought
+fry and **PARENTS SOLD** when a bred fry's parents have left the tank. That
+last case used to be misreported as a shop purchase, because the roster links
+are cleared on sale; the family record now comes from the saved lineage.
 
 **2.2.7** improves real CYD throughput without reducing artwork or detail.
 LCD transfers use the full capacity of the existing DMA halves at the same
@@ -783,6 +819,9 @@ and placements stay local; Bank fish move with their genes, families and bonds.
 available without payment. Add fish using the Creative control in Aquariums;
 keep at most five active fish, including travelers, and two residents after
 confirmed removal. It does not award spendable coins or progression XP.
+Every Market purchase is free in Creative: fish, fry, and all five creatures
+(shrimp school, snail, urchin, seahorse and pearl mussel) cost zero doubloons,
+while the one-per-tank creature limit and the five-fish cap still apply.
 **Normal** retains progression without deaths. **Hard** disables Comfort Assist:
 six hours of severe starvation while running can be fatal, with an hour's
 warning, but there are no offline or old-age deaths. Auto Feed starts off;

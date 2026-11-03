@@ -565,6 +565,7 @@ typedef struct {
     float yaw, yaw_tail, hunger, stress, yh, yt;
     uint32_t color, accent, fin, body_rgb, fin_rgb;
     unsigned traits;
+    float size;
     bool valid;
 } fish_motion_t;
 static fish_motion_t fish_motion(const fish_t *f) {
@@ -574,11 +575,15 @@ static fish_motion_t fish_motion(const fish_t *f) {
         m->heading != f->heading || m->wander != f->wander ||
         m->yaw != f->yaw || m->yaw_tail != f->yaw_tail ||
         m->hunger != f->hunger || m->stress != f->stress ||
-        m->color != f->color || m->accent != f->accent || m->fin != f->fin || m->traits != f->traits) {
+        m->color != f->color || m->accent != f->accent || m->fin != f->fin || m->traits != f->traits ||
+        m->size != f->size) {
         float pitch = tank_fish_pitch(f);
         /* the beat's phase is the fish's own (tank.c advances it at the beat's
          * frequency), so a speed change bends the beat instead of jumping it */
-        m->tail = sinf(f->swim_phase + f->wander) * (0.32f + f->speed * 0.007f);
+        /* the beat alone: the caudal web's fan and the ray/shark geometry both
+         * read this, so the breathing scale is applied where the fan is built
+         * (draw_fish_core) rather than folded in here */
+        m->tail = sinf(f->swim_phase + f->wander) * (0.2f + f->speed * 0.005f);
         m->cp = cosf(pitch); m->sp = sinf(pitch);
         m->yh = yaw_ease(f->yaw); m->yt = yaw_ease(f->yaw_tail);
         float stress = f->stress / 10.0f;
@@ -589,6 +594,7 @@ static fish_motion_t fish_motion(const fish_t *f) {
         m->yaw = f->yaw; m->yaw_tail = f->yaw_tail;
         m->hunger = f->hunger; m->stress = f->stress;
         m->color = f->color; m->accent = f->accent; m->fin = f->fin; m->traits = f->traits;
+        m->size = f->size;
         m->phase = f->swim_phase; m->speed = f->speed; m->heading = f->heading; m->wander = f->wander;
         m->valid = true;
     }
@@ -738,7 +744,28 @@ static void draw_fish_core(ctx_t *c, const fish_t *f, float clock, bool asleep, 
         float spread = f->variety == FISH_GUPPY ? 17 : f->variety == FISH_PUFFER ? 6 : 10;
         if (shark) spread = 15;
         if (betta) spread = 20;
-        float reach = 26 * tail_len, fan = spread + tail * 8;
+        /* Breathing: the web opens and closes like gills, much slower than the
+         * swim beat so it reads as breathing, not propulsion. It SCALES the
+         * fan rather than adding to it - an additive term on the same axis
+         * drove `spread + tail * 8` through zero, and the web's top and bottom
+         * vertices met, collapsing the caudal fin to a sliver. Scaling keeps
+         * the fin's shape at every point of the breath.
+         *
+         * The keeper's note (2026-11): "the tail almost shrinks and grows" -
+         * so the breath now drives BOTH the fan's height and its reach, and it
+         * runs at a period you can actually see. The old `wander * 0.2` took
+         * ~37 s per breath, which read as a still image. `wander` advances at
+         * ~0.85 rad/s, so 1.65 gives a ~4.5 s breath: the web visibly swells
+         * and draws in, and the fin's tip extends and retracts with it.
+         *
+         * A second, slower sine (~11 s) rides under the fast swell so the fin
+         * never repeats the same breath twice and the tip's extension reads as
+         * a real breath rather than a metronome. The sum stays positive
+         * (0.48..1.52), so the web never inverts, and the reach's peak stays
+         * at the collision extent's 26 px so the fin cannot poke past the
+         * clearance the steering and the glass bounds use. */
+        float breath = 1 + sinf(f->wander * 1.65f) * 0.40f + sinf(f->wander * 0.55f + 1.1f) * 0.12f;
+        float reach = 26 * tail_len * (0.84f + 0.12f * breath), fan = (spread + tail * 8) * breath;
         float lx[7] = {-11, -reach, -reach + 3, -reach + 1, -reach + 3, -reach, -14};
         float ly[7] = {0, -fan, -fan * .45f, 0, fan * .45f, fan, 2};
         if (harbor) {
@@ -1283,7 +1310,7 @@ static void veg_tint_fill(float dim) {
 /* a bed's depth (2026-09-16): the grass beds are woven with the fish
  * (alternate fronds behind and in front); the plant is wherever the keeper
  * put it - all behind, woven, or all in front (tank_decor_z) */
-static int bed_z(const tank_t *t, int b) { return b == 3 ? tank_decor_z(t, 0) : DECOR_Z_MIDDLE; }
+static int bed_z(const tank_t *t, int b) { return tank_veg_z(t, b); }
 /* a frond span - minus the castle's silhouette while the castle stands IN
  * FRONT of the grass (the pieces outside it are drawn; the mask and
  * g_veg_mask_cx live with the castle, below). Off the castle it is one span. */
@@ -1374,10 +1401,18 @@ static inline void veg_span(ctx_t *c, int x0, int x1, int y, const src_t *s, boo
     }
 }
 /* layer: 0 = the even fronds, 1 = the odd ones, -1 = every frond */
-static const int VEG_SEED[VEG_BEDS_MAX] = { 0, 7, 3, 5 };   /* each bed's sway phase (the seahorse's blade reads it too) */
+static const int VEG_SEED[VEG_BEDS_ALL] = { 0, 7, 3, 5, 1, 6, 2, 4, 0, 7, 3, 5 };
+/* each bed's sway phase (the seahorse's blade reads it too); extra sword copies
+ * get their own phase so a row of plants never sways in lockstep */
+static int veg_seed_of(int b) {
+    return b >= 0 && b < VEG_BEDS_ALL ? VEG_SEED[b] : 0;
+}
 static float secondary_clock(const tank_t *t) {
     float rate = render_scene_detail() == SCENE_ENHANCED ? 10 : 5;
     return render_simple_scene() ? 0 : floorf(t->clock * rate) / rate;
+}
+static float seahorse_clock(const tank_t *t, bool onblade) {
+    return onblade && !render_simple_scene() ? t->clock : secondary_clock(t);
 }
 static float veg_clock(const tank_t *t, float clock, int seed) {
     (void)t;
@@ -1393,6 +1428,21 @@ static float veg_spine(const tank_t *t, float bx, float sway, int seg, int segs,
     (void)t;
     float curve = render_scene_detail() == SCENE_ENHANCED ? fast_sin(seg * 0.4f + veg_clock(t, clock, seed) * 0.6f + i + seed) : 1;
     return bx + sway * seg / (float)segs * curve;
+}
+static float veg_spine_velocity(const tank_t *t, int seg, int segs, int i, int seed, float clock) {
+    (void)t;
+    float amp = render_simple_scene() ? 0 : render_scene_detail() == SCENE_ENHANCED ? 2.5f : .75f;
+    if (!amp) return 0;
+    float phase = clock * .6f + (i + seed) * 1.7f;
+    float sway = fast_sin(phase);
+    float velocity = .6f * fast_sin(phase + 1.570796327f);
+    if (render_scene_detail() == SCENE_ENHANCED) {
+        float curve_phase = seg * .4f + clock * .6f + i + seed;
+        float curve = fast_sin(curve_phase);
+        float curve_velocity = .6f * fast_sin(curve_phase + 1.570796327f);
+        velocity = velocity * curve + sway * curve_velocity;
+    }
+    return amp * seg / (float)segs * velocity;
 }
 static float sword_half(float u) {
     return .8f + 7.5f * (u < .36f ? u / .36f : (1 - u) / .64f);
@@ -1424,9 +1474,9 @@ static float veg_cached_sway(const tank_t *t, int i, int seed) {
     return pose->sway[i];
 }
 static void draw_veg(ctx_t *c, const tank_t *t, int b, int seed, int layer, bool final) {
-    if (b != 3 || !(t->sd_unlocks & SD_ITEM_PLANT)) return;
     veg_tint_fill(c->dim);
     int n; tank_veg_bed(t, b, NULL, NULL, NULL, &n);
+    if (n <= 0) return;
     src_t rib = src_color(0xc4d2aa, c->dim);
     src_t crease = src_color(0x244e48, c->dim);
     src_t vein_shadow = src_color(0x589581, c->dim);
@@ -3265,11 +3315,11 @@ static void sh_sprite_cached(decor_scratch_t *sc, float t, int pose, float u, fl
 /* a blade's ribbon at a tank row, exactly as draw_veg lays it (its sway and
  * taper): the centre x and the half-width; false off the blade */
 static bool veg_ribbon_at(const tank_t *t, int b, int i, int y, float clock, float *cx, float *half) {
-    if (b != 3) return false;
+    if (tank_veg_kind(t, b) != VEG_KIND_SWORD) return false;
     float bx; int segs = tank_veg_frond(t, b, i, &bx);
     if (segs < 1) segs = 1;
     if (segs > VEG_MAX_SEGS) segs = VEG_MAX_SEGS;
-    int seed = VEG_SEED[b];
+    int seed = veg_seed_of(b);
     float sway = veg_sway(t, i, seed, clock);
     float sp = (TANK_BOT - 16 - y) / VEG_SEG_DY;
     if (sp < -0.7f || sp > segs - 1 + 0.7f) return false;
@@ -3282,6 +3332,23 @@ static bool veg_ribbon_at(const tank_t *t, int b, int i, int y, float clock, flo
     float u = sp / (segs > 1 ? segs - 1 : 1);
     *half = sword_half(u);
     return true;
+}
+static float seahorse_blade_lean(const tank_t *t, int b, int i, int y, float clock) {
+    if (tank_veg_kind(t, b) != VEG_KIND_SWORD) return 0;
+    float bx; int segs = tank_veg_frond(t, b, i, &bx);
+    if (segs < 1) segs = 1;
+    if (segs > VEG_MAX_SEGS) segs = VEG_MAX_SEGS;
+    int seed = veg_seed_of(b);
+    float sp = (TANK_BOT - 16 - y) / VEG_SEG_DY;
+    if (sp < -0.7f || sp > segs - 1 + 0.7f) return 0;
+    if (sp < 0) sp = 0;
+    if (sp > segs - 1) sp = (float)(segs - 1);
+    int k = (int)sp, k1 = k + 1 > segs ? segs : k + 1;
+    float fr = sp - k;
+    float v0 = veg_spine_velocity(t, k, segs, i, seed, clock);
+    float v1 = veg_spine_velocity(t, k1, segs, i, seed, clock);
+    float lean = (v0 + (v1 - v0) * fr) * .9f;
+    return lean < -3 ? -3 : lean > 3 ? 3 : lean;
 }
 /* its pitch this frame, radians (the renderer's rule, below): forward with its speed */
 static float seahorse_pitch(const tank_t *t) {
@@ -3317,12 +3384,12 @@ static void draw_seahorse(ctx_t *c, const tank_t *t) {
     if (bx1 < c->ox || bx0 >= c->ox + c->w || by1 + 1 < c->oy || by0 >= c->oy + c->h) return;
     if (scene_box_hidden(bx0, by0, bx1, by1)) return;
     int64_t helper_start = PROF_MARK();
-    float clock = secondary_clock(t);
-    decor_scratch_t *sc = ds();
     bool held = t->sh_mode == SH_PERCH && t->sh_akind != SH_ANCHOR_NONE;
     bool onblade = held && t->sh_akind == SH_ANCHOR_BLADE;             /* the one anchor that sways */
     bool onpost = held && t->sh_akind == SH_ANCHOR_POST;
     bool onsand = held && t->sh_akind == SH_ANCHOR_SAND;
+    float clock = seahorse_clock(t, onblade);
+    decor_scratch_t *sc = ds();
     /* the hold it is closing on (or opening from): the pose and how far along.
      * On the sand the open curl IS the pose: the tail curls under it. */
     int pose = t->sh_pose == SH_POSE_GRIP ? SH_GRIP : onsand ? SH_FREE : SH_ONBLADE;
@@ -3333,10 +3400,9 @@ static void draw_seahorse(ctx_t *c, const tank_t *t) {
     float flutter = t->sh_mode == SH_HITCH && !t->sh_hitched ? 1.6f : speed > 2 ? 1.0f + speed / 40.0f : 1.0f;
     float free_u = held ? 1 - u : 1;                                     /* how much of the open water is still in it */
     if (onblade) {                                                       /* the blade's sway and lean come in with the hold */
-        float cx0 = ax, h0 = SW, cx1 = ax, h1;
+        float cx0 = ax, h0 = SW;
         if (veg_ribbon_at(t, t->sh_bed, t->sh_frond, (int)ay, t->clock, &cx0, &h0)) { ax += (cx0 - ax) * u; SW = fmaxf(1.0f, fminf(3.5f, h0)); }
-        veg_ribbon_at(t, t->sh_bed, t->sh_frond, (int)ay, t->clock + 0.05f, &cx1, &h1);
-        float l = (cx1 - cx0) / 0.05f * 0.9f; l = l < -3 ? -3 : l > 3 ? 3 : l;
+        float l = seahorse_blade_lean(t, t->sh_bed, t->sh_frond, (int)ay, t->clock);
         lean = lean * (1 - u) + l * u;
     } else if (held && t->sh_akind == SH_ANCHOR_KELP) {
         SW = 1; lean *= 1 - u;
@@ -4698,35 +4764,79 @@ static int ornament_grips(int item, uint8_t *gx, uint8_t *gy, uint8_t *ghw, int 
     }
     return n;
 }
+/* rock: -1..1. The lower valve stays planted on the sand while the upper
+ * valve tips over it, so a crawling mussel heaves and rocks instead of
+ * sliding. The pearl rides the upper valve.
+ *
+ * The shell opens by LIFTING its upper valve off a fixed seam, never by
+ * swelling a shadow. The old version grew a translucent dark ellipse behind
+ * the shell whose radius tracked the gape, which read as a pulsing blob; the
+ * seam below is a constant size and a constant alpha, so the only thing that
+ * moves is the valve. */
 static void draw_pearl_mussel(ctx_t *c, float x, float y, float scale, bool ready,
-                              bool lit, uint32_t background, uint8_t colors) {
+                              bool lit, uint32_t background, uint8_t colors, float open,
+                              float rock) {
     uint32_t shell[] = {0x26465b, 0x182d45, 0x48627c, 0x80959e, 0xa5b9bc};
     for (unsigned i = 0; i < sizeof shell / sizeof *shell; i++)
         shell[i] = creature_tint(shell[i], false, false, colors);
-    fill_ellipse(c, x, y + 6 * scale, 19 * scale, 3 * scale, shop_art_color(0x081c24, lit, background), 90);
+    float lift = open * 2.5f * scale;  /* the upper valve's rise as it opens */
+    float tip = rock * 3 * scale;      /* the upper valve's sideways tip */
+    /* the lower valve, planted on the sand */
     fill_ellipse(c, x, y + 3 * scale, 18 * scale, 6 * scale, shop_art_color(shell[0], lit, background), 255);
     fill_ellipse(c, x, y + scale, 16 * scale, 4 * scale, shop_art_color(creature_tint(0xcdb4bf, true, false, colors), lit, background), 255);
     fill_ellipse(c, x + scale, y, 13 * scale, 3 * scale, shop_art_color(creature_tint(0xedd2cd, true, false, colors), lit, background), 255);
-    fill_ellipse(c, x - 4 * scale, y - 6 * scale, 15 * scale, 8 * scale, shop_art_color(shell[1], lit, background), 255);
-    fill_ellipse(c, x - 5 * scale, y - 7 * scale, 13 * scale, 6 * scale, shop_art_color(shell[2], lit, background), 255);
+    /* the seam between the valves: fixed size, fixed alpha. It sits under the
+     * upper valve's lip, so the valve uncovers it as it rises. */
+    fill_ellipse(c, x, y + scale, 15 * scale, 1.8f * scale,
+                 shop_art_color(0x081c24, lit, background), 190);
+    /* the upper valve, riding above the seam */
+    fill_ellipse(c, x - 4 * scale + tip, y - 6 * scale - lift, 15 * scale, 8 * scale, shop_art_color(shell[1], lit, background), 255);
+    fill_ellipse(c, x - 5 * scale + tip, y - 7 * scale - lift, 13 * scale, 6 * scale, shop_art_color(shell[2], lit, background), 255);
     for (int i = -2; i <= 2; i++)
-        fill_ellipse(c, x + (i * 4 - 5) * scale, y - 7 * scale,
+        fill_ellipse(c, x + (i * 4 - 5) * scale + tip, y - 7 * scale - lift,
                      .6f * scale, (5 - abs(i)) * scale, shop_art_color(shell[3], lit, background), 150);
-    fill_ellipse(c, x - 8 * scale, y - 10 * scale, 7 * scale, scale, shop_art_color(shell[4], lit, background), 175);
-    fill_ellipse(c, x + 7 * scale, y, 5 * scale, 5 * scale, shop_art_color(ready ? 0xe3ba6c : 0x858c9c, lit, background), 255);
-    fill_ellipse(c, x + 6 * scale, y - scale, 3.7f * scale, 3.6f * scale, shop_art_color(ready ? 0xffe7b0 : 0xcbd0d4, lit, background), 255);
-    fill_ellipse(c, x + 5 * scale, y - 2 * scale, 1.3f * scale, scale, shop_art_color(0xfffaf0, lit, background), 230);
+    fill_ellipse(c, x - 8 * scale + tip, y - 10 * scale - lift, 7 * scale, scale, shop_art_color(shell[4], lit, background), 175);
+    fill_ellipse(c, x + 7 * scale + tip, y - lift, 5 * scale, 5 * scale, shop_art_color(ready ? 0xe3ba6c : 0x858c9c, lit, background), 255);
+    fill_ellipse(c, x + 6 * scale + tip, y - scale - lift, 3.7f * scale, 3.6f * scale, shop_art_color(ready ? 0xffe7b0 : 0xcbd0d4, lit, background), 255);
+    fill_ellipse(c, x + 5 * scale + tip, y - 2 * scale - lift, 1.3f * scale, scale, shop_art_color(0xfffaf0, lit, background), 230);
 }
 static void mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
     tank_mussel_pose(t, x, y, crawl);
 }
+/* The shell's gape: a slow filter cycle, not a breath. A real mussel holds its
+ * valves ajar and only barely works them, so this is a long 11 s cycle with a
+ * shallow range - the shell must not visibly pant. Quantized to 1/32 so the
+ * damage comparison only fires when the silhouette actually changes. */
+static float mussel_open(const tank_t *t) {
+    float phase = fmodf(fmaxf(t->clock, 0), 11.0f) / 11.0f;
+    float open = 0.55f + 0.45f * sinf(phase * 6.2831853f);
+    return floorf(open * 32) / 32;
+}
+/* One silhouette box for the mussel: drawing cull, damage tracking and the
+ * dynamic rect all use it. The base ellipse's bottom reaches y+12 when the
+ * shell is fully open (cy = y+6, ry = 6), so the box must not stop at y+10 or
+ * a tiled frame keeps a stale bottom row. The upper valve tips up to 3 px
+ * sideways while crawling (19 + 3 = 22), and the glint rises to about y-35. */
+#define MUSSEL_HALF_W 23
+#define MUSSEL_TOP 36
+#define MUSSEL_BOTTOM 13
 static void draw_tank_mussel(ctx_t *c, const tank_t *t) {
     if (!progression_item_owned(t, SD_SHOP_MUSSEL)) return;
     float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
-    if (!c->scaled && (x + 21 < c->ox || x - 21 >= c->ox + c->w ||
-        y + 10 < c->oy || y - 36 >= c->oy + c->h)) return;
-    if (crawl) fill_ellipse(c, x + crawl * 9, y + 5, 8, 2, 0x769d91, 220);
-    draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0, true, 0, t->companion.mussel_colors);
+    if (!c->scaled && (x + MUSSEL_HALF_W < c->ox || x - MUSSEL_HALF_W >= c->ox + c->w ||
+        y + MUSSEL_BOTTOM < c->oy || y - MUSSEL_TOP >= c->oy + c->h)) return;
+    float rock = tank_mussel_rock(t);
+    /* the foot: a pale muscular tongue that plants ahead of the shell and
+     * hauls it up, then tucks away. It only shows during a shove (rock is
+     * zero between pulls), so a resting mussel is a closed, still shell. */
+    if (crawl && rock != 0) {
+        float effort = fabsf(rock) / 0.35f;                 /* 0..1 through the shove */
+        float reach = 5 + effort * 5;                       /* plants ahead, then draws in */
+        fill_ellipse(c, x + crawl * reach, y + 5, 7, 1.8f, 0x769d91, (int)(120 + 100 * effort));
+        fill_ellipse(c, x + crawl * (reach - 2), y + 4, 3.5f, 1.2f, 0x9dbfb2, (int)(90 + 90 * effort));
+    }
+    draw_pearl_mussel(c, x, y, 1, t->mussel.bank != 0, true, 0, t->companion.mussel_colors,
+                      mussel_open(t), rock);
     if (t->mussel_glint > 0) {
         float age = floorf((1.6f - t->mussel_glint) * 5) * .2f;
         int alpha = (int)(fminf(age * 6, 1) * fminf((1.6f - age) * 3, 1) * 210);
@@ -4742,6 +4852,7 @@ static void draw_inventory_extras(ctx_t *c, const tank_t *t, int depth) {
         const inventory_extra_t *copy = &t->inventory.extra[i];
         if (!copy->item || copy->z != depth) continue;
         int item = copy->item - 1;
+        if (item == 0) continue;                    /* a sword-plant copy is its own veg bed (draw_veg) */
         int x = (int)copy->x - tank_ornament_w(item) / 2;
         int y = TANK_BOT - 14 + DECOR_SINK - tank_ornament_h(item);
         draw_ornament_flip(c, item, x, y, 1, false, true, 0, (copy->rank & DECOR_RANK_MIRROR) != 0);
@@ -4779,7 +4890,7 @@ static void draw_ornament_icon(ctx_t *c, int item, int x0, int y0, int size, boo
 }
 void render_ornament_preview(uint16_t *fb, int stride, int item, int cx, int bottom) {
     ctx_t c = ctx_page(fb, stride);
-    if (item == SD_SHOP_MUSSEL) { draw_pearl_mussel(&c, cx, bottom - 10, 1, false, true, 0, 0); return; }
+    if (item == SD_SHOP_MUSSEL) { draw_pearl_mussel(&c, cx, bottom - 10, 1, false, true, 0, 0, 0.5f, 0); return; }
     if (item == 13) { draw_buoy_icon(&c, cx - 18, bottom - 39, 1, true, 0); return; }
     if (item >= 16) { draw_ornament_icon(&c, item, cx - 24, bottom - 48, 48, true, 0); return; }
     draw_ornament(&c, item, cx - tank_ornament_w(item) / 2, bottom - tank_ornament_h(item), 1, false, true, 0);
@@ -4857,13 +4968,27 @@ static void pieces_build(const tank_t *t, bool cached, bool front) {
     }
     g_pk_k = pc_index(8);
 }
+/* Test-only: does the piece's own silhouette cover this tank pixel? The
+ * renderer stress test uses it to prove a swaying kelp crown is clipped by a
+ * piece standing in front of it. False when the piece is not in the scene. */
+bool render_piece_covers(int item, int x, int y) {
+    for (int k = 0; k < g_npc; k++)
+        if (g_pc[k].item == item) return pc_covers(k, x, y);
+    return false;
+}
 /* piece k's silhouette at (x, y): its recorded mask (this frame's scene), or the castle's static one */
 static bool pc_covers(int k, int x, int y) {
     const piece_t *p = &g_pc[k];
     int lx = x - p->x0, r = y - p->y0;
     if ((unsigned)lx >= (unsigned)p->w || (unsigned)r >= (unsigned)p->rows) return false;
     if (p->item == 2) return (castle_mask()[r][lx >> 5] >> (lx & 31)) & 1;
-    if (p->item >= 9) return p->baked && ornament_cached_pixel(p->item, p->mirror ? p->w - 1 - lx : lx, r) != 0;
+    if (p->item >= 9) {
+        /* Without the scene cache a piece is drawn live and records no mask,
+         * so ask its own art. The kelp crowns are drawn live in that mode too,
+         * and they must still be clipped by a piece standing in front. */
+        if (p->baked) return ornament_cached_pixel(p->item, p->mirror ? p->w - 1 - lx : lx, r) != 0;
+        return ornament_pixel(p->item, p->mirror ? p->w - 1 - lx : lx, r) != 0;
+    }
     return p->baked && ((masks()->pieces[p->mask][r][lx >> 5] >> (lx & 31)) & 1);
 }
 /* ... and the part of it that stands over the fish (a piece IN FRONT whole; the castle's front row) */
@@ -4912,7 +5037,9 @@ static uint32_t pc_row_bits(int k, int x0, int n, int y) {
                 if (p->mirror) lx = p->w - 1 - lx;
                 if (art->mask[r] & (UINT64_C(1) << lx)) bits |= 1u << i;
             }
-        } else if (p->baked) for (int i = 0; i < n; i++) {
+        } else for (int i = 0; i < n; i++) {
+            /* no cached art (a grand piece, or a live one): ask its own art, so
+             * a piece drawn live still clips the kelp crowns behind it */
             int lx = x0 + i - p->x0;
             if (p->mirror && (unsigned)lx >= (unsigned)p->w) continue;
             if (ornament_pixel(p->item, p->mirror ? p->w - 1 - lx : lx, r)) bits |= 1u << i;
@@ -4932,7 +5059,7 @@ static uint64_t veg_skip_for(const tank_t *t, int b) {
     for (int k = 0; k < g_npc; k++) {
         if (!g_pc[k].baked && g_pc[k].item != 2) continue;              /* drawn live this frame: over the grass anyway, or dragged */
         if (g_pc[k].z == DECOR_Z_FRONT && bz != DECOR_Z_FRONT) m |= UINT64_C(1) << k;
-        else if (b == 3 && bz != DECOR_Z_MIDDLE && g_pc[k].z == bz && tank_decor_above(t, g_pc[k].item, 0)) m |= UINT64_C(1) << k;
+        else if (b >= 3 && bz != DECOR_Z_MIDDLE && g_pc[k].z == bz && tank_veg_above(t, b, g_pc[k].item)) m |= UINT64_C(1) << k;
     }
     return m;
 }
@@ -5312,9 +5439,43 @@ static void draw_ground_cover(ctx_t *c, const tank_t *t, bool final) {
                            final, true, 0, (p & 1) != 0);
     }
 }
+/* A kelp span, minus the pieces standing in front of it. The mask arrives as
+ * two 32-bit halves because a stalk is 40 px wide; off the pieces it is one
+ * plain span, so the common case costs nothing extra. */
+static inline void kelp_span(ctx_t *c, int x0, int x1, int y, const src_t *s, bool final,
+                             uint64_t lo, uint64_t hi, int skip) {
+    if (!lo && !hi) {
+        if (final) span_final(c, x0, x1, y, s, 255); else span(c, x0, x1, y, s, 255);
+        return;
+    }
+    /* the mask is built from the sprite's left edge, so shift it to the span */
+    uint64_t mask = lo | (hi << 32);
+    if (skip > 0) mask = skip >= 64 ? 0 : mask >> skip;
+    int run = -1;
+    for (int i = 0; i <= x1 - x0; i++) {
+        bool blocked = i == x1 - x0 || ((mask >> i) & 1);
+        if (!blocked) { if (run < 0) run = x0 + i; }
+        else if (run >= 0) {
+            if (final) span_final(c, run, x0 + i - 1, y, s, 255); else span(c, run, x0 + i - 1, y, s, 255);
+            run = -1;
+        }
+    }
+}
+/* The kelp crowns sway, so with the scene cache they are drawn live AFTER the
+ * pieces. A piece standing in front of a stalk must therefore clip it: without
+ * this the crown painted straight over the stone bridge's deck. The mask is
+ * resolved once per row (the crown band is 21 rows) rather than per pixel. */
+static void kelp_row_mask(int x, int y, uint64_t *lo, uint64_t *hi) {
+    *lo = *hi = 0;
+    for (int k = 0; k < g_npc; k++) {
+        if (!pc_in_box(k, x, x + KELP_WIDTH - 1, y)) continue;
+        *lo |= (uint64_t)pc_row_bits(k, x, 32, y);
+        *hi |= (uint64_t)pc_row_bits(k, x + 32, KELP_WIDTH - 32, y);
+    }
+}
 static void draw_kelp_sprite_rows(ctx_t *c, int x, int y, int height, int sway,
                                   bool final, bool lit, uint32_t background,
-                                  int row_start, int row_end) {
+                                  int row_start, int row_end, bool occlude) {
     int width = height * KELP_WIDTH / KELP_HEIGHT;
     if (x + width + 2 <= c->ox || x - 2 >= c->ox + c->w ||
         y + height <= c->oy || y >= c->oy + c->h) return;
@@ -5339,12 +5500,15 @@ static void draw_kelp_sprite_rows(ctx_t *c, int x, int y, int height, int sway,
         int left = c->ox - x - offset, right = c->ox + c->w - x - offset;
         if (left < 0) left = 0;
         if (right > width) right = width;
+        uint64_t lo = 0, hi = 0;
+        if (occlude) kelp_row_mask(x + offset, y + row, &lo, &hi);
         const uint8_t *pixels = KELP_ART[sy];
         if (native) {
             for (int col = left; col < right;) {
                 int color = pixels[col], end = col + 1;
                 while (end < right && pixels[end] == color) end++;
-                if (color) season_span(c, x + offset + col, x + offset + end - 1, y + row, &colors[color], final);
+                if (color) kelp_span(c, x + offset + col, x + offset + end - 1, y + row,
+                                     &colors[color], final, lo, hi, col);
                 col = end;
             }
             continue;
@@ -5353,14 +5517,15 @@ static void draw_kelp_sprite_rows(ctx_t *c, int x, int y, int height, int sway,
             int color = pixels[col * KELP_WIDTH / width];
             int end = col + 1;
             while (end < right && pixels[end * KELP_WIDTH / width] == color) end++;
-            if (color) season_span(c, x + offset + col, x + offset + end - 1, y + row, &colors[color], final);
+            if (color) kelp_span(c, x + offset + col, x + offset + end - 1, y + row,
+                                 &colors[color], final, lo, hi, col);
             col = end;
         }
     }
 }
 static void draw_kelp_sprite(ctx_t *c, int x, int y, int height, int sway,
                              bool final, bool lit, uint32_t background) {
-    draw_kelp_sprite_rows(c, x, y, height, sway, final, lit, background, 0, height);
+    draw_kelp_sprite_rows(c, x, y, height, sway, final, lit, background, 0, height, false);
 }
 static void draw_kelp(ctx_t *c, const tank_t *t, bool final, bool crowns) {
     bool simple = render_simple_scene();
@@ -5372,7 +5537,7 @@ static void draw_kelp(ctx_t *c, const tank_t *t, bool final, bool crowns) {
         draw_kelp_sprite_rows(c, (int)x - KELP_WIDTH / 2, top, KELP_HEIGHT,
                              crowns ? tank_kelp_sway(t, patch) : 0, final, true, 0,
                              crowns || simple ? 0 : KELP_CROWN_HEIGHT,
-                             crowns ? KELP_CROWN_HEIGHT : KELP_HEIGHT);
+                             crowns ? KELP_CROWN_HEIGHT : KELP_HEIGHT, crowns);
     }
 }
 /* Champion statue (collection reward): a gold figure of a completed variety
@@ -5478,7 +5643,7 @@ static void draw_simple_static(ctx_t *c, const tank_t *t) {
                 draw_cluster_crown(c, g_pc[k].cx, tank_cluster_scheme(t), tank_cluster_growth(t), 0, &x0, &y0, &x1, &y1);
         }
         for (int b = 3; b < tank_veg_beds(t); b++) if (bed_z(t, b) == layer) {
-            draw_veg(c, t, b, VEG_SEED[b], -1, false);
+            draw_veg(c, t, b, veg_seed_of(b), -1, false);
         }
     }
     draw_surface_floats(c, t, DECOR_Z_BACK);
@@ -6022,17 +6187,25 @@ void render_damage_begin(const tank_t *t, bool force_full) {
                         (int)copy->x + half, TANK_BOT);
         }
     }
-    static float mussel_x, mussel_y;
+    static float mussel_x, mussel_y, mussel_open_previous, mussel_rock_previous;
     static int mussel_glint = -1;
     int glint_pose = owned && t->mussel_glint > 0 ?
         (int)floorf((1.6f - t->mussel_glint) * 5) : -1;
     if (owned) {
         float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
-        if (x != mussel_x || y != mussel_y || glint_pose != mussel_glint) {
-            damage_rect((int)mussel_x - 21, (int)mussel_y - 36, (int)mussel_x + 21, (int)mussel_y + 10);
-            damage_rect((int)x - 21, (int)y - 36, (int)x + 21, (int)y + 10);
+        /* the shell's open phase changes the silhouette's top lip and the
+         * crawl's rock tips the upper valve sideways, so both must join the
+         * damage comparison or a tiled frame keeps a stale shell */
+        float open = mussel_open(t), rock = tank_mussel_rock(t);
+        if (x != mussel_x || y != mussel_y || open != mussel_open_previous ||
+            rock != mussel_rock_previous || glint_pose != mussel_glint) {
+            damage_rect((int)mussel_x - MUSSEL_HALF_W, (int)mussel_y - MUSSEL_TOP,
+                        (int)mussel_x + MUSSEL_HALF_W, (int)mussel_y + MUSSEL_BOTTOM);
+            damage_rect((int)x - MUSSEL_HALF_W, (int)y - MUSSEL_TOP,
+                        (int)x + MUSSEL_HALF_W, (int)y + MUSSEL_BOTTOM);
         }
-        mussel_x = x; mussel_y = y;
+        mussel_x = x; mussel_y = y; mussel_open_previous = open;
+        mussel_rock_previous = rock;
     }
     mussel_glint = glint_pose;
     /* Always clear the last representative too when an adult is sold. */
@@ -6151,10 +6324,10 @@ void render_damage_begin(const tank_t *t, bool force_full) {
     memcpy(old_details, details, sizeof details);
     /* Grass retains its pixels between pose ticks. Invalidate its old and new
        silhouettes only once, including trims and moved/removed sword plants. */
-    static struct { int x, top; bool active; } fronds[VEG_BEDS_MAX][VEG_FRONDS_MAX];
-    static float previous_veg_clock[VEG_BEDS_MAX];
-    for (int b = 3; b < VEG_BEDS_MAX; b++) {
-        float grass_clock = veg_clock(t, t->clock, VEG_SEED[b]);
+    static struct { int16_t x, top; bool active; } fronds[VEG_BEDS_ALL][VEG_FRONDS_MAX];
+    static float previous_veg_clock[VEG_BEDS_ALL];
+    for (int b = 3; b < VEG_BEDS_ALL; b++) {
+        float grass_clock = veg_clock(t, t->clock, veg_seed_of(b));
         int n = 0;
         if (b < tank_veg_beds(t)) tank_veg_bed(t, b, NULL, NULL, NULL, &n);
         for (int i = 0; i < VEG_FRONDS_MAX; i++) {
@@ -6395,11 +6568,10 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
        The alternating FRONT fronds draw after the fish, below. Each bed's
        spans skip the pieces above it (veg_skip_for), and a bed in front of
        the lantern is backlit (g_pk_shade_all). */
-    const int *veg_seed = VEG_SEED;
-    const int veg_n = tank_veg_beds(t) < VEG_BEDS_MAX ? tank_veg_beds(t) : VEG_BEDS_MAX;
+    const int veg_n = tank_veg_beds(t) < VEG_BEDS_ALL ? tank_veg_beds(t) : VEG_BEDS_ALL;
 #define VEG_PASS(b, layer) do { g_veg_skip = veg_skip_for(t, (b)); \
-        g_pk_shade_all = g_pk_lx >= 0 && ((b) == 3 ? tank_decor_above(t, 0, 8) : pkz == DECOR_Z_BACK); \
-        draw_veg(&c, t, (b), (unsigned)(b) < VEG_BEDS_MAX ? veg_seed[(b)] : 0, (layer), cached); g_pk_shade_all = false; } while (0)
+        g_pk_shade_all = g_pk_lx >= 0 && ((b) >= 3 ? tank_veg_above(t, (b), 8) : pkz == DECOR_Z_BACK); \
+        draw_veg(&c, t, (b), veg_seed_of(b), (layer), cached); g_pk_shade_all = false; } while (0)
     for (int b = 3; b < veg_n; b++)
         if (bed_z(t, b) == DECOR_Z_BACK) VEG_PASS(b, -1);
     for (int b = 3; b < veg_n; b++)
@@ -6529,7 +6701,8 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     if (progression_item_owned(t, SD_SHOP_MUSSEL)) {
         float x, y, crawl; mussel_pose(t, &x, &y, &crawl);
         draw_tank_mussel(&c, t);
-        DYN_RECT((int)x - 21, (int)y - 36, (int)x + 21, (int)y + 10);
+        DYN_RECT((int)x - MUSSEL_HALF_W, (int)y - MUSSEL_TOP,
+                 (int)x + MUSSEL_HALF_W, (int)y + MUSSEL_BOTTOM);
     }
     if (render_clock_us) render_front_us[2] += render_clock_us() - front_start;
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) if (t->inventory.extra[i].item) {
@@ -7016,7 +7189,8 @@ static void mussel_card_draw(ctx_t *c, const tank_t *t) {
     ring_tank(c, x, y, 22, 0x9fd8e2);
     const int W = SNAIL_CARD_W, H = SNAIL_CARD_H, X = (PAGE_W - W) / 2, Y = (PAGE_H - H) / 2;
     creature_card_frame(c, false);
-    draw_pearl_mussel(c, PAGE_W / 2, Y + 64, 2, t->mussel.bank != 0, true, 0, t->companion.mussel_colors);
+    draw_pearl_mussel(c, PAGE_W / 2, Y + 64, 2, t->mussel.bank != 0, true, 0, t->companion.mussel_colors,
+                      mussel_open(t), tank_mussel_rock(t));
     draw_text(c, X + (W - text_w("PEARL MUSSEL", 3)) / 2, Y + 88, 3, 0xffffff, "PEARL MUSSEL");
     const char *status = progression_creative(t) ? "CREATIVE - NO INCOME" :
         t->mussel.bank ? "SAVE PENDING - WILL RETRY" :
@@ -7450,8 +7624,8 @@ static int draw_text_wrap(ctx_t *c, int x, int y, int width, uint32_t rgb, const
  * costs about what the milestones page does. */
 static void rect_fill(ctx_t *c, int x, int y, int w, int h, uint32_t rgb) {
 #ifdef RENDER_MENU_TESTING
-    extern void menu_test_panel(int w, int h);
-    menu_test_panel(w, h);
+    extern void menu_test_panel(int x, int y, int w, int h);
+    menu_test_panel(x, y, w, h);
 #endif
     if (h <= 0 || !page_rows_in_tile(c, y, y + h - 1)) return;
     src_t f = src_color(rgb, 1.0f);
@@ -7482,8 +7656,8 @@ static void rect_edge(ctx_t *c, int x, int y, int w, int h, uint32_t rgb) {
 #define PAGE_SEA_SAND 0x2a2416
 static void page_backdrop(ctx_t *c, int x, int y, int w, int h) {
 #ifdef RENDER_MENU_TESTING
-    extern void menu_test_panel(int w, int h);
-    menu_test_panel(w, h);
+    extern void menu_test_panel(int x, int y, int w, int h);
+    menu_test_panel(x, y, w, h);
 #endif
     if (h <= 0 || !page_rows_in_tile(c, y, y + h - 1)) return;
     static const struct { int x0, w; } RAYS[3] = {{40, 34}, {176, 22}, {300, 46}};
@@ -7653,7 +7827,8 @@ void render_fish_preview(uint16_t *fb, int stride, float x, float y, float size,
 }
 static void draw_creature_portrait(ctx_t *c, float x, float y, float scale, int creature, uint8_t colors, float clock) {
     if (creature == CREATURE_MUSSEL) {
-        draw_pearl_mussel(c, x, y + 4 * scale, scale, false, true, 0, colors);
+        draw_pearl_mussel(c, x, y + 4 * scale, scale, false, true, 0, colors,
+                          0.5f + 0.5f * sinf(clock * 0.6f), 0);
         return;
     }
     uint32_t palette[16];
@@ -8422,7 +8597,7 @@ void render_decor_thumbnail(uint16_t *fb, int stride, int x, int y, int size, in
         c.w = (x + size < PAGE_W ? x + size : PAGE_W) - c.ox;
         c.h = (y + size < PAGE_H ? y + size : PAGE_H) - c.oy;
         if (c.w <= 0 || c.h <= 0) return;
-        draw_pearl_mussel(&c, x + size / 2, y + size / 2, size / 48.0f, false, lit, 0x10282e, 0);
+        draw_pearl_mussel(&c, x + size / 2, y + size / 2, size / 48.0f, false, lit, 0x10282e, 0, 0.5f, 0);
         return;
     }
     if ((item >= 9 && item <= 13) || item >= 16) {
@@ -8640,7 +8815,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
             draw_kelp_sprite(&c, 34, top, 36, 0, false, true, SHP_WELL);
         else if (SD_IS_FOLIAGE(i))
             draw_ground_sprite(&c, i - SD_FOLIAGE_FIRST, 24, top + 10, 36, false, true, SHP_WELL, false);
-        else if (i == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, 43, top + 20, 1, false, true, SHP_WELL, t->companion.mussel_colors);
+        else if (i == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, 43, top + 20, 1, false, true, SHP_WELL, t->companion.mussel_colors, 0.5f, 0);
         else if (i >= 9 && i <= 12) draw_ornament(&c, i, 24, top, 1, false, true, SHP_WELL);
         else if (i == 13) draw_buoy_icon(&c, 24, top, 1, true, SHP_WELL);
         else if (i >= 16) draw_ornament_icon(&c, i, 24, top, 36, true, SHP_WELL);
@@ -8708,7 +8883,7 @@ void render_shop(const tank_t *t, uint16_t *fb, int stride) {
     else if (SD_IS_FOLIAGE(g_shp_modal))
         draw_ground_sprite(&c, g_shp_modal - SD_FOLIAGE_FIRST, X + W / 2 - 56, Y + 12, 112,
                            false, true, 0x04141a, false);
-    else if (g_shp_modal == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, X + W / 2, Y + 44, 2, false, owned, 0x04141a, t->companion.mussel_colors);
+    else if (g_shp_modal == SD_SHOP_MUSSEL) draw_pearl_mussel(&c, X + W / 2, Y + 44, 2, false, owned, 0x04141a, t->companion.mussel_colors, 0.5f, 0);
     else if (g_shp_modal >= 9 && g_shp_modal <= 12) draw_ornament(&c, g_shp_modal, X + (W - tank_ornament_w(g_shp_modal) * 2) / 2, Y + 8, 2, false, owned, 0x04141a);
     else if (g_shp_modal == 13) {
         draw_buoy_icon(&c, X + W / 2 - 36, Y + 8, 2, owned, 0x04141a);

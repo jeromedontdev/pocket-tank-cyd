@@ -101,6 +101,9 @@ bool persist_port_erase(void) { if (reject_erase) return false; saved_size = 0; 
 int64_t clock_port_now_unix(void) { return now; }
 const char *version_port_string(void) { return "test"; }
 const setup_place_snapshot_t *setup_place_original(void) { return NULL; }
+/* This suite links progression.c without setup.c: the boot hook that clears
+ * the dropped-welcome latch is a no-op here (the latch is setup.c's static). */
+void setup_boot(void) {}
 static void reload(tank_t *t) { tank_init(t, 456); progression_boot(t); }
 static void start(tank_t *t, int mode) {
     saved_size = 0; memset(slot_sizes, 0, sizeof slot_sizes);

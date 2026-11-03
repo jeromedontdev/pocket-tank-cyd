@@ -1997,20 +1997,34 @@ static void test_adventure_traveler(void) {
     puts("PASS: real absent fish has frozen identity/care/age, 2-hour wall-clock return once, schema-6 migration and reserved return capacity");
 }
 static void test_fish_sand_clearance(void) {
-    for (int heading = -8; heading <= 8; heading++)
-        for (int speed = 0; speed <= 100; speed += 5) {
-            fish_t fish = {0}, other = {0};
-            fish.heading = heading * .7f; fish.speed = (float)speed;
-            float scale = fminf(1, fmaxf(0, (fish.speed - 35) / 40));
-            float limit = .61f + .35f * scale;
-            float expected = limit * tanhf(.8f * atan2f(sinf(fish.heading), fabsf(cosf(fish.heading))) / limit);
-            assert(fabsf(tank_fish_pitch(&fish) - expected) < 1e-6f);
-            other.heading = fish.heading; other.speed = fish.speed;
-            assert(tank_fish_pitch(&other) == tank_fish_pitch(&fish));
-            other.heading += .4f; other.speed += 20;
-            (void)tank_fish_pitch(&other);
-            assert(fabsf(tank_fish_pitch(&fish) - expected) < 1e-6f);
-        }
+    for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++)
+        for (int heading = -8; heading <= 8; heading++)
+            for (int speed = 0; speed <= 100; speed += 5) {
+                fish_t fish = {0}, other = {0};
+                fish.variety = (uint8_t)variety;
+                fish.heading = heading * .7f; fish.speed = (float)speed;
+                /* the body's tilt is capped by the variety's length: a long
+                 * fish cruises flatter so its nose doesn't read as a dive */
+                float length = variety == FISH_SHARK ? 1.35f : variety == FISH_CLASSIC ? 1.15f :
+                               variety == FISH_STINGRAY ? 1.10f : variety == FISH_JELLYFISH ? 0.95f : 1.0f;
+                float scale = fminf(1, fmaxf(0, (fish.speed - 35) / 40));
+                float limit = (.61f + .35f * scale) / length;
+                float expected = limit * tanhf(.8f * atan2f(sinf(fish.heading), fabsf(cosf(fish.heading))) / limit);
+                assert(fabsf(tank_fish_pitch(&fish) - expected) < 1e-6f);
+                other.heading = fish.heading; other.speed = fish.speed; other.variety = fish.variety;
+                assert(tank_fish_pitch(&other) == tank_fish_pitch(&fish));
+                other.heading += .4f; other.speed += 20;
+                (void)tank_fish_pitch(&other);
+                assert(fabsf(tank_fish_pitch(&fish) - expected) < 1e-6f);
+                /* a different variety must not read the cached pose */
+                other.variety = (uint8_t)((variety + 1) % FISH_VARIETY_COUNT);
+                other.heading = fish.heading; other.speed = fish.speed;
+                float other_length = other.variety == FISH_SHARK ? 1.35f : other.variety == FISH_CLASSIC ? 1.15f :
+                                     other.variety == FISH_STINGRAY ? 1.10f : other.variety == FISH_JELLYFISH ? 0.95f : 1.0f;
+                float other_limit = (.61f + .35f * scale) / other_length;
+                float other_expected = other_limit * tanhf(.8f * atan2f(sinf(other.heading), fabsf(cosf(other.heading))) / other_limit);
+                assert(fabsf(tank_fish_pitch(&other) - other_expected) < 1e-6f);
+            }
     uint16_t with_fish[TANK_W * TANK_H], without_fish[TANK_W * TANK_H];
     for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++)
         for (int stage = STAGE_FRY; stage <= STAGE_ELDER; stage++)
@@ -3495,6 +3509,63 @@ static void test_name_keyboard(void) {
     puts("PASS: first-run/birth/rename navigation and save retry, genuine pending fry retained, established-fish welcome flags retired durably at both scales");
 }
 
+/* A dropped birth welcome must come back at the next boot, and an obsolete
+ * debt (the fry grew up while the welcome was dropped) must retire instead of
+ * latching s_newborn set and blocking breeding for the rest of the session.
+ * The latch lives in setup.c's statics, which outlive progression_boot in the
+ * simulator and across a deep-sleep wake on the device, so both halves are
+ * pinned here. */
+static void test_birth_welcome_latch(void) {
+    tank_t t;
+    saved_size = 0; tank_resolution(false); tank_init(&t, 31); boot_enlarged(&t);
+    progression_setup_done(&t);
+    setup_cancel(&t);
+    for (int i = 0; i < t.n_fish; i++) {
+        t.fish[i].stage = STAGE_ADULT;
+        t.fish[i].variety = FISH_CLASSIC;
+        t.fish[i].trust = 8; t.fish[i].energy = 8;
+        t.fish[i].hunger = t.fish[i].stress = 0;
+    }
+    progression_force_arrival(&t);
+    int newborn = progression_newborn();
+    assert(newborn >= 0 && t.fish[newborn].stage == STAGE_FRY);
+    assert(progression_save(&t));
+
+    /* The keeper opens the welcome and presses BACK: dropped for this session. */
+    assert(setup_poll_birth(&t) == newborn);
+    setup_cancel(&t);
+    assert(!setup_active() && progression_newborn() == newborn);
+    assert(!setup_birth_due());                       /* dropped stays dropped */
+    assert(setup_poll_birth(&t) == -1);               /* ... and does not re-open */
+
+    /* A reload - the same statics, a fresh boot - owes it again. */
+    tank_init(&t, 32); boot_enlarged(&t);
+    assert(progression_newborn() == newborn);
+    assert(setup_birth_due());
+    assert(setup_poll_birth(&t) == newborn);
+    setup_cancel(&t);
+
+    /* Dropped again, then the fry grows up: the debt is obsolete and must
+     * retire, or s_newborn stays set and breeding is blocked forever. */
+    tank_init(&t, 33); boot_enlarged(&t);
+    assert(setup_poll_birth(&t) == newborn);
+    setup_cancel(&t);
+    progression_set_age(&t, newborn, 100000.0f);
+    assert(t.fish[newborn].stage == STAGE_ADULT);
+    assert(setup_poll_birth(&t) == -1);
+    assert(progression_newborn() == -1);              /* retired, not latched */
+    assert(!setup_birth_due());
+    assert(progression_fry_room(&t));                 /* breeding is unblocked */
+    assert(!strstr(progression_breeding_status(&t), "FINISH WELCOMING"));
+
+    /* The retirement is durable: a reload does not resurrect the debt. */
+    tank_init(&t, 34); boot_enlarged(&t);
+    assert(progression_newborn() == -1 && t.fish[newborn].stage == STAGE_ADULT);
+    assert(!setup_birth_due() && setup_poll_birth(&t) == -1);
+    tank_resolution(true);
+    puts("PASS: a dropped birth welcome re-offers at the next boot and an obsolete debt retires instead of blocking breeding");
+}
+
 static void test_simple_scene(void) {
     render_device_t device = {0, 1, 1, -1, true};
     for (int normal = 0; normal < 2; normal++) {
@@ -3830,15 +3901,25 @@ static void test_inventory(void) {
     wallet = t.sd_balance; t.sd_balance = SD_ITEMS[9].price - 1;
     assert(!progression_buy(&t, 9) && strstr(progression_shop_notice(), "NOT ENOUGH"));
     t.sd_balance = wallet;
-    assert(!progression_inventory_buy(&t, 1) && !progression_inventory_duplicate(0));
+    assert(!progression_inventory_buy(&t, 1) && !progression_inventory_duplicate(1));
+    /* the sword plant (0) is duplicable: each extra copy is its own veg bed */
+    assert(progression_inventory_duplicate(0));
     for (int item = 0; item <= 8; item++) {
         if (item == 8 || !tank_decor_placeable(item)) continue;
         assert(progression_buy(&t, item));
         assert(progression_inventory_store(&t, item, -1));
         assert(progression_inventory_buy(&t, item));
         assert(progression_inventory_place(&t, item));
-        assert(!progression_inventory_place(&t, item));
-        assert(strstr(progression_shop_notice(), "ONE LIVING/LARGE"));
+        if (progression_inventory_duplicate(item)) {
+            assert(progression_inventory_place(&t, item));      /* a second copy is its own bed */
+            int copy = -1;
+            for (int k = 0; k < DECOR_EXTRA_CAP; k++)
+                if (t.inventory.extra[k].item == item + 1) copy = k;
+            assert(copy >= 0 && progression_inventory_store(&t, item, copy));
+        } else {
+            assert(!progression_inventory_place(&t, item));
+            assert(strstr(progression_shop_notice(), "ONE LIVING/LARGE"));
+        }
     }
     t.coral_growth = 0.42f; tank_coral_set_rgb(&t, 0x123456);
     t.cluster_growth = 0.57f; tank_cluster_set_scheme(&t, 2);
@@ -3908,7 +3989,7 @@ static void test_inventory(void) {
     hex = cJSON_GetObjectItemCaseSensitive(inv, "extra");
     assert(cJSON_IsString(hex) && strlen(hex->valuestring) == 128);
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) assert(!strncmp(hex->valuestring + i * 16, "0a", 2));
-    hex->valuestring[0] = '0'; hex->valuestring[1] = '1'; /* plant is not extra-eligible */
+    hex->valuestring[0] = '0'; hex->valuestring[1] = '3'; /* the castle is not extra-eligible */
     invalid_object(root);
     root = cJSON_Parse(json); inv = cJSON_GetObjectItemCaseSensitive(root, "inventory");
     hex = cJSON_GetObjectItemCaseSensitive(inv, "extra");
@@ -3921,7 +4002,7 @@ static void test_inventory(void) {
     /* A complete but corrupted binary tail must be rejected, not migrated. */
     unsigned char good[AQUARIUM_SAVE_BYTES]; memcpy(good, saved, sizeof good);
     const unsigned offsets[] = {6032, 6032 + 16, 6032 + 32, 6032 + 33, 6032 + 34, 6032 + 96, 6032 + 97};
-    const unsigned char corrupt[] = {255, 255, 1, 1, 2, 2, 1};
+    const unsigned char corrupt[] = {255, 255, 3, 1, 2, 2, 1};   /* 3 = the castle: not extra-eligible */
     for (unsigned i = 0; i < sizeof offsets / sizeof *offsets; i++) {
         memcpy(saved, good, sizeof good); saved[offsets[i]] = corrupt[i];
         tank_init(&loaded, 710); progression_boot(&loaded);
@@ -5016,6 +5097,7 @@ int main(int argc, char **argv) {
     test_home_navigation();
     test_simple_scene();
     test_name_keyboard();
+    test_birth_welcome_latch();
     test_normal_default();
     test_retired_achievements();
     test_mode_care_notices();

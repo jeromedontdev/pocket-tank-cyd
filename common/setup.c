@@ -3,6 +3,7 @@
 #include "tank_events.h"
 #include "render.h"
 #include "progression.h"
+#include "companion.h"          /* companion_story_name: a parent's life identity */
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -17,7 +18,9 @@
 #define C_CAPT   0x9fd8e2
 #define C_GO     C_INNER
 #define C_GO_E   C_EDGE
-#define C_FILL   0x5f8a92      /* the family page's trait bars: a muted teal the parents' ticks stand out on */
+#define C_FILL   0x5f8a92      /* a selected mode button's fill */
+#define C_GENE   0xa7c4ba      /* the family page's carried alleles: the Genes page's secondary ink */
+#define C_MUT    0xffd998      /* ... and a birth mutation, in the Genes page's gold */
 
 static bool s_active;
 static bool s_birth;           /* the birth flow (three pages about s_fish), not the first run */
@@ -84,9 +87,14 @@ static void place_restore_preview(tank_t *t) {
     t->cluster_scheme = s_place_original.scheme;
     memcpy(t->decor_rank, s_place_original.rank, sizeof t->decor_rank);
 }
-static float place_touch_top(const tank_t *t, int item) {
+/* the top of one placed copy: a sword-plant copy is a bed of its own, so its
+ * canopy is taller or shorter than the primary's */
+static float place_touch_top_copy(const tank_t *t, int item, int copy) {
     float top = TANK_BOT - 16 - 40;
-    if (item == 0) tank_veg_bed(t, 3, NULL, NULL, &top, NULL);
+    if (item == 0) {
+        int bed = copy >= 0 ? tank_veg_extra_bed(t, copy) : 3;
+        if (bed >= 0) tank_veg_bed(t, bed, NULL, NULL, &top, NULL);
+    }
     if (item == 2) top = TANK_BOT - 16 - 146;
     if (item == 3) top = TANK_BOT - 14 + DECOR_SINK - 92;
     if (item == 4) top = TANK_BOT - 14 + DECOR_SINK - 120;
@@ -99,12 +107,14 @@ static int place_candidates_at(const tank_t *t, float x, float y, place_copy_t *
     for (int item = 0; item < SD_ITEM_COUNT; item++) {
         if (!tank_decor_movable(item)) continue;
         float reach = tank_decor_half_w(item) + 10;
-        if (tank_decor_surface(item) ? y > 48 : y < place_touch_top(t, item) || y > TANK_BOT - 8) continue;
-        if (progression_item_owned(t, item) && fabsf(tank_decor_x(t, item) - x) <= reach)
+        if (tank_decor_surface(item) ? y > 48 : y > TANK_BOT - 8) continue;
+        if (progression_item_owned(t, item) && fabsf(tank_decor_x(t, item) - x) <= reach &&
+            (tank_decor_surface(item) || y >= place_touch_top_copy(t, item, -1)))
             copies[count++] = (place_copy_t){ item, -1 };
         for (int copy = 0; copy < DECOR_EXTRA_CAP; copy++)
             if (t->inventory.extra[copy].item == item + 1 &&
-                fabsf(t->inventory.extra[copy].x - x) <= reach)
+                fabsf(t->inventory.extra[copy].x - x) <= reach &&
+                (tank_decor_surface(item) || y >= place_touch_top_copy(t, item, copy)))
                 copies[count++] = (place_copy_t){ item, copy };
     }
     return count;
@@ -162,7 +172,9 @@ static void place_cycle_piece(tank_t *t, int direction) {
     place_select_copy(t, next.item, next.copy);
 }
 static int  s_fish;            /* birth flow: the newborn's slot */
-static int  s_birth_offered = -1;   /* setup_poll_birth: the arrival already opened for (-1 = none since boot) */
+static int  s_birth_offered = -1;   /* setup_poll_birth: the arrival already opened for (-1 = none since boot).
+                                     * A dropped welcome stays dropped for the session, but setup_boot
+                                     * clears this on every reload so it returns at the next boot. */
 static int  s_page;
 static int s_mode_pick;
 static char s_mode_error[80];
@@ -181,7 +193,43 @@ static bool page_one_button(void) { return s_page == SETUP_PG_WELCOME || s_page 
 static int  first_page(void) { return s_rename ? SETUP_PG_RENAME : s_place ? SETUP_PG_PLACE : s_birth ? SETUP_PG_BORN : SETUP_PG_WELCOME; }
 static bool nav_on_top(void) { return page_is_name() || page_is_look() || s_page == SETUP_PG_BUBBLES || s_page == SETUP_PG_PLACE; }
 static int  place_y(void) { return s_item == 3 ? SETUP_PLACE_CORAL_Y : s_item == 4 ? SETUP_PLACE_CLUSTER_Y : SETUP_PLACE_Y; }   /* where the drag zone starts */
-static const char *fish_name(const tank_t *t, int i) { return i >= 0 && i < t->n_fish ? t->fish[i].name : "?"; }
+/* Where a fry came from (2026-11-02). The birth flow used to read the slot
+ * links (fish_t.parent_a/parent_b), which tank_remove_fish and the Fish Bank
+ * clear to -1 - so a fry whose parents were sold read as a shop purchase, and
+ * so did every founder of an older save. The story tail keeps the parents'
+ * life identities and a generation, and both survive a sale, a bank trip and
+ * a reload; generation 0 with no parent IDs is the shop (or a founder). */
+typedef struct {
+    bool bred;              /* born in this tank: generation > 0 or a parent on record */
+    const char *a, *b;      /* the parents' names, NULL when unknown */
+    const fish_t *fa, *fb;  /* ... the parents themselves, while they are still here */
+    uint32_t ca, cb;        /* ... and their body colours, for the ticks and the names */
+} fam_origin_t;
+static fam_origin_t fam_origin(const tank_t *t, int slot) {
+    fam_origin_t o = { false, NULL, NULL, NULL, NULL, C_DIM, C_DIM };
+    if (slot < 0 || slot >= t->n_fish) return o;
+    const fish_t *f = &t->fish[slot];
+    const fish_lineage_t *l = t->story.version ? &t->story.active[slot] : NULL;
+    if (l && (l->generation || l->parent[0] || l->parent[1])) {
+        o.bred = true;
+        o.a = companion_story_name(t, l->parent[0]);
+        o.b = companion_story_name(t, l->parent[1]);
+        for (int i = 0; i < t->n_fish; i++) {
+            if (l->parent[0] && t->polish.active[i].id == l->parent[0]) { o.fa = &t->fish[i]; o.ca = t->fish[i].color; }
+            if (l->parent[1] && t->polish.active[i].id == l->parent[1]) { o.fb = &t->fish[i]; o.cb = t->fish[i].color; }
+        }
+    } else if (f->parent_a >= 0 || f->parent_b >= 0) {
+        /* a save from before the story tail: the slot links are all there is */
+        o.bred = true;
+        if (f->parent_a >= 0 && f->parent_a < t->n_fish) {
+            o.fa = &t->fish[f->parent_a]; o.a = o.fa->name; o.ca = o.fa->color;
+        }
+        if (f->parent_b >= 0 && f->parent_b < t->n_fish) {
+            o.fb = &t->fish[f->parent_b]; o.b = o.fb->name; o.cb = o.fb->color;
+        }
+    }
+    return o;
+}
 static void stage(tank_t *t);
 static void finish_name(tank_t *t, int fish);
 
@@ -291,14 +339,26 @@ bool setup_begin_place_at(tank_t *t, float x, float y) {
 int setup_poll_birth(tank_t *t) {
     int nb = progression_newborn();
     if (nb < 0) { s_birth_offered = -1; return -1; }    /* nothing owed: a later arrival in the same slot is new */
-    if (s_active || nb == s_birth_offered) return -1;   /* a flow is up, or this one was offered (and dropped) already */
+    /* An obsolete debt retires FIRST, before the "already offered" test. A fry
+     * whose welcome was dropped and who then grew up would otherwise match
+     * s_birth_offered and return early forever, leaving s_newborn set and
+     * breeding blocked for the rest of the session. */
     if (nb >= t->n_fish || t->fish[nb].stage != STAGE_FRY) {
         progression_newborn_done(t);
+        s_birth_offered = -1;
         return -1;
     }
+    if (s_active || nb == s_birth_offered) return -1;   /* a flow is up, or this one was offered (and dropped) already */
     s_birth_offered = nb;
     setup_begin_birth(t, nb);
     return nb;
+}
+/* A reload - a cold boot, a deep-sleep wake, the simulator's boot - starts a
+ * new session: a welcome the keeper dropped last time is owed again. The
+ * statics above outlive progression_boot in the simulator and across a deep
+ * sleep on the device, so the boot path calls this to forget the latch. */
+void setup_boot(void) {
+    s_birth_offered = -1;
 }
 bool setup_birth_due(void) {                               /* a welcome up, or owed and not yet offered */
     int nb = progression_newborn();
@@ -759,6 +819,24 @@ static void text_named(uint16_t *fb, int stride, int x, int y, const char *pre, 
     render_text(fb, stride, x, y, 2, name_rgb, name); x += render_text_w(name, 2);
     if (post) render_text(fb, stride, x, y, 2, C_CAPT, post);
 }
+/* a comma list of allele names, cut to the family page's value column with a
+ * "+N" tail rather than running off the panel. The tail's room is reserved
+ * before each piece is added, so the result never exceeds the column. */
+static void gene_list(char *out, size_t size, const char *const *names, int n) {
+    size_t len = 0;
+    out[0] = 0;
+    for (int i = 0; i < n; i++) {
+        char piece[32];
+        int plen = snprintf(piece, sizeof piece, "%s%s", i ? ", " : "", names[i]);
+        int tail = i + 1 < n ? 4 : 0;                                /* " +N" */
+        if (len + (size_t)plen + (size_t)tail > SETUP_FAM_LIST_CHARS) {
+            snprintf(out + len, size - len, " +%d", n - i);
+            return;
+        }
+        memcpy(out + len, piece, (size_t)plen + 1);
+        len += (size_t)plen;
+    }
+}
 static uint32_t dim(uint32_t c, int pct) {              /* c toward the ink, pct% of it left */
     return ((c >> 16 & 255) * pct / 100) << 16 | ((c >> 8 & 255) * pct / 100) << 8 | (c & 255) * pct / 100;
 }
@@ -1146,63 +1224,103 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         fish_ring(fb, stride, f, r + 8, C_EDGE);
         render_rect_blend(fb, stride, -PAGE_X, 92, PAGE_FRAME_W, 116, C_PANEL, 150);
         text_c(fb, stride, CX, 104, 3, C_TEXT, "A NEW FRY!");
-        char l1[FISH_NAME_MAX * 2 + 24];
-        bool shop = f->parent_a < 0 && f->parent_b < 0;              /* bought (0.3.5): no parents, in at the surface */
-        if (shop) snprintf(l1, sizeof l1, "FROM THE SHOP,");
-        else snprintf(l1, sizeof l1, "BORN TO %s AND %s", fish_name(t, f->parent_a), fish_name(t, f->parent_b));
+        char l1[64];
+        fam_origin_t o = fam_origin(t, page_fish());
+        if (!o.bred) snprintf(l1, sizeof l1, "FROM THE SHOP,");
+        else if (o.a && o.b) snprintf(l1, sizeof l1, "BORN TO %s AND %s", o.a, o.b);
+        else if (o.a || o.b) snprintf(l1, sizeof l1, "BORN TO %s", o.a ? o.a : o.b);
+        else snprintf(l1, sizeof l1, "BORN HERE,");                  /* its parents have moved on */
         text_c(fb, stride, CX, 140, 2, C_CAPT, l1);
-        text_c(fb, stride, CX, 162, 2, C_CAPT, shop ? "IN AT THE SURFACE." : "DOWN IN THE GRASS.");
+        text_c(fb, stride, CX, 162, 2, C_CAPT, o.bred ? "DOWN BY THE REEF." : "IN AT THE SURFACE.");
         text_c(fb, stride, CX, 184, 2, C_CAPT, "GO AND SAY HELLO.");
         render_button(fb, stride, SETUP_MID_X, SETUP_BTN_Y, SETUP_BTN_W, SETUP_BTN_H, C_GO, C_GO_E, "MEET IT", 2);
         dots(fb, stride, PAGE_H - 14);
     } else if (s_page == SETUP_PG_FAMILY) {
-        /* the family page: a panel (the fry on its own), its name, its
-           portrait as it is now - a fry, no markings yet - and what it
-           inherited: whose body, whose markings, and how bold and sociable
-           it is next to its parents' marks */
+        /* the family page: the fry on its own, its name, its portrait as it is
+           now, and what it actually inherited - the body colour and marking it
+           shows, the traits it shows, the alleles it only carries, and where
+           it came from. The old page named one parent for the body and the
+           other for the markings, which stopped being true when inherit()
+           (tank.c) started drawing one allele from each side and letting the
+           rank decide what shows. It also drew BOLD and SOCIAL bars, which are
+           personality drives rather than inheritance and read as unexplained
+           ratings; they are gone. */
         const fish_t *f = &t->fish[page_fish()];
-        const fish_t *pa = f->parent_a >= 0 && f->parent_a < t->n_fish ? &t->fish[f->parent_a] : NULL;
-        const fish_t *pb = f->parent_b >= 0 && f->parent_b < t->n_fish ? &t->fish[f->parent_b] : NULL;
-        bool shop = f->parent_a < 0 && f->parent_b < 0;              /* bought (0.3.5): its look is the shop's */
-        const char *na = shop ? "THE SHOP" : fish_name(t, f->parent_a), *nb = shop ? "THE SHOP" : fish_name(t, f->parent_b);
-        uint32_t ca = pa ? pa->color : shop ? C_CAPT : C_DIM, cb = pb ? pb->color : shop ? C_CAPT : C_DIM;
+        const fish_lineage_t *l = t->story.version ? &t->story.active[page_fish()] : NULL;
+        fam_origin_t o = fam_origin(t, page_fish());
         panel(fb, stride);
         text_c(fb, stride, CX, SETUP_Y + 20, 3, C_TEXT, f->name);
         float ps = f->size * 2.0f;                                   /* a portrait, twice life size (a fry) ... */
         if (ps > 1.2f) ps = 1.2f;                                    /* ... but a juvenile's ring must clear the name */
         render_ring(fb, stride, CX, SETUP_FAM_PORTRAIT_Y, 17 * ps + 6, f->color);
         render_fish_portrait(fb, stride, CX, SETUP_FAM_PORTRAIT_Y, ps, f, clock);
-        int y = SETUP_FAM_ROW_Y, vx = SETUP_FAM_VALUE_X;
-        render_text(fb, stride, SETUP_FAM_LABEL_X, y, 2, C_CAPT, "BODY");
-        render_rect(fb, stride, vx, y - 1, 16, 16, f->color); render_rect_edge(fb, stride, vx, y - 1, 16, 16, C_INNER);
-        text_named(fb, stride, vx + 24, y, "FROM ", na, ca, NULL);
-        y += SETUP_FAM_ROW_DY;
-        render_text(fb, stride, SETUP_FAM_LABEL_X, y, 2, C_CAPT, "MARKINGS");
-        render_rect(fb, stride, vx, y - 1, 16, 16, f->accent); render_rect_edge(fb, stride, vx, y - 1, 16, 16, C_INNER);
-        text_named(fb, stride, vx + 24, y, "FROM ", nb, cb, NULL);
-        static const char *const TRAIT[2] = { "BOLD", "SOCIAL" };
-        for (int k = 0; k < 2; k++) {                                /* the fry's own bar, the parents' ticks */
-            y += SETUP_FAM_ROW_DY;
-            float v = k ? f->sociable : f->bold;
-            float va = pa ? (k ? pa->sociable : pa->bold) : -1, vb = pb ? (k ? pb->sociable : pb->bold) : -1;
-            int by = y + 3;
-            render_text(fb, stride, SETUP_FAM_LABEL_X, y, 2, C_CAPT, TRAIT[k]);
-            render_rect(fb, stride, vx, by, SETUP_FAM_BAR_W, SETUP_FAM_BAR_H, C_DIM);
-            render_rect(fb, stride, vx, by, (int)(SETUP_FAM_BAR_W * v + 0.5f), SETUP_FAM_BAR_H, C_FILL);
-            for (int p = 0; p < 2; p++) {                            /* a parent's tick: its body colour on an ink outline, so it reads on the fill too */
-                float vp = p ? vb : va; if (vp < 0) continue;
-                int tx = vx + (int)(SETUP_FAM_BAR_W * vp);
-                render_rect(fb, stride, tx - 2, by - 5, 5, SETUP_FAM_BAR_H + 10, C_PANEL);
-                render_rect(fb, stride, tx - 1, by - 4, 3, SETUP_FAM_BAR_H + 8, p ? cb : ca);
-            }
+        if (l && l->mutation) {                                      /* a birth mutation, in the Genes page's gold */
+            char mut[56];
+            bool pat = l->mutation & GENE_MUTANT_PATTERN, tra = l->mutation & GENE_MUTANT_TRAIT,
+                 col = l->mutation & GENE_MUTANT_COLOR;
+            /* "BORN WITH:" is the keeper's wording (2026-11): the old page
+             * showed BOLD and SOCIAL bars as if the fry were born with a
+             * rating. What a fry is actually born with is its look - the body
+             * colour, the marking and the traits - so the gold line names the
+             * mutation in those terms and the COLOR row below shows the body.
+             * "BORN WITH" already says the change is new, so the line lists
+             * only what changed.
+             *
+             * Width is the binding constraint: the panel is 384 px wide and
+             * scale-1 text advances 12 px a character at 240 px, so the line
+             * must stay at or under 30 characters to keep a 12 px margin
+             * inside the frame. "MARKING, TRAIT AND COLOR" is 35 and spilled
+             * past both borders, so the list joins with "+" (which the font
+             * has) and the longest form is exactly 30 - 358 px, centred at
+             * 45..403 inside the panel's 32..416. test_page_art.c's
+             * menu_test_text hook asserts every menu string stays inside the
+             * last opaque panel, so this cannot silently regress. */
+            snprintf(mut, sizeof mut, "BORN WITH: %s%s%s%s%s",
+                     pat ? "MARKING" : "", pat && (tra || col) ? "+" : "",
+                     tra ? "TRAIT" : "", tra && col ? "+" : "", col ? "COLOR" : "");
+            text_c(fb, stride, CX, SETUP_FAM_MUT_Y, 1, C_MUT, mut);
         }
+        int y = SETUP_FAM_ROW_Y, vx = SETUP_FAM_VALUE_X;
+        char list[64];
+        /* COLOR: the body swatch and its nearest palette name. A fry's body is
+         * an inherited RGB, so the swatch is the truth; the name is the nearest
+         * FISH_BODY_COLORS entry (tank_body_index), which is what the keeper
+         * reads as "born with" a colour. */
+        render_text(fb, stride, SETUP_FAM_LABEL_X, y, 2, C_CAPT, "COLOR");
+        render_rect(fb, stride, vx, y - 1, 16, 16, f->color);
+        render_rect_edge(fb, stride, vx, y - 1, 16, 16, C_INNER);
+        render_text(fb, stride, vx + 24, y, 2, C_TEXT, FISH_BODY_COLOR_NAMES[tank_body_index(f->color)]);
+        y += SETUP_FAM_ROW_DY;
+        render_text(fb, stride, SETUP_FAM_LABEL_X, y, 2, C_CAPT, "MARKING");
+        render_rect(fb, stride, vx, y - 1, 16, 16, f->accent);
+        render_rect_edge(fb, stride, vx, y - 1, 16, 16, C_INNER);
+        render_text(fb, stride, vx + 24, y, 2, C_TEXT, FISH_PATTERN_NAMES[f->pattern % FISH_PATTERN_COUNT]);
+        const char *shown[TRAIT_COUNT]; int ns = 0;
+        for (int k = 0; k < TRAIT_COUNT; k++) if (f->traits & (1u << k)) shown[ns++] = FISH_TRAIT_NAMES[k];
+        y += SETUP_FAM_ROW_DY;
+        render_text(fb, stride, SETUP_FAM_LABEL_X, y, 2, C_CAPT, "TRAITS");
+        if (ns) { gene_list(list, sizeof list, shown, ns); render_text(fb, stride, vx, y + 3, 1, C_TEXT, list); }
+        else render_text(fb, stride, vx, y + 3, 1, C_DIM, "NONE SHOWN");
+        const char *carry[2 + TRAIT_COUNT]; int nc = 0;
+        if (l) {
+            if (l->pattern2 && l->pattern2 - 1 != f->pattern && l->pattern2 <= FISH_PATTERN_COUNT)
+                carry[nc++] = FISH_PATTERN_NAMES[l->pattern2 - 1];
+            if (l->color2) carry[nc++] = "HIDDEN COLOR";
+            for (int k = 0; k < TRAIT_COUNT; k++) if (l->traits & (16u << k)) carry[nc++] = FISH_TRAIT_NAMES[k];
+        }
+        y += SETUP_FAM_ROW_DY;
+        render_text(fb, stride, SETUP_FAM_LABEL_X, y, 2, C_CAPT, "CARRIES");
+        if (!l) render_text(fb, stride, vx, y + 3, 1, C_DIM, "NOT RECORDED");
+        else if (nc) { gene_list(list, sizeof list, carry, nc); render_text(fb, stride, vx, y + 3, 1, C_GENE, list); }
+        else render_text(fb, stride, vx, y + 3, 1, C_DIM, "NOTHING HIDDEN");
         y += SETUP_FAM_ROW_DY;
         render_text(fb, stride, SETUP_FAM_LABEL_X, y, 2, C_CAPT, "PARENTS");
-        if (shop) render_text(fb, stride, vx, y, 2, C_CAPT, "NONE HERE");
-        else {
-            render_text(fb, stride, vx, y, 2, ca, na);
-            render_text(fb, stride, vx + render_text_w(na, 2) + 16, y, 2, cb, nb);
-        }
+        if (!o.bred) render_text(fb, stride, vx, y, 2, C_CAPT, "FROM THE SHOP");
+        else if (o.a && o.b) {                                       /* both named, each in its own colour */
+            text_named(fb, stride, vx, y, "", o.a, o.ca, " + ");
+            render_text(fb, stride, vx + render_text_w(o.a, 2) + render_text_w(" + ", 2), y, 2, o.cb, o.b);
+        } else if (o.a || o.b) text_named(fb, stride, vx, y, "", o.a ? o.a : o.b, o.a ? o.ca : o.cb, NULL);
+        else render_text(fb, stride, vx, y, 2, C_DIM, "PARENTS SOLD");
         nav(fb, stride, false, "DONE", true);
         dots(fb, stride, SETUP_Y + SETUP_H - 8);
     } else {                                                        /* SETUP_PG_CARE */

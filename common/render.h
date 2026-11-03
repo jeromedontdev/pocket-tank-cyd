@@ -322,6 +322,10 @@ int render_aquariums_tap(tank_t *t, float x, float y);
  * (setup_begin_place), the same page a purchase opens. */
 void render_shop(const tank_t *t, uint16_t *fb, int stride);
 void render_ornament_preview(uint16_t *fb, int stride, int item, int cx, int bottom);
+/* Test-only: does the piece's own silhouette cover this tank pixel? Used by
+ * the renderer stress test to prove a swaying kelp crown is clipped by a piece
+ * standing in front of it. False when the piece is not in the scene. */
+bool render_piece_covers(int item, int x, int y);
 int  render_shop_tap(const tank_t *t, float x, float y);
 void render_shop_leave(void);
 int  render_coral_cells(float growth);   /* the coral sprite's filled cells at a growth (the sim's selftest) */

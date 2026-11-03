@@ -369,8 +369,13 @@ async function main() {
       const anchors = [.82, .68, .48, .30, .46, .64];
       const stop = Math.floor((clock % 2160) / 360);
       const travel = Math.max(clock % 360 - 344, 0) / 16;
-      const ease = travel * travel * (3 - 2 * travel);
-      const musselX = anchors[stop] + (anchors[(stop + 1) % anchors.length] - anchors[stop]) * ease;
+      /* the staircase: four shoves per relocation, 0.7 s of effort then 3.3 s still */
+      const step = travel * 4;
+      const done = Math.min(Math.floor(step), 4);
+      const within = step - done;
+      const effort = within < .175 ? within / .175 : 1;
+      const ease = effort * effort * (3 - 2 * effort);
+      const musselX = anchors[stop] + (anchors[(stop + 1) % anchors.length] - anchors[stop]) * (done + ease) / 4;
       await tap(448 * musselX, 368 * (frameHeight - 11) / frameHeight);
       assert.equal(await native("return game._sim_selected()"), 95, "Tapping the resident mussel opens its information card");
       await menuImage(`mussel-info-${scale}`);

@@ -6,9 +6,20 @@ static void healthy(fish_t *f) {
     f->trust = 10; f->energy = 10; f->hunger = f->stress = 0;
 }
 
+/* The market lists varieties in display-rank order (MARKET_VARIETY_TIERS), so
+ * the shop's price ladder ascends down the page. Walking variety ids 0..9 would
+ * jump up and down the ladder instead. */
+static int variety_at_rank(int rank) {
+    for (int id = 0; id < FISH_VARIETY_COUNT; id++)
+        if (MARKET_VARIETY_TIERS[id] == rank) return id;
+    return -1;
+}
+
 static void test_market_prices(tank_t *t) {
     int last = 0;
-    for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++) {
+    for (int rank = 0; rank < FISH_VARIETY_COUNT; rank++) {
+        int variety = variety_at_rank(rank);
+        assert(variety >= 0);
         start(t, GAME_MODE_NORMAL);
         t->sd_balance = 10000;
         fish_t preview;
@@ -32,20 +43,26 @@ static void test_market_prices(tank_t *t) {
         int bought_value = progression_fish_value(t, i);
         healthy(f);
         int max_value = progression_fish_value(t, i);
-        assert(max_value >= bought_value && price == max_value + 40);
+        /* 2.4.0 asks the market's own base at gene 150 plus a flat 40; the
+         * bought fish's real genes are lower (100..150), so the premium over
+         * best resale is base*(1.5 - gene/100) + 40: at least 40, at most
+         * base/2 + 40 <= 96 for the dearest tier. Either way resale never
+         * profits, which is the contract that matters. */
+        assert(max_value >= bought_value && price > max_value);
+        assert(price - max_value >= 40 && price - max_value <= 100);
         f->trust = f->energy = 0; f->hunger = f->stress = 10;
         int minimum = progression_fish_value(t, i);
         assert(max_value > minimum && minimum > 0);
         healthy(f);
         fish_sale_t quote;
-        assert(progression_fish_sale_quote(t, i, &quote));
+        assert(progression_fish_sale_quote(t, i, &quote) && quote.value == max_value);
         assert(t->n_fish == 3 && t->sd_balance == 10000 - price); /* Quote never sells. */
         assert(progression_fish_sale_confirm(t, &quote));
-        assert(t->n_fish == 2 && t->sd_balance == 9960); /* Even perfect adult resale loses 40. */
+        assert(t->n_fish == 2 && t->sd_balance == 10000 - price + max_value); /* Perfect adult resale still loses. */
         assert(!progression_fish_sale_confirm(t, &quote)); /* No replay. */
         assert(!progression_fish_sale_quote(t, 0, &quote)); /* Keep a pair. */
         assert(progression_save(t));
-        reload(t); assert(t->n_fish == 2 && t->sd_balance == 9960);
+        reload(t); assert(t->n_fish == 2 && t->sd_balance == 10000 - price + max_value);
     }
 }
 
@@ -80,6 +97,10 @@ static void test_market_transactions(tank_t *t) {
     t->sd_balance = 0; before = *t;
     assert(!progression_market_buy(t, 0) && !memcmp(t, &before, sizeof before));
     start(t, GAME_MODE_CREATIVE); t->sd_balance = 1000;
+    /* Creative permits free fish additions, capped at five including travelers. */
+    assert(progression_market_buy(t, 0));
+    assert(t->sd_balance == 1000 && t->n_fish == 3);
+    while (t->n_fish < CREATIVE_FISH_CAP) assert(progression_market_buy(t, 0));
     before = *t;
     assert(!progression_market_buy(t, 0) && !memcmp(t, &before, sizeof before));
     start(t, GAME_MODE_HARD); t->sd_balance = 10000;
@@ -105,12 +126,19 @@ static void test_fry_transactions(tank_t *t) {
     assert(progression_buy_fry(t, 0));
     assert(progression_fry_left() == FRY_OFFER_N - 1 && t->sd_balance == 1000 - price);
     int i = t->n_fish - 1; healthy(&t->fish[i]);
-    assert(progression_fish_value(t, i) == price - 20);
+    /* 2.4.0 asks the fry's base at gene 150 plus a flat 20; a bought fry's real
+     * genes are lower (100..150), so the premium over best resale is
+     * base*(1.5 - gene/100) + 20. For this seed's offer that is a 16 value
+     * against a 38 price: a 22 margin. Resale never profits. */
+    int value = progression_fish_value(t, i);
+    assert(value == 16);
+    assert(price - value == 22);
     assert(!progression_buy_fry(t, 0) && !progression_market_buy(t, 0));
     assert(progression_newborn_done(t));
     fish_sale_t quote;
-    assert(progression_fish_sale_quote(t, i, &quote) && progression_fish_sale_confirm(t, &quote));
-    assert(t->sd_balance == 980); /* Perfect fry resale still loses 20. */
+    assert(progression_fish_sale_quote(t, i, &quote) && quote.value == value);
+    assert(progression_fish_sale_confirm(t, &quote));
+    assert(t->sd_balance == 1000 - price + 16); /* Perfect fry resale still loses. */
 }
 
 static void test_breeding(tank_t *t) {
@@ -296,9 +324,26 @@ static void test_creature_market(tank_t *t) {
     assert(progression_creature_sale_confirm(t, &quote));
     assert(!progression_creature_adults(t, CREATURE_MUSSEL) && !progression_creature_buy(t, CREATURE_MUSSEL));
     start(t, GAME_MODE_CREATIVE);
-    assert(!progression_creature_buy(t, CREATURE_SNAIL));
-    assert(progression_buy(t, 1) && progression_creature_adults(t, CREATURE_SNAIL) == 1);
+    assert(progression_creature_buy(t, CREATURE_SNAIL));
+    assert(progression_creature_adults(t, CREATURE_SNAIL) == 1);
     assert(!progression_creature_sale_quote(t, CREATURE_SNAIL, false, &quote));
+    /* Creative buys every creature for zero dubloons, in any order. The shrimp
+     * and mussel have their own branches, and both must migrate the creature
+     * state before bumping its revision: a v0 struct with a non-zero revision
+     * fails creatures_valid and blocks every later creature in every mode. */
+    for (int species = CREATURE_SHRIMP; species <= CREATURE_MUSSEL; species++) {
+        start(t, GAME_MODE_CREATIVE);
+        t->sd_balance = 500;
+        int wallet = t->sd_balance;
+        assert(progression_creature_buy(t, species));
+        assert(progression_creature_adults(t, species) == 1);
+        assert(t->sd_balance == wallet);                       /* free */
+        assert(t->creatures.version == 1);                     /* migrated, not v0 */
+        /* ... and the next creature still buys: the state stayed valid. */
+        int next = species == CREATURE_MUSSEL ? CREATURE_SNAIL : species + 1;
+        assert(progression_creature_buy(t, next));
+        assert(progression_creature_adults(t, next) == 1 && t->sd_balance == wallet);
+    }
     const int shop_item[] = {5, 1, 6, 7, SD_SHOP_MUSSEL};
     for (int species = CREATURE_SHRIMP; species < CREATURE_COUNT; species++) {
         start(t, GAME_MODE_CREATIVE);

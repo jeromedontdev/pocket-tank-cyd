@@ -99,11 +99,20 @@ void tank_glass_clamp(float *x, float *y, float m) {
 float tank_fish_pitch(const fish_t *f) {
     /* Clearance queries project one pose in four directions consecutively. */
     static float heading, speed, pitch;
+    static uint8_t variety;
     static bool valid;
-    if (valid && heading == f->heading && speed == f->speed) return pitch;
-    float limit = 0.61f + 0.35f * clampf((f->speed - 35) / 40, 0, 1);
+    if (valid && heading == f->heading && speed == f->speed && variety == f->variety) return pitch;
+    /* A long fish reads its climb as a dive: at the same angle a shark's nose
+     * swings twice as far as a tetra's, so the same steering that looks like a
+     * gentle rise on a round fish looks like a nose-down plunge on a long one.
+     * Cap the BODY's tilt by its length - the long varieties cruise flatter and
+     * only the urgent goals put them steep. The path still climbs and dives as
+     * the steering asks; this is the body's presentation, not its travel. */
+    float length = f->variety == FISH_SHARK ? 1.35f : f->variety == FISH_CLASSIC ? 1.15f :
+                   f->variety == FISH_STINGRAY ? 1.10f : f->variety == FISH_JELLYFISH ? 0.95f : 1.0f;
+    float limit = (0.61f + 0.35f * clampf((f->speed - 35) / 40, 0, 1)) / length;
     pitch = limit * tanhf(0.8f * atan2f(sinf(f->heading), fabsf(cosf(f->heading))) / limit);
-    heading = f->heading; speed = f->speed; valid = true;
+    heading = f->heading; speed = f->speed; variety = f->variety; valid = true;
     return pitch;
 }
 static int wearable_shape(const fish_t *f, int part, float x[8], float y[8],
@@ -403,6 +412,14 @@ const uint32_t FISH_MARKING_COLORS[FISH_COLOR_N] = {
     0xffbd59, 0xffe08a, 0xa799ff, 0x78d67d, 0x38dcc7, 0xffffff, 0xf25b65, 0x1a2a30,
     0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
     0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xe8f1f2, 0x263d50
+};
+/* Index-aligned with FISH_BODY_COLORS. These are the names the family page
+ * prints beside the COLOR swatch, so a keeper reads "BORN WITH: BODY COLOR"
+ * and then "COLOR  TURQUOISE" rather than a bare hex value. */
+const char *const FISH_BODY_COLOR_NAMES[FISH_COLOR_N] = {
+    "TURQUOISE", "CORAL", "GREEN", "LILAC", "GOLD", "PINK", "BLUE", "SILVER",
+    "MAGENTA", "RED", "ORANGE", "YELLOW", "LIME", "MINT", "CYAN", "AZURE",
+    "INDIGO", "VIOLET", "FUCHSIA", "ROSE", "AQUA", "LAVENDER", "WHITE", "MIDNIGHT"
 };
 /* the coral's swatches (2026-09-23): the reference art's orange first, then
  * reef colours - pink, magenta, violet, blue, teal, green, gold */
@@ -997,24 +1014,80 @@ void tank_init(tank_t *t, uint32_t seed) {
 /* Sword geometry is shared by the renderer and seahorse anchors. */
 static int veg_segs(float h) { return 2 + (int)(h * (VEG_SEGS_FULL - 2)); }
 static int veg_pitch(int b) { (void)b; return 14; }
-static void veg_bed_base(const tank_t *t, int b, float *bx0, int *n) {
-    *bx0 = b == 3 ? tank_decor_x(t, 0) - PLANT_HALF_W : t->reef_x;
-    *n = b == 3 ? 4 : 0;
+/* The sword plant is duplicable (2026-11): bed 3 is the primary, and every
+ * extra copy the keeper placed is a bed of its own. `sword_beds` lists them in
+ * draw order, -1 for the primary and the inventory copy index otherwise, so a
+ * stored primary leaves its copies standing instead of hiding them. */
+#define SWORD_ITEM 0
+static int sword_beds(const tank_t *t, int *beds) {
+    int n = 0;
+    if (t->sd_unlocks & SD_ITEM_PLANT) beds[n++] = -1;
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++)
+        if (t->inventory.extra[i].item == SWORD_ITEM + 1) beds[n++] = i;
+    return n;
 }
-int tank_veg_beds(const tank_t *t) { return (t->sd_unlocks & SD_ITEM_PLANT) ? VEG_BEDS_MAX : 0; }
-veg_kind_t tank_veg_kind(const tank_t *t, int b) { (void)t; return b == 3 ? VEG_KIND_SWORD : VEG_KIND_GRASS; }
+/* the inventory copy behind bed b, or -1 for the primary / an absent bed */
+int tank_veg_bed_extra(const tank_t *t, int b) {
+    int beds[VEG_BEDS_ALL];
+    int n = sword_beds(t, beds);
+    int s = b - (VEG_BEDS_MAX - 1);               /* bed 3 -> slot 0 */
+    return s >= 0 && s < n ? beds[s] : -1;
+}
+/* the bed an extra copy stands in, or -1 */
+int tank_veg_extra_bed(const tank_t *t, int copy) {
+    int beds[VEG_BEDS_ALL];
+    int n = sword_beds(t, beds);
+    for (int s = 0; s < n; s++) if (beds[s] == copy) return VEG_BEDS_MAX - 1 + s;
+    return -1;
+}
+/* a bed's authored frond height: the primary keeps the saved profile, a copy
+ * uses the same profile it was planted with (veg_sync) */
+static float veg_bed_height(const tank_t *t, int b, int i) {
+    if (b == 3) return t->veg_h[3][i];
+    return 0.44f + (float)((i * 13 + 7) % 17) / 170.0f;
+}
+static void veg_bed_base(const tank_t *t, int b, float *bx0, int *n) {
+    int beds[VEG_BEDS_ALL];
+    int count = sword_beds(t, beds), s = b - (VEG_BEDS_MAX - 1);
+    if (s < 0 || s >= count) { *bx0 = t->reef_x; *n = 0; return; }
+    *bx0 = (beds[s] >= 0 ? t->inventory.extra[beds[s]].x : tank_decor_x(t, 0)) - PLANT_HALF_W;
+    *n = 4;
+}
+int tank_veg_beds(const tank_t *t) {
+    int beds[VEG_BEDS_ALL];
+    return VEG_BEDS_MAX - 1 + sword_beds(t, beds);
+}
+veg_kind_t tank_veg_kind(const tank_t *t, int b) { (void)t; return b >= 3 ? VEG_KIND_SWORD : VEG_KIND_GRASS; }
+/* a bed's depth lane: the primary by its own saved depth, a copy by its own */
+int tank_veg_z(const tank_t *t, int b) {
+    int copy = tank_veg_bed_extra(t, b);
+    if (copy >= 0) return t->inventory.extra[copy].z;
+    return b == 3 ? tank_decor_z(t, 0) : DECOR_Z_MIDDLE;
+}
+/* is `item` drawn in front of bed b? (the renderer's veg_skip_for: a piece
+ * above a bed's spans hides them). A copy carries its own rank, so it is
+ * compared as the piece it is rather than as the primary plant. */
+bool tank_veg_above(const tank_t *t, int b, int item) {
+    int bz = tank_veg_z(t, b), iz = tank_decor_z(t, item);
+    if (iz != bz) return iz > bz;
+    int copy = tank_veg_bed_extra(t, b);
+    if (copy < 0) return tank_decor_above(t, item, SWORD_ITEM);
+    int slot = tank_decor_slot(item);
+    int rank = slot >= 0 ? (t->decor_rank[slot] & DECOR_RANK_MASK) : 0;
+    return rank > (int)(t->inventory.extra[copy].rank & DECOR_RANK_MASK);
+}
 void tank_veg_bed(const tank_t *t, int b, float *x0, float *x1, float *top_y, int *fronds) {
-    if (b != 3 || !(t->sd_unlocks & SD_ITEM_PLANT)) {
+    float bx0; int n;
+    veg_bed_base(t, b, &bx0, &n);
+    if (!n) {
         if (x0) *x0 = t->reef_x;
         if (x1) *x1 = t->reef_x;
         if (top_y) *top_y = TANK_BOT;
         if (fronds) *fronds = 0;
         return;
     }
-    float bx0; int n;
-    veg_bed_base(t, b, &bx0, &n);
     float hmax = 0;
-    for (int i = 0; i < n; i++) if (t->veg_h[b][i] > hmax) hmax = t->veg_h[b][i];
+    for (int i = 0; i < n; i++) { float h = veg_bed_height(t, b, i); if (h > hmax) hmax = h; }
     if (x0) *x0 = bx0 - 6;
     if (x1) *x1 = bx0 + n * veg_pitch(b) + 6;
     if (top_y) *top_y = TANK_BOT - 16 - veg_segs(hmax) * VEG_SEG_PX - 4;
@@ -1082,14 +1155,14 @@ static void court_steer(const tank_t *t, const fish_t *f, int idx, float *desire
     *speed = tank_dist(f->x, f->y, cx, cy) > 90 ? 46 : 30;
 }
 int tank_veg_frond(const tank_t *t, int b, int i, float *x) {
-    if (b != 3 || !(t->sd_unlocks & SD_ITEM_PLANT)) {
-        if (x) *x = t->reef_x;
-        return 0;
-    }
     float bx0; int n;
     veg_bed_base(t, b, &bx0, &n);
+    if (i < 0 || i >= n) {
+        if (x) *x = n ? bx0 : t->reef_x;
+        return 0;
+    }
     if (x) *x = bx0 + i * veg_pitch(b);
-    return veg_segs(t->veg_h[b][i]);
+    return veg_segs(veg_bed_height(t, b, i));
 }
 /* veg_growth[b] is the bed's mean frond height - the comfort band, the save
  * and the firmware log read it; recomputed after anything moves a frond */
@@ -1100,13 +1173,12 @@ static void veg_sync(tank_t *t) {
             t->veg_growth[b] = 0;
             continue;
         }
-        float bx0; int n; veg_bed_base(t, b, &bx0, &n);
         float sum = 0;
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < 4; i++) {
             t->veg_h[b][i] = 0.44f + (float)((i * 13 + 7) % 17) / 170.0f;
             sum += t->veg_h[b][i];
         }
-        t->veg_growth[b] = sum / n;
+        t->veg_growth[b] = sum / 4;
     }
 }
 /* a frond slot's own number in 0..1, one per salt. A full mix: the plain
@@ -1327,12 +1399,11 @@ typedef struct { uint8_t kind, front; int8_t bed, frond, item; float x, y, hw; }
  * front), the sword plant by its depth (BEHIND: all behind; AMONG: woven;
  * IN FRONT: all in front) */
 static bool sh_frond_ok(const tank_t *t, int b, int i) {
-    if (b != 3 || !(t->sd_unlocks & SD_ITEM_PLANT)) return false;
     float bx0; int n; veg_bed_base(t, b, &bx0, &n);
-    return i >= 0 && i < n && t->veg_h[b][i] >= SH_MIN_H;
+    return i >= 0 && i < n && veg_bed_height(t, b, i) >= SH_MIN_H;
 }
 static bool sh_frond_front(const tank_t *t, int b, int i) {
-    int z = tank_veg_kind(t, b) == VEG_KIND_SWORD ? tank_decor_z(t, 0) : DECOR_Z_MIDDLE;
+    int z = tank_veg_kind(t, b) == VEG_KIND_SWORD ? tank_veg_z(t, b) : DECOR_Z_MIDDLE;
     return z == DECOR_Z_FRONT || (z == DECOR_Z_MIDDLE && (i & 1));
 }
 /* the coil's spot on a blade: the spine's x (no sway: the renderer adds it)
@@ -1435,7 +1506,7 @@ static bool sh_pick(tank_t *t, float from_x, float from_y) {
             if (!sh_frond_ok(t, b, i) || (t->sh_akind == SH_ANCHOR_BLADE && b == t->sh_bed && i == t->sh_frond)) continue;
             sh_cand_t c = { SH_ANCHOR_BLADE, sh_frond_front(t, b, i), (int8_t)b, (int8_t)i, -1, 0, 0, 1.5f };
             sh_grip(t, b, i, &c.x, &c.y);
-            float score = -tank_dist(c.x, c.y, from_x, from_y) + 60 + (t->veg_h[b][i] - SH_MIN_H) * 90 + tank_randf(t, 0, 30) - (c.front != t->sh_front ? 15 : 0);
+            float score = -tank_dist(c.x, c.y, from_x, from_y) + 60 + (veg_bed_height(t, b, i) - SH_MIN_H) * 90 + tank_randf(t, 0, 30) - (c.front != t->sh_front ? 15 : 0);
             if (!have || score > bs) { bs = score; best = c; have = true; }
         }
     }
@@ -2419,18 +2490,56 @@ float tank_calm_floor(const tank_t *t, int idx) {
     return tank_fish_comfort(t, idx) > 0 ? settle * 0.75f : settle;
 }
 
-void tank_mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
+/* A pearl mussel is sessile: it sits on the sand and filters. Every 360 s it
+ * hauls itself a short way along the sand in four discrete pulls - a quick
+ * shove, then a long pause - so it reads as a bivalve inching rather than a
+ * sprite sliding. Between pulls it is completely still.
+ *
+ * The anchor table and the 16 px displacement are a published contract:
+ * tools/test_browser.cjs taps the current stop's anchor and
+ * tools/test_renderer_stress.c walks a whole cycle. Keep the anchors and the
+ * staircase shape; the character lives in the discrete pulls and the rock. */
+typedef struct { float x, y, progress, dir, pull; } mussel_crawl_t;
+static mussel_crawl_t mussel_crawl(const tank_t *t) {
     static const float anchors[] = {.82f, .68f, .48f, .30f, .46f, .64f};
     const float interval = 360, travel = 16;
     const int stops = sizeof anchors / sizeof *anchors;
+    const int pulls = 4;                       /* four shoves per relocation */
+    const float slot = travel / pulls;         /* 4 s per pull ... */
+    const float shove = 0.7f;                  /* ... 0.7 s of effort, 3.3 s still */
     float clock = fmodf(fmaxf(t->clock, 0), interval * stops);
     int stop = (int)(clock / interval);
-    float phase = clock - stop * interval, progress = fmaxf(phase - (interval - travel), 0) / travel;
-    float ease = progress * progress * (3 - 2 * progress);
+    float phase = clock - stop * interval;
+    float progress = fmaxf(phase - (interval - travel), 0) / travel;
     float from = anchors[stop], to = anchors[(stop + 1) % stops];
-    *x = (from + (to - from) * ease) * TANK_W;
-    *crawl = progress > 0 ? to > from ? 1 : -1 : 0;
-    *y = TANK_BOT - 11 + (*crawl ? sinf(phase * 3) * .6f : 0);
+    mussel_crawl_t crawl = {0};
+    /* The staircase: each pull covers 1/pulls of the gap, then holds. x only
+     * changes during the shove, so the shell is motionless between pulls. */
+    float step = progress * pulls;
+    int done = (int)step;
+    if (done > pulls) done = pulls;
+    float within = step - done;
+    float effort = within < shove / slot ? within / (shove / slot) : 1;
+    float eased = effort * effort * (3 - 2 * effort);
+    crawl.x = (from + (to - from) * (done + eased) / pulls) * TANK_W;
+    crawl.progress = progress;
+    crawl.dir = to > from ? 1 : -1;
+    crawl.pull = effort < 1 ? effort : 0;      /* 0..1 only while shoving */
+    /* the shell lifts a hair as the foot hauls, and sits flat otherwise */
+    crawl.y = TANK_BOT - 11 - sinf(crawl.pull * 3.14159265f) * 0.9f;
+    return crawl;
+}
+void tank_mussel_pose(const tank_t *t, float *x, float *y, float *crawl) {
+    mussel_crawl_t c = mussel_crawl(t);
+    *x = c.x; *y = c.y;
+    *crawl = c.progress > 0 ? c.dir : 0;
+}
+/* The shell's rock while the foot hauls it: nose-down as it pulls, nose-up as
+ * it plants. Zero while it rests and filters. */
+float tank_mussel_rock(const tank_t *t) {
+    mussel_crawl_t c = mussel_crawl(t);
+    if (c.pull <= 0) return 0;
+    return c.dir * sinf(c.pull * 3.14159265f) * 0.35f;
 }
 
 bool tank_mussel_owned(const tank_t *t) {
@@ -2578,13 +2687,34 @@ static target_t target_for_goal(tank_t *t, int idx, goal_id_t goal) {
             float margin = 15 * f->size + 3;
             float x0 = col ? col * cell + 12 : margin;
             float x1 = col < 2 ? (col + 1) * cell - 12 : TANK_W - margin;
+            /* The vertical band is a FRACTION of the half-tank, not a fixed
+             * 42/40 px inset. Those absolute margins were tuned on the 240 px
+             * display; at 180 px they left row 0 only 48..50 - a two-pixel
+             * band - so every explore target landed in the lower half. With
+             * rest at the floor and the reef orbit at the middle, the upper
+             * half became unreachable and the school read as bottom-dwelling.
+             * The band now spans the whole water column, so explore genuinely
+             * visits the top of the tank.
+             *
+             * It is clamped to the SAME bounds the target is clamped to below.
+             * A destination outside them can never be reached, so the arrival
+             * test never fires, the fish circles one spot forever and never
+             * picks the next zone - which is how a wider band first made the
+             * explorer stall in the top row instead of visiting the tank. */
+            float half = TANK_BOT / 2.0f;
+            const float reach_lo = 23 + 9, reach_hi = TANK_H - 23;
             f->explore_x = tank_randf(t, x0, x1);
-            f->explore_y = tank_randf(t, row * (TANK_BOT / 2.0f) + 42, (row + 1) * (TANK_BOT / 2.0f) - 40);
+            f->explore_y = clampf(tank_randf(t, row * half + half * 0.12f,
+                                                (row + 1) * half - half * 0.12f),
+                                  reach_lo, reach_hi);
             f->explore_set = true;
         }
-        /* the wander wobble bends the line so it reads as a swim, not a bee-line */
+        /* the wander wobble bends the line so it reads as a swim, not a bee-line.
+         * The vertical term is deliberately smaller than the horizontal one and
+         * runs at a different rate: a wobble that swings y as hard as x makes a
+         * long fish porpoise up and down the whole way across the tank. */
         tg.x = f->explore_x + sinf(f->wander) * 18;
-        tg.y = f->explore_y + cosf(f->wander * 0.7f) * 12;
+        tg.y = f->explore_y + cosf(f->wander * 0.7f) * 6;
         break;
     }
     default: break;
@@ -2603,14 +2733,68 @@ static float wall_avoidance(const fish_t *f, float *weight) {
     float side = 15 * f->size + 6;
     if (f->x < side)          vx += 1 - f->x / side;
     if (f->x > TANK_W - side) vx -= 1 - (TANK_W - f->x) / side;
-    if (f->y < m + 6)      vy += 1 - (f->y - 6) / m;
+    /* vertical wall avoidance is gentle - fish cruise near surface and floor
+     * without constantly bobbing up and down */
+    if (f->y < m + 6)      vy += 0.4f * (1 - (f->y - 6) / m);
     float bottom = TANK_SAND_TOP - tank_fish_clearance(f);
-    if (f->y > bottom - 4) vy -= (f->y - (bottom - 4)) / m;
+    if (f->y > bottom - 4) vy -= 0.4f * (f->y - (bottom - 4)) / m;
     /* A normalized angle alone made a subpixel boundary crossing apply the
      * full steer, then remove it next frame: the fish seesawed along the edge. */
     float blend = clampf(fmaxf(fabsf(vx) * side, fabsf(vy) * m) / 4, 0, 1);
     *weight = 0.62f * blend * blend * (3 - 2 * blend);
     return blend > 0 ? atan2f(vy, vx) : 0;
+}
+
+/* A scared fish runs ALONG the glass, not into it. The radial escape from the
+ * tap has its outward component damped as the fish nears a wall, so a fish
+ * that would meet the glass square-on slides along it instead.
+ *
+ * Without this a fish tapped near the floor dives into it, the hard clamp
+ * mirrors its heading, the flee steer immediately re-aims it at the floor, and
+ * it porpoises in place - the "dolphin jumping out of water" the keeper saw.
+ * Measured on the old steer: 8 vertical reversals, 13 heading reversals and a
+ * 19.8 px single-frame teleport in 10 s of fleeing.
+ *
+ * The damping is a smooth function of distance, not a choice between
+ * candidate directions: picking the roomier perpendicular flipped from frame
+ * to frame as the fish moved and made it thrash. Damping each axis
+ * independently is continuous, so the escape curves into the wall's tangent
+ * and stays there. */
+static float flee_angle(const fish_t *f, float away) {
+    float m = 15 * f->size;
+    float left = f->x - m, right = TANK_W - m - f->x;
+    float top = f->y - fmaxf(m, tank_fish_top_clearance(f));
+    float bottom = TANK_SAND_TOP - tank_fish_clearance(f) - f->y;
+    /* 0 in open water, 1 at the glass: a full second of travel at a bolt's
+     * speed, because a fish at 72 px/s covers 72 px before it could react */
+    const float look = 90.0f;
+    float vx = cosf(away), vy = sinf(away);
+    if (vx > 0)      vx *= clampf(right / look, 0, 1);
+    else if (vx < 0) vx *= clampf(left / look, 0, 1);
+    if (vy > 0)      vy *= clampf(bottom / look, 0, 1);
+    else if (vy < 0) vy *= clampf(top / look, 0, 1);
+    /* Both components damped away means the fish is in a corner facing out:
+     * keep the escape's own sense on the roomier axis so it still bolts. */
+    if (fabsf(vx) < 0.02f && fabsf(vy) < 0.02f) {
+        if (fmaxf(left, right) >= fmaxf(top, bottom))
+            vx = right >= left ? 1.0f : -1.0f;
+        else
+            vy = bottom >= top ? 1.0f : -1.0f;
+    }
+    /* The pose clearance grows as a fish turns head-on, so a steep escape can
+     * still outrun the bound and the clamp snaps it back several pixels in one
+     * frame (measured 15.9 px mid-flee). Keep the escape shallow enough that
+     * the clearance cannot grow faster than the fish can move: a scared fish
+     * runs for open water, it does not climb the glass. */
+    float steep = 0.55f;
+    if (fabsf(vy) > fabsf(vx) * steep) {
+        float mag = sqrtf(vx * vx + vy * vy);
+        vy = copysignf(fabsf(vx) * steep, vy);
+        float len = sqrtf(vx * vx + vy * vy);
+        float keep = len > 0.001f ? mag / len : 1.0f;
+        vx *= keep; vy *= keep;
+    }
+    return atan2f(vy, vx);
 }
 
 static void eat_nearby_food(tank_t *t, fish_t *f) {
@@ -2766,7 +2950,15 @@ static void update_fish(tank_t *t, int idx, float dt) {
         float d = tank_dist(f->x, f->y, t->startle_x, t->startle_y);
         if (d < STARTLE_RADIUS * 1.6f) {
             float away = atan2f(f->y - t->startle_y, f->x - t->startle_x);
-            desired = norm_ang(desired + norm_ang(away - desired) * 0.85f);
+            /* a fish tapped dead-centre has no "away": pick a side from its
+             * own slot so it still bolts instead of sitting there */
+            if (d < 1.0f) away = (idx & 1) ? 1.5707963f : -1.5707963f;
+            away = flee_angle(f, away);
+            /* A scared fish BOLTS: the escape owns the way. Blending it 85%
+             * with the advisor's goal let a goal pointing the other way win
+             * the remainder, so the fish ran at the floor, bounced, and ran
+             * back - the "dolphin jumping out of water" the keeper saw. */
+            desired = away;
             touch_speed = lerpf(55, 90, f->bold);
         }
     } else if (idx == t->stage_fish) {
@@ -2852,15 +3044,35 @@ static void update_fish(tank_t *t, int idx, float dt) {
     /* separation - personal space. Fish are ~40 px long; the old 16 px
      * radius let four content fish stack on one landmark like a pile of
      * cards (2026-09-01). Now a body length, weighted by how close they are;
-     * a fleeing fish keeps its line. */
-    if (f->goal.id != GOAL_FLEE_SHADOW)
+     * a fleeing fish keeps its line. Jellyfish drift through each other - no
+     * separation.
+     *
+     * The old steer squashed the vertical term to 0.4 and pushed along the
+     * resulting angle, so two fish at the same height shoved each other
+     * sideways and two fish stacked vertically shoved each other up and down -
+     * the "constant up/down bobbing" the keeper saw. Now the avoidance is a
+     * LATERAL offset only: a fish steps aside in x and keeps its own y, so a
+     * school passes shoulder to shoulder instead of porpoising. The vertical
+     * term survives only when the pair is genuinely stacked (nearly the same
+     * x), where there is no lateral room to give. */
+    if (f->goal.id != GOAL_FLEE_SHADOW && f->variety != FISH_JELLYFISH)
         for (int i = 0; i < t->n_fish; i++) {
             if (i == idx) continue;
             float r = 36 * f->size;
-            if (fabsf(f->x - t->fish[i].x) >= r || fabsf(f->y - t->fish[i].y) >= r) continue;
+            if (fabsf(f->x - t->fish[i].x) >= r * 0.7f) continue;
             float d = tank_dist(f->x, f->y, t->fish[i].x, t->fish[i].y);
             if (d < r) {
-                float away = atan2f(f->y - t->fish[i].y, f->x - t->fish[i].x);
+                float dx = f->x - t->fish[i].x, dy = f->y - t->fish[i].y;
+                /* how much lateral room the pair leaves: 1 when side by side,
+                 * 0 when one is directly above the other */
+                float lateral = fabsf(dx) / fmaxf(d, 0.001f);
+                /* Step ASIDE, never reverse. A neighbour dead ahead leaves no
+                 * lateral sign to read from dx, so the side is picked from the
+                 * pair's slot order - deterministic, and it never turns the
+                 * fish round to flee a tank-mate. The vertical term only
+                 * survives when the pair is genuinely stacked. */
+                float side = fabsf(dx) > 0.5f ? copysignf(1.0f, dx) : (idx < i ? -1.0f : 1.0f);
+                float away = atan2f(dy * (1 - lateral) * 0.9f, side * fmaxf(fabsf(dx), 1.0f));
                 desired = norm_ang(desired + norm_ang(away - desired) * (0.35f + 0.5f * (1 - d / r)));
             }
         }
@@ -2882,10 +3094,18 @@ static void update_fish(tank_t *t, int idx, float dt) {
      * side to side every ~5 s. */
     const float BEHIND_BAND  = 0.15f;    /* |cos| past vertical before the way is "behind" */
     const float TURN_SETTLE  = 1.3f;     /* s after a turn before the next can begin */
+    /* A jellyfish is radially symmetric and drifts: it has no "behind", no
+     * side to present and no reason to commit a turn. Running it through the
+     * powered-fish machinery made it flip its facing every ~3 s (17 flips in
+     * 48 s measured) and swing its yaw with it, which the keeper read as the
+     * bell "rocking left and right" - and, at the glass, as walking. It keeps
+     * one facing, eases its heading toward the goal at a drift's pace, and
+     * always presents its full bell. */
+    bool jelly = f->variety == FISH_JELLYFISH;
     if (!f->facing) f->facing = cosf(f->heading) < 0 ? -1 : 1;
     bool urgent = agile || (t->ravenous && f->hunger > 6.5f) || (t->startled && touch_speed >= 55);
     float desired_cos = cosf(desired);
-    bool behind = desired_cos * f->facing < -BEHIND_BAND;
+    bool behind = !jelly && desired_cos * f->facing < -BEHIND_BAND;
     bool settling = f->behind < 0;
     if (settling) f->behind = fminf(0, f->behind + dt);
     else if (behind) f->behind += dt;
@@ -2901,16 +3121,18 @@ static void update_fish(tank_t *t, int idx, float dt) {
         f->behind = -(urgent ? 0.65f : TURN_SETTLE);
     }
     bool glancing = behind && f->behind > 0;
-    if (desired_cos * f->facing < 0)   /* on its own side until it turns */
+    if (!jelly && desired_cos * f->facing < 0)   /* on its own side until it turns */
         desired = atan2f(sinf(desired), f->facing * fabsf(desired_cos));
     /* the turn eases in and out (2026-11): the heading's angular velocity
      * ramps toward the fastest rate that can still stop on the way, so a
      * fish rolls into a curve and straightens out of it instead of snapping
-     * between full lock and none. Urgent swims ramp ~2.5x harder */
+     * between full lock and none. Urgent swims ramp ~2.5x harder. A jellyfish
+     * turns at a third of that: it is carried, not steered. */
     float err = norm_ang(desired - f->heading);
-    float turn_accel = f->turn_rate * (urgent ? 24.0f : 9.0f), brake_q = turn_accel * dt * 0.5f;
+    float turn_rate = jelly ? f->turn_rate * 0.35f : f->turn_rate;
+    float turn_accel = turn_rate * (urgent ? 24.0f : 9.0f), brake_q = turn_accel * dt * 0.5f;
     /* the fastest rate that still brakes onto the way in whole ticks */
-    float reach = fminf(f->turn_rate, sqrtf(2 * turn_accel * fabsf(err) + brake_q * brake_q) - brake_q);
+    float reach = fminf(turn_rate, sqrtf(2 * turn_accel * fabsf(err) + brake_q * brake_q) - brake_q);
     f->turn_vel += clampf(copysignf(reach, err) - f->turn_vel, -turn_accel * dt, turn_accel * dt);
     float turn = f->turn_vel * dt;
     if (turn * err > 0 && fabsf(turn) > fabsf(err)) { turn = err; f->turn_vel = dt > 0 ? err / dt : 0; }
@@ -2919,11 +3141,33 @@ static void update_fish(tank_t *t, int idx, float dt) {
      * (bolt 0.4, nori 0.7), quicker with urgency; a glance is 40% of one.
      * The tail follows the head a beat behind */
     float hc = cosf(f->heading);
-    float face = f->facing * (glancing ? 0.6f : 1.0f);
+    /* the yaw target follows the heading's cosine, so a turn rolls through
+     * head-on (yaw 0) instead of snapping the fish's facing like a paper flip.
+     * Keep a minimum side profile so narrow fish don't collapse to a sliver,
+     * and raise it while actively turning so the roll reads as 3D rather than
+     * a flat flip. Narrow varieties (jellyfish) keep more width than broad
+     * ones (shark) so their turns read as a roll, not a flattening. */
+    float turn_share = f->turn_rate > 0 ? fabsf(f->turn_vel) / f->turn_rate : 0;
+    float min_face = 0.35f + 0.35f * turn_share;
+    if (f->variety == FISH_JELLYFISH) min_face = 0.55f + 0.25f * turn_share;
+    else if (f->variety == FISH_STINGRAY || f->variety == FISH_ANGEL) min_face = 0.45f + 0.30f * turn_share;
+    float face = copysignf(fmaxf(fabsf(hc), min_face),
+                           hc != 0.0f ? hc : (float)f->facing);
+    face *= (glancing ? 0.6f : 1.0f);
+    /* A jellyfish has no side to present: its bell is radially symmetric, so
+     * rolling it with the heading only made the bell narrow and widen as it
+     * drifted - the "rocking" the keeper saw. It keeps its full width and
+     * lets the tentacles carry the motion. */
+    if (jelly) face = 1.0f;
     float yrate = f->turn_rate * 1.2f * (1 + f->goal.urgency * 0.06f) * dt;
     f->yaw += clampf(face - f->yaw, -yrate, yrate);
     f->yaw_tail += (f->yaw - f->yaw_tail) * clampf(dt * 10, 0, 1);
     float want = touch_speed >= 0 ? touch_speed : tg.speed * ugain;
+    /* A jellyfish is carried by the water, not driven by it: it never takes a
+     * fish's cruise speed toward a goal. Its own drift (below) is the motion;
+     * the goal only biases where the drift leans, so it cannot power across
+     * the tank and then orbit its target - the "walking" at the glass. */
+    if (jelly) want = fminf(want, 6.0f);
     f->target_speed = want * (f->energy < 1.2f && f->breather <= 0 ? 0.45f : 1) * (glancing ? 0.6f : 1);
     /* swimming through a canopy is slow going (a fleeing fish crashes through) */
     if (f->goal.id != GOAL_FLEE_SHADOW)
@@ -2947,26 +3191,64 @@ static void update_fish(tank_t *t, int idx, float dt) {
      * diver's small corrections at the pellet don't wait on a flip) */
     float ahc = fabsf(hc), w = clampf((ahc - 0.2f) * (1 / 0.4f), 0, 1);
     float brake = 1 - 0.6f * (1 - fabsf(f->yaw)) * ahc * w;
-    f->x += (hc + (f->yaw * ahc - hc) * w) * f->speed * brake * dt;
-    f->y += sinf(f->heading) * f->speed * brake * dt + sinf(t->clock * 1.4f + f->wander) * dt * 1.7f;
+    /* vertical squish brake: when swimming steeply up or down while head-on
+     * (yaw near 0), the body renders as a thin sliver. Ease off vertical speed
+     * so the fish keeps a side profile instead of looking squished. */
+    float avc = fabsf(sinf(f->heading));
+    float vbrake = 1 - 0.5f * (1 - fabsf(f->yaw)) * avc;
+    /* jellyfish float: gentle pulsing drift, no tail-driven thrust, rides the
+     * water with slow bobbing and a little horizontal drift instead of powered
+     * swimming */
+    if (f->variety == FISH_JELLYFISH) {
+        /* jellyfish drift: they ride the water, not power through it. The old
+         * bob was 0.1 px/s - a tenth of a pixel a second, which read as a still
+         * image. This is a real rise and sink: a slow vertical drift (~8 s) plus
+         * each bell pulse's small kick (the renderer's bell squeezes on the same
+         * `clock * 3` phase), and a lazy horizontal sway. Both terms are pure
+         * sines, so the drift is zero-mean and the animal never climbs to the
+         * surface and sticks there. It stays a velocity so the hard glass bounds
+         * still own the edges. */
+        float drift = sinf(t->clock * 0.75f + f->wander * 0.35f);   /* ~8 s rise and sink */
+        float pulse = sinf(t->clock * 3.0f + f->wander);            /* the bell's own beat */
+        float bob = drift * 9.0f + pulse * 2.0f;
+        float sway = cosf(t->clock * 0.45f + f->wander) * 3.0f;     /* ~14 s side to side */
+        /* The goal is a LEAN, not a drive: a jellyfish that powered toward its
+         * target arrived, overshot and came back, which read as walking. A
+         * small share of the heading's own speed keeps it drifting vaguely
+         * toward where it wants to be without ever committing to a course. */
+        f->x += (sway + hc * f->speed * 0.12f * brake) * dt;
+        f->y += (bob + sinf(f->heading) * f->speed * 0.12f * brake) * dt;
+        f->swim_phase += dt * (2 + f->speed * 0.015f);
+    } else {
+        f->x += (hc + (f->yaw * ahc - hc) * w) * f->speed * brake * dt;
+        f->y += sinf(f->heading) * f->speed * brake * vbrake * dt;
+    }
 
     /* hard bounds. The side glass mirrors a heading only while it points
      * INTO the glass: the facing lags the mirror, and a second bounce on the
-     * next frame would send the fish back into the glass */
+     * next frame would send the fish back into the glass.
+     *
+     * A jellyfish is not mirrored: it has no nose to turn round. Mirroring its
+     * heading at the glass made it pivot on the spot and set off again - the
+     * "walking motion" the keeper saw when one met a wall. It is simply eased
+     * back inside and its drift carries on, so it slides along the glass the
+     * way a bell does in a current. */
     float m = 15 * f->size;
 /* the bowl's glass: back onto the circle m inside it, the heading mirrored
                                                               in the glass while it points out, the body turned to swim back in */
-    if (f->x < m)          { f->x = m; f->behind = -TURN_SETTLE;
+    if (f->x < m)          { f->x = m;
+                             if (!jelly) { f->behind = -TURN_SETTLE;
                                                 if (cosf(f->heading) < 0) { f->heading = norm_ang(3.14159f - f->heading); f->turn_vel = -f->turn_vel; }
-                                                if (f->facing < 0) { f->facing = 1; f->behind = -TURN_SETTLE; } }
-    if (f->x > TANK_W - m) { f->x = TANK_W - m; f->behind = -TURN_SETTLE;
+                                                if (f->facing < 0) { f->facing = 1; f->behind = -TURN_SETTLE; } } }
+    if (f->x > TANK_W - m) { f->x = TANK_W - m;
+                             if (!jelly) { f->behind = -TURN_SETTLE;
                                                 if (cosf(f->heading) > 0) { f->heading = norm_ang(3.14159f - f->heading); f->turn_vel = -f->turn_vel; }
-                                                if (f->facing > 0) { f->facing = -1; f->behind = -TURN_SETTLE; } }
+                                                if (f->facing > 0) { f->facing = -1; f->behind = -TURN_SETTLE; } } }
     float top = fmaxf(m, tank_fish_top_clearance(f));
-    if (f->y < top)        { f->y = top; if (sinf(f->heading) < 0) { f->heading = -f->heading; f->turn_vel = -f->turn_vel; }
+    if (f->y < top)        { f->y = top; if (!jelly && sinf(f->heading) < 0) { f->heading = -f->heading; f->turn_vel = -f->turn_vel; }
                             f->y = fmaxf(f->y, tank_fish_top_clearance(f)); }
     float bottom = TANK_SAND_TOP - tank_fish_clearance(f);
-    if (f->y > bottom)     { f->y = bottom; if (sinf(f->heading) > 0) { f->heading = -f->heading; f->turn_vel = -f->turn_vel; }
+    if (f->y > bottom)     { f->y = bottom; if (!jelly && sinf(f->heading) > 0) { f->heading = -f->heading; f->turn_vel = -f->turn_vel; }
                             f->y = fminf(f->y, TANK_SAND_TOP - tank_fish_clearance(f)); }
 /* the watch's corners: back onto the arc m inside it, the heading mirrored
                                                               in the glass while it points out (the bowl's rule, a corner at a time) */

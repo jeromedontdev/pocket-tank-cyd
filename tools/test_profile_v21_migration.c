@@ -12,6 +12,9 @@
 bool weather_location_south(bool *south) { (void)south; return false; }
 
 const setup_place_snapshot_t *setup_place_original(void) { return NULL; }
+/* This suite links progression.c without setup.c: the boot hook that clears
+ * the dropped-welcome latch is a no-op here (the latch is setup.c's static). */
+void setup_boot(void) {}
 
 int main(void) {
     const char *path = getenv("POCKET_TANK_SAVE");

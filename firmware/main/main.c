@@ -9,6 +9,7 @@
 #include "esp_heap_caps.h"
 #include "esp_partition.h"
 #include "esp_system.h"
+#include "esp_random.h"
 #include "esp_memory_utils.h"
 #include "tank.h"
 #include "advisor.h"
@@ -262,12 +263,24 @@ static void sleep_button_poll(int64_t now) {
     }
 }
 
+/* A new tank's seed. esp_timer_get_time() alone is nearly the same on every
+ * cold boot (the timer starts at reset), so a keeper who wiped and rebooted
+ * drew the same founding pair - the same two names - every time. The hardware
+ * RNG is already used for aquarium IDs; mix it in so each new tank is its own.
+ * The timer stays in the mix so a board whose RNG is unavailable still varies
+ * with boot timing rather than repeating one fixed pair. */
+static uint32_t new_tank_seed(void) {
+    uint32_t r = 0;
+    esp_fill_random(&r, sizeof r);
+    return r ^ (uint32_t)esp_timer_get_time() ^ 0xC0FFEEu;
+}
+
 /* A confirmed wipe invalidates the entire profile/SD collection and clears
  * its fixed mode. Explicit user backups remain. progression_reset commits
  * the durable wipe marker before staging a new first-run pair. */
 static void reset_tank(void) {
     ESP_LOGW(TAG, "RESET: wiping the tank (%d fish) for a fresh one", tank.n_fish);
-    if (!progression_reset(&tank, (uint32_t)esp_timer_get_time() ^ 0xC0FFEEu)) {
+    if (!progression_reset(&tank, new_tank_seed())) {
         ESP_LOGE(TAG, "WIPE FAILED: tank erase or fresh save could not be persisted");
         render_backup_status("WIPE FAILED - CHECK STORAGE", false);
         if (!progression_setup_pending()) { touch_port_show_settings(true); return; }
@@ -1031,7 +1044,7 @@ void app_main(void) {
     render_set_dirty_mask(NULL);
     render_set_card_cache(NULL);
     director_init();                  /* serial scenario console (filming / bench) */
-    tank_init(&tank, (uint32_t)esp_timer_get_time() ^ 0xC0FFEEu);
+    tank_init(&tank, new_tank_seed());
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
     bool from_sleep = cause == ESP_SLEEP_WAKEUP_EXT0 || cause == ESP_SLEEP_WAKEUP_EXT1 || cause == ESP_SLEEP_WAKEUP_TIMER;
     if (from_sleep) {                        /* the night, lived through in one step */

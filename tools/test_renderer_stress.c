@@ -43,7 +43,7 @@ static void *renderer_calloc(size_t count, size_t bytes) {
 static int64_t frozen_unix = INT64_C(1792803600);
 int64_t renderer_test_now(void) { return frozen_unix; }
 
-static uint16_t frame[320 * 240], tiled[320 * 240], fish_frame[320 * 240];
+static uint16_t frame[320 * 240], tiled[320 * 240], fish_frame[320 * 240], both_frame[320 * 240];
 static uint16_t retained[320 * 240];
 static uint8_t icon_bank[128 * 1024];
 static size_t icon_bytes;
@@ -264,6 +264,7 @@ static void check_motion_cache(void) {
     }
     fprintf(stderr, "PASS: bounded snail stalk tests preserve scalar coverage and along-segment coordinates across poses and rotations\n");
     fish_t f = {0};
+    f.size = 1.0f;
     for (int i = 0; i < 100; i++) {
         f.preset = i % 3 ? i : -1;
         f.heading = (i - 50) * .13f; f.speed = i * 1.1f; f.wander = i * .17f;
@@ -281,7 +282,9 @@ static void check_motion_cache(void) {
         assert(m.body_rgb == mix(mix(f.color, 0xf25b65, f.stress / 10.0f * .22f), 0x7a8a8e, pale));
         assert(m.fin_rgb == mix(mix(f.traits & TRAIT_PAINTED_FINS ? f.accent : f.fin,
                                   0xf25b65, f.stress / 10.0f * .18f), 0x5a6a6e, pale));
-        assert(m.tail == sinf(f.swim_phase + f.wander) * (.32f + f.speed * .007f));
+        /* the beat alone: the breathing scale is applied where the caudal fan
+         * is built, so the ray and shark geometry keep their own reading */
+        assert(fabsf(m.tail - sinf(f.swim_phase + f.wander) * (.2f + f.speed * .005f)) < 0.001f);
         const float *offsets = jelly_strands(clock);
         for (int s = 0; s < JELLY_STRANDS; s++) for (int seg = 1; seg <= JELLY_SEGMENTS; seg++)
             assert(offsets[s * JELLY_SEGMENTS + seg - 1] ==
@@ -306,7 +309,8 @@ static void check_motion_cache(void) {
     }
     for (int field = 0; field < 12; field++) {
         f = (fish_t){.color = 0x123456, .fin = 0xabcdef, .accent = 0x654321,
-                     .hunger = 9, .stress = 1, .yaw = .2f, .yaw_tail = -.5f, .swim_phase = 1};
+                     .hunger = 9, .stress = 1, .yaw = .2f, .yaw_tail = -.5f, .swim_phase = 1,
+                     .size = 1.0f};
         if (field == 7) f.traits = TRAIT_PAINTED_FINS;
         (void)fish_motion(&f);
         switch (field) {
@@ -327,7 +331,7 @@ static void check_motion_cache(void) {
         float pale = (f.hunger - 7) / 3.0f * .35f;
         assert(m.yh == yaw_ease(f.yaw) && m.yt == yaw_ease(f.yaw_tail));
         assert(m.cp == cosf(tank_fish_pitch(&f)) && m.sp == sinf(tank_fish_pitch(&f)));
-        assert(m.tail == sinf(f.swim_phase + f.wander) * (.32f + f.speed * .007f));
+        assert(fabsf(m.tail - sinf(f.swim_phase + f.wander) * (.2f + f.speed * .005f)) < 0.001f);
         assert(m.body_rgb == mix(mix(f.color, 0xf25b65, f.stress / 10.0f * .22f), 0x7a8a8e, pale));
         assert(m.fin_rgb == mix(mix(f.traits & TRAIT_PAINTED_FINS ? f.accent : f.fin,
                                   0xf25b65, f.stress / 10.0f * .18f), 0x5a6a6e, pale));
@@ -805,6 +809,56 @@ static void fixture(tank_t *t, bool normal, int group) {
     }
 }
 
+static void draw_tiles(const tank_t *t, uint16_t *fb, int height);
+
+static void check_seahorse_blade_animation(void) {
+    for (int normal = 0; normal < 2; normal++) {
+        tank_t t;
+        fixture(&t, normal != 0, 0);
+        t.n_fish = 0;
+        t.sh_mode = SH_PERCH; t.sh_akind = SH_ANCHOR_BLADE;
+        t.sh_pose = SH_POSE_GRIP; t.sh_land = SH_LAND_S;
+        t.sh_bed = 3; t.sh_facing = 1; t.sh_hidden = false;
+        t.sh_vx = t.sh_vy = 0;
+        for (int detail = 0; detail < SCENE_DETAIL_COUNT; detail++) {
+            render_device_t device = {0, 0, false, -1, (uint8_t)detail};
+            render_set_device(&device);
+            int fronds = 0; tank_veg_bed(&t, 3, NULL, NULL, NULL, &fronds);
+            assert(fronds > 0);
+            for (int frond = 0; frond < fronds; frond++) {
+                float x; int segs = tank_veg_frond(&t, 3, frond, &x);
+                assert(segs > 0);
+                int y = (int)(TANK_BOT - 16 - (segs - 1) * VEG_SEG_DY * .5f);
+                t.sh_frond = (int8_t)frond;
+                float previous = seahorse_blade_lean(&t, 3, frond, y, 0);
+                for (int sample = 1; sample <= 2000; sample++) {
+                    float clock = sample * .01f;
+                    float lean = seahorse_blade_lean(&t, 3, frond, y, clock);
+                    assert(fabsf(lean - previous) < .05f);
+                    assert(fabsf(lean) <= 3);
+                    previous = lean;
+                }
+                t.sh_x = x; t.sh_y = (float)y; t.clock = detail == SCENE_ENHANCED ? .25f : .5f;
+                for (int sample = 0; sample < 3; sample++) {
+                    t.clock += sample ? .01f : 0;
+                    render_tank(&t, frame, TANK_W);
+                    draw_tiles(&t, tiled, 7);
+                    assert(!memcmp(frame, tiled, (size_t)TANK_W * TANK_H * sizeof *frame));
+                }
+            }
+            t.clock = 10;
+            assert(seahorse_clock(&t, true) == (detail == SCENE_SIMPLE ? 0 : t.clock));
+            float blade_clock = seahorse_clock(&t, true);
+            float secondary = seahorse_clock(&t, false);
+            t.clock += .04f;
+            if (detail == SCENE_SIMPLE) assert(seahorse_clock(&t, true) == blade_clock);
+            else assert(fabsf(seahorse_clock(&t, true) - blade_clock - .04f) < .001f);
+            assert(seahorse_clock(&t, false) == secondary);
+        }
+    }
+    fprintf(stderr, "PASS: sword-perched seahorse lean stays smooth across sway phases and renders identically in full/tiled frames\n");
+}
+
 static void pose(tank_t *t, int sample) {
     t->clock = 10 + sample * 0.04f;
     frozen_unix = INT64_C(1792803600) + sample;
@@ -860,6 +914,123 @@ static void check_retired_environment(void) {
     fprintf(stderr, "PASS: retired raw algae/grass never draw or mutate, full/tile pixel parity at both scales, all details and day/night\n");
 }
 
+/* The mussel's shell opens and its crawl rocks the upper valve. Both change
+ * pixels without moving x/y, so both must reach the damage comparison or a
+ * tiled frame keeps a stale shell. This walks a whole rest/travel cycle and
+ * asserts full/tile parity at every step, plus the published anchor contract
+ * the browser tap depends on. */
+static void check_mussel_animation(void) {
+    for (int normal = 0; normal < 2; normal++) {
+        tank_t t;
+        fixture(&t, normal != 0, 0);
+        t.n_fish = 0;
+        t.mussel.version = 2;
+        t.mussel.owned = (uint8_t)(1u << t.aquariums.active);
+        t.mussel.bank = 0;
+        t.mussel_glint = 0;
+        render_device_t device = {0, 0, false, -1, SCENE_BALANCED};
+        render_set_device(&device);
+        /* Independent evidence for the two reported faults, measured from the
+         * pose function and the painted pixels rather than from the formula:
+         *   (1) the shell must be STILL between pulls - a sliding sprite moves
+         *       every frame, so count how many sampled steps leave x untouched;
+         *   (2) there must be NO shadow - nothing may paint below the lower
+         *       valve's belly, and nothing outside the declared silhouette box.
+         * A formula-only assertion would happily pass a sliding or shadowed
+         * shell, so these are the checks that actually pin the complaints.
+         *
+         * (1) is measured on a separate fine sweep: the 2 s pixel loop below
+         * is far too coarse to resolve a 0.7 s shove (it lands in an effort
+         * zone half the time), so stillness is sampled at 10 ms. */
+        {
+            int travel_steps = 0, still_steps = 0;
+            float previous_x = -1;
+            for (int i = 0; i <= 216000; i++) {          /* 2160 s at 10 ms */
+                t.clock = i * 0.01f;
+                float x, y, crawl; tank_mussel_pose(&t, &x, &y, &crawl);
+                float clock = fmodf(t.clock, 2160);
+                float travel = fmaxf(clock - (int)(clock / 360) * 360 - 344, 0);
+                if (travel > 0) {
+                    travel_steps++;
+                    if (previous_x >= 0 && x == previous_x) still_steps++;
+                }
+                previous_x = x;
+            }
+            /* four 0.7 s shoves in each 16 s window: 2.8/16 = 17.5% moving */
+            assert(travel_steps > 0);
+            assert(still_steps * 4 > travel_steps * 3);   /* > 75% still */
+            fprintf(stderr, "  mussel %s: %d/%d travel samples still (%.1f%%)\n",
+                    normal ? "enlarged" : "normal", still_steps, travel_steps,
+                    100.0 * still_steps / travel_steps);
+        }
+        /* one full 2160 s cycle in 2 s steps: 344 s rest, 16 s travel, x6 */
+        for (int step = 0; step < 1080; step++) {
+            t.clock = step * 2.0f;
+            float x, y, crawl; tank_mussel_pose(&t, &x, &y, &crawl);
+            float rock = tank_mussel_rock(&t);
+            /* the anchor table and the staircase travel are a published contract:
+               four shoves per relocation, each 0.7 s of effort then 3.3 s still */
+            static const float anchors[] = {.82f, .68f, .48f, .30f, .46f, .64};
+            float clock = fmodf(t.clock, 2160);
+            int stop = (int)(clock / 360);
+            float travel = fmaxf(clock - stop * 360 - 344, 0) / 16;
+            float shoves = travel * 4;
+            int done = (int)shoves; if (done > 4) done = 4;
+            float within = shoves - done;
+            float effort = within < .175f ? within / .175f : 1;
+            float ease = effort * effort * (3 - 2 * effort);
+            float expect = (anchors[stop] + (anchors[(stop + 1) % 6] - anchors[stop]) * (done + ease) / 4) * TANK_W;
+            assert(fabsf(x - expect) < .001f);
+            assert(crawl == (travel > 0 ? (anchors[(stop + 1) % 6] > anchors[stop] ? 1 : -1) : 0));
+            assert(fabsf(rock) <= .35f + .001f);
+            if (effort >= 1) assert(rock == 0);
+            /* the shell stays on the sand: never more than ~1.2 px of heave */
+            assert(y <= TANK_BOT - 11 + .26f && y >= TANK_BOT - 12.0f);
+            /* the gape is a fixed seam the upper valve uncovers: the open
+             * amount must change pixels without ever leaving the declared
+             * silhouette box, or a tiled frame keeps a stale shell edge.
+             * The box is deliberately generous (over-inclusive damage is
+             * safe), so check the PAINTED extent against the tank and the
+             * box against the painted extent. */
+            float open = mussel_open(&t);
+            assert(open >= 0 && open <= 1);
+            float lift = open * 2.5f, tip = fabsf(rock) * 3;
+            float painted_top = y - 13 - lift;              /* upper valve's crown */
+            float painted_bottom = y + 9;                   /* lower valve's belly */
+            float painted_left = x - 19 - tip, painted_right = x + 19 + tip;
+            assert(painted_top >= 0 && painted_bottom <= TANK_BOT);
+            assert(painted_left >= 0 && painted_right <= TANK_W);
+            assert(painted_left >= x - MUSSEL_HALF_W && painted_right <= x + MUSSEL_HALF_W);
+            assert(painted_top >= y - MUSSEL_TOP && painted_bottom <= y + MUSSEL_BOTTOM);
+            render_tank(&t, frame, TANK_W);
+            draw_tiles(&t, tiled, 1 + step % 80);
+            assert(!memcmp(frame, tiled, (size_t)TANK_W * TANK_H * sizeof *frame));
+            /* (2) no shadow: the sand strictly below the lower valve's belly
+             * must be untouched. A translucent ground shadow would darken it.
+             * The belly ellipse is centred at y+3 with ry 6, so its lowest
+             * painted row is y+9; rows y+10 downward are pure sand and must
+             * match the same frame rendered with the mussel not owned. */
+            {
+                static uint16_t bare[320 * 240];
+                tank_t without = t;
+                without.mussel.owned = 0;
+                without.mussel.version = 2;
+                render_tank(&without, bare, TANK_W);
+                int left = (int)floorf(x) - MUSSEL_HALF_W, right = (int)ceilf(x) + MUSSEL_HALF_W;
+                int belly = (int)ceilf(y) + 10;
+                if (left < 0) left = 0;
+                if (right > TANK_W) right = TANK_W;
+                if (belly < 0) belly = 0;
+                if (belly > TANK_BOT) belly = TANK_BOT;
+                for (int row = belly; row < TANK_BOT; row++)
+                    for (int col = left; col < right; col++)
+                        assert(frame[row * TANK_W + col] == bare[row * TANK_W + col]);
+            }
+        }
+    }
+    fprintf(stderr, "PASS: mussel rest/travel anchors, crawl rock and open phase keep full/tile pixel parity across a whole cycle at both scales\n");
+}
+
 static int64_t tick_test_clock;
 static int64_t tick_test_now(void) { tick_test_clock += 7; return tick_test_clock; }
 static void check_tick_profile(void) {
@@ -879,17 +1050,91 @@ static void check_tick_profile(void) {
     fprintf(stderr, "PASS: simulation stage profiling preserves exact aquarium state and accounts for all three phases\n");
 }
 #endif
+/* Kelp must not paint over a piece standing in front of it (2026-11): the
+ * keeper saw a stalk's crown clipping through the top of the stone bridge.
+ * The crowns sway, so with the scene cache they are drawn live AFTER the
+ * pieces; without an occlusion mask they simply painted over the deck.
+ *
+ * Three frames make the rule measurable without depending on the scene cache:
+ * the bridge alone, the kelp alone, and both. Every pixel the bridge paints
+ * (bridge-alone differs from bare) must be identical in the both frame, so the
+ * stalk cannot show through it. The kelp must still paint where the bridge
+ * does not, or the test would pass on a stalk that never drew at all. */
+static void check_kelp_occlusion(void) {
+    for (int normal = 0; normal < 2; normal++)
+        for (int detail = 0; detail < SCENE_DETAIL_COUNT; detail++) {
+            tank_t t;
+            fixture(&t, normal != 0, 0);
+            t.n_fish = 0;
+            render_device_t device = {0, 0, false, -1, (uint8_t)detail};
+            render_set_device(&device);
+            /* the stone bridge (grand decor, SD_DECOR_FIRST + 6) standing over
+               the left stalk. It must be BEHIND: a piece IN FRONT is drawn
+               after the crowns anyway, so only a BEHIND piece exposes the bug
+               the keeper saw - the crown painting over the deck. */
+            const int bridge = SD_DECOR_FIRST + 6;
+            float kx, ky;
+            assert(tank_kelp_anchor(&t, 0, &kx, &ky));
+            t.content.owned |= (uint16_t)(1u << (bridge - SD_DECOR_FIRST));
+            tank_decor_set(&t, bridge, kx, DECOR_Z_BACK);
+            tank_t bare = t;
+            bare.foliage.planted = 0;
+            bare.content.owned &= (uint16_t)~(1u << (bridge - SD_DECOR_FIRST));
+            tank_t bridge_only = bare;
+            bridge_only.content.owned |= (uint16_t)(1u << (bridge - SD_DECOR_FIRST));
+            tank_t kelp_only = bare;
+            kelp_only.foliage.planted = (uint8_t)(1u << FOLIAGE_KELP);
+            render_tank(&bare, frame, TANK_W);
+            render_tank(&bridge_only, fish_frame, TANK_W);
+            render_tank(&kelp_only, tiled, TANK_W);
+            render_tank(&t, both_frame, TANK_W);
+            int bridge_px = 0, leaked = 0;
+            for (int i = 0; i < TANK_W * TANK_H; i++) {
+                if (fish_frame[i] != frame[i]) {
+                    bridge_px++;
+                    if (both_frame[i] != fish_frame[i]) leaked++;
+                }
+            }
+            if (leaked) {
+                fprintf(stderr, "Kelp leaks through the bridge: %d of %d bridge pixels (normal=%d detail=%d)\n",
+                        leaked, bridge_px, normal, detail);
+                int shown = 0;
+                for (int y = 0; y < TANK_H && shown < 12; y++)
+                    for (int x = 0; x < TANK_W && shown < 12; x++) {
+                        int i = y * TANK_W + x;
+                        if (fish_frame[i] == frame[i] || both_frame[i] == fish_frame[i]) continue;
+                        fprintf(stderr, "  %d,%d bare=%04x bridge=%04x kelp=%04x both=%04x covers=%d\n",
+                                x, y, frame[i], fish_frame[i], tiled[i], both_frame[i],
+                                render_piece_covers(bridge, x, y));
+                        shown++;
+                    }
+                abort();
+            }
+            /* the stalk really is on screen and really does overlap the bridge */
+            assert(bridge_px > 200);
+            /* and the kelp still paints somewhere: the bridge covers most of
+               this stalk, so count every pixel the kelp changes, not only the
+               ones outside the bridge */
+            int kelp_any = 0;
+            for (int i = 0; i < TANK_W * TANK_H; i++) if (tiled[i] != frame[i]) kelp_any++;
+            assert(kelp_any > 40);
+        }
+    fprintf(stderr, "PASS: kelp crowns are clipped by a piece in front of them at both scales and every detail\n");
+}
 static void benchmark(int frames) {
 #ifndef RENDER_BASELINE
     check_packed_spans();
     check_frame_clock();
     check_tick_profile();
+    check_seahorse_blade_animation();
     check_retired_environment();
     check_motion_cache();
     check_castle_cache();
     check_foreground_art();
     check_crown_cache();
     check_backdrop_codec();
+    check_mussel_animation();
+    check_kelp_occlusion();
     check_ornament_art();
     check_damage_merge();
     check_scenery_cadence();

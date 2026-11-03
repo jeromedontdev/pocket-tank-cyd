@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -35,6 +36,27 @@ static int child_parent = 9;
 static float wipe_left;
 static char error[128];
 void net_sim_advance(float dt);
+
+/* A new tank's seed. The simulator used a fixed 12345 everywhere, so every
+ * fresh tank - the first run, a wipe, a new aquarium - drew the same pair of
+ * names ("wasabi" and "pebble") and the same personalities. The device seeds
+ * from esp_timer_get_time(); the simulator now seeds from the clock too, so a
+ * keeper sees a different founding pair each time. Tests that need a fixed
+ * sequence call sim_seed() first.
+ *
+ * timespec_get() is C11 and Emscripten implements it, so one path serves the
+ * desktop and the browser. clock() alone starts near zero in a fresh process
+ * and time() only ticks once a second, so two launches in the same second
+ * would otherwise draw the same pair. */
+static uint32_t sim_seed_value;
+API void sim_seed(uint32_t seed) { sim_seed_value = seed; }
+static uint32_t fresh_seed(void) {
+    if (sim_seed_value) return sim_seed_value;
+    struct timespec now = {0, 0};
+    timespec_get(&now, TIME_UTC);
+    return (uint32_t)now.tv_sec ^ (uint32_t)now.tv_nsec ^
+        (uint32_t)clock() ^ (uint32_t)(uintptr_t)&tank ^ 0xC0FFEEu;
+}
 #ifdef __EMSCRIPTEN__
 static render_device_t browser_device = {0, 1, 1, -1, SCENE_BALANCED};
 static bool browser_preferences_load(void) {
@@ -142,7 +164,7 @@ API int sim_init(const void *icons, size_t size) {
     }
     memcpy(bank, icons, size); bank_size = size;
     render_set_decor_scratch(scratch);
-    tank_init(&tank, 12345);
+    tank_init(&tank, fresh_seed());
     progression_boot(&tank);
     if (!progression_storage_ready()) {
         snprintf(error, sizeof error, "Profile storage is corrupt or unreadable");
@@ -190,7 +212,7 @@ API int sim_display_brightness(void) {
 API int sim_restore(const char *json, size_t size) {
     if (!progression_restore_json(json, size, true, error, sizeof error)) return 0;
     setup_cancel(&tank);
-    tank_init(&tank, 12345); progression_boot(&tank); notice_sync(&tank);
+    tank_init(&tank, fresh_seed()); progression_boot(&tank); notice_sync(&tank);
     page = 0; selected = -1;
     return 1;
 }
@@ -285,7 +307,7 @@ API void sim_touch(float x, float y, int down) {
             if (hit && hit == render_confirm_hit(x, y) && hypotf(x - px, y - py) < 24) {
                 wipe_left = 0;
                 if (hit > 0) {
-                    if (!progression_reset(&tank, 12345)) {
+                    if (!progression_reset(&tank, fresh_seed())) {
                         fprintf(stderr, "Simulator wipe failed: erase or fresh save failed\n");
                         render_backup_status("WIPE FAILED - CHECK STORAGE", false);
                     }

@@ -1275,23 +1275,42 @@ static bool creature_buy(tank_t *t, int species, bool sandbox) {
 bool progression_creature_buy(tank_t *t, int species) {
     if (species == CREATURE_SHRIMP) {
         s_shop_notice = NULL;
-        if (!creature_trade_ready(t, false)) return false;
+        /* Creative allows free creature purchases: sandbox=true skips the
+         * Creative trade block. The shrimp's own price is already zero there
+         * (progression_item_price_for), so the wallet never moves. */
+        if (!creature_trade_ready(t, progression_creative(t))) return false;
         if (progression_creature_adults(t, species)) { s_shop_notice = "ONE SCHOOL PER TANK"; return false; }
         bool ok = progression_buy(t, 5);
-        if (ok && t->creatures.revision < UINT32_MAX) { t->creatures.revision++; mark_dirty(); }
+        /* Migrate BEFORE bumping the revision. A v0 struct with a non-zero
+         * revision fails creatures_valid (version 0 must be all-zero), which
+         * then blocks every later creature purchase in every mode. */
+        if (ok) {
+            creatures_migrate(&t->creatures, t->sd_unlocks, t->profile.paid_items);
+            if (t->creatures.revision < UINT32_MAX) t->creatures.revision++;
+            mark_dirty();
+        }
         return ok;
     }
     if (species == CREATURE_MUSSEL) {
         s_shop_notice = NULL;
-        if (!creature_trade_ready(t, false)) return false;
+        /* Same Creative exemption as the shrimp: the mussel's price is zero
+         * there, and its passive income stays disabled in Creative. */
+        if (!creature_trade_ready(t, progression_creative(t))) return false;
         if (progression_creature_adults(t, species)) { s_shop_notice = "ONE COLONY PER TANK"; return false; }
         if (t->sd_balance < progression_item_price_for(t, SD_SHOP_MUSSEL)) { s_shop_notice = "NOT ENOUGH DOUBLOONS"; return false; }
         bool ok = progression_buy(t, SD_SHOP_MUSSEL);
-        if (ok && t->creatures.revision < UINT32_MAX) { t->creatures.revision++; mark_dirty(); }
+        /* Same v0-with-revision hazard as the shrimp path above. */
+        if (ok) {
+            creatures_migrate(&t->creatures, t->sd_unlocks, t->profile.paid_items);
+            if (t->creatures.revision < UINT32_MAX) t->creatures.revision++;
+            mark_dirty();
+        }
         else if (!ok && !s_shop_notice) s_shop_notice = "SAVE FAILED - NO CREATURE BOUGHT";
         return ok;
     }
-    return creature_buy(t, species, false);
+    /* Creative mode allows free creature purchases - sandbox=true skips the
+     * Creative trade block and sets the price to zero. */
+    return creature_buy(t, species, progression_creative(t));
 }
 bool progression_creature_sale_quote(const tank_t *t, int species, bool offspring, creature_sale_t *out) {
     if (!out || offspring || !creature_traded(species) ||
@@ -1964,7 +1983,8 @@ bool progression_buy(tank_t *t, int item) {
     return ok;
 }
 bool progression_inventory_duplicate(int item) {
-    return SD_IS_NEW_DECOR(item) || item == 9 || tank_ornament_index(item) >= 0;
+    /* the sword plant (0) is duplicable too: each extra copy is its own bed */
+    return item == 0 || SD_IS_NEW_DECOR(item) || item == 9 || tank_ornament_index(item) >= 0;
 }
 static int inventory_slot(int item) {
     return tank_decor_placeable(item) ? tank_decor_slot(item) : -1;
@@ -2350,9 +2370,9 @@ void progression_market_offer(const tank_t *t, int variety, fish_market_offer_t 
 }
 const char *progression_market_status(const tank_t *t) {
     if (!t || !progression_storage_ready()) return "SAVE UNAVAILABLE";
-    if (progression_creative(t)) return "CREATIVE - USE THE SANDBOX";
     if (s_setup_pending || s_newborn >= 0) return "FINISH WELCOMING YOUR FISH";
     if (occupied_slots(t) >= POP_CAP || occupied_slots(t) >= N_FISH_MAX) return "TANK FULL - BANK OR SELL";
+    if (progression_creative(t) && occupied_slots(t) >= CREATIVE_FISH_CAP) return "LIMIT 5 FISH INCLUDING TRAVELERS";
     if (t->polish.next_id == UINT32_MAX) return "FISH IDENTITY LIMIT REACHED";
     return NULL;
 }
@@ -2377,11 +2397,14 @@ bool progression_market_buy(tank_t *t, int variety) {
     f->bold = f->bold0 = preview.bold; f->sociable = f->sociable0 = preview.sociable;
     f->trust = preview.trust; f->energy = preview.energy; f->hunger = preview.hunger;
     f->stress = preview.stress; f->curiosity = preview.curiosity;
+    f->traits = 0; f->color = preview.color; f->accent = preview.accent;
     f->ms_bits = 0;
+    fish_lineage_t *l = &t->story.active[slot];
+    l->pattern2 = 0; l->color2 = 0; l->traits = 0; l->mutation = 0;
     s_age[slot] = STAGE_ADULT_AGE; s_starve_s[slot] = 0;
     apply_growth(f);
     companion_polish_observe(t);
-    t->sd_paid_fish[slot] = 0;
+    t->sd_paid_fish[slot] = SD_PAID_JUV | SD_PAID_ADULT;
     t->sd_balance -= price;
     t->roster_gen++;
     s_arrival_pending = false; s_spawn_in = -1;
@@ -2396,7 +2419,7 @@ bool progression_market_buy(tank_t *t, int variety) {
     return true;
 }
 bool progression_fry_for_sale(const tank_t *t) {
-    return t && !progression_creative(t);
+    return t;
 }
 bool progression_fry_room(const tank_t *t) { return occupied_slots(t) < POP_CAP && occupied_slots(t) < N_FISH_MAX && s_newborn < 0; }
 int  progression_fry_left(void) { int n = 0; for (int k = 0; k < FRY_OFFER_N; k++) n += !(s_fry_sold >> k & 1); return n; }
@@ -2437,7 +2460,6 @@ int progression_fry_price(const tank_t *t, int k) {
     return progression_creative(t) ? 0 : fish_price(offer.variety, STAGE_FRY, 40, 150) + 20;
 }
 bool progression_buy_fry(tank_t *t, int k) {
-    if (progression_creative(t)) return false;
     if (!progression_fry_for_sale(t) || !s_fry_seed || k < 0 || k >= FRY_OFFER_N || (s_fry_sold >> k & 1) ||
         !progression_fry_room(t) || s_setup_pending || !progression_storage_ready() ||
         t->sd_balance < progression_fry_price(t, k)) return false;
@@ -3014,6 +3036,7 @@ void progression_slept(tank_t *t, float seconds) {
 float progression_wake(tank_t *t, int64_t now_unix) {
     int64_t saved_unix;
     s_booted = true;
+    setup_boot();          /* a reload is a new session: a dropped welcome re-offers (setup.c) */
     if (!load_save(t, &saved_unix, NULL)) {
         /* A corrupt/incompatible existing save must never be replaced by a
          * fresh tank, even when its bytes had a valid storage CRC. */

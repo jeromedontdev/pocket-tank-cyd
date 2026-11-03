@@ -6,7 +6,7 @@
 static uint16_t wardrobe_frame[320 * 240], wardrobe_reference[320 * 240];
 static bool unavailable, no_fit, color_warning;
 
-void menu_test_panel(int w, int h) { (void)w; (void)h; }
+void menu_test_panel(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; }
 void menu_test_text(int x, int y, int scale, const char *label) {
     (void)x; (void)y; (void)scale;
     if (strstr(label, "NO FIT FOR THIS TYPE")) no_fit = true;

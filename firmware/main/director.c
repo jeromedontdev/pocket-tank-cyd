@@ -190,7 +190,7 @@ static void help(void) {
     ESP_LOGI(TAG, "bright <0-255> (panel now; not saved) | level <10-100> (the keeper's setting, saved)");
     ESP_LOGI(TAG, "shop: chest (%d), shell (%d), starfish (%d), anchor (%d), buoy (%d), sand (%d), lights (%d) | style sand <0..7> | style water <0..7>",
              SD_PRICE_CHEST, SD_PRICE_SHELL, SD_PRICE_STARFISH, SD_PRICE_ANCHOR, SD_PRICE_BUOY, SD_PRICE_SAND, SD_PRICE_LIGHTS);
-    ESP_LOGI(TAG, "market (fish trading) | shop also: wreck, urn, crystal, fan, ruins, jelly | fish card <0..%d> (summary)", N_FISH_MAX - 1);
+    ESP_LOGI(TAG, "market (fish trading) | shop also: wreck, urn, crystal, fan, ruins, jelly | fish card <0..%d> (summary) | fish remove <n> (sell it now) | fish birth (force a fry)", N_FISH_MAX - 1);
     ESP_LOGI(TAG, "setup tap <x> <y> (activate the open setup page at framebuffer coordinates; same hit targets as touch)");
     ESP_LOGI(TAG, "clock | sd status | sd backup | sd backups | sd export | sd verify | sd restore|undo [number] [confirm] (JSON tank snapshots on SD)");
     ESP_LOGI(TAG, "overgrown retired | court / arrive (hardware staging disabled; use simulator)");
@@ -410,7 +410,7 @@ static void run(tank_t *t, char *line) {
         touch_port_show_life();
         render_life_market_open(0);
         ESP_LOGI(TAG, "Fish Market opened");
-    } else if (!strcmp(c, "myfish") || !strcmp(c, "fish")) {
+    } else if (!strcmp(c, "myfish")) {
         touch_port_show_life();
         render_life_fish_open(0);
         ESP_LOGI(TAG, "Fish Summary opened");
@@ -524,7 +524,7 @@ static void run(tank_t *t, char *line) {
         uint32_t rgb = strlen(argv[1]) >= 6 ? (uint32_t)strtoul(argv[1], NULL, 16) : CORAL_PAL[atoi(argv[1]) < 0 ? 0 : atoi(argv[1]) >= CORAL_N ? CORAL_N - 1 : atoi(argv[1])];
         tank_coral_set_rgb(t, rgb); progression_save(t);
         ESP_LOGI(TAG, "coral colour %06x, saved", (unsigned)tank_coral_rgb(t));
-    } else if (!strcmp(c, "fish")) {                 /* fish | fish card <n> | fish rename <n> [name] | fish sell <n>: the milestones card's buttons */
+    } else if (!strcmp(c, "fish")) {                 /* fish (list) | fish card <n> | fish rename <n> [name] | fish sell <n> | fish remove <n> | fish birth */
         int n = argc > 2 ? atoi(argv[2]) : -1;
         if (argc > 2 && (n < 0 || n >= t->n_fish)) { ESP_LOGW(TAG, "fish %d: the tank has 0..%d", n, t->n_fish - 1); return; }
         if (argc > 2 && !strcmp(argv[1], "card")) { touch_port_show_life(); render_life_fish_open(n); ESP_LOGI(TAG, "%s's summary up", t->fish[n].name); }
@@ -536,6 +536,27 @@ static void run(tank_t *t, char *line) {
         else if (argc > 2 && !strcmp(argv[1], "sell")) {
             touch_port_show_life(); render_life_market_open(n);
             ESP_LOGI(TAG, "Market opened for %s; select SELL then CONFIRM SALE", t->fish[n].name);
+        }
+        else if (argc > 2 && !strcmp(argv[1], "remove")) {   /* fish remove <n>: the sale without the taps */
+            char who[16]; snprintf(who, sizeof who, "%s", t->fish[n].name);
+            int worth = progression_fish_value(t, n);
+            if (progression_sell_fish(t, n)) {
+                progression_save(t);
+                ESP_LOGI(TAG, "fish %d (%s) sold for %d, balance %d, %d residents left, saved",
+                         n, who, worth, (int)t->sd_balance, t->n_fish);
+            } else ESP_LOGW(TAG, "fish %d (%s) not sold: keep your last pair, a fry owed, or a save in flight", n, who);
+        }
+        else if (argc > 1 && !strcmp(argv[1], "birth")) {    /* fish birth: force the arrival now */
+            if (progression_creative(t)) ESP_LOGW(TAG, "Creative mode has no births");
+            else {
+                int before = t->n_fish;
+                progression_force_arrival(t);
+                if (t->n_fish > before) {
+                    progression_save(t);
+                    ESP_LOGI(TAG, "fry born into slot %d (%s), %d residents, saved; the welcome opens",
+                             t->n_fish - 1, t->fish[t->n_fish - 1].name, t->n_fish);
+                } else ESP_LOGW(TAG, "no fry born: %s", progression_breeding_status(t));
+            }
         } else if (argc > 1 && (!strcmp(argv[1], "look") || !strcmp(argv[1], "color") ||
                    !strcmp(argv[1], "colour") || !strcmp(argv[1], "pattern") || !strcmp(argv[1], "variety"))) {
             ESP_LOGW(TAG, "Fish phenotype shortcuts unavailable; looks are bought or inherited");

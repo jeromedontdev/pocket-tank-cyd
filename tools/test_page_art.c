@@ -26,8 +26,15 @@ static const char *menu_screen;
 static int menu_errors, menu_screens, menu_width;
 static struct { int x, y, w, h; char text[128]; } menu_texts[160];
 static int menu_text_count;
-void menu_test_panel(int w, int h) {
-    if (menu_screen && w >= 300 && h >= 100) menu_text_count = 0;
+/* The last opaque panel the page drew. A menu's text must sit inside it: the
+ * BORN WITH line once ran 35 characters past both borders of the 384 px
+ * family panel, and nothing caught it because the page itself is wider. */
+static struct { int x, y, w, h; bool set; } menu_panel;
+void menu_test_panel(int x, int y, int w, int h) {
+    if (menu_screen && w >= 300 && h >= 100) {
+        menu_text_count = 0;
+        menu_panel.x = x; menu_panel.y = y; menu_panel.w = w; menu_panel.h = h; menu_panel.set = true;
+    }
 }
 void menu_test_text(int x, int y, int scale, const char *text) {
     if (!menu_screen || !*text) return;
@@ -36,10 +43,17 @@ void menu_test_text(int x, int y, int scale, const char *text) {
         fprintf(stderr, "MENU %d %s: clipped text (%d,%d %dx%d): %s\n", TANK_W, menu_screen, x, y, w, h, text);
         menu_errors++;
     }
+    if (menu_panel.set && (x < menu_panel.x || x + w > menu_panel.x + menu_panel.w)) {
+        fprintf(stderr, "MENU %d %s: text runs outside the panel (%d,%d %dx%d in %d,%d %dx%d): %s\n",
+                TANK_W, menu_screen, x, y, w, h, menu_panel.x, menu_panel.y, menu_panel.w, menu_panel.h, text);
+        menu_errors++;
+    }
     for (int i = 0; i < menu_text_count; i++) {
         if (x < menu_texts[i].x + menu_texts[i].w && x + w > menu_texts[i].x &&
             y < menu_texts[i].y + menu_texts[i].h && y + h > menu_texts[i].y) {
-            fprintf(stderr, "MENU %d %s: text overlap: %s / %s\n", TANK_W, menu_screen, menu_texts[i].text, text);
+            fprintf(stderr, "MENU %d %s: text overlap: %s (%d,%d %dx%d) / %s (%d,%d %dx%d)\n", TANK_W, menu_screen,
+                    menu_texts[i].text, menu_texts[i].x, menu_texts[i].y, menu_texts[i].w, menu_texts[i].h,
+                    text, x, y, w, h);
             menu_errors++;
         }
     }
@@ -67,7 +81,7 @@ void menu_test_paragraph(int start, int end, bool complete) {
 }
 static void menu_begin(const char *name) {
     assert(TANK_W == menu_width);
-    menu_screen = name; menu_text_count = 0;
+    menu_screen = name; menu_text_count = 0; menu_panel.set = false;
 }
 static void menu_update_tap(int x, int y) {
     update_touch(render_frame_x(x), render_frame_y(y), true);
@@ -384,17 +398,34 @@ static void check_menu_layout(const char *gallery) {
     t.n_fish = 0; render_settings_open_care();
     menu_begin("hard-recovery"); render_settings(&t, full_frame, TANK_W, 50); menu_end(gallery);
     t.n_fish = 2; t.profile.mode = GAME_MODE_NORMAL;
-    setup_begin_birth(&t, 0);
-    for (int p = 0; p < SETUP_BIRTH_PAGES && setup_active(); p++) {
-        render_tank(&t, full_frame, TANK_W);
-        snprintf(name, sizeof name, "birth-%d", setup_page()); menu_begin(name);
-        render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery);
-        int pg = setup_page(), x = pg == SETUP_PG_BORN ? SETUP_MID_X :
-            pg == SETUP_PG_NAME_NEW ? SETUP_TOP_NEXT_X : SETUP_NEXT_X;
-        setup_activate(&t, setup_hit(render_frame_x(x + 10),
-            render_frame_y((pg == SETUP_PG_NAME_NEW ? SETUP_TOP_BTN_Y : SETUP_BTN_Y) + 10)));
+    /* the birth flow's family page, every branch: a bred fry carrying hidden
+       alleles and a birth mutation, a bred fry whose parents have been sold,
+       and a shop fry with no lineage at all */
+    t.story.version = 1;
+    t.polish.active[0].id = 11; t.polish.active[1].id = 12;
+    static const struct { const char *tag; fish_lineage_t line; } birth_cases[4] = {
+        {"birth", {.parent = {11, 12}, .generation = 2, .pattern2 = 3, .color2 = 2, .traits = 0x31,
+                   .mutation = GENE_MUTANT_PATTERN | GENE_MUTANT_TRAIT | GENE_MUTANT_COLOR}},
+        {"birth-one", {.parent = {12, 0}, .generation = 2, .pattern2 = 3, .color2 = 2, .traits = 0x31}},
+        {"birth-sold", {.parent = {900, 901}, .generation = 3}},
+        {"birth-shop", {0}},
+    };
+    t.fish[0].traits = 0x01;
+    for (int c = 0; c < 4; c++) {
+        t.story.active[0] = birth_cases[c].line;
+        setup_begin_birth(&t, 0);
+        for (int p = 0; p < SETUP_BIRTH_PAGES && setup_active(); p++) {
+            render_tank(&t, full_frame, TANK_W);
+            snprintf(name, sizeof name, "%s-%d", birth_cases[c].tag, setup_page()); menu_begin(name);
+            render_setup(&t, full_frame, TANK_W, 0); menu_end(gallery);
+            int pg = setup_page(), x = pg == SETUP_PG_BORN ? SETUP_MID_X :
+                pg == SETUP_PG_NAME_NEW ? SETUP_TOP_NEXT_X : SETUP_NEXT_X;
+            setup_activate(&t, setup_hit(render_frame_x(x + 10),
+                render_frame_y((pg == SETUP_PG_NAME_NEW ? SETUP_TOP_BTN_Y : SETUP_BTN_Y) + 10)));
+        }
+        setup_cancel(&t);
     }
-    setup_cancel(&t);
+    t.story.active[0] = (fish_lineage_t){0};
     net_port_creds_forget();
     update_wifi_begin(); menu_begin("wifi-scan-busy");
     render_update(full_frame, TANK_W, 0); menu_end(gallery);
@@ -557,8 +588,40 @@ static void check_inventory_ui(void) {
         render_tile(0, 0);
         t.n_fish = residents;
     }
+    /* The sword plant is duplicable: buy a second copy, plant it, and confirm
+       the shop reports two placed and the placement page targets the copy. */
     render_shop_leave();
-    puts("Shop: first purchase, Buy/Place, removed-control dead zones, movement-screen removal to storage, confirmed sale, Back disarms sale, mussel payout and tiled UI parity.");
+    assert(progression_buy(&t, 0));
+    assert(progression_inventory_placed(&t, 0) == 1);
+    assert(progression_inventory_buy(&t, 0));
+    assert(progression_inventory_place(&t, 0));
+    assert(progression_inventory_placed(&t, 0) == 2);
+    int sword_copy = -1;
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++) if (t.inventory.extra[i].item == 1) sword_copy = i;
+    assert(sword_copy >= 0);
+    assert(tank_veg_extra_bed(&t, sword_copy) == 4);
+    assert(tank_veg_beds(&t) == VEG_BEDS_MAX + 1);
+    setup_begin_extra_place(&t, sword_copy);
+    assert(setup_is_place() && setup_item() == 0 && !setup_place_original());
+    /* the copy's own canopy is a real bed, so the placement page's hit box
+       (place_touch_top_copy) follows the copy rather than the primary */
+    float copy_top, primary_top;
+    tank_veg_bed(&t, 4, NULL, NULL, &copy_top, NULL);
+    tank_veg_bed(&t, 3, NULL, NULL, &primary_top, NULL);
+    assert(copy_top < TANK_BOT && primary_top < TANK_BOT);
+    setup_cancel(&t);
+    /* the copy's own inventory page renders and tiles like the primary's */
+    render_shop_leave();
+    g_inventory_item = 0;
+    render_shop(&t, full_frame, TANK_W);
+    for (int y = 0; y < TANK_H; y++) {
+        render_tile(y, 1); render_shop(&t, tile_frame + 1, TANK_W);
+        assert(!memcmp(tile_frame + 1, full_frame + y * TANK_W, TANK_W * 2));
+    }
+    render_tile(0, 0);
+    g_inventory_item = -1;
+    render_shop_leave();
+    puts("Shop: first purchase, Buy/Place, removed-control dead zones, movement-screen removal to storage, confirmed sale, Back disarms sale, mussel payout, duplicable sword plant and tiled UI parity.");
 }
 
 static void check_font_coverage(void) {

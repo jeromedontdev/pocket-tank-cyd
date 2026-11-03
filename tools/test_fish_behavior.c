@@ -66,6 +66,7 @@ static void test_rest_arrival_and_turn_continuity(void) {
         int flips = 0;
         int8_t previous_facing = f->facing;
         float max_step = 0;
+        float yaw_lo = f->yaw, yaw_hi = f->yaw;
         for (int i = 0; i < 250; i++) {
             float x = f->x, y = f->y;
             tank_tick(&t, 0.04f, hold_goal);
@@ -73,12 +74,25 @@ static void test_rest_arrival_and_turn_continuity(void) {
             if (step > max_step) max_step = step;
             if (f->facing != previous_facing) flips++;
             previous_facing = f->facing;
+            if (f->yaw < yaw_lo) yaw_lo = f->yaw;
+            if (f->yaw > yaw_hi) yaw_hi = f->yaw;
         }
-        assert(flips >= 1 && flips <= 2);
+        if (variety == FISH_JELLYFISH) {
+            /* A jellyfish is radially symmetric: it has no side to present, so
+             * it never flips its facing and never rolls its bell. Running it
+             * through the powered-fish turn machinery flipped it every ~3 s
+             * (17 flips in 48 s measured) and swung the yaw with it, which the
+             * keeper read as the bell rocking left and right - and, at the
+             * glass, as walking. */
+            assert(flips == 0);
+            assert(yaw_hi - yaw_lo < 0.001f);
+            assert(fabsf(f->yaw - 1.0f) < 0.001f);
+        } else {
+            assert(flips >= 1 && flips <= 2);
+        }
         assert(max_step < 2.0f);
     }
 }
-
 static void test_rest_step_sizes(void) {
     tank_t fine, coarse;
     one_fish(&fine, 713, 0, 0.55f, 0.45f);
@@ -315,6 +329,46 @@ static void test_tap_and_enrichment_reactions(void) {
     assert(shy.fish[0].stress > bold.fish[0].stress);
     assert(shy.fish[0].trust < bold.fish[0].trust);
 
+    /* The scare is a BOLT, not a porpoise (2026-11). The keeper saw a tapped
+     * fish "jump out of the water like a dolphin": the escape was blended 85%
+     * with the advisor's goal, so a goal pointing at the floor won the
+     * remainder, the fish dived, the hard clamp mirrored its heading and the
+     * flee steer re-aimed it at the floor. Measured on the old steer: 8
+     * vertical reversals, 13 heading reversals and a 19.8 px single-frame
+     * teleport in 10 s of fleeing. Now the escape owns the way and is damped
+     * toward the wall's tangent, so the fish runs a line. */
+    {
+        tank_t t;
+        one_fish(&t, 41, 3, 0.5f, 0.4f);
+        fish_t *f = &t.fish[0];
+        f->x = 120; f->y = 95;
+        f->heading = 0; f->speed = f->target_speed = 20;
+        f->goal.id = GOAL_EXPLORE;
+        tank_fish_face(f);
+        for (int i = 0; i < 3; i++) tank_touch_tap(&t, 120, 95);
+        assert(t.startled);
+        float px = f->x, py = f->y, ldx = 0, ldy = 0, max_step = 0, max_dist = 0;
+        int xrev = 0, yrev = 0;
+        for (int i = 0; i < 250; i++) {          /* 10 s at 40 ms */
+            tank_tick(&t, 0.04f, hold_goal);
+            float dx = f->x - px, dy = f->y - py;
+            float step = hypotf(dx, dy);
+            if (step > max_step) max_step = step;
+            float d = tank_dist(f->x, f->y, 120, 95);
+            if (d > max_dist) max_dist = d;
+            if (dx * ldx < 0 && fabsf(dx) > 0.002f && fabsf(ldx) > 0.002f) xrev++;
+            if (dy * ldy < 0 && fabsf(dy) > 0.002f && fabsf(ldy) > 0.002f) yrev++;
+            if (fabsf(dx) > 0.002f) ldx = dx;
+            if (fabsf(dy) > 0.002f) ldy = dy;
+            px = f->x; py = f->y;
+        }
+        assert(yrev <= 4);
+        assert(xrev <= 5);
+        assert(max_step < 8.0f);
+        /* and it actually bolted away from the tap before the spook wore off */
+        assert(max_dist > 60);
+    }
+
     one_fish(&plain, 51, 4, 0.5f, 0.3f);
     one_fish(&enriched, 51, 4, 0.5f, 0.3f);
     plain.fish[0].goal.id = enriched.fish[0].goal.id = GOAL_EXPLORE;
@@ -407,6 +461,209 @@ static void test_fluid_motion(void) {
         assert(top_speed <= top_target + 0.001f);
     }
 }
+
+/* The tail breathes: the caudal web's fan is `spread + tail * 8`, and the
+ * breathing term swings `tail` far past the beat's own range, so the fan
+ * crosses zero - the web's top and bottom vertices meet and the fin collapses
+ * to a sliver. This drives the REAL renderer through a whole breath cycle and
+ * measures the drawn web, so removing the floor fails here rather than
+ * passing on a restated formula. */
+static void test_tail_breathing_fan(void) {
+    static uint16_t base[320 * 480], frame[320 * 480];   /* the largest framebuffer */
+    for (int variety = 0; variety < FISH_VARIETY_COUNT; variety++) {
+        if (variety == FISH_JELLYFISH || variety == FISH_STINGRAY) continue;   /* no caudal web */
+        for (int grown = 0; grown < 2; grown++) {
+            tank_t t;
+            memset(&t, 0, sizeof t);
+            tank_init(&t, 4242);
+            tank_make_fish(&t, 0, 0, 0.5f, 0.5f, STAGE_ADULT);
+            t.n_fish = 1;
+            fish_t *f = &t.fish[0];
+            f->variety = (uint8_t)variety;
+            f->size = grown ? 1.23f : 1.0f;
+            f->x = TANK_W * 0.5f; f->y = TANK_H * 0.45f;
+            f->heading = 0; f->speed = f->target_speed = 40;
+            f->hunger = 4; f->stress = 0; f->energy = 8;
+            f->goal.id = GOAL_EXPLORE;
+            tank_fish_face(f);
+            /* the same tank with no fish: water and scenery are not fish pixels */
+            tank_t empty = t; empty.n_fish = 0;
+            render_tank(&empty, base, TANK_W);
+            /* The caudal web sits behind the body: the columns left of
+             * x - 9 are the fin alone (the body starts around x - 7). */
+            int up = 0, down = 0, span_lo = 9999, span_hi = -1;
+            /* The breath is sin(wander * 1.65), so one breath cycle needs
+             * wander to sweep 2*pi/1.65 ~= 3.81. 320 samples at 0.0982 covers
+             * ~8.25 cycles: enough to land on both the top and the bottom of
+             * the breath. A shorter sweep misses the bottom entirely. */
+            for (int k = 0; k < 320; k++) {
+                f->wander = k * 0.0982f;
+                f->swim_phase = 0;
+                memset(frame, 0, sizeof frame);
+                render_tank(&t, frame, TANK_W);
+                int k_up = 0, k_down = 0;
+                for (int y = 0; y < TANK_H; y++)
+                    for (int x = 0; x <= (int)f->x - 9; x++)
+                        if (frame[y * TANK_W + x] != base[y * TANK_W + x]) {
+                            int d = y - (int)f->y;
+                            if (d < 0 && -d > k_up) k_up = -d;
+                            if (d > 0 && d > k_down) k_down = d;
+                        }
+                if (k_up > up) up = k_up;
+                if (k_down > down) down = k_down;
+                int span = k_up + k_down;
+                if (span < span_lo) span_lo = span;
+                if (span > span_hi) span_hi = span;
+            }
+            /* The web is drawn on BOTH sides of the centre line, and it never
+             * collapses to a sliver at the bottom of the breath. */
+            assert(up > 2 && down > 2);
+            assert(span_lo >= 3);
+            /* And it breathes: the web opens and closes over the cycle. The
+             * shark's heterocercal web sweeps rather than fans (both of its
+             * vertices shift together), so its span is steady by design. */
+            if (variety != FISH_SHARK) assert(span_hi - span_lo >= 5);
+        }
+    }
+}
+/* Jellyfish float (2026-11): the keeper asked for more bobbing. The old bob
+ * was 0.1 px/s - a tenth of a pixel a second, which read as a still image.
+ * The drift is now a real rise and sink. It must stay a zero-mean velocity
+ * (so the animal never climbs to the surface and sticks there) and it must
+ * actually move the animal several pixels over a breath. */
+/* Explore must reach the whole tank (2026-11): the keeper reported the school
+ * "preferring the bottom and middle". The explore band used absolute 42/40 px
+ * insets, which were tuned on the 240 px display; at 180 px they left row 0 a
+ * two-pixel band, so every explore target landed in the lower half. With rest
+ * at the floor and the reef orbit at the middle, the upper half was
+ * unreachable. This samples the real target function at both scales and
+ * requires the upper half to be used. */
+static void test_explore_reaches_the_upper_half(void) {
+    for (int compact = 0; compact < 2; compact++) {
+        tank_t t;
+        one_fish(&t, 4242, 0, 0.5f, 0.4f);
+        tank_resolution(compact != 0);
+        fish_t *f = &t.fish[0];
+        f->goal.id = GOAL_EXPLORE;
+        f->explore_set = false;
+        f->hunger = 4; f->energy = 8; f->stress = 0; f->curiosity = 8;
+        int upper = 0, lower = 0, top_band = 0;
+        float lo = TANK_H, hi = 0;
+        for (int i = 0; i < 400; i++) {
+            f->explore_set = false;                 /* force a fresh pick */
+            tank_tick(&t, 0.04f, hold_goal);
+            float y = f->explore_y;
+            if (y < lo) lo = y;
+            if (y > hi) hi = y;
+            if (y < TANK_BOT / 2.0f) upper++; else lower++;
+            /* the top quarter of the water column, where the old absolute
+               insets left only a two-pixel band at 180 px */
+            if (y < TANK_BOT * 0.25f) top_band++;
+        }
+        /* both halves get used, and the picks span most of the water column */
+        fprintf(stderr, "  explore %s: upper=%d lower=%d top=%d span=%.1f lo=%.1f hi=%.1f (TANK_BOT=%.0f)\n",
+                compact ? "240" : "320", upper, lower, top_band, hi - lo, lo, hi, (double)TANK_BOT);
+        assert(upper > 40 && lower > 40);
+        /* The picks must span most of the REACHABLE water column. The target
+         * clamp is 32..157 of 180 px, so 69% is the physical maximum; the old
+         * absolute insets reached only 42..140 (54%) and left the top of the
+         * tank unused, which is the bottom-dwelling the keeper reported. */
+        assert(hi - lo > TANK_BOT * 0.65f);
+        /* the top quarter is a real destination, not a sliver */
+        assert(top_band > 25);
+        /* and the very top of the reachable water is used */
+        assert(lo < TANK_BOT * 0.20f);
+        /* and no pick lands above the glass or below the sand line */
+        assert(lo > 0 && hi <= TANK_BOT);
+    }
+    tank_resolution(false);
+}
+
+static void test_jellyfish_float(void) {
+    tank_t t;
+    one_fish(&t, 4242, 0, 0.5f, 0.4f);
+    fish_t *f = &t.fish[0];
+    f->variety = FISH_JELLYFISH;
+    f->x = TANK_W * 0.5f; f->y = TANK_H * 0.45f;
+    f->heading = 0; f->speed = f->target_speed = 0;
+    f->goal.id = GOAL_REST;
+    tank_fish_face(f);
+    /* hold the goal so the advisor never steers it away from the float */
+    float lo = f->y, hi = f->y, prev = f->y, max_step = 0;
+    int reversals = 0; float last_dy = 0;
+    for (int i = 0; i < 1200; i++) {          /* 48 s at 40 ms */
+        tank_tick(&t, 0.04f, hold_goal);
+        if (f->y < lo) lo = f->y;
+        if (f->y > hi) hi = f->y;
+        float step = fabsf(f->y - prev);
+        if (step > max_step) max_step = step;
+        float dy = f->y - prev;
+        /* a real bob reverses direction repeatedly; a one-way climb does not */
+        if (dy * last_dy < 0 && fabsf(dy) > 0.002f && fabsf(last_dy) > 0.002f) reversals++;
+        if (fabsf(dy) > 0.002f) last_dy = dy;
+        prev = f->y;
+    }
+    /* it floats: several pixels of rise and sink over the window */
+    assert(hi - lo >= 4.0f);
+    /* and it never teleports: the bob is a velocity, so a 40 ms frame moves it
+     * a fraction of a pixel, not a jump */
+    assert(max_step < 1.0f);
+    /* the drift is zero-mean, so the animal rises and sinks repeatedly instead
+     * of climbing to the surface and staying there */
+    assert(reversals >= 4);
+}
+
+/* Separation is lateral (2026-11): the keeper saw fish "constantly bobbing up
+ * and down" dodging each other. The old steer squashed the vertical term to
+ * 0.4 and pushed along the resulting angle, so two fish at the same height
+ * shoved each other sideways and two stacked vertically shoved each other up
+ * and down. Now a fish steps aside in x and keeps its own y unless the pair is
+ * genuinely stacked. */
+static void test_separation_is_lateral(void) {
+    /* Two fish cruising the same horizontal line, one just ahead of the other.
+     * The control is the SAME fish swimming the same goal with no neighbour: if
+     * separation is lateral only, the pair's y trajectories stay close to the
+     * solo one while their x trajectories diverge. A vertical shove would show
+     * up as a y divergence. */
+    tank_t pair, solo;
+    one_fish(&pair, 5150, 0, 0.5f, 0.4f);
+    tank_make_fish(&pair, 1, 1, 0.5f, 0.5f, STAGE_ADULT);
+    pair.n_fish = 2;
+    for (int i = 0; i < 2; i++) {
+        fish_t *f = &pair.fish[i];
+        f->variety = FISH_CLASSIC;
+        f->goal.id = GOAL_EXPLORE;
+        f->explore_set = true;
+        f->explore_x = TANK_W * 0.85f;
+        f->explore_y = TANK_H * 0.45f;
+        f->speed = f->target_speed = 18;
+        f->hunger = 5; f->energy = 8; f->stress = 0;
+        f->x = TANK_W * 0.35f + i * 22; f->y = TANK_H * 0.45f;
+        f->heading = 0;
+        tank_fish_face(f);
+    }
+    solo = pair;
+    solo.n_fish = 1;
+    float max_dx = 0, prev_y = pair.fish[0].y, last_dy = 0;
+    int reversals = 0;
+    for (int i = 0; i < 60; i++) {
+        tank_tick(&pair, 0.04f, hold_goal);
+        tank_tick(&solo, 0.04f, hold_goal);
+        float dx = fabsf(pair.fish[0].x - solo.fish[0].x);
+        if (dx > max_dx) max_dx = dx;
+        /* "constant up and down" is repeated y reversals, not one correction */
+        float dy = pair.fish[0].y - prev_y;
+        if (dy * last_dy < 0 && fabsf(dy) > 0.002f && fabsf(last_dy) > 0.002f) reversals++;
+        if (fabsf(dy) > 0.002f) last_dy = dy;
+        prev_y = pair.fish[0].y;
+    }
+    /* the neighbour pushed it aside in x ... */
+    assert(max_dx > 4.0f);
+    /* ... without porpoising up and down around it. A single correction as the
+     * fish steps aside is fine; repeated reversals are the bug the keeper saw. */
+    assert(reversals <= 2);
+}
+
 static void test_reef_rhythm(void) {
     tank_t t, control;
     one_fish(&t, 981, 0, .5f, .5f);
@@ -522,6 +779,52 @@ static void test_seahorse_open_water(void) {
     puts("PASS: seahorse cruises upright without anchors, rests in water at night, finds sword, recovers after removal and prioritizes a held finger");
 }
 
+/* The sword plant is duplicable: the primary is bed 3 and every extra copy the
+ * keeper placed is a bed of its own, with its own x, depth and sway phase. */
+static void test_sword_plant_copies(void) {
+    tank_t t;
+    one_fish(&t, 995, 0, .5f, .5f);
+    assert(tank_veg_beds(&t) == VEG_BEDS_MAX - 1);          /* no plant yet: only the three grass beds */
+    t.sd_unlocks |= SD_ITEM_PLANT;
+    tank_veg_sync(&t);
+    assert(tank_veg_beds(&t) == VEG_BEDS_MAX);              /* the primary alone */
+    assert(tank_veg_bed_extra(&t, 3) == -1);
+    assert(tank_veg_kind(&t, 3) == VEG_KIND_SWORD);
+    assert(tank_veg_kind(&t, 0) == VEG_KIND_GRASS);
+    float x0, x1, top; int n = 0;
+    tank_veg_bed(&t, 3, &x0, &x1, &top, &n);
+    assert(n == 4 && x1 > x0 && top < TANK_BOT);
+    /* two extra copies, each its own bed */
+    t.inventory.extra[0] = (inventory_extra_t){ .item = 1, .z = DECOR_Z_BACK, .rank = DECOR_SLOTS, .x = 60 };
+    t.inventory.extra[1] = (inventory_extra_t){ .item = 1, .z = DECOR_Z_FRONT, .rank = DECOR_SLOTS + 1, .x = 300 };
+    assert(tank_veg_beds(&t) == VEG_BEDS_MAX + 2);
+    assert(tank_veg_bed_extra(&t, 4) == 0 && tank_veg_bed_extra(&t, 5) == 1);
+    assert(tank_veg_extra_bed(&t, 0) == 4 && tank_veg_extra_bed(&t, 1) == 5);
+    assert(tank_veg_z(&t, 4) == DECOR_Z_BACK && tank_veg_z(&t, 5) == DECOR_Z_FRONT);
+    float cx0, cx1; int cn = 0;
+    tank_veg_bed(&t, 4, &cx0, &cx1, NULL, &cn);
+    assert(cn == 4 && cx0 < x0);                            /* the copy stands where it was planted */
+    tank_veg_bed(&t, 5, &cx0, &cx1, NULL, &cn);
+    assert(cn == 4 && cx0 > x1);
+    /* a copy is a real seahorse perch, and it is the copy's own blade */
+    assert(tank_veg_frond(&t, 4, 0, NULL) > 0 && tank_veg_frond(&t, 5, 3, NULL) > 0);
+    /* depth ordering follows the copy's own lane, not the primary's */
+    t.plant_z = DECOR_Z_MIDDLE;
+    assert(tank_veg_above(&t, 4, 2) == (tank_decor_z(&t, 2) > DECOR_Z_BACK));
+    /* storing the primary leaves the copies standing */
+    t.sd_unlocks &= ~SD_ITEM_PLANT;
+    assert(tank_veg_beds(&t) == VEG_BEDS_MAX - 1 + 2);
+    assert(tank_veg_bed_extra(&t, 3) == 0 && tank_veg_bed_extra(&t, 4) == 1);
+    tank_veg_bed(&t, 3, &cx0, &cx1, NULL, &cn);
+    assert(cn == 4);
+    /* and removing them all returns to the bare three beds */
+    memset(t.inventory.extra, 0, sizeof t.inventory.extra);
+    assert(tank_veg_beds(&t) == VEG_BEDS_MAX - 1);
+    tank_veg_bed(&t, 3, &cx0, &cx1, NULL, &cn);
+    assert(cn == 0);
+    puts("PASS: the sword plant is duplicable - each extra copy is its own bed with its own x, depth and perch");
+}
+
 static void test_variety_pair_guard(void) {
     tank_t t, before;
     tank_init(&t, 984);
@@ -566,6 +869,7 @@ int main(int argc, char **argv) {
     assert(!ferror(icons) && fclose(icons) == 0);
     for (int enlarged = 0; enlarged <= 1; enlarged++) {
         tank_resolution(enlarged != 0);
+        test_sword_plant_copies();
         test_variety_pair_guard();
         test_seahorse_open_water();
         test_rest_arrival_and_turn_continuity();
@@ -573,6 +877,10 @@ int main(int argc, char **argv) {
         test_edge_steering_continuity();
         test_surface_cruising_without_seesaw();
         test_fluid_motion();
+        test_tail_breathing_fan();
+        test_jellyfish_float();
+        test_explore_reaches_the_upper_half();
+        test_separation_is_lateral();
         test_food_dive_and_personality();
         test_sand_target_offsets();
         test_close_dive_threshold();

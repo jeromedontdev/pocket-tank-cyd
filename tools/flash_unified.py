@@ -72,6 +72,9 @@ def main():
     parser.add_argument("--hardware", choices=("cyd", "elegoo"), required=True)
     parser.add_argument("--image", type=Path, required=True)
     parser.add_argument("--backup", type=Path, required=True)
+    # Some boards drop bytes on the 460800 read; a slower rate is still a full,
+    # validated dump, so the rate is a transport detail, not a safety bypass.
+    parser.add_argument("--baud", type=int, default=460800)
     args = parser.parse_args()
     image = args.image.read_bytes()
     validate_image(image)
@@ -109,7 +112,7 @@ def main():
 
     def tool(*parameters):
         subprocess.run([sys.executable, "-m", "esptool", "--chip", "esp32",
-                        "--port", args.port, "--baud", "460800", *map(str, parameters)], check=True)
+                        "--port", args.port, "--baud", str(args.baud), *map(str, parameters)], check=True)
 
     hardware = BOARDS[args.hardware].identity
     with connect() as port:

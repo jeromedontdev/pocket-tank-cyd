@@ -31,12 +31,23 @@
  * (progression_newborn), setup_poll_birth opens three pages over the live
  * tank - A NEW FRY! (the announcement: the fry ringed wherever it hatched,
  * its parents named), NAME THE NEW FRY (the QWERTY keyboard, as in the first
- * run) and the family page (a panel: the fry's portrait on its own, as it
- * is now; whose body and whose markings it wears; its boldness and
- * sociability on bars between its parents' marks). No colour picker - a
- * fry's look is its family's (tank_add_fish). DONE clears the debt and
- * saves the name; a cancel (director `setup off`, sim S) leaves it owed, so
- * it returns at the next boot. */
+ * run) and the family page (a panel: the fry's portrait on its own, as it is
+ * now; the marking and traits it shows, the alleles it only carries, and its
+ * boldness and sociability on bars between its parents' marks). No colour
+ * picker - a fry's look is its family's (tank_add_fish). DONE clears the debt
+ * and saves the name; a cancel (director `setup off`, sim S) leaves it owed,
+ * so it returns at the next boot.
+ *
+ * The family page describes the allele model, not a split inheritance: since
+ * inherit() (tank.c) took over, a fry draws one marking allele and one body
+ * allele from each parent, shows the higher-ranked marking, may blend the two
+ * bodies, and keeps the loser as a hidden allele (pattern2/color2) that can
+ * pass to its own fry. Recessive traits need two copies, so one copy is
+ * carried and not shown. A birth mutation (GENE_MUTANT_*) is called out in
+ * gold. Where it came from is read from the story tail (generation and the
+ * parents' life identities), never from the slot links, which a sale or a
+ * Fish Bank trip clears. */
+
 /* PLACE A PIECE (2026-09-16, Strato: a bought plant or decoration "should
  * allow the player to place the piece wherever they like ... similar to the
  * bubble column placement experience", plus a z-layer): one page over the
@@ -71,6 +82,10 @@ int  setup_poll_birth(tank_t *t);
  * the flow opens after): the notices wait for it (2026-09-29). A welcome the
  * director dropped is not due - it returns at the next boot. */
 bool setup_birth_due(void);
+/* a reload starts a new session: forget that a welcome was offered and
+ * dropped, so the debt re-offers. Called from progression_wake, the one boot
+ * path shared by a cold boot, a deep-sleep wake and the simulator. */
+void setup_boot(void);
 void setup_begin_place(tank_t *t, int item);   /* the placement page for SD item `item` (placeable ones only) */
 typedef struct {
     int item;
@@ -201,17 +216,22 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
 #define SETUP_SW_X  ((PAGE_W - (SETUP_SW_N - 1) * SETUP_SW_PX - SETUP_SW_W) / 2)
 #define SETUP_SW_Y  176
 #define SETUP_ACC_Y 276
-/* the family page (birth flow): the portrait ringed under the name, then
- * four rows - BODY / MARKINGS (a swatch, whose it is), BOLD / SOCIAL (a bar
- * of the fry's own, the parents' ticks in their body colours) - and a
- * PARENTS legend naming both in their tick colours; BACK + DONE at the foot */
+/* the family page (birth flow): the portrait ringed under the name, an
+ * optional gold "NEW ..." line naming what the birth mutated, then five rows
+ * of what the fry actually is - COLOR (its body swatch), MARKING (its accent
+ * swatch and the marking it shows), TRAITS (the recessive traits it shows),
+ * CARRIES (the hidden marking/colour alleles and the traits it only carries)
+ * and PARENTS (both named in their own body colours); BACK + DONE at the
+ * foot. Five rows at 25 px from SETUP_FAM_ROW_Y end at 260, clear of the
+ * buttons at 288. The old BOLD/SOCIAL bars are gone: they were personality
+ * drives, not inheritance, and read as unexplained ratings. */
 #define SETUP_FAM_PORTRAIT_Y (SETUP_Y + 78)
+#define SETUP_FAM_MUT_Y      (SETUP_Y + 106)
 #define SETUP_FAM_ROW_Y      (SETUP_Y + 128)
-#define SETUP_FAM_ROW_DY     26
-#define SETUP_FAM_LABEL_X    (SETUP_X + 28)
-#define SETUP_FAM_VALUE_X    (SETUP_X + 150)
-#define SETUP_FAM_BAR_W      200
-#define SETUP_FAM_BAR_H      8
+#define SETUP_FAM_ROW_DY     25
+#define SETUP_FAM_LABEL_X    (SETUP_X + 20)
+#define SETUP_FAM_VALUE_X    (SETUP_X + 108)
+#define SETUP_FAM_LIST_CHARS 22   /* a scale-1 value line inside the panel (240 px is binding) */
 /* the placement page's DEPTH control (second design, 2026-09-16 - Strato:
  * "initially i thought 'back' button referred to menu navigation .. the
  * z-layer targeting and buttons are a bit ambiguous"): ONE outlined bar of

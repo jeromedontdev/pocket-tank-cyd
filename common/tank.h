@@ -255,9 +255,11 @@ typedef struct {
     uint32_t color, fin, accent;
     uint8_t variety, pattern, wearable, wear_colors;
     /* family (2026-09-14, the birth flow): the slots of the two fish it
-     * inherited from - its body colour is parent_a's, its markings (accent)
-     * parent_b's, bold / sociable the pair's average with a nudge. -1 = one
-     * of the founding pair (or an older save). Saved per fish. */
+     * inherited from, for the birth pages' parent ticks. These are roster
+     * links, not the record: tank_remove_fish and the Fish Bank clear them to
+     * -1, so a fry whose parents were sold reads as -1/-1. The authoritative
+     * parents are story.active[slot].parent[] (life identities) with
+     * generation; -1 here means a founder or an older save. Saved per fish. */
     int8_t parent_a, parent_b;
     uint8_t traits;         /* TRAIT_* shown (1.3 genetics); mirrors story.active[slot].traits & 15 */
 } fish_t;
@@ -501,6 +503,10 @@ typedef struct { float x, y, vy, wobble; bool column; } bubble_t;
 #define DECOR_SLOTS (DECOR_FIXED_SLOT0 + DECOR_FIXED_COUNT)
 #define DECOR_INVENTORY_CAP 64
 #define DECOR_EXTRA_CAP 8
+/* The live bed count can exceed the SAVED bed count: the sword plant is
+ * duplicable, and each extra copy is a bed of its own (index VEG_BEDS_MAX + n)
+ * whose geometry comes from the authored profile, not from veg_h[][]. */
+#define VEG_BEDS_ALL (VEG_BEDS_MAX + DECOR_EXTRA_CAP)
 typedef struct {
     uint8_t item, z, paid, rank; /* item = SD item ID + 1; zero is unused */
     float x;
@@ -1076,6 +1082,9 @@ bool  tank_item_in_tank(const tank_t *t, int item);            /* decor placed o
 int   tank_fish_comfort(const tank_t *t, int fish_idx);         /* +1 favorite present, -1 missing */
 float tank_calm_floor(const tank_t *t, int fish_idx);           /* the stress trust lets it settle to */
 void  tank_mussel_pose(const tank_t *t, float *x, float *y, float *crawl);
+/* -1..1 shell lean while the foot drags it; 0 while it rests and filters.
+ * The x/y/crawl contract above is mirrored in tools/test_browser.cjs. */
+float tank_mussel_rock(const tank_t *t);
 bool  tank_mussel_owned(const tank_t *t);
 bool  tank_interest_spot(const tank_t *t, int fish_idx, float *x, float *y);
 void  tank_rest_spot(const tank_t *t, int fish_idx, float *x, float *y);
@@ -1094,6 +1103,11 @@ extern const uint32_t LOOK_ACCENT[LOOK_N];
 #define FISH_COLOR_N 24
 extern const uint32_t FISH_BODY_COLORS[FISH_COLOR_N];
 extern const uint32_t FISH_MARKING_COLORS[FISH_COLOR_N];
+/* the body palette's names, index-aligned with FISH_BODY_COLORS. The birth
+ * flow's family page prints one beside the COLOR swatch so "BORN WITH: BODY
+ * COLOR" can say which colour; tank_body_index() maps an inherited RGB back to
+ * its nearest entry. */
+extern const char *const FISH_BODY_COLOR_NAMES[FISH_COLOR_N];
 void  tank_set_name(tank_t *t, int slot, const char *name);
 /* a fresh suggestion from the name pool (never a roster name, never a tankmate's) */
 const char *tank_suggest_name(const tank_t *t, int slot, uint32_t salt);
@@ -1186,6 +1200,12 @@ enum { SD_PAID_JUV = 1u << 0, SD_PAID_ADULT = 1u << 1, SD_PAID_ELDER = 1u << 2, 
  * every loop over beds runs to this. tank_veg_kind is the species (render). */
 int   tank_veg_beds(const tank_t *t);
 veg_kind_t tank_veg_kind(const tank_t *t, int b);
+/* The sword plant is duplicable: bed 3 is the primary, and each placed extra
+ * copy is a bed of its own (VEG_BEDS_MAX..). These map between the two. */
+int   tank_veg_bed_extra(const tank_t *t, int b);   /* the copy behind bed b, -1 = primary/absent */
+int   tank_veg_extra_bed(const tank_t *t, int copy);/* the bed an extra copy stands in, -1 = none */
+int   tank_veg_z(const tank_t *t, int b);           /* a bed's depth lane */
+bool  tank_veg_above(const tank_t *t, int b, int item); /* is `item` drawn in front of bed b? */
 /* the purchases land: the sword plant at VEG_START on the open floor; the
  * snail on the glass, bottom left */
 void  tank_plant_place(tank_t *t);

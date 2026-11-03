@@ -71,6 +71,17 @@ old bullets only as history and evidence.
   live particles.
 - Collections: finding every mutation of a variety awards a gold statue that
   can be displayed in the tank (`tank_story_t` collection/statue bits).
+- The birth flow's family page (`common/setup.c`, `SETUP_PG_FAMILY`) describes
+  the allele model, not a split inheritance: MARKING and TRAITS are what the
+  fry shows, CARRIES is the hidden `pattern2`/`color2` and the recessive
+  alleles it only holds, and a gold `BORN WITH:` line names a
+  `GENE_MUTANT_*` birth roll. Where it came from is read from
+  `story.active[slot]` (generation plus the parents' life identities via
+  `companion_story_name`), never from `fish_t.parent_a/parent_b`: a sale or a
+  Fish Bank trip clears those slot links, so a bred fry whose parents left
+  used to read as a shop purchase. `fam_origin()` is the single classifier;
+  `test_page_art.c` walks a bred, a one-parent, a sold-parent and a shop fry
+  at both scales.
 
 ### Contracts and auctions (`common/progression.c` trade block)
 
@@ -138,6 +149,147 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
+- Latest local COM4 app (duplicable sword plant, kelp crown occlusion fix,
+  explore-band depth fix) is 1,812,464 bytes / 154,304 OTA-slot bytes free,
+  SHA256
+  `b9f693a1af7002d658df3188152dea14bbb36c7e95ac39d9248c5589face538f`.
+  Full backup `backup-com4-swordcopies-20261103.bin`, detected `ota_0`
+  app-only write, exact readback and reboot-surviving profile check passed.
+  The 460800-baud full read dropped bytes on this board twice, so
+  `tools/flash_unified.py` now takes `--baud` (default 460800); the 115200
+  dump is a complete, validated 4 MiB image and every safety check is
+  unchanged. COM4 dropped off the USB bus after the verified flash, so the
+  post-flash serial soak was not repeated for this image.
+- The sword plant (SD item 0) is duplicable: `progression_inventory_duplicate`
+  now accepts it, and each extra copy is its own veg bed. `tank_veg_beds`
+  returns `VEG_BEDS_MAX - 1 + sword_beds(t)`, so bed 3 is the primary and
+  beds 4.. are the copies in `inventory.extra[]` order; `tank_veg_bed_extra`,
+  `tank_veg_extra_bed`, `tank_veg_z` and `tank_veg_above` map between them.
+  A copy carries its own x, depth lane and rank, so it sorts against other
+  decor by its own lane rather than the primary's. `VEG_SEED` widened to
+  `VEG_BEDS_ALL` with `veg_seed_of(b)` so copies do not sway in lockstep, and
+  the damage tracker's frond table widened to match. `draw_inventory_extras`
+  skips item 0 (the bed draws it), and `setup.c`'s `place_touch_top_copy`
+  makes the placement hit box follow the copy's own canopy. No save layout
+  changed: the copies reuse the existing `inventory.extra[]` slots.
+- Kelp crowns were still clipping the stone bridge: `kelp_span` indexed the
+  occlusion mask from the span's start while `kelp_row_mask` builds it from
+  the sprite's left edge, so every span after the first was shifted. It now
+  takes a `skip` and shifts the mask. `pc_row_bits` also returned 0 for a
+  piece with no cached art (a grand piece, or any live piece), so a bridge
+  drawn live never clipped the crowns; it now falls back to
+  `ornament_pixel`. `test_renderer_stress.c::check_kelp_occlusion` fails on
+  both bugs.
+- Fish depth preference was an explore-band bug, not the plants: the old
+  absolute 42/40 px insets left row 0 only a 2-pixel band at 180 px, so every
+  explore target landed in the lower half. `target_for_goal`'s `GOAL_EXPLORE`
+  now clamps `explore_y` to the reachable span, and
+  `test_fish_behavior.c::test_explore_reaches_the_upper_half` asserts
+  upper/lower balance, top-quarter usage and the reachable span.
+- Earlier local COM4 app (birth/family page with the COLOR row and the
+  "BORN WITH:" mutation line, `fish remove`/`fish birth` director commands,
+  tail-breath web, mussel crawl) is 1,808,048 bytes / 158,032 OTA-slot bytes
+  free, SHA256
+  `7ea8bf6bc3a39e67c20e1ad9652efe0bdba80ffbaa57567b5d871a98751b54d1`.
+  Full backup `backup-com4-birthgen-20261102-125333.bin`, detected `ota_0`
+  app-only write and esptool hash verification passed. The family page now
+  leads with a COLOR row (16x16 body swatch plus the nearest
+  `FISH_BODY_COLOR_NAMES` entry) above MARKING/TRAITS/CARRIES/PARENTS, and
+  the gold mutation line reads `BORN WITH: MARKING+TRAIT+COLOR` - the
+  retired BOLD/SOCIAL bars stay gone. `fish remove 4` sold skipper, then
+  clove and ripple, and `fish birth` produced maple (SHARK / STRIPES); the
+  birth flow was walked on the device (MEET IT -> name NEXT -> family DONE)
+  and DONE paid the welcome, so the roster is bolt/pip/kelp/odie/maple with
+  no sale lock. `tools/test_page_art.py` passes all 555 screens including
+  the four birth cases; the gallery captures at 240 and 320 show every row
+  fitting. No native gcc/clang is installed here - the page-art runner needs
+  `--cc <zig>` (`pip install ziglang`). This is a local image identity only;
+  no commit, release or Pages publication was made.
+  Rebuilt and reflashed 2026-11-02 after the BORN WITH and mussel fixes: same
+  1,808,048 bytes / 158,032 free / SHA256 `7ea8bf6b...51b54d1`, `ota_0`
+  app-only write, esptool hash verified. Boot log clean: 0 `E (` lines,
+  hardware profile cyd2432s028 saved, CYD touch calibration loaded, Wi-Fi up,
+  weather OK in 1769 ms, tank task up at 77 KB internal heap. Warmed-up
+  display windows 17.4 / 17.8 / 16.9 / 17.6 fps (p95 <= 66 ms, render ~44 ms,
+  flush ~5 ms). Verified over serial only; the webcam was not used.
+- BORN WITH overflow (2026-11-02): the family page's gold line was
+  `BORN WITH: MARKING, TRAIT AND COLOR`, 35 characters. At 240 px scale-1
+  text advances 12 px a character, so it measured 418 px and ran past both
+  borders of the 384 px panel (32..416). The list now joins with `+`, giving
+  `BORN WITH: MARKING+TRAIT+COLOR` at exactly 30 characters / 358 px,
+  centred at 45..403. The guard is real, not a comment: `render.c`'s
+  `rect_fill`/`page_backdrop` now pass their rect to `menu_test_panel`, and
+  `tools/test_page_art.c`'s `menu_test_text` asserts every menu string sits
+  inside the last opaque panel. Reverting the string to the comma form makes
+  `test_page_art.py` fail with `MENU 240 birth-9: text runs outside the panel
+  (15,122 418x15 in 32,16 384x326)`, so the regression cannot come back
+  silently. `test_companion_feedback.c` and `test_wardrobe.c` carry the
+  matching 4-argument stub.
+- Pearl mussel (2026-11-02): the crawl is a staircase, not a smoothstep. Each
+  360 s relocation is four shoves of 0.7 s effort then 3.3 s still, so the
+  shell is motionless 82.5% of its travel window and x only changes during a
+  shove. The heave is `sinf(pull*pi)*0.9` - zero at both ends of every shove,
+  so there is no discontinuity at a pull boundary (the old
+  `sinf(phase*3)*.6` jumped). The shell opens by lifting its upper valve
+  2.5 px off a fixed-size, fixed-alpha seam; the old translucent ellipse
+  whose radius tracked the gape read as a pulsing shadow and is gone. Both
+  `tools/test_renderer_stress.c::check_mussel_animation` and
+  `tools/test_browser.cjs` encode the staircase formula and were updated;
+  the stress test also asserts the painted silhouette stays in the tank and
+  inside the declared `MUSSEL_HALF_W`/`MUSSEL_TOP`/`MUSSEL_BOTTOM` box. The
+  C and JS formulas were cross-checked numerically over the whole 2160 s
+  cycle at 10 ms steps: max difference 0, zero reversals within each travel
+  window, and each window lands exactly on its anchor. The 281 distinct x
+  values inside a travel window are the smooth 0.7 s shove itself (4 px of
+  eased travel); x is bit-identical across every 3.3 s hold. No shadow
+  ellipse remains anywhere: all four draw sites (tank, shop row, shop modal,
+  info card) route through the one fixed-seam `draw_pearl_mussel`.
+  Verification 2026-11-02: `test_page_art.py` 555 screens both scales,
+  `test_renderer_stress.py --frames 1200 --seconds 30`, `test_browser.cjs`
+  (run with `--edge`; Playwright's bundled Chromium dirs are empty here),
+  plus fish_behavior/creative/profiles/ambient/companion_feedback/tank_backup/
+  rpg/cyd_display/cyd_settings/weather/cyd_touch_defaults/cyd_sd_init/
+  profile_storage all exit 0, and `python -m unittest discover -s tools`
+  ran 44 tests OK (1 skipped). The panel guard was proved by temporarily
+  restoring the comma form and watching `test_page_art.py` fail with the
+  exact 418 px overflow, then reverting.
+  The mussel test now measures the two reported faults directly instead of
+  only re-encoding the formula. `check_mussel_animation` runs a separate
+  10 ms pose sweep over the whole 2160 s cycle and asserts the shell is still
+  for more than 75% of its travel window - measured 7914/9594 = 82.5% at both
+  scales. It also renders each frame twice, once with the mussel owned and
+  once not, and asserts every sand row strictly below the lower valve's belly
+  (y+10 downward) is byte-identical, so a translucent ground shadow cannot
+  return. Both guards were proved by temporary probes: replacing the staircase
+  with smooth `progress` travel trips the stillness assertion, and re-adding a
+  gape-tracking shadow ellipse trips the sand assertion. The probes were
+  reverted and all three touched sources verified byte-identical to their
+  pre-probe backups. The rebuilt image is the same 1,808,048 bytes and SHA256,
+  so the device already carries it and no reflash was needed.
+  Final 2026-11-02 confirmation: all 16 C runners exit 0 (page_art,
+  fish_behavior, creative, profiles, ambient, companion_feedback, tank_backup,
+  rpg, cyd_display, cyd_settings, weather, cyd_touch_defaults, cyd_sd_init,
+  profile_storage, wardrobe, reef_progression), `unittest discover` 44 OK
+  (1 skipped), `test_browser.cjs --edge` PASS, `git diff --check` clean.
+  Live COM4 over serial: 0 `E (` lines, 26.5-27.0 fps, p95 <= 44 ms,
+  render ~26 ms, flush ~3 ms. The gallery was regenerated (625 screens, up
+  from 555) and `menu-birth-9-240.png` inspected directly: the gold line
+  reads `BORN WITH: MARKING+TRAIT+COLOR` and sits fully inside the panel
+  border on both sides, with COLOR/MARKING/TRAITS/CARRIES/PARENTS rows below
+  it. Verified over serial and the renderer gallery only; the webcam was not
+  used.
+- Previous local COM4 app (dropped-welcome latch, Creative free purchases,
+  mussel crawl/breath, fish-turn and tail-breathing work) is 1,804,752 bytes /
+  161,328 OTA-slot bytes free, SHA256
+  `68388203a938d0a6ddefe3510a2141e7653e8a96c5e04504ed9507aeb1d69c96`.
+  Full backup `backup-com4-post-latch-creative-20261102.bin`, detected `ota_0`
+  app-only write and a byte-exact 1,966,080-byte readback passed. `.bss` 62,870
+  / `.data` 360,087. Residents bolt/pip/kelp/odie plus the new skipper fry,
+  wallet 5715, clock settings and the nursery bed survived; `persist: saved in
+  200-213 ms`. Settled live FPS 13.5-13.8, p95 <= 80 ms, render ~60 ms, flush
+  ~5 ms. All 34 `tools/test_*.py` runners, `--flat-edges`, renderer stress,
+  market-only, trade-only, 44 Python unit tests and sim smoke pass. This is a
+  local image identity only; no commit, release or Pages publication was made.
 - Final local 2.4.1 COM4 app is 1,803,760 bytes / 162,320 OTA-slot bytes free,
   SHA256 `82be06f384797f6c078e2a52a225d66b33e980b618ac7b06f4d37fac08bb250b`.
   Full backup `identity-polish-com4-20261030-122559-backup.bin`, detected
@@ -597,6 +749,17 @@ old bullets only as history and evidence.
   the saved active aquarium. Never treat v2 owned as a boolean for drawing.
   Inventory/mussel native regressions now run in the default backup test runner,
   not just its previously separate --inventory-only executable selector.
+  The mussel's shell opens and its crawl rocks the upper valve; both change
+  pixels without moving x/y, so both must reach the damage comparison in
+  `render_tank` or a tiled frame keeps a stale shell. Its silhouette box is
+  `MUSSEL_HALF_W/TOP/BOTTOM` in render.c, shared by the draw cull, damage rect
+  and dynamic rect; the base ellipse reaches y+12 when fully open, so a y+10
+  bottom bound leaves a stale row. `check_mussel_animation` in
+  test_renderer_stress.c walks a whole 2160 s rest/travel cycle at both scales
+  and pins the anchor table and smoothstep travel that test_browser.cjs uses to
+  derive its tap coordinate. Keep the x formula exactly; crawl character lives
+  in y and `tank_mussel_rock`. The whole y motion stays inside the 2 px sand
+  band test_page_art.c asserts.
   User physically confirmed v2.3.7 touch and trophies fixed; ELEGOO dimness was
   identified as reflective screens/poor viewing angles, not backlight duty.
 - 2.3.7 starts new aquariums with companion trophy decor disabled in all modes.
@@ -744,6 +907,14 @@ old bullets only as history and evidence.
   Non-fry pending birth welcomes retire on load/poll without changing fish.
   Welcome and birth completion save transactionally; failure keeps UI open
   with a retry banner instead of silently leaving a persistent old flag.
+  A dropped birth welcome stays dropped for the session but re-offers at the
+  next boot: `setup.c`'s `s_birth_offered` is the session latch, and
+  `progression_wake` calls `setup_boot()` to clear it on every reload (cold
+  boot, deep-sleep wake, simulator boot). `setup_poll_birth` retires an
+  obsolete debt (the fry grew up while the welcome was dropped) BEFORE the
+  "already offered" test, or the latch would match forever and leave
+  `s_newborn` set, blocking breeding for the rest of the session.
+  `test_birth_welcome_latch` in test_tank_backup.c pins both halves.
   In 2.3.0-2.3.7, claiming all three tasks unlocked a profile-wide pearl mussel;
   2.3.8 makes it a shop resident with automatic payout: one coin
   per 600 healthy live seconds, max 15/day with pending coins retained on failure,
@@ -855,6 +1026,16 @@ old bullets only as history and evidence.
   counter. Keep the frozen 6008-byte/schema-16 prefix; no additional NVS/PSRAM is needed.
   Creative unlocks choices without fabricated XP/wallet, permits free fish
   additions (five including travelers) and confirmed removals (keep two).
+  Every Market purchase is free in Creative - fish, fry and all five creatures
+  (shrimp school, snail, urchin, seahorse, pearl mussel) - while the
+  one-per-tank creature limit and the five-fish cap still apply. The shrimp and
+  mussel have their own branches in `progression_creature_buy`; both must pass
+  `progression_creative(t)` as `creature_trade_ready`'s `sandbox` argument, and
+  both must call `creatures_migrate` BEFORE bumping `creatures.revision`. A v0
+  creature struct with a non-zero revision fails `creatures_valid` (version 0
+  must be all-zero), which then blocks every later creature purchase in every
+  mode. `test_fish_market.c` buys each creature in Creative and then the next
+  one, so the ordering cannot regress silently.
   Hard permits online starvation deaths only: never offline or old-age deaths.
   Surface risks, death/save errors and recovery explicitly; keep death and
   recovery transactional and do not reward removals.
@@ -959,6 +1140,33 @@ old bullets only as history and evidence.
   5.5, urgent 10) that never overshoots or goes negative. `test_fluid_motion`
   requires turn jerk <0.7 and speed jerk <0.35; the old bang-bang/lerp logic fails.
   Measured on COM4, this is FPS-neutral; keep any change to it FPS-neutral too.
+- Fish presentation must not read as "constant up and down" (keeper, 2026-11).
+  Three rules keep it calm, and each has a regression test:
+  - The BODY's tilt is capped by the variety's length (`tank_fish_pitch`):
+    shark 1.35, classic 1.15, stingray 1.10, jellyfish 0.95, others 1.0. A long
+    fish's nose swings twice as far as a tetra's at the same angle, so the same
+    steering that reads as a gentle rise on a round fish reads as a plunge on a
+    long one. The path still climbs and dives as the steering asks; only the
+    body's presentation flattens. The cache key includes `variety`.
+  - Separation is LATERAL. A fish steps aside in x and keeps its own y; the
+    vertical term survives only when the pair is genuinely stacked (nearly the
+    same x). A neighbour dead ahead picks its side from slot order and never
+    reverses the fish. `test_separation_is_lateral` compares a pair against a
+    solo control and requires x divergence with no repeated y reversals.
+  - The explore wobble's vertical term is 6 px against 18 px horizontal, at a
+    different rate, so a long fish doesn't porpoise across the tank.
+- Jellyfish float, not swim: no tail thrust and no separation. The bob is a
+  zero-mean velocity - a ~8 s vertical drift (9 px/s) plus the bell's own pulse
+  (2 px/s on the renderer's `clock * 3` phase) and a ~14 s horizontal sway
+  (3 px/s). The old 0.1 px/s bob read as a still image. Keep it a velocity so
+  the hard glass bounds still own the edges; `test_jellyfish_float` requires
+  >=4 px of travel, sub-pixel steps and repeated reversals.
+- The caudal web "almost shrinks and grows" (keeper, 2026-11): the breath scales
+  BOTH the fan's height and its reach, at `sin(wander * 1.65)` - about 4.5 s per
+  breath. The old `wander * 0.2` took ~37 s and read as a still image. It must
+  stay a SCALE, never an additive term on the fan's axis: an additive term drove
+  `spread + tail * 8` through zero and collapsed the fin to a sliver.
+  `test_tail_breathing_fan` drives the real renderer through the cycle.
 - Decoration placement: layer steps/text consider only overlapping pieces;
   mirror is rank bit 7 (`DECOR_RANK_MIRROR`, sprite items only, no save-layout
   change) and must be masked wherever ranks are compared. The placed piece is
