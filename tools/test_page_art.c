@@ -408,7 +408,7 @@ static void check_menu_layout(const char *gallery) {
                    .mutation = GENE_MUTANT_PATTERN | GENE_MUTANT_TRAIT | GENE_MUTANT_COLOR}},
         {"birth-one", {.parent = {12, 0}, .generation = 2, .pattern2 = 3, .color2 = 2, .traits = 0x31}},
         {"birth-sold", {.parent = {900, 901}, .generation = 3}},
-        {"birth-shop", {0}},
+        {"birth-shop", {{0}, 0, 0, 0, 0, 0, 0}},
     };
     t.fish[0].traits = 0x01;
     for (int c = 0; c < 4; c++) {
