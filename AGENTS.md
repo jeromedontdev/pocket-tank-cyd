@@ -149,17 +149,22 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
-- Latest local COM4 app (duplicable sword plant, kelp crown occlusion fix,
-  explore-band depth fix) is 1,812,464 bytes / 154,304 OTA-slot bytes free,
-  SHA256
-  `b9f693a1af7002d658df3188152dea14bbb36c7e95ac39d9248c5589face538f`.
-  Full backup `backup-com4-swordcopies-20261103.bin`, detected `ota_0`
+- Latest local COM4 app (duplicable sword plant with copy-aware depth and
+  ordering, kelp crown occlusion fix, explore-band depth fix) is 1,814,016
+  bytes / 152,576 OTA-slot bytes free, SHA256
+  `df43f1277ca0354d95f058be3da1ba8e16c1a60872ffc39b93900e65bf642d4e`.
+  Full backup `backup-com4-sworddepth-20261103.bin`, detected `ota_0`
   app-only write, exact readback and reboot-surviving profile check passed.
+  Boot log clean: 0 `E (` lines, hardware profile cyd2432s028 saved, CYD touch
+  calibration loaded, Wi-Fi up, time set from the internet, SD mounted, tank
+  task up at 76 KB internal heap, `persist: saved in 209 ms`. The original
+  five residents (bolt/pip/kelp/odie/maple) and wallet 6065 loaded intact.
   The 460800-baud full read dropped bytes on this board twice, so
   `tools/flash_unified.py` now takes `--baud` (default 460800); the 115200
   dump is a complete, validated 4 MiB image and every safety check is
-  unchanged. COM4 dropped off the USB bus after the verified flash, so the
-  post-flash serial soak was not repeated for this image.
+  unchanged. COM4 drops off the USB bus for a while after a flash and
+  re-enumerates as `USB-SERIAL CH340 (COM4)`; poll `Win32_PnPEntity` rather
+  than `Win32_SerialPort`, which can miss it.
 - The sword plant (SD item 0) is duplicable: `progression_inventory_duplicate`
   now accepts it, and each extra copy is its own veg bed. `tank_veg_beds`
   returns `VEG_BEDS_MAX - 1 + sword_beds(t)`, so bed 3 is the primary and
@@ -176,6 +181,24 @@ old bullets only as history and evidence.
   paints at its own x in its own depth lane, full and tiled, at both scales
   and every detail - a copy that only existed in the simulation would pass
   every `tank.c` test and still be invisible on the device.
+- A sword-plant copy weaves AMONG the fish like the primary, so its placement
+  page offers all three depths. `tank_decor_copy_z_count/_at/_index` are the
+  copy-aware forms (a copy of item 0 gets `DECOR_Z_N`, every other copy keeps
+  its item's two); `setup.c` uses them for the depth bar, its hit box and
+  `setup_place_animated_rect`, and `placed_set` stores MIDDLE for a copy that
+  offers it. `inventory_valid` accepts `DECOR_Z_MIDDLE` only for `item == 1`
+  (the sword plant's stored id), so no other copy can smuggle in a third lane.
+  `draw_inventory_extras(c, t, -1)` draws any copy in the AMONG lane after the
+  front pass; the plant itself is skipped there because `draw_veg` owns it.
+- A copy's order arrows work too: `tank_decor_copy_neighbor` and
+  `tank_decor_copy_shift` order a copy against the primary, the other copies
+  and the ordinary pieces it overlaps at its own depth, using
+  `inventory_extra_t.rank` (bit 7 stays MIRROR). A copy neighbour is named
+  `DECOR_COPY_REF + index` so it cannot collide with an item id;
+  `DECOR_IS_COPY_REF`/`DECOR_COPY_OF` decode it and `place_piece_name` names
+  it. `test_setup_placement.c::test_sword_copy_depth_bar_and_arrows` walks all
+  three segments, both arrows and a save/reload of the AMONG lane;
+  `test_fish_behavior.c::test_sword_copy_depth_and_order` covers the API.
 - Kelp crowns were still clipping the stone bridge: `kelp_span` indexed the
   occlusion mask from the span's start while `kelp_row_mask` builds it from
   the sprite's left edge, so every span after the first was shifted. It now

@@ -4847,10 +4847,14 @@ static void draw_tank_mussel(ctx_t *c, const tank_t *t) {
         }
     }
 }
+/* `depth` < 0 draws every copy whose depth is not BACK or FRONT - the sword
+ * plant's AMONG lane, which the veg passes handle for the plant itself but
+ * which must still be honoured for any other copy that stores it. */
 static void draw_inventory_extras(ctx_t *c, const tank_t *t, int depth) {
     for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
         const inventory_extra_t *copy = &t->inventory.extra[i];
-        if (!copy->item || copy->z != depth) continue;
+        if (!copy->item) continue;
+        if (depth >= 0 ? copy->z != depth : (copy->z == DECOR_Z_BACK || copy->z == DECOR_Z_FRONT)) continue;
         int item = copy->item - 1;
         if (item == 0) continue;                    /* a sword-plant copy is its own veg bed (draw_veg) */
         int x = (int)copy->x - tank_ornament_w(item) / 2;
@@ -6456,6 +6460,7 @@ static void draw_simple_scene(const tank_t *t, uint16_t *fb, int stride, float d
     for (int i = 0; i < t->n_fish; i++) draw_fish(&c, t, &t->fish[i]);
     draw_surface_floats(&c, t, DECOR_Z_FRONT);
     draw_inventory_extras(&c, t, DECOR_Z_FRONT);
+    draw_inventory_extras(&c, t, -1);              /* any copy in the AMONG lane */
     draw_tank_mussel(&c, t);
     PROF_ADD(4, p0);
     PROF_ADD(6, p0);
@@ -6691,6 +6696,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
     if ((t->sd_unlocks & SD_ITEM_SEAHORSE) && t->sh_x >= 0 && t->sh_front) draw_seahorse(&c, t);   /* the seahorse's front lane (its rect is marked above) */
     { int kc = pc_index(2); if (kc >= 0 && g_pc[kc].z == DECOR_Z_FRONT) arch_shade(&c, kc, g_pc[kc].cx, t->night, true); }   /* the tunnel through a castle IN FRONT: shaded, whatever passes it */
     draw_inventory_extras(&c, t, DECOR_Z_FRONT);
+    draw_inventory_extras(&c, t, -1);              /* any copy in the AMONG lane */
     LIVE_FLOATS(DECOR_Z_FRONT)
 #undef LIVE_FLOATS
     if (render_clock_us) {

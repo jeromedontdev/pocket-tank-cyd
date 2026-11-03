@@ -2022,7 +2022,10 @@ static bool inventory_valid(const inventory_state_t *v) {
         if (!e->item) {
             if (e->paid || e->rank || e->z || e->x != 0) return false;
         } else if (!progression_inventory_duplicate(e->item - 1) ||
-                   (e->z != DECOR_Z_BACK && e->z != DECOR_Z_FRONT) ||
+                   /* a sword-plant copy weaves AMONG the fish like the primary,
+                      so it may store MIDDLE; every other copy is BACK or FRONT */
+                   (e->z != DECOR_Z_BACK && e->z != DECOR_Z_FRONT &&
+                    !(e->item == 1 && e->z == DECOR_Z_MIDDLE)) ||
                    e->paid > 1 || !isfinite(e->x) || e->x <= 0 || e->x > TANK_MAX_W) return false;
         if (!v->version && e->item) return false;
     }

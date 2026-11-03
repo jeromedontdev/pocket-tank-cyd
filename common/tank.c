@@ -2016,6 +2016,20 @@ int   tank_decor_z_at(int item, int i) {
     return i < 0 ? 0 : i >= DECOR_Z_N ? DECOR_Z_N - 1 : i;
 }
 int   tank_decor_z_index(int item, int z) { return item != 0 ? (z == DECOR_Z_BACK ? 0 : 1) : z; }
+/* A sword-plant copy is a bed of its own, so it weaves AMONG the fish exactly
+ * like the primary (2026-11-03: the keeper could only pick BEHIND or IN FRONT
+ * for a second sword grass). Every other copy keeps its item's two depths. */
+int   tank_decor_copy_z_count(int item, int copy) {
+    return item == 0 && copy >= 0 ? DECOR_Z_N : tank_decor_z_count(item);
+}
+int   tank_decor_copy_z_at(int item, int copy, int i) {
+    if (item == 0 && copy >= 0) return i < 0 ? 0 : i >= DECOR_Z_N ? DECOR_Z_N - 1 : i;
+    return tank_decor_z_at(item, i);
+}
+int   tank_decor_copy_z_index(int item, int copy, int z) {
+    if (item == 0 && copy >= 0) return z < 0 ? 0 : z >= DECOR_Z_N ? DECOR_Z_N - 1 : z;
+    return tank_decor_z_index(item, z);
+}
 float tank_decor_x(const tank_t *t, int item) {
     int fi = tank_fixed_index(item);
     if (fi >= 0) return t->fixed.x[fi] > 0 ? t->fixed.x[fi] : fixed_default_x(item);
@@ -2127,6 +2141,95 @@ int  tank_decor_neighbor(const tank_t *t, int item, int dir) {
         if (fabsf(tank_decor_x(t, items[i]) - cx) < half + tank_decor_half_w(items[i])) return items[i];
     }
     return -1;
+}
+/* A placed copy's rank lives in inventory_extra_t.rank (bit 7 is MIRROR), so a
+ * copy can be ordered against the pieces it overlaps. The primary keeps using
+ * decor_rank[]; `copy` < 0 means the primary. */
+static int copy_rank(const tank_t *t, int copy) {
+    return copy >= 0 && copy < DECOR_EXTRA_CAP ? (t->inventory.extra[copy].rank & DECOR_RANK_MASK) : 0;
+}
+static void copy_rank_set(tank_t *t, int copy, int rank) {
+    if (copy < 0 || copy >= DECOR_EXTRA_CAP) return;
+    t->inventory.extra[copy].rank = (uint8_t)((t->inventory.extra[copy].rank & DECOR_RANK_MIRROR) | (rank & DECOR_RANK_MASK));
+}
+/* the copy's own depth lane (a sword-plant copy may weave AMONG) */
+static int copy_z(const tank_t *t, int copy) {
+    return copy >= 0 && copy < DECOR_EXTRA_CAP ? t->inventory.extra[copy].z : DECOR_Z_MIDDLE;
+}
+int  tank_decor_copy_neighbor(const tank_t *t, int item, int copy, int dir) {
+    if (copy < 0) return tank_decor_neighbor(t, item, dir);
+    if (copy >= DECOR_EXTRA_CAP || t->inventory.extra[copy].item != item + 1) return -1;
+    if (tank_decor_surface(item)) return -1;                       /* the floats have no stack */
+    int z = copy_z(t, copy);
+    float cx = t->inventory.extra[copy].x, half = tank_decor_half_w(item);
+    int rank = copy_rank(t, copy), best = -1, best_rank = dir > 0 ? 0x7fffffff : -1;
+    /* the primary, when it is owned and at this depth */
+    if (tank_decor_owned(t, item) && tank_decor_z(t, item) == z &&
+        fabsf(tank_decor_x(t, item) - cx) < half + tank_decor_half_w(item)) {
+        int r = tank_decor_rank(t, item);
+        if ((dir > 0 && r > rank && r < best_rank) || (dir < 0 && r < rank && r > best_rank)) {
+            best = item; best_rank = r;
+        }
+    }
+    /* every other copy of this item at this depth */
+    for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+        if (i == copy || t->inventory.extra[i].item != item + 1) continue;
+        if (copy_z(t, i) != z) continue;
+        if (fabsf(t->inventory.extra[i].x - cx) >= half + tank_decor_half_w(item)) continue;
+        int r = copy_rank(t, i);
+        if ((dir > 0 && r > rank && r < best_rank) || (dir < 0 && r < rank && r > best_rank)) {
+            best = DECOR_COPY_REF + i; best_rank = r;              /* a copy neighbour, distinct from any item id */
+        }
+    }
+    /* and the ordinary pieces at this depth, which a copy must also pass */
+    int items[DECOR_SLOTS], n = tank_decor_order(t, items);
+    for (int i = 0; i < n; i++) {
+        int other = items[i];
+        if (other == item) continue;                               /* the primary is handled above */
+        if (tank_decor_z(t, other) != z || tank_decor_surface(other)) continue;
+        if (fabsf(tank_decor_x(t, other) - cx) >= half + tank_decor_half_w(other)) continue;
+        int r = tank_decor_rank(t, other);
+        if ((dir > 0 && r > rank && r < best_rank) || (dir < 0 && r < rank && r > best_rank)) {
+            best = other; best_rank = r;
+        }
+    }
+    return best;
+}
+bool tank_decor_copy_shift(tank_t *t, int item, int copy, int dir) {
+    if (copy < 0) return tank_decor_shift(t, item, dir);
+    int other = tank_decor_copy_neighbor(t, item, copy, dir);
+    if (other < 0) return false;
+    /* Reinsert just past the neighbour: take the neighbour's rank and push the
+     * pieces between them one step the other way, so nothing else reorders. */
+    int other_rank = DECOR_IS_COPY_REF(other) ? copy_rank(t, DECOR_COPY_OF(other))
+                   : tank_decor_rank(t, other);
+    int new_rank = dir > 0 ? other_rank + 1 : other_rank - 1;
+    if (new_rank < 1) new_rank = 1;
+    if (new_rank > (int)DECOR_RANK_MASK) new_rank = (int)DECOR_RANK_MASK;
+    /* shift the pieces that sat between the two, so the ranks stay distinct */
+    if (dir > 0) {
+        for (int s = 0; s < DECOR_SLOTS; s++) {
+            int r = t->decor_rank[s] & DECOR_RANK_MASK;
+            if (r >= new_rank && r < (int)DECOR_RANK_MASK) decor_rank_set(t, s, r + 1);
+        }
+        for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+            if (i == copy || t->inventory.extra[i].item != item + 1) continue;
+            int r = copy_rank(t, i);
+            if (r >= new_rank && r < (int)DECOR_RANK_MASK) copy_rank_set(t, i, r + 1);
+        }
+    } else {
+        for (int s = 0; s < DECOR_SLOTS; s++) {
+            int r = t->decor_rank[s] & DECOR_RANK_MASK;
+            if (r <= new_rank && r > 1) decor_rank_set(t, s, r - 1);
+        }
+        for (int i = 0; i < DECOR_EXTRA_CAP; i++) {
+            if (i == copy || t->inventory.extra[i].item != item + 1) continue;
+            int r = copy_rank(t, i);
+            if (r <= new_rank && r > 1) copy_rank_set(t, i, r - 1);
+        }
+    }
+    copy_rank_set(t, copy, new_rank);
+    return true;
 }
 bool tank_decor_shift(tank_t *t, int item, int dir) {
     int other = tank_decor_neighbor(t, item, dir);

@@ -144,7 +144,10 @@ The sword plant also has broader emerald/teal folded planes, detailed veins
 and an updated preview. It is **duplicable**: buy extra copies in Decor &
 Storage and each one is planted as its own clump, with its own position,
 depth lane and sway, so a tank can hold a row of sword grass instead of one.
-Every copy is a real seahorse perch and a real shelter. There is no growth,
+A copy weaves **among** the fish exactly like the first plant, so its
+placement page offers all three depths (behind, among, in front) and its
+order arrows work against the pieces it overlaps. Every copy is a real
+seahorse perch and a real shelter. There is no growth,
 trimming, upkeep or shelter bonus. Existing tanks retain free Anubias on
 migration; new aquariums start bare. There is no separate Foliage shop or
 shortcut.

@@ -65,6 +65,57 @@ static void test_overlapping_copy_selection_and_rollback(void) {
     puts("PASS: overlapping placement-copy selection, drag isolation, and save-failure cancel rollback");
 }
 
+/* A sword-plant copy weaves AMONG the fish like the primary, so its placement
+ * page must offer all three depth segments and its order arrows must be live
+ * (2026-11-03: the keeper could only pick BEHIND or IN FRONT for a second
+ * sword grass, and both arrows were greyed out). */
+static void test_sword_copy_depth_bar_and_arrows(void) {
+    tank_t t;
+    saved_size = 0;
+    tank_init(&t, 842);
+    boot_enlarged(&t);
+    t.sd_unlocks |= SD_ITEM_PLANT;
+    tank_veg_sync(&t);
+    tank_decor_set(&t, 0, 100, DECOR_Z_MIDDLE);
+    t.inventory.version = 1;                     /* extras only exist in a versioned inventory */
+    t.inventory.extra[0] = (inventory_extra_t){ .item = 1, .z = DECOR_Z_BACK, .rank = DECOR_SLOTS, .x = 100 };
+    setup_begin_extra_place(&t, 0);
+    assert(setup_active() && setup_is_place() && setup_item() == 0 && !setup_place_original());
+    /* all three segments are live, and each one sets the copy's own lane */
+    for (int i = 0; i < DECOR_Z_N; i++) {
+        int hit = setup_hit(render_frame_x(PAGE_W / 2 + (i - 1) * SETUP_DEPTH_SEG_W),
+                            render_frame_y(SETUP_DEPTH_Y + SETUP_DEPTH_H / 2));
+        assert(hit == SETUP_HIT_Z0 + i);
+        setup_activate(&t, hit);
+        assert(t.inventory.extra[0].z == i);
+    }
+    /* the order arrows are live: the copy overlaps the primary at MIDDLE */
+    t.inventory.extra[0].z = DECOR_Z_MIDDLE;
+    t.inventory.extra[0].rank = 1;
+    tank_decor_raise(&t, 0);
+    assert(tank_decor_copy_neighbor(&t, 0, 0, 1) == 0);
+    assert(setup_hit(render_frame_x(SETUP_ORD_X1 + 18), render_frame_y(SETUP_TOP_BTN_Y + 20)) == SETUP_HIT_FWD);
+    int before = t.inventory.extra[0].rank & DECOR_RANK_MASK;
+    setup_activate(&t, SETUP_HIT_FWD);
+    assert((int)(t.inventory.extra[0].rank & DECOR_RANK_MASK) > before);
+    assert(tank_decor_copy_neighbor(&t, 0, 0, -1) == 0);
+    setup_activate(&t, SETUP_HIT_BCK);
+    assert((int)(t.inventory.extra[0].rank & DECOR_RANK_MASK) == before);
+    /* the copy's AMONG lane survives a save and reload */
+    t.inventory.extra[0].z = DECOR_Z_MIDDLE;
+    setup_activate(&t, SETUP_HIT_NEXT);
+    assert(!setup_active());
+    assert(progression_save(&t));
+    tank_t loaded;
+    tank_init(&loaded, 3);
+    boot_enlarged(&loaded);
+    assert(loaded.inventory.extra[0].item == 1);
+    assert(loaded.inventory.extra[0].z == DECOR_Z_MIDDLE);
+    assert(tank_veg_z(&loaded, 4) == DECOR_Z_MIDDLE);
+    saved_size = 0;
+    puts("PASS: a sword-plant copy's placement page offers all three depths, its order arrows work and AMONG survives a reload");
+}
+
 static void test_all_placeable_cancel_roundtrip(void) {
     for (int compact = 0; compact < 2; compact++) {
         tank_resolution(compact != 0);
@@ -325,6 +376,7 @@ static void test_every_item_buys_and_moves(void) {
 }
 
 int main(void) {    test_overlapping_copy_selection_and_rollback();
+    test_sword_copy_depth_bar_and_arrows();
     test_all_placeable_cancel_roundtrip();
     test_remove_to_storage();
     test_layers_and_mirror();

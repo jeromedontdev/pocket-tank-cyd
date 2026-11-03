@@ -1321,6 +1321,12 @@ int   tank_fixed_index(int item);          /* 0..DECOR_FIXED_COUNT-1 for fixed s
 int   tank_decor_z_count(int item);        /* depths the item offers: 3 (BACK/MIDDLE/FRONT) or 2 (BACK/FRONT) */
 int   tank_decor_z_at(int item, int i);    /* the i-th offered depth (the placement bar's segment i) */
 int   tank_decor_z_index(int item, int z); /* the inverse: which segment shows depth z */
+/* The same three, for one placed copy. A sword-plant copy is a bed of its own
+ * and weaves AMONG the fish exactly like the primary, so it offers all three
+ * depths; every other copy keeps its item's two. `copy` < 0 means the primary. */
+int   tank_decor_copy_z_count(int item, int copy);
+int   tank_decor_copy_z_at(int item, int copy, int i);
+int   tank_decor_copy_z_index(int item, int copy, int z);
 void  tank_decor_set(tank_t *t, int item, float x, int z);
 float tank_decor_x(const tank_t *t, int item);   /* the centre, default when unplaced */
 int   tank_decor_z(const tank_t *t, int item);
@@ -1358,6 +1364,16 @@ bool  tank_decor_above(const tank_t *t, int a, int b);             /* a is paint
 void  tank_decor_raise(tank_t *t, int item);                       /* on top: the highest rank of all + 1 */
 int   tank_decor_neighbor(const tank_t *t, int item, int dir);     /* the nearest piece in front (+1) or behind (-1) at its depth whose footprint overlaps it, or -1 */
 bool  tank_decor_shift(tank_t *t, int item, int dir);              /* move just past that neighbour, others keep their order; false = none */
+/* The same two for one placed copy (`copy` < 0 = the primary). A copy carries
+ * its own rank in inventory_extra_t.rank, so it can be ordered against the
+ * pieces it overlaps instead of being stuck at the top of its depth. */
+int   tank_decor_copy_neighbor(const tank_t *t, int item, int copy, int dir);
+bool  tank_decor_copy_shift(tank_t *t, int item, int copy, int dir);
+/* tank_decor_copy_neighbor names a copy neighbour as DECOR_COPY_REF + index,
+ * which cannot collide with an item id; DECOR_COPY_REF + i is a copy. */
+#define DECOR_COPY_REF 0x100
+#define DECOR_IS_COPY_REF(r) ((r) >= DECOR_COPY_REF)
+#define DECOR_COPY_OF(r) ((r) - DECOR_COPY_REF)
 /* MIRROR (2026-11): a sprite piece (chest, shell, starfish, anchor, buoy,
  * the ornaments and the content decorations) can face the other way. The
  * flag is bit 7 of the piece's rank byte (ranks stay below 64), so the save

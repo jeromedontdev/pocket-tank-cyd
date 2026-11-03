@@ -64,9 +64,20 @@ static void placed_set(tank_t *t, float x, int z) {
     float half = tank_decor_half_w(s_item);
     float lo = TANK_FX0 + DECOR_MARGIN + half, hi = TANK_FX1 - DECOR_MARGIN - half;
     t->inventory.extra[s_extra].x = fmaxf(lo, fminf(hi, x));
-    t->inventory.extra[s_extra].z = z == DECOR_Z_BACK ? DECOR_Z_BACK : DECOR_Z_FRONT;
+    /* a sword-plant copy weaves AMONG the fish like the primary; every other
+     * copy keeps its item's two depths (the save stores BACK or FRONT only) */
+    t->inventory.extra[s_extra].z = tank_decor_copy_z_count(s_item, s_extra) > 2
+        ? (uint8_t)(z < 0 ? 0 : z >= DECOR_Z_N ? DECOR_Z_N - 1 : z)
+        : (uint8_t)(z == DECOR_Z_BACK ? DECOR_Z_BACK : DECOR_Z_FRONT);
 }
 typedef struct { int item, copy; } place_copy_t;
+/* A neighbour from tank_decor_copy_neighbor: an ordinary item id, or a copy
+ * encoded as DECOR_SLOTS + index. Both name the same piece to the keeper. */
+static const char *place_piece_name(int ref) {
+    if (ref < 0) return "";
+    if (DECOR_IS_COPY_REF(ref)) return SD_ITEMS[0].name;   /* only the sword plant has copies */
+    return SD_ITEMS[ref].name;
+}
 static bool placed_mirrored(const tank_t *t) {
     return s_extra < 0 ? tank_decor_mirrored(t, s_item) : (t->inventory.extra[s_extra].rank & DECOR_RANK_MIRROR) != 0;
 }
@@ -263,7 +274,7 @@ uint32_t setup_place_signature(const tank_t *t) {
 }
 bool setup_place_animated_rect(int *x0, int *y0, int *x1, int *y1) {
     if (!s_active || s_page != SETUP_PG_PLACE) return false;
-    int bw = tank_decor_z_count(s_item) * SETUP_DEPTH_SEG_W;   /* the depth tiles' fish swim; their words stay still */
+    int bw = tank_decor_copy_z_count(s_item, s_extra) * SETUP_DEPTH_SEG_W;   /* the depth tiles' fish swim; their words stay still */
     *x0 = (PAGE_W - bw) / 2; *x1 = *x0 + bw;
     *y0 = SETUP_DEPTH_Y; *y1 = SETUP_DEPTH_Y + 4 + SETUP_DEPTH_TILE_H + 4;
     return true;
@@ -622,13 +633,14 @@ int setup_hit(float x, float y) {
             }
         }
         /* the DEPTH bar: a band 8 px around it, the segment under the finger
-           (the item's own depths: the plant's three, the castle's two) */
-        int n = tank_decor_z_count(s_item), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;
+           (the item's own depths: the plant's three, the castle's two; a
+           sword-plant copy weaves AMONG like the primary) */
+        int n = tank_decor_copy_z_count(s_item, s_extra), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;
         if (n < 2 || !in_box(x, y, bx, SETUP_DEPTH_Y, bw, SETUP_DEPTH_H, 8)) return 0;
         int i = (int)((x - bx) / SETUP_DEPTH_SEG_W);
         if (i < 0) i = 0;
         if (i >= n) i = n - 1;
-        return SETUP_HIT_Z0 + tank_decor_z_at(s_item, i);
+        return SETUP_HIT_Z0 + tank_decor_copy_z_at(s_item, s_extra, i);
     }
     if (page_is_look()) {
         /* the swatch row, a tall band (40 px above, 40 below - fingers land
@@ -698,7 +710,7 @@ void setup_activate(tank_t *t, int id) {
             if (progression_save(t)) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
             else { s_place = true; s_save_error = true; }
         }
-        else if ((id == SETUP_HIT_BCK || id == SETUP_HIT_FWD) && s_extra < 0) tank_decor_shift(t, s_item, id == SETUP_HIT_FWD ? 1 : -1);
+        else if (id == SETUP_HIT_BCK || id == SETUP_HIT_FWD) tank_decor_copy_shift(t, s_item, s_extra, id == SETUP_HIT_FWD ? 1 : -1);
         else if (id == SETUP_HIT_MIRROR) placed_mirror_toggle(t);
         else if (id >= SETUP_HIT_Z0 && id < SETUP_HIT_Z0 + DECOR_Z_N)
             placed_set(t, placed_x(t), id - SETUP_HIT_Z0);
@@ -1076,8 +1088,8 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         uint32_t sig = setup_place_signature(t);
         if (memo.t != t || memo.clock != clock || memo.sig != sig) {
             memo.t = t; memo.clock = clock; memo.sig = sig;
-            memo.below = s_extra < 0 ? tank_decor_neighbor(t, s_item, -1) : -1;
-            memo.above = s_extra < 0 ? tank_decor_neighbor(t, s_item, 1) : -1;
+            memo.below = tank_decor_copy_neighbor(t, s_item, s_extra, -1);
+            memo.above = tank_decor_copy_neighbor(t, s_item, s_extra, 1);
             /* the relation, in the depth bar's own words (Strato 2026-10-17: "behind
                the coral" / "in front of the coral"); "THE" goes when the line is too
                long for where it sits (the hint line, or beside COLOR / LOOK) */
@@ -1087,8 +1099,8 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
             memo.rel[0] = 0;
             for (int pass = 0; pass < 2; pass++) {
                 const char *the = pass ? "" : "THE ";
-                if (memo.above >= 0) snprintf(memo.rel, sizeof memo.rel, "BEHIND %s%s", the, SD_ITEMS[memo.above].name);
-                else if (memo.below >= 0) snprintf(memo.rel, sizeof memo.rel, "IN FRONT OF %s%s", the, SD_ITEMS[memo.below].name);
+                if (memo.above >= 0) snprintf(memo.rel, sizeof memo.rel, "BEHIND %s%s", the, place_piece_name(memo.above));
+                else if (memo.below >= 0) snprintf(memo.rel, sizeof memo.rel, "IN FRONT OF %s%s", the, place_piece_name(memo.below));
                 if (render_text_w(memo.rel, 2) <= rel_avail) break;
             }
         }
@@ -1104,11 +1116,11 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         static const char *const hint[DECOR_Z_N] = { "THE FISH SWIM IN FRONT OF IT", "THE FISH SWIM THROUGH IT", "THE FISH SWIM BEHIND IT" };
         static const char *const castle_hint[DECOR_Z_N] = { "THE PLANTS GROW IN FRONT OF IT", "", "IT STANDS IN FRONT OF THE PLANTS" };
         static const char *const coral_hint[DECOR_Z_N] = { "BEHIND THE GRASS AND THE FISH", "", "IN FRONT OF EVERYTHING" };
-        int z = placed_z(t), zi = tank_decor_z_index(s_item, z);
-        int n = tank_decor_z_count(s_item), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;   /* the item's own depths */
+        int z = placed_z(t), zi = tank_decor_copy_z_index(s_item, s_extra, z);
+        int n = tank_decor_copy_z_count(s_item, s_extra), bw = n * SETUP_DEPTH_SEG_W, bx = (PAGE_W - bw) / 2;   /* the item's own depths */
         if (n) render_rect(fb, stride, bx, SETUP_DEPTH_Y, bw, SETUP_DEPTH_H, C_KEY);
         for (int i = 0; i < n; i++) {
-            int sx = bx + i * SETUP_DEPTH_SEG_W, zi_ = tank_decor_z_at(s_item, i);
+            int sx = bx + i * SETUP_DEPTH_SEG_W, zi_ = tank_decor_copy_z_at(s_item, s_extra, i);
             if (i == zi) { render_rect(fb, stride, sx, SETUP_DEPTH_Y, SETUP_DEPTH_SEG_W, SETUP_DEPTH_H, C_INNER);
                            render_rect_edge(fb, stride, sx + 1, SETUP_DEPTH_Y + 1, SETUP_DEPTH_SEG_W - 2, SETUP_DEPTH_H - 2, C_EDGE); }
             else if (i > 0) render_rect(fb, stride, sx, SETUP_DEPTH_Y + 6, 1, SETUP_DEPTH_H - 12, C_DIM);   /* a divider */

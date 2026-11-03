@@ -825,6 +825,67 @@ static void test_sword_plant_copies(void) {
     puts("PASS: the sword plant is duplicable - each extra copy is its own bed with its own x, depth and perch");
 }
 
+/* A sword-plant copy weaves AMONG the fish exactly like the primary, so the
+ * placement page must offer all three depths for it - not just BACK/FRONT -
+ * and its order arrows must work against the pieces it overlaps. */
+static void test_sword_copy_depth_and_order(void) {
+    tank_t t;
+    one_fish(&t, 996, 0, .5f, .5f);
+    t.sd_unlocks |= SD_ITEM_PLANT;
+    tank_veg_sync(&t);
+    /* the primary offers three depths; so must a copy */
+    assert(tank_decor_z_count(0) == DECOR_Z_N);
+    assert(tank_decor_copy_z_count(0, -1) == DECOR_Z_N);
+    assert(tank_decor_copy_z_count(0, 0) == DECOR_Z_N);
+    for (int i = 0; i < DECOR_Z_N; i++) {
+        assert(tank_decor_copy_z_at(0, 0, i) == i);
+        assert(tank_decor_copy_z_index(0, 0, i) == i);
+    }
+    /* every other item's copy keeps its two depths */
+    assert(tank_decor_copy_z_count(9, 0) == 2);
+    assert(tank_decor_copy_z_at(9, 0, 0) == DECOR_Z_BACK);
+    assert(tank_decor_copy_z_at(9, 0, 1) == DECOR_Z_FRONT);
+    assert(tank_decor_copy_z_index(9, 0, DECOR_Z_MIDDLE) == 1);
+    /* a copy can sit AMONG, and the bed reports that lane */
+    t.inventory.extra[0] = (inventory_extra_t){ .item = 1, .z = DECOR_Z_MIDDLE, .rank = DECOR_SLOTS, .x = 60 };
+    assert(tank_veg_z(&t, 4) == DECOR_Z_MIDDLE);
+    /* ordering: a copy passes the pieces it overlaps at its own depth. Only the
+       plant weaves AMONG, so the overlapping neighbour here is the primary. */
+    tank_decor_set(&t, 0, 60, DECOR_Z_MIDDLE);
+    tank_decor_raise(&t, 0);
+    t.inventory.extra[0].rank = 1;                               /* the copy starts under the primary */
+    int primary_rank = tank_decor_rank(&t, 0);
+    assert(primary_rank > 1);
+    assert(tank_decor_copy_neighbor(&t, 0, 0, 1) == 0);          /* the primary is in front of the copy */
+    assert(tank_decor_copy_neighbor(&t, 0, 0, -1) == -1);        /* nothing behind it */
+    assert(tank_decor_copy_shift(&t, 0, 0, 1));
+    assert((int)(t.inventory.extra[0].rank & DECOR_RANK_MASK) > primary_rank);
+    assert(tank_decor_copy_neighbor(&t, 0, 0, -1) == 0);         /* now the primary is behind it */
+    assert(tank_decor_copy_neighbor(&t, 0, 0, 1) == -1);
+    /* a copy at FRONT orders against the ordinary pieces there too (the chest
+       is narrow enough to sit where the copy does) */
+    t.inventory.extra[0].z = DECOR_Z_FRONT;
+    t.inventory.extra[0].rank = 1;
+    t.sd_unlocks |= SD_ITEM_CHEST;
+    tank_decor_set(&t, 9, 60, DECOR_Z_FRONT);
+    tank_decor_raise(&t, 9);
+    int chest_rank = tank_decor_rank(&t, 9);
+    assert(chest_rank > 1);
+    assert(tank_decor_copy_neighbor(&t, 0, 0, 1) == 9);
+    assert(tank_decor_copy_shift(&t, 0, 0, 1));
+    assert((int)(t.inventory.extra[0].rank & DECOR_RANK_MASK) > chest_rank);
+    assert(tank_decor_copy_neighbor(&t, 0, 0, -1) == 9);
+    t.inventory.extra[0].z = DECOR_Z_MIDDLE;
+    /* a copy neighbour is named without colliding with an item id */
+    assert(DECOR_IS_COPY_REF(DECOR_COPY_REF + 3) && DECOR_COPY_OF(DECOR_COPY_REF + 3) == 3);
+    assert(!DECOR_IS_COPY_REF(0) && !DECOR_IS_COPY_REF(SD_ITEM_COUNT - 1));
+    /* MIRROR survives an order change (bit 7 is not a rank) */
+    t.inventory.extra[0].rank |= DECOR_RANK_MIRROR;
+    assert(tank_decor_copy_shift(&t, 0, 0, -1));
+    assert(t.inventory.extra[0].rank & DECOR_RANK_MIRROR);
+    puts("PASS: a sword-plant copy offers all three depths and its order arrows work against the pieces it overlaps");
+}
+
 static void test_variety_pair_guard(void) {
     tank_t t, before;
     tank_init(&t, 984);
@@ -870,6 +931,7 @@ int main(int argc, char **argv) {
     for (int enlarged = 0; enlarged <= 1; enlarged++) {
         tank_resolution(enlarged != 0);
         test_sword_plant_copies();
+        test_sword_copy_depth_and_order();
         test_variety_pair_guard();
         test_seahorse_open_water();
         test_rest_arrival_and_turn_continuity();
