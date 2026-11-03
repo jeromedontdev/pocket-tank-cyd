@@ -42,9 +42,13 @@ growth/trust bonus payouts. Actual growth, birth income and trading remain;
 historical badge records and earned wallets are preserved in saves.
 
 **Cultivated calm, fresh names and statement pieces:** fish are no longer born
-or bought fully calm. Calm settles only as far as trust allows (a newcomer about
-6 of 10), so patient holds and feeding raise it; a fish's favorite piece closes
-another quarter of the gap. Naming keyboards have a **SUGGEST** key that draws
+or bought fully calm, and calm is never free. Trust sets the floor stress can
+settle to on a quadratic curve, so a well-loved fish still tops out near **8.4**
+rather than pinning at 10.0; a newcomer settles around 5 of 10. Hunger and
+tiredness add unease on top, so calm is maintained by feeding and rest rather
+than banked once. A fish's favorite piece lowers the floor a quarter and Cozy
+Shelter a further 15%. Every meter now has its own **Help** topic. Naming
+keyboards have a **SUGGEST** key that draws
 from 130 names, skipping names already in the tank. Every movable piece,
 including the fixed sea-glass, brain-coral, tiki, bottle, anemone and teapot
 scenery, now has **REMOVE** on the movement screen; it goes to storage and
@@ -145,8 +149,9 @@ line-breeding converges toward low-vigor offspring. Vigor also adds up to 10%
 growth. Bought stock always costs more than its immediate resale.
 
 **Favorite decor:** every fish loves one decoration (shown on its Summary as
-LOVES ...: PLACED or MISSING). With it placed, calm recovers 30% faster and
-growth is +10%; without it, calm drifts down to 7.5 at most and growth is -10%.
+LOVES ...: PLACED or MISSING). With it placed, calm recovers 30% faster, its
+stress floor drops a quarter and growth is +10%; without it, calm settles
+noticeably lower and growth is -10%.
 Mini-game rounds pay up to 12 doubloons, five rounds per game per day.
 
 Clock styles have redesigned glass frames (digital, neon, compact, flip,

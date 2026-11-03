@@ -922,6 +922,105 @@ static void test_variety_pair_guard(void) {
     puts("PASS: color mutations produce new inherited colors without changing variety or requiring free color editing");
 }
 
+/* Calm is cultivated and never free (2026-11). The keeper reported CALM
+ * "pretty much staying at max of 10.0 all the time", which made the meter and
+ * its quarter share of sale value meaningless. The floor used to be nudged up
+ * at 0.02/s AFTER a 0.18/s decay, so the net drift was always downward and the
+ * floor never held. These checks pin the retuned contract. */
+static void test_calm_floor_is_earned(void) {
+    tank_t t;
+    one_fish(&t, 611, 0, 0.5f, 0.4f);
+    t.sd_unlocks = SD_ITEM_PLANT;
+    for (int bed = 0; bed < VEG_BEDS_MAX; bed++) tank_veg_set(&t, bed, 0.2f);
+    fish_t *f = &t.fish[0];
+    f->hunger = 2; f->energy = 8;
+    /* Place its loved piece so the floor is the best case, not the missing one. */
+    int love = tank_fish_favorite_item(&t, 0);
+    assert(love >= 0);
+    if (SD_IS_FOLIAGE(love)) { t.foliage.version = 1; t.foliage.planted |= 1u << (love - SD_FOLIAGE_FIRST); }
+    else if (SD_IS_SCENERY(love)) t.polish.scenery_unlocks |= (uint8_t)(1u << (love - SD_SCENERY_FIRST));
+    else if (SD_IS_NEW_DECOR(love)) t.content.owned |= 1u << (love - SD_DECOR_FIRST);
+    else t.sd_unlocks |= 1u << love;
+    assert(tank_fish_comfort(&t, 0) > 0);
+
+    /* Every favorite the table can pick must be satisfiable. The sword plant is
+     * a vegetation bed and the snail a creature, so neither occupies a decor
+     * slot; tank_item_in_tank used to answer "missing" for both forever. */
+    for (int slot = 0; slot < 64; slot++) {
+        tank_t probe;
+        memset(&probe, 0, sizeof probe);
+        tank_init(&probe, 611);
+        tank_make_fish(&probe, 0, 0, 0.5f, 0.4f, STAGE_ADULT);
+        probe.n_fish = 1;
+        probe.polish.active[0].id = (uint32_t)slot * 7u;
+        int item = tank_fish_favorite_item(&probe, 0);
+        if (item < 0) continue;
+        probe.sd_unlocks |= 1u << (item & 31);
+        probe.polish.scenery_unlocks = 0xff;
+        probe.content.owned = 0xffffffffu;
+        probe.foliage.version = 1; probe.foliage.planted = 0x0f;
+        assert(tank_item_in_tank(&probe, item));
+    }
+
+    /* A stranger is uneasy; full trust is calm but never perfectly calm. */
+    f->trust = 0;
+    float stranger = tank_calm_floor(&t, 0);
+    f->trust = 10;
+    float loved = tank_calm_floor(&t, 0);
+    assert(stranger > 3.0f && stranger <= 10.0f);   /* CALM ~5.1 even with every bonus */
+    assert(loved > 0.5f && loved < 2.0f);           /* CALM ~8.4, never 10.0 */
+    assert(loved < stranger);
+
+    /* A missing favorite is a little restless: a higher floor than a placed one. */
+    {
+        tank_t missing = t;
+        missing.sd_unlocks = 0; missing.polish.scenery_unlocks = 0;
+        missing.content.owned = 0; missing.foliage.planted = 0;
+        assert(tank_fish_comfort(&missing, 0) < 0);
+        assert(tank_calm_floor(&missing, 0) > loved);
+    }
+
+    /* The curve is quadratic: the last points of trust buy very little. */
+    f->trust = 5;
+    float mid = tank_calm_floor(&t, 0);
+    assert(mid > loved && mid < stranger);
+    assert((mid - loved) < (stranger - mid));
+
+    /* Its favorite piece and Cozy Shelter each lower the floor. */
+    tank_t plain = t;
+    plain.aquariums.stat_upgrades = 0;
+    f->trust = 10;
+    float bare = tank_calm_floor(&plain, 0);
+    assert(bare > loved);
+    plain.aquariums.stat_upgrades = STAT_SHELTER;
+    assert(tank_calm_floor(&plain, 0) < bare);
+
+    /* Hunger and tiredness raise it, so calm is maintained, not banked. */
+    f->trust = 10; f->hunger = 2; f->energy = 8;
+    float fed = tank_calm_floor(&t, 0);
+    f->hunger = 10;
+    assert(tank_calm_floor(&t, 0) > fed);
+    f->hunger = 2; f->energy = 0;
+    assert(tank_calm_floor(&t, 0) > fed);
+    f->energy = 8;
+
+    /* The floor actually holds: a long calm tick cannot push stress below it. */
+    f->stress = 0;
+    for (int i = 0; i < 600; i++) tank_tick(&t, 0.1f, NULL);
+    assert(f->stress >= tank_calm_floor(&t, 0) - 0.0001f);
+    assert(f->stress > 0.5f);            /* never pinned at CALM 10.0 */
+
+    /* A scare still lands above the floor and recovers slowly, not instantly. */
+    f->x = 120; f->y = 95;
+    for (int i = 0; i < 3; i++) tank_touch_tap(&t, 120, 95);
+    assert(t.startled);
+    float scared = f->stress;
+    assert(scared > tank_calm_floor(&t, 0) + 1.0f);
+    tank_tick(&t, 1.0f, NULL);
+    assert(f->stress < scared && f->stress > scared - 1.0f);   /* slow, not a snap */
+    puts("PASS: calm is earned - a residual floor, a quadratic trust curve, hunger/tiredness unease and slow recovery");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     FILE *icons = fopen(argv[1], "rb");
@@ -949,6 +1048,7 @@ int main(int argc, char **argv) {
         test_tap_and_enrichment_reactions();
         test_species_edges_and_render_purity();
         test_reef_rhythm();
+        test_calm_floor_is_earned();
     }
     puts("PASS: normal/enlarged resolutions, rest arrival/step sizes, smooth committed turns, continuous four-edge steering and surface cruising without seesaw, continuous tail beat with eased turns and sprung pace, food dives/personality, sand target offsets/dive threshold, tap sensitivity, enrichment, ten-variety edges, render purity");
     return 0;

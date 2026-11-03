@@ -56,7 +56,8 @@ old bullets only as history and evidence.
 - Games is one paged list (Stories and Lost Current are entries); never
   reintroduce Arcade/Stories/RPG submenus or game-count subtitles.
 - Help is a topic list on Main covering every system (including
-  CONTRACTS & AUCTIONS and CREATURES); update it when a mechanic changes.
+  CONTRACTS & AUCTIONS and CREATURES) and every fish stat individually
+  (TRUST, ENERGY, FULLNESS, CALM, VIGOR); update it when a mechanic changes.
 
 ### Fish economy and genetics
 
@@ -522,12 +523,22 @@ old bullets only as history and evidence.
   dimension searches for each pixel in an already-bounded row. Preserve
   cached/live, mirrored, scaled, final-lighting and clipped pixels. Sword masks
   combine piece filtering and row extraction in one pass; unmirrored cached
-  masks use bounded word extraction. Help audits visit all sixteen
-  topics at both scales and reject incomplete/overlapping paragraphs, not just
-  text outside the screen.
-- Calm is cultivated: `tank_calm_floor` = (10 - trust) x 0.7 stress, x0.75 with
-  the favorite piece placed. Never seed new fish with full calm or bypass the
-  floor. Every movable item, fixed scenery included, offers REMOVE. Fixed
+  masks use bounded word extraction. Help audits visit every topic at both
+  scales and reject incomplete/overlapping paragraphs, not just text outside
+  the screen. The topic count is 21 (three full pages of 7) and the audit walks
+  `companion_help_topic_count()` rather than a hard-coded number; each of the
+  five Fish Summary meters (TRUST, ENERGY, FULLNESS, CALM, VIGOR) has its own
+  topic, so adding a meter means adding a topic.
+- Calm is cultivated and never free (retuned 2026-11): `tank_calm_floor` =
+  `1.6 + 5.0 x u^2` where `u = 1 - trust/10`, x0.85 with Cozy Shelter and x0.75
+  with the favorite piece placed, plus up to 1.6 of hunger/tiredness unease.
+  CALM therefore tops out near 8.4, never 10.0, and the quadratic curve means
+  the last points of trust buy very little. The floor is a **hard clamp applied
+  last** in `update_fish`, after the refuge bonus - it used to be a 0.02/s
+  spring applied after a 0.18/s decay, so the net drift was always downward and
+  the floor never held (every fish sat at stress 0). Awake decay is 0.30/s
+  resting and 0.10/s cruising; sleep is 1.2/h. Never seed new fish with full
+  calm or bypass the floor. Every movable item, fixed scenery included, offers REMOVE. Fixed
   scenery goes to `fixed.stored` (fixed.version 2), and the shop row's PLACE
   re-buys it at price 0.
 - Current Runner is a tap-to-rise course (gravity 430, tap -175, 18 gaps, pearls

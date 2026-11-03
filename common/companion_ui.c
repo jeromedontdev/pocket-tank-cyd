@@ -151,7 +151,8 @@ static const char story_art[8][16][17] = {
     }
 };
 enum { STAMP_HEART, STAMP_EYE, STAMP_LEAF, STAMP_STAR, STAMP_BOOK, STAMP_FISH,
-       STAMP_FAMILY, STAMP_GENES, STAMP_COIN, STAMP_FLAG, STAMP_CLOCK, STAMP_SHELL };
+       STAMP_FAMILY, STAMP_GENES, STAMP_COIN, STAMP_FLAG, STAMP_CLOCK, STAMP_SHELL,
+       STAMP_SPARK, STAMP_FOOD, STAMP_HELIX };
 static void stamp(uint16_t *fb, int stride, int x, int y, int kind, bool found) {
     static const uint8_t pixels[][8] = {
         {0x00,0x66,0xff,0xff,0x7e,0x3c,0x18,0x00},
@@ -165,7 +166,10 @@ static void stamp(uint16_t *fb, int stride, int x, int y, int kind, bool found) 
         {0x3c,0x66,0xdb,0xcb,0xd3,0xdb,0x66,0x3c},
         {0x40,0x7e,0x7c,0x78,0x40,0x40,0x40,0xe0},
         {0x3c,0x66,0xc3,0xcb,0xcf,0xc3,0x66,0x3c},
-        {0x3c,0x7e,0xdb,0xdb,0xdb,0x7e,0x3c,0x18}
+        {0x3c,0x7e,0xdb,0xdb,0xdb,0x7e,0x3c,0x18},
+        {0x18,0x3c,0x7e,0x18,0x18,0x7e,0x3c,0x18},   /* SPARK: a sparkle */
+        {0x18,0x3c,0x7e,0x7e,0x3c,0x18,0x24,0x42},   /* FOOD: a pellet */
+        {0x66,0x99,0x99,0x66,0x66,0x99,0x99,0x66}    /* HELIX: a double strand */
     };
     uint32_t color = found ? 0xffd998 : 0x607e87;
     for (int row = 0; row < 8; row++)
@@ -992,10 +996,25 @@ static const help_topic_t HELP_TOPICS[] = {
         "Your aquarium begins with two Tetras. Swipe down from the top of the glass to drop food; tap a fish for its summary. MENU opens Fish, Tank, Market, Games, Casino, Help and the Settings cog.",
         "Doubloons are the only currency. Earn them from games, fish and creature sales, and a pearl mussel; spend them on stock, decor, foliage, food and themes."}},
     {"FISH NEEDS", STAMP_HEART, {
-        "TRUST grows with meals and gentle holds. ENERGY drains while swimming and refills with rest. FULLNESS falls over time; feed when it runs low. CALM drops when startled.",
-        "Calm is cultivated, not given: a newcomer settles only part way, and each point of trust raises how calm it can become. Cover, Cozy Shelter and its favorite piece help it settle."}},
+        "Five meters on a fish's summary: TRUST, ENERGY, FULLNESS, CALM and VIGOR. Each has its own Help topic below. Tap a fish in the tank to open its summary at any time.",
+        "Nothing here is a chore and nothing decays while you are away. Feed, watch and let the tank rest; the meters follow your care."}},
+    {"TRUST", STAMP_HEART, {
+        "TRUST is how safe a fish feels with you, 0 to 10. It rises while you hold a finger still near it (about 0.012 a second after 2.7 seconds) and a little when it takes a pellet from your hand.",
+        "Startling the tank costs trust. Trust sets the CALM a fish can reach, so it is the slowest and most valuable meter. A seahorse doubles hold trust; Training Ring adds 25%."}},
+    {"ENERGY", STAMP_SPARK, {
+        "ENERGY is stamina, 0 to 10. Swimming drains it slowly and resting refills it about 25 times faster. A spent fish takes a breather in the fronds until it recovers.",
+        "Low energy makes a fish restless and harder to calm. Current Ring speeds recovery 25%. Energy is a quarter of a fish's sale value."}},
+    {"FULLNESS", STAMP_FOOD, {
+        "FULLNESS is the opposite of hunger: 10 means well fed, 0 means ravenous. It falls steadily, faster for bold fish and while darting. Swipe down from the top of the glass to drop pellets.",
+        "A hungry fish grows slower, is harder to calm and will not breed. Fullness is a quarter of a fish's sale value, so feed before you sell."}},
+    {"CALM", STAMP_LEAF, {
+        "CALM is peace of mind, 0 to 10, and it is earned rather than given. Trust sets the floor it can settle to, and the last points of trust buy very little, so a well-loved fish still tops out near 8.4.",
+        "Hunger and tiredness raise that floor. Its favorite piece lowers it a quarter, Cozy Shelter 15%, and resting near cover helps. Startling the tank drops calm at once and it returns slowly."}},
+    {"VIGOR", STAMP_HELIX, {
+        "VIGOR is hybrid vigor, 0 to 10, and it is fixed at birth. It counts the genes a fish carries but does not show: hidden markings, hidden colors and recessive traits.",
+        "Diverse parents give high-vigor fry that grow up to 10% faster and sell for 4% more per point. Line-breeding the same pair converges on low vigor, so bring in fresh stock."}},
     {"COMFORT & FAVORITES", STAMP_LEAF, {
-        "Every fish loves one decoration or foliage set, shown as LOVES on its summary. With that piece placed, calm recovers 30% faster, settles a quarter higher and the fish grows 10% faster.",
+        "Every fish loves one decoration or foliage set, shown as LOVES on its summary. With that piece placed, calm recovers 30% faster, its stress floor drops a quarter and the fish grows 10% faster.",
         "Without it the fish stays a little restless and grows 10% slower. Store pieces instead of selling them to switch favorites quickly."}},
     {"GROWTH & FOOD", STAMP_FISH, {
         "Fry become juveniles after 2 growth hours, adults after 12 and elders after 96. Asleep or away, a tank grows at a quarter of awake speed.",
@@ -1038,6 +1057,7 @@ static const help_topic_t HELP_TOPICS[] = {
         "With an SD card, Settings can back up and restore the whole save. Saves are checked before any purchase or sale is paid."}},
 };
 #define HELP_TOPIC_COUNT ((int)(sizeof HELP_TOPICS / sizeof HELP_TOPICS[0]))
+int companion_help_topic_count(void) { return HELP_TOPIC_COUNT; }
 #define HELP_PER_PAGE 7
 static int help_topic;
 static void help_render(uint16_t *fb, int stride) {

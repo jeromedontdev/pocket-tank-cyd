@@ -784,7 +784,7 @@ static void test_shop_expansion(void) {
         else { tank_tick(&base, dt, NULL); tank_tick(&boosted, dt, NULL); }
         const fish_t *a = &base.fish[0], *b = &boosted.fish[0];
         assert(fabsf(b->energy - (sleep || !goal ? 5 + 1.25f * (a->energy - 5) : a->energy)) < 0.00001f);
-        float stress_bonus = 0.25f * (sleep ? 2.0f / 3600 : goal ? 0.18f : 0.48f) * dt;
+        float stress_bonus = 0.25f * (sleep ? 1.2f / 3600 : goal ? 0.10f : 0.30f) * dt;
         assert(fabsf(b->stress - (a->stress - stress_bonus)) < 0.00001f);
         assert(fabsf(b->curiosity - (!sleep && goal ? 5 + 1.25f * (a->curiosity - 5) : a->curiosity)) < 0.00001f);
         assert(a->hunger == b->hunger && a->trust == b->trust && a->size == b->size);
@@ -809,13 +809,20 @@ static void test_shop_expansion(void) {
         give_favorite(&capped, 0);
         fish_t *f = &capped.fish[0];
         f->energy = f->curiosity = 9.9999f; f->stress = 0.0001f;
-        f->trust = 10;                       /* full trust: calm floor is 0 */
+        f->hunger = 0;                       /* no hunger unease: the floor is trust alone */
+        f->trust = 10;                       /* full trust: the floor is at its lowest, never zero */
         f->goal.id = goal ? GOAL_EXPLORE : GOAL_REST;
         tank_tick(&capped, 0.1f, NULL);
-        assert(f->stress == 0 && (goal ? f->curiosity == 10 : f->energy == 10));
+        /* Calm is never free (2026-11): even a fully trusted fish with its
+         * favorite piece and Cozy Shelter keeps a residual floor, so CALM tops
+         * out near 8.4 instead of pinning at 10.0. */
+        float floor10 = tank_calm_floor(&capped, 0);
+        assert(floor10 > 0.5f && floor10 < 2.0f);
+        assert(fabsf(f->stress - floor10) < 0.00001f);
+        assert(goal ? f->curiosity == 10 : f->energy == 10);
         f->energy = 9.9999f; f->stress = 0.0001f;
         tank_tick_sleep(&capped, 60);
-        assert(f->energy == 10 && f->stress == 0);
+        assert(f->energy == 10 && fabsf(f->stress - tank_calm_floor(&capped, 0)) < 0.00001f);
     }
     {
         tank_t resting, boosted;
@@ -1227,7 +1234,10 @@ static void test_fish_card_next(void) {
                 memset(full, 0, count * sizeof *full); memset(tiled, 0, count * sizeof *tiled);
                 render_tile(0, 0); render_stats_card(&t, cards[i], full, TANK_W);
                 for (int row = 0; row < TANK_H; row += 17) {
-                    render_tile(row, 17);
+                    /* the last band is short: a 17-row tile at 238 would run
+                     * past the framebuffer and the card's tank-space ring
+                     * would write off the end of the heap block */
+                    render_tile(row, TANK_H - row < 17 ? TANK_H - row : 17);
                     render_stats_card(&t, cards[i], tiled + row * TANK_W, TANK_W);
                 }
                 render_tile(0, 0);

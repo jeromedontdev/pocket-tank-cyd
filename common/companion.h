@@ -25,6 +25,9 @@ void companion_open_creature(int kind);
 void companion_select_fish(int fish);
 int companion_selected_fish(void);
 int companion_current_section(void);
+/* Help is a paged topic list; the count is exposed so the page-art audit can
+ * walk every topic instead of hard-coding the number. */
+int companion_help_topic_count(void);
 /* UI order only: market tier, cheapest first. */
 int companion_variety_at(int rank);
 /* Values are also used by simulator/director page selectors; preserve them.

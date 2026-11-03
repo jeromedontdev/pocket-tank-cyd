@@ -147,7 +147,7 @@ static void check_menu_layout(const char *gallery) {
     companion_open_section(COMPANION_SECTION_HELP);
     companion_tap(&t, render_frame_x(120), render_frame_y(96));
     assert(companion_current_section() == COMPANION_SECTION_HELP_TOPIC);
-    for (int topic = 0; topic < 16; topic++) {
+    for (int topic = 0; topic < companion_help_topic_count(); topic++) {
         snprintf(name, sizeof name, "help-topic-%d", topic); menu_begin(name);
         companion_render(&t, full_frame, TANK_W); menu_end(gallery);
         companion_tap(&t, render_frame_x(340), render_frame_y(336));

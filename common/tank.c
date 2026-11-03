@@ -2499,7 +2499,7 @@ void tank_scatter_food(tank_t *t, int n) {
 /* see tank.h: dark-screen physiology only, rates per real hour of sleep */
 #define SLEEP_HUNGER_PER_H 0.8f    /* fed -> ravenous over ~7 h of sleep */
 #define SLEEP_ENERGY_PER_H 2.0f
-#define SLEEP_STRESS_PER_H 2.0f
+#define SLEEP_STRESS_PER_H 1.2f    /* a night calms, but not to zero: the floor still rules */
 #define SLEEP_SLICE_S      300.0f  /* the night's growth and grazing interleave at this grain */
 void tank_tick_sleep(tank_t *t, float seconds) {
     if (seconds <= 0) return;
@@ -2510,8 +2510,7 @@ void tank_tick_sleep(tank_t *t, float seconds) {
         f->hunger = clampf(f->hunger + SLEEP_HUNGER_PER_H * h, 0, t->companion.cozy ? 6 : 10);
         f->energy = clampf(f->energy + SLEEP_ENERGY_PER_H * h * ((t->aquariums.stat_upgrades & STAT_CURRENT) ? 1.25f : 1), 0, 10);
         f->stress = clampf(f->stress - SLEEP_STRESS_PER_H * h * ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1), 0, 10);
-        if (tank_fish_comfort(t, i) < 0 && f->stress < 2) f->stress = 2;   /* missing its favorite piece */
-        if (f->stress < tank_calm_floor(t, i)) f->stress = tank_calm_floor(t, i);
+        if (f->stress < tank_calm_floor(t, i)) f->stress = tank_calm_floor(t, i);   /* a night cannot out-sleep its trust */
         f->speed = 0; f->target_speed = 0; f->speed_vel = 0; f->turn_vel = 0; f->bored = 0; f->breather = 0;  /* a night's sleep is a fresh start */
         f->goal_age += seconds; f->ask_age += seconds;  /* wake re-asks the advisor at once */
     }
@@ -2578,19 +2577,39 @@ bool tank_item_in_tank(const tank_t *t, int item) {
     if (!t) return false;
     if (SD_IS_FOLIAGE(item))
         return t->foliage.version == 1 && (t->foliage.planted & (1u << (item - SD_FOLIAGE_FIRST))) != 0;
+    /* tank_decor_owned only answers for pieces that occupy a decor slot, so a
+     * favorite that is a creature (the snail) or the sword plant - a vegetation
+     * bed, not a slot - always read as MISSING and could never be satisfied.
+     * Those live in the sd_unlocks bitmask, so ask it directly. */
+    if (tank_decor_slot(item) < 0) return item >= 0 && item < 32 && (t->sd_unlocks & (1u << item)) != 0;
     return tank_decor_owned(t, item);
 }
 int tank_fish_comfort(const tank_t *t, int idx) {
     int item = tank_fish_favorite_item(t, idx);
     return item < 0 ? 0 : tank_item_in_tank(t, item) ? 1 : -1;
 }
-/* The lowest stress a fish settles to (2026-10-30): calm is earned. A
- * newcomer's trust leaves it ~6 calm at best; patient holds raise trust and
- * with it the ceiling, and its favorite decor lowers the floor a quarter. */
+/* The lowest stress a fish settles to (2026-10-30, retuned 2026-11): calm is
+ * earned and never free. Trust sets the floor, and the curve is quadratic so
+ * the last points of trust buy very little - a well-loved fish still keeps a
+ * little wariness, which is why CALM tops out near 8.4 instead of pinning at
+ * 10.0. Its favorite piece closes a quarter of the gap, a missing one adds a
+ * quarter, and Cozy Shelter takes 15% off. A hungry or spent fish carries extra
+ * unease on top, so calm is maintained by feeding and rest rather than banked
+ * once and forgotten. */
+#define CALM_FLOOR_BASE 1.6f    /* residual wariness: CALM tops out at 8.4 */
+#define CALM_FLOOR_SPAN 5.0f    /* a stranger's full unease */
+#define CALM_UNEASE_MAX 1.6f    /* hunger and tiredness together */
 float tank_calm_floor(const tank_t *t, int idx) {
     if (idx < 0 || idx >= t->n_fish) return 0;
-    float settle = (10 - clampf(t->fish[idx].trust, 0, 10)) * 0.7f;
-    return tank_fish_comfort(t, idx) > 0 ? settle * 0.75f : settle;
+    const fish_t *f = &t->fish[idx];
+    float u = 1.0f - clampf(f->trust, 0, 10) * 0.1f;
+    float settle = CALM_FLOOR_BASE + CALM_FLOOR_SPAN * u * u;
+    if (t->aquariums.stat_upgrades & STAT_SHELTER) settle *= 0.85f;
+    int comfort = tank_fish_comfort(t, idx);
+    if (comfort > 0) settle *= 0.75f;          /* its loved piece is in the tank */
+    else if (comfort < 0) settle *= 1.25f;     /* it is missing: a little restless */
+    float unease = fmaxf(0, f->hunger - 6.0f) * 0.22f + fmaxf(0, 3.0f - f->energy) * 0.18f;
+    return settle + (unease > CALM_UNEASE_MAX ? CALM_UNEASE_MAX : unease);
 }
 
 /* A pearl mussel is sessile: it sits on the sand and filters. Every 360 s it
@@ -2969,11 +2988,12 @@ static void update_fish(tank_t *t, int idx, float dt) {
         /* creature roles: the snail keeps the glass clear (calm +10%); the
            urchin grazes the floor quiet so resting fish settle 20% faster */
         float roles = ((t->sd_unlocks & SD_ITEM_SNAIL) ? 1.10f : 1) * (rest && (t->sd_unlocks & SD_ITEM_URCHIN) ? 1.20f : 1);
-        f->stress = clampf(f->stress - dt * (rest ? 0.48f : 0.18f) * roles *
+        /* Recovery is deliberately unhurried (2026-11): a scare used to wash
+         * out in about six seconds, so CALM snapped back to full and never
+         * read as something the keeper maintains. Resting still settles a fish
+         * roughly three times faster than cruising. */
+        f->stress = clampf(f->stress - dt * (rest ? 0.30f : 0.10f) * roles *
                            ((t->aquariums.stat_upgrades & STAT_SHELTER) ? 1.25f : 1) * (comfort > 0 ? 1.3f : 1), 0, 10);
-        if (comfort < 0 && f->stress < 2.5f) f->stress = fminf(2.5f, f->stress + dt * 0.02f);
-        float settle = tank_calm_floor(t, idx);      /* calm is cultivated: it settles only as far as trust allows */
-        if (f->stress < settle) f->stress = fminf(settle, f->stress + dt * 0.02f);
     }
     /* energy: the prototype's per-second drain (full to empty in ~3 min of
      * cruising) kept the school at energy ~3 - permanently tired, so the
@@ -2993,6 +3013,16 @@ static void update_fish(tank_t *t, int idx, float dt) {
         f->breather = dt;
     bool hidden = tank_reef_calm_near(t, f->x, f->y);
     if (hidden) f->stress = clampf(f->stress - dt * 0.22f, 0, 10);
+    /* The floor is a hard clamp, not a spring (2026-11). It used to be nudged
+     * up at 0.02/s AFTER a 0.18/s decay, so the net drift was always downward
+     * and the floor never held: every fish settled at stress 0 and CALM read
+     * 10.0 forever. Clamping makes the floor real. It is applied last, after
+     * the refuge bonus, so cover lowers the floor rather than drilling through
+     * it - a fish in the fronds still cannot be calmer than its trust allows. */
+    {
+        float settle = tank_calm_floor(t, idx);      /* calm is cultivated: it settles only as far as trust allows */
+        if (f->stress < settle) f->stress = settle;
+    }
 
     f->wander += dt * (0.65f + f->curiosity * 0.04f) + sinf(t->clock + f->x * 0.01f) * dt * 0.12f;
     if (f->dart_timer > 0) f->dart_timer -= dt;

@@ -97,12 +97,20 @@ Store unused decorations rather than filling every available spot.
 |---|---|
 | ![Reef, shell, pearl and star badges above pellets, rainbow flakes and bloodworms](media/cyd-features/identity-food-details.png) | ![The Harborfin starter with forked tail and ribbed sail alongside the other varieties](media/cyd-features/fish-varieties.png) |
 
-**Calm is cultivated:** it is `10 - stress`, with recovery limited by trust.
-A newcomer settles to about 6/10; feeding and gentle holds build trust and
-raise that ceiling. A placed favorite reduces the trust-based stress floor
-by a quarter, and shelter helps recovery. A missing favorite keeps a fish
-a little restless. Startling or chasing raises stress; hunger and energy
-remain separate needs. No random stress is introduced just to move the gauge.
+**Calm is cultivated and never free:** it is `10 - stress`, and trust sets the
+floor stress can settle to. The curve is quadratic, so the last points of trust
+buy very little and a well-loved fish still tops out near **8.4**, not 10.0.
+A newcomer settles around 5/10; feeding and gentle holds build trust and raise
+that ceiling. A placed favorite lowers the floor a quarter and Cozy Shelter a
+further 15%, and resting near cover helps. Hunger and tiredness add up to 1.6
+of extra unease, so calm is maintained by feeding and rest rather than banked
+once. Startling or chasing raises stress and it returns slowly - about 0.30 a
+second resting, 0.10 cruising. No random stress is introduced just to move the
+gauge.
+
+Every meter has its own **Help** topic (Main Menu > Help): TRUST, ENERGY,
+FULLNESS, CALM and VIGOR each explain what moves it, what it is worth and which
+upgrade or creature helps.
 
 The single active currency is **doubloons**. XP/levels and the old
 firsts/trophy/discovery/frame/object-story reward loops are retired; their
