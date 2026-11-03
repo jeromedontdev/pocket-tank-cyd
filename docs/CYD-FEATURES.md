@@ -2,7 +2,7 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.4.1**
+**An illustrated tour of Pocket Tank CYD 2.4.2**
 
 **Latest source:** Main menu is Fish, Tank, Market, Games, **Casino**, Help;
 Settings moved to a cog in the bottom-right corner. Main > Fish is a Fish hub
@@ -20,6 +20,20 @@ once marking, trait and color mutations are all bred. Snail and urchin cards
 describe their roles (glass cleaner calm +10%, night grazer rest +20%), the
 jellyfish has slimmer tentacles, Games uses the standard menu backdrop and the
 rename keyboard sits lower with an unobstructed preview.
+
+**2.4.2 sword grass, kelp and swimming depth:** the sword plant is
+**duplicable**. Buy extra copies in Decor & Storage and each one is planted as
+its own clump with its own position, depth lane and sway, so a tank can hold a
+row of sword grass instead of one. A copy weaves **among** the fish exactly
+like the first plant, so its placement page offers all three depths (behind,
+among, in front) and its order arrows work against the pieces it overlaps.
+Every copy is a real seahorse perch and a real shelter. The order arrows now
+work for **every** placed copy, not just the plant. Kelp crowns that sway
+behind a piece standing in front of them are clipped by that piece, so a stalk
+no longer shows through the stone bridge's deck. Fish explore the whole tank
+again: an explore-band bug had pinned every wander target to the lower half,
+which is why they seemed to prefer the bottom and middle. Saves are unchanged
+at schema 23 / 6476 bytes.
 
 **2.4.1 visual-polish follow-up:** the casino's
 Tide Wheel now has a shaded brass-and-wood rim, studs and a layered hub; its

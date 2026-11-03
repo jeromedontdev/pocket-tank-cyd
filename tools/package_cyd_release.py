@@ -165,6 +165,7 @@ Only install trusted downloads; these images are not publisher-signed.
     instructions += "\n2.3.10 SAVE COMPATIBILITY: back up before updating. The version-6 companion\nrecord stores mussel colors in a reserved byte; save size/offsets are unchanged.\nOlder firmware cannot read this record. Do not downgrade after saving with 2.3.10.\n"
     instructions += "\n2.3.19 SAVE COMPATIBILITY: back up before updating. Saves grow to schema 20 /\n6424 bytes to remember where movable scenery stands. Older saves load unchanged;\nfirmware before 2.3.19 cannot read the new save. Do not downgrade after saving.\n"
     instructions += "\n2.4.0 SAVE COMPATIBILITY: back up before updating. Saves become schema 23 /\n6476 bytes and migrate once; firmware before 2.4.0 cannot read them. Do not downgrade.\n"
+    instructions += "\n2.4.2 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nA sword-plant copy may store the AMONG depth; firmware before 2.4.2 reads that\nbyte as IN FRONT, so a copy placed among the fish will look in front instead.\n"
     (output / f"{asset_prefix}INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
@@ -176,6 +177,15 @@ The website uses one unified application with an explicit saved hardware profile
 Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
+
+### New in 2.4.2: a row of sword grass
+
+- The sword plant is **duplicable**. Buy extra copies in Decor & Storage and each one is planted as its own clump with its own position, depth lane and sway, so a tank can hold a row of sword grass instead of one. Every copy is a real seahorse perch and a real shelter.
+- A sword-plant copy weaves **among** the fish exactly like the first plant, so its placement page offers all three depths (behind, among, in front) and its order arrows work against the pieces it overlaps.
+- The order arrows now work for **every** placed copy, not just the plant: a second chest, shell, starfish, ornament or content decoration can be brought forward or sent back against the pieces it overlaps.
+- Kelp crowns that sway behind a piece standing in front of them are clipped by that piece, so a stalk no longer shows through the stone bridge's deck.
+- Fish explore the whole tank again. An explore-band bug had pinned every wander target to the lower half, which is why they seemed to prefer the bottom and middle.
+- Saves remain schema 23 / 6476 bytes. No new mechanics, save fields, framebuffer, PSRAM requirement, partition changes or factory reset. Back up before updating; do not downgrade to firmware older than 2.4.0.
 
 ### New in 2.4.1: polish without more chores
 

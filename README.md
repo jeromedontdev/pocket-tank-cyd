@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.4.1
+# Pocket Tank CYD 2.4.2
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.4.1**. Stable firmware,
+now versioned independently. This source targets **2.4.2**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -55,6 +55,21 @@ read grips from each piece's own art, so every standing decoration offers perche
 dive through rock gaps rather than a lane game like Fish Slalom, and **Reef
 Architect** is a real logic puzzle: plant six corals that match every row and
 column clue without touching.
+
+**2.4.2 sword grass, kelp and swimming depth:** the sword plant is now
+**duplicable** — buy extra copies in Decor & Storage and each one is planted as
+its own clump with its own position, depth lane and sway, so a tank can hold a
+row of sword grass instead of one. A copy weaves **among** the fish exactly like
+the first plant, so its placement page offers all three depths and its order
+arrows work against the pieces it overlaps. Every copy is a real seahorse perch
+and a real shelter. The same order arrows now work for **every** placed copy,
+not just the plant.
+
+Kelp crowns that sway behind a piece standing in front of them are now clipped
+by that piece, so a stalk no longer shows through the stone bridge's deck. Fish
+also explore the whole tank again: an explore-band bug had pinned every wander
+target to the lower half, which is why they seemed to prefer the bottom and
+middle. Saves are unchanged at schema 23 / 6476 bytes.
 
 **2.4.1 visual polish and exact-rendering optimization:** Tide Wheel
 has a studded brass rim, shaded wedges and a pointer that stops on the winning
