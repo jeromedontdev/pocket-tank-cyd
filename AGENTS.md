@@ -149,6 +149,21 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
+- **Release 2.4.2 is published** at tag/source
+  `2f21a9bba1836cd1121378e5ec2265ee07c15887`. Release run 41657350925 and
+  release-pinned Pages run 41659602213 both passed. All 29 public assets are
+  present across the three families; the live
+  `unified-manifest.json`/`unified-update.json` report 2.4.2, and the
+  published `pocket-tank-unified-app.bin` is 1,814,048 bytes, SHA256
+  `049852d64bd84b6b2deb49af432e0dbf138f33ca0e3f15c4cb7752f3b6b17e69` -
+  downloaded and hash-verified against the manifest. Keep this CI artifact
+  identity separate from the local COM4 build below.
+- The first 2.4.2 tag attempt failed the release gate on a GCC-only
+  `-Wmissing-braces` error in `tools/test_page_art.c` (`{"birth-shop", {0}}`,
+  because `fish_lineage_t`'s first member is itself an array). Clang does not
+  emit that warning, so local `--cc <zig>` runs passed. The tag was deleted
+  and re-pushed on the fix; never move a published tag, but an unpublished
+  failed one may be replaced.
 - Latest local COM4 app (duplicable sword plant with copy-aware depth and
   ordering, kelp crown occlusion fix, explore-band depth fix) is 1,814,016
   bytes / 152,576 OTA-slot bytes free, SHA256
