@@ -66,8 +66,9 @@ sit in the one paged Games list beside the arcade games. Main > Fish opens the
 Fish hub; Summary, Rename, Family, Genes, Life, Wardrobe and Fish Bank live there.
 Tapping a fish opens its Summary directly, and Back returns to the aquarium.
 **Help** on the main menu explains every system
-in sixteen topics. Each fish has hybrid **vigor** and a favorite decoration:
-both feed growth, calm and sale price. Themes are bought with doubloons.
+in twenty-one topics, including one for each fish meter. Each fish has a
+**vigor** score (its genetic diversity) and a favorite decoration: both feed
+growth, calm and sale price. Themes are bought with doubloons.
 Market views separate buying stock, residents/sales and pair/nursery
 information rather than packing every action onto one page.
 

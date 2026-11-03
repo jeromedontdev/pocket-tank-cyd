@@ -143,10 +143,11 @@ order, and each tier adds 20% to a fish's base worth.
 **Genetics and vigor:** sale value = stage worth x market tier x care condition
 (60–100%) x genes. The gene factor starts at x1.00 and adds 4% per point of
 **vigor**, 15% per shown recessive trait, 25% per mutation and 10% for a rare
-marking (COMMON / FINE / RARE / PRIZED). Vigor (0–10) is hybrid vigor:
-heterozygous hidden markings, colors and carried traits raise it, while
-line-breeding converges toward low-vigor offspring. Vigor also adds up to 10%
-growth. Bought stock always costs more than its immediate resale.
+marking (COMMON / FINE / RARE / PRIZED). Vigor (0–10) measures a fish's
+genetic diversity: it carries two copies of every gene, and each pair that
+differs raises vigor. Diverse parents give varied fry; line-breeding makes the
+copies match and vigor falls. Vigor also adds up to 10% growth. Bought stock
+always costs more than its immediate resale.
 
 **Favorite decor:** every fish loves one decoration (shown on its Summary as
 LOVES ...: PLACED or MISSING). With it placed, calm recovers 30% faster, its

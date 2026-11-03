@@ -1011,8 +1011,8 @@ static const help_topic_t HELP_TOPICS[] = {
         "CALM is peace of mind, 0 to 10, and it is earned rather than given. Trust sets the floor it can settle to, and the last points of trust buy very little, so a well-loved fish still tops out near 8.4.",
         "Hunger and tiredness raise that floor. Its favorite piece lowers it a quarter, Cozy Shelter 15%, and resting near cover helps. Startling the tank drops calm at once and it returns slowly."}},
     {"VIGOR", STAMP_HELIX, {
-        "VIGOR is hybrid vigor, 0 to 10, and it is fixed at birth. It counts the genes a fish carries but does not show: hidden markings, hidden colors and recessive traits.",
-        "Diverse parents give high-vigor fry that grow up to 10% faster and sell for 4% more per point. Line-breeding the same pair converges on low vigor, so bring in fresh stock."}},
+        "VIGOR is a fish's genetic diversity, 0 to 10, fixed at birth. Each fish carries two copies of every gene: two markings, two colors and four hidden traits.",
+        "Copies that differ raise vigor. Diverse parents give varied fry; line-breeding makes copies match and vigor falls. High vigor grows up to 10% faster and adds 4% to sale value per point."}},
     {"COMFORT & FAVORITES", STAMP_LEAF, {
         "Every fish loves one decoration or foliage set, shown as LOVES on its summary. With that piece placed, calm recovers 30% faster, its stress floor drops a quarter and the fish grows 10% faster.",
         "Without it the fish stays a little restless and grows 10% slower. Store pieces instead of selling them to switch favorites quickly."}},

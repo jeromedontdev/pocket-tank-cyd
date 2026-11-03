@@ -2578,9 +2578,10 @@ bool tank_item_in_tank(const tank_t *t, int item) {
     if (SD_IS_FOLIAGE(item))
         return t->foliage.version == 1 && (t->foliage.planted & (1u << (item - SD_FOLIAGE_FIRST))) != 0;
     /* tank_decor_owned only answers for pieces that occupy a decor slot, so a
-     * favorite that is a creature (the snail) or the sword plant - a vegetation
-     * bed, not a slot - always read as MISSING and could never be satisfied.
-     * Those live in the sd_unlocks bitmask, so ask it directly. */
+     * favorite that is a creature (the snail, item 1) always read as MISSING
+     * and could never be satisfied. Creatures live in the sd_unlocks bitmask,
+     * so ask it directly. Every field read here is per-aquarium, so a piece
+     * placed in another tank never comforts this one. */
     if (tank_decor_slot(item) < 0) return item >= 0 && item < 32 && (t->sd_unlocks & (1u << item)) != 0;
     return tank_decor_owned(t, item);
 }

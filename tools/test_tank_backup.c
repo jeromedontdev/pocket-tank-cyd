@@ -115,9 +115,14 @@ size_t test_decor_scenery_reload(tank_t *t, uint32_t seed) { tank_init(t, seed);
 static void give_favorite(tank_t *t, int fish) {
     int item = tank_fish_favorite_item(t, fish);
     if (item < 0) return;
-    if (SD_IS_FOLIAGE(item)) { t->foliage.version = 1; t->foliage.planted |= 1u << (item - SD_FOLIAGE_FIRST); }
-    else if (SD_IS_SCENERY(item)) t->polish.scenery_unlocks |= (uint8_t)(1u << (item - SD_SCENERY_FIRST));
-    else if (SD_IS_NEW_DECOR(item)) t->content.owned |= 1u << (item - SD_DECOR_FIRST);
+    /* Each store needs its version (and, for foliage, the owned mask) or the
+     * save validators reject the tank: planted must be a subset of owned. */
+    if (SD_IS_FOLIAGE(item)) {
+        t->foliage.version = 1;
+        t->foliage.owned |= 1u << (item - SD_FOLIAGE_FIRST);
+        t->foliage.planted |= 1u << (item - SD_FOLIAGE_FIRST);
+    } else if (SD_IS_SCENERY(item)) t->polish.scenery_unlocks |= (uint8_t)(1u << (item - SD_SCENERY_FIRST));
+    else if (SD_IS_NEW_DECOR(item)) { t->content.version = 1; t->content.owned |= 1u << (item - SD_DECOR_FIRST); }
     else t->sd_unlocks |= 1u << item;
     assert(tank_fish_comfort(t, fish) > 0);
 }
@@ -598,6 +603,50 @@ static void test_aquariums(void) {
     assert(stored_size == sizeof legacy_v21 && !memcmp(current, legacy_v21, sizeof legacy_v21));
     for (size_t i = stored_size; i < sizeof current; i++) assert(current[i] == 0);
     puts("PASS: 500-sand-dollar aquarium purchases, global wallet, persistent names and editor, eight-slot cap, paused saves, SD/NVS rollback and interrupted SD recovery");
+}
+/* Comfort is per-aquarium (2026-11): a fish is only comforted by its favorite
+ * piece when that piece is placed in ITS tank. Every field tank_item_in_tank
+ * reads (sd_unlocks, polish.scenery_unlocks, content.owned, foliage.planted)
+ * lives in the aquarium's own save, so a piece placed in one tank must never
+ * comfort a fish in another. */
+static void test_comfort_is_per_tank(void) {
+    tank_t a, b;
+    saved_size = 0; memset(slot_exists, 0, sizeof slot_exists);
+    tank_init(&a, 42); boot_enlarged(&a); progression_setup_done(&a);
+    /* Tank A owns a decor-slot piece and fixed scenery. */
+    a.sd_unlocks |= SD_ITEM_CHEST;
+    a.polish.scenery_unlocks |= 1u << (SD_SCENERY_BRAIN - SD_SCENERY_FIRST);
+    assert(tank_item_in_tank(&a, 9));                       /* the chest */
+    assert(tank_item_in_tank(&a, SD_SCENERY_BRAIN));
+    /* Tank B is a separate aquarium with none of it. */
+    tank_init(&b, 43); boot_enlarged(&b); progression_setup_done(&b);
+    assert(!tank_item_in_tank(&b, 9));
+    assert(!tank_item_in_tank(&b, SD_SCENERY_BRAIN));
+    /* A fish whose favorite is placed in A reads PLACED there and MISSING in B,
+     * even though both tanks hold the same fish identity. */
+    give_favorite(&a, 0);
+    assert(tank_fish_comfort(&a, 0) > 0);
+    int item = tank_fish_favorite_item(&a, 0);
+    assert(item >= 0 && tank_item_in_tank(&a, item));
+    b = a;                                                 /* same fish, same favorite */
+    if (SD_IS_FOLIAGE(item)) { b.foliage.owned = 0; b.foliage.planted = 0; }
+    else if (SD_IS_SCENERY(item)) b.polish.scenery_unlocks &= (uint8_t)~(1u << (item - SD_SCENERY_FIRST));
+    else if (SD_IS_NEW_DECOR(item)) b.content.owned &= ~(1u << (item - SD_DECOR_FIRST));
+    else b.sd_unlocks &= ~(1u << item);
+    assert(!tank_item_in_tank(&b, item));
+    assert(tank_fish_comfort(&b, 0) < 0);
+    /* A creature favorite (the snail, item 1) has no decor slot at all, so it
+     * must answer from this tank's own unlock bit rather than a profile mask. */
+    a.sd_unlocks |= SD_ITEM_SNAIL;
+    assert(tank_item_in_tank(&a, 1));
+    assert(!tank_item_in_tank(&b, 1));
+    /* The placement is genuinely stored with the aquarium, not held in RAM. */
+    assert(progression_save(&a));
+    tank_t reloaded; tank_init(&reloaded, 44); boot_enlarged(&reloaded);
+    assert(progression_storage_ready());
+    assert(tank_item_in_tank(&reloaded, 9));
+    assert(tank_item_in_tank(&reloaded, SD_SCENERY_BRAIN));
+    puts("PASS: comfort is per-aquarium - a favorite placed in one tank never comforts another, and it survives a reload");
 }
 static void assert_shop_icon_colors(const uint16_t *locked, const uint16_t *owned,
                                     int item, int x0, int y0, int x1, int y1) {
@@ -5119,6 +5168,7 @@ int main(int argc, char **argv) {
     test_readable_text();
     test_bank();
     test_aquariums();
+    test_comfort_is_per_tank();
     test_shop_expansion();
     { extern void test_decor_scenery(void); test_decor_scenery(); }
     test_clock();
