@@ -1121,6 +1121,66 @@ static void check_kelp_occlusion(void) {
         }
     fprintf(stderr, "PASS: kelp crowns are clipped by a piece in front of them at both scales and every detail\n");
 }
+/* The sword plant is duplicable (2026-11): each extra copy is its own veg bed,
+ * so it must actually paint, at its own x, in its own depth lane, and it must
+ * survive the tiled path. A copy that only existed in the simulation would
+ * pass every tank.c test and still be invisible on the device. */
+static void check_sword_copies_render(void) {
+    for (int normal = 0; normal < 2; normal++)
+        for (int detail = 0; detail < SCENE_DETAIL_COUNT; detail++) {
+            tank_t t;
+            fixture(&t, normal != 0, 0);
+            t.n_fish = 0;
+            render_device_t device = {0, 0, false, -1, (uint8_t)detail};
+            render_set_device(&device);
+            /* the primary alone, then the same tank plus one copy far to the
+               right, so the copy's pixels cannot be confused with the primary's */
+            tank_t primary = t;
+            assert(tank_veg_beds(&primary) == VEG_BEDS_MAX);
+            tank_t copied = t;
+            copied.inventory.extra[0] = (inventory_extra_t){
+                .item = 1, .z = DECOR_Z_BACK, .rank = DECOR_SLOTS, .x = TANK_W - 40 };
+            assert(tank_veg_beds(&copied) == VEG_BEDS_MAX + 1);
+            assert(tank_veg_extra_bed(&copied, 0) == 4);
+            render_tank(&primary, frame, TANK_W);
+            render_tank(&copied, fish_frame, TANK_W);
+            /* the copy paints, and only on its own side of the tank */
+            int painted = 0, wrong_side = 0;
+            for (int y = 0; y < TANK_H; y++)
+                for (int x = 0; x < TANK_W; x++) {
+                    int i = y * TANK_W + x;
+                    if (fish_frame[i] == frame[i]) continue;
+                    painted++;
+                    if (x < TANK_W / 2) wrong_side++;
+                }
+            if (!painted || wrong_side) {
+                fprintf(stderr, "Sword copy did not paint cleanly: %d pixels, %d on the wrong side "
+                        "(normal=%d detail=%d)\n", painted, wrong_side, normal, detail);
+                abort();
+            }
+            /* the copy is a real bed: its own canopy, its own fronds */
+            float cx0, cx1, top; int n = 0;
+            tank_veg_bed(&copied, 4, &cx0, &cx1, &top, &n);
+            assert(n == 4 && top < TANK_BOT);
+            assert(cx0 > TANK_W / 2);
+            for (int i = 0; i < n; i++) assert(tank_veg_frond(&copied, 4, i, NULL) > 0);
+            /* and the tiled path agrees with the full frame */
+            draw_tiles(&copied, tiled, 7);
+            assert(!memcmp(fish_frame, tiled, (size_t)TANK_W * TANK_H * sizeof *fish_frame));
+            /* a copy IN FRONT still paints, and the primary is untouched by it */
+            tank_t front = t;
+            front.inventory.extra[0] = (inventory_extra_t){
+                .item = 1, .z = DECOR_Z_FRONT, .rank = DECOR_SLOTS, .x = TANK_W - 40 };
+            render_tank(&front, both_frame, TANK_W);
+            int front_painted = 0;
+            for (int i = 0; i < TANK_W * TANK_H; i++) if (both_frame[i] != frame[i]) front_painted++;
+            assert(front_painted > 0);
+            draw_tiles(&front, tiled, 7);
+            assert(!memcmp(both_frame, tiled, (size_t)TANK_W * TANK_H * sizeof *both_frame));
+        }
+    fprintf(stderr, "PASS: every sword-plant copy paints at its own x in its own depth lane, "
+            "full and tiled, at both scales and every detail\n");
+}
 static void benchmark(int frames) {
 #ifndef RENDER_BASELINE
     check_packed_spans();
@@ -1135,6 +1195,7 @@ static void benchmark(int frames) {
     check_backdrop_codec();
     check_mussel_animation();
     check_kelp_occlusion();
+    check_sword_copies_render();
     check_ornament_art();
     check_damage_merge();
     check_scenery_cadence();

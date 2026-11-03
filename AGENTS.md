@@ -172,6 +172,10 @@ old bullets only as history and evidence.
   skips item 0 (the bed draws it), and `setup.c`'s `place_touch_top_copy`
   makes the placement hit box follow the copy's own canopy. No save layout
   changed: the copies reuse the existing `inventory.extra[]` slots.
+  `test_renderer_stress.c::check_sword_copies_render` proves a copy actually
+  paints at its own x in its own depth lane, full and tiled, at both scales
+  and every detail - a copy that only existed in the simulation would pass
+  every `tank.c` test and still be invisible on the device.
 - Kelp crowns were still clipping the stone bridge: `kelp_span` indexed the
   occlusion mask from the span's start while `kelp_row_mask` builds it from
   the sprite's left edge, so every span after the first was shifted. It now
