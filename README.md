@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.4.2
+# Pocket Tank CYD 2.4.3
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.4.2**. Stable firmware,
+now versioned independently. This source targets **2.4.3**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -59,6 +59,25 @@ read grips from each piece's own art, so every standing decoration offers perche
 dive through rock gaps rather than a lane game like Fish Slalom, and **Reef
 Architect** is a real logic puzzle: plant six corals that match every row and
 column clue without touching.
+
+**2.4.3 calm you have to earn, and Help that explains every stat:** calm used
+to sit pinned at 10.0 for every fish, which made a quarter of the sale price
+free. It is now a floor you have to work for: a fish settles at a residual
+stress that falls quadratically with trust, so the last trust points buy very
+little, and a favorite piece placed in *that* tank multiplies it down while a
+missing one multiplies it up. Hunger and tiredness add unease, and recovery is
+slower than before. A well-loved fish now rests around 8.4 rather than a
+perfect 10.0.
+
+Help gained a topic for each stat — TRUST, ENERGY, FULLNESS, CALM and VIGOR —
+so the numbers on the Fish Summary are explained individually instead of only
+as a group. VIGOR in particular now says what it measures: how many gene pairs
+a fish carries two different copies of, which is why a mixed-lineage fish grows
+faster and sells for more. Help is now twenty-one topics across three pages.
+
+A favorite decoration is satisfied only by a piece actually placed in the
+fish's own aquarium, and that is now pinned by a test. Saves are unchanged at
+schema 23 / 6476 bytes.
 
 **2.4.2 sword grass, kelp and swimming depth:** the sword plant is now
 **duplicable** — buy extra copies in Decor & Storage and each one is planted as

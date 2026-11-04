@@ -150,6 +150,21 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
+- **2.4.3 source is ready to publish** (calm retuned so it is earned, five
+  per-stat Help topics, VIGOR rewritten, per-aquarium comfort pinned by a
+  test). Saves are unchanged at schema 23 / 6476 bytes, so no migration runs.
+  Latest local COM4 app is 1,815,968 bytes / 152,576 OTA-slot bytes free,
+  SHA256 `076377b5593d73125252e887104bf9a0b9d7038156a4368f39bef8d6bd253c05`,
+  flashed app-only to `ota_0` with full backup
+  `backup-com4-243-20261103.bin` and exact readback. The image's own app
+  descriptor reads 2.4.3. Five residents loaded with stress
+  1.0/1.7/1.0/2.2/3.4 (varied, not pinned) and wallet 6065.
+  Native matrix green: `test_tank_backup` (plain, `--flat-edges`,
+  `--inventory-only`, `--clock-only`), `test_page_art`, `test_fish_behavior`,
+  `test_companion_feedback`, `test_creative`, `test_profiles`, `test_rpg`,
+  `test_reef_progression --trade-only`, `test_renderer_stress`,
+  `sim/run.py --smoke` and `unittest discover`. Publication identity must be
+  verified separately; never equate this local hash with CI assets.
 - **Release 2.4.2 is published** at tag/source
   `2f21a9bba1836cd1121378e5ec2265ee07c15887`. Release run 41657350925 and
   release-pinned Pages run 41659602213 both passed. All 29 public assets are

@@ -2,7 +2,7 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.4.2**
+**An illustrated tour of Pocket Tank CYD 2.4.3**
 
 **Latest source:** Main menu is Fish, Tank, Market, Games, **Casino**, Help;
 Settings moved to a cog in the bottom-right corner. Main > Fish is a Fish hub
@@ -20,6 +20,22 @@ once marking, trait and color mutations are all bred. Snail and urchin cards
 describe their roles (glass cleaner calm +10%, night grazer rest +20%), the
 jellyfish has slimmer tentacles, Games uses the standard menu backdrop and the
 rename keyboard sits lower with an unobstructed preview.
+
+**2.4.3 calm you have to earn, and Help that explains every stat:** calm used
+to sit pinned at 10.0 for every fish, which made a quarter of the sale price
+free. It is now a floor you have to work for: a fish settles at a residual
+stress that falls quadratically with trust, so the last trust points buy very
+little, and a favorite piece placed in *that* tank multiplies it down while a
+missing one multiplies it up. Hunger and tiredness add unease, and recovery is
+slower than before. A well-loved fish now rests around 8.4 rather than a
+perfect 10.0. Help gained a topic for each stat — TRUST, ENERGY, FULLNESS, CALM
+and VIGOR — so the numbers on the Fish Summary are explained individually
+instead of only as a group. VIGOR now says what it measures: how many gene
+pairs a fish carries two different copies of, which is why a mixed-lineage fish
+grows faster and sells for more. Help is now twenty-one topics across three
+pages. A favorite decoration is satisfied only by a piece actually placed in
+the fish's own aquarium, and that is now pinned by a test. Saves are unchanged
+at schema 23 / 6476 bytes.
 
 **2.4.2 sword grass, kelp and swimming depth:** the sword plant is
 **duplicable**. Buy extra copies in Decor & Storage and each one is planted as

@@ -82,7 +82,11 @@ class WebInstallerTests(unittest.TestCase):
         self.assertIn('href="./"', flasher)
         self.assertIn('href="./flash.html"', viewer)
         self.assertIn('href="#latest-features">What\'s new</a>', home)
-        self.assertIn("2.4.2: a row of sword grass", home)
+        # The badge must name the release this source actually builds, so read
+        # the version from version.h instead of hard-coding a release string.
+        release = re.search(r'#define PT_RELEASE\s+"([^"]+)"',
+                            (source.parent / "common" / "version.h").read_text(encoding="utf-8"))[1]
+        self.assertIn(release + ":", home)
         self.assertIn("Firmware Updates", home)
         self.assertIn("Check GitHub via Wi-Fi", home)
         for current in ("doubloons", "Creature Market", "Casino", "Contracts", "Auction", "Help"):

@@ -166,6 +166,7 @@ Only install trusted downloads; these images are not publisher-signed.
     instructions += "\n2.3.19 SAVE COMPATIBILITY: back up before updating. Saves grow to schema 20 /\n6424 bytes to remember where movable scenery stands. Older saves load unchanged;\nfirmware before 2.3.19 cannot read the new save. Do not downgrade after saving.\n"
     instructions += "\n2.4.0 SAVE COMPATIBILITY: back up before updating. Saves become schema 23 /\n6476 bytes and migrate once; firmware before 2.4.0 cannot read them. Do not downgrade.\n"
     instructions += "\n2.4.2 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nA sword-plant copy may store the AMONG depth; firmware before 2.4.2 reads that\nbyte as IN FRONT, so a copy placed among the fish will look in front instead.\n"
+    instructions += "\n2.4.3 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nNo new save fields. Calm is retuned, so existing fish will settle at a lower\nCALM reading than before; nothing is lost and no migration runs.\n"
     (output / f"{asset_prefix}INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
@@ -177,6 +178,14 @@ The website uses one unified application with an explicit saved hardware profile
 Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
+
+### New in 2.4.3: calm you have to earn
+
+- **Calm is no longer free.** It used to sit pinned at 10.0 for every fish, which handed out a quarter of the sale price for nothing. A fish now settles at a residual stress that falls **quadratically** with trust, so the last trust points buy very little, and a favorite piece placed in *that* tank multiplies it down while a missing one multiplies it up. Hunger and tiredness add unease, and recovery is slower than before. A well-loved fish rests around **8.4** instead of a perfect 10.0.
+- **Help explains every stat.** Five new topics — TRUST, ENERGY, FULLNESS, CALM and VIGOR — describe each number on the Fish Summary individually, and the FISH NEEDS overview was rewritten. Help is now twenty-one topics across three pages.
+- **VIGOR now says what it measures.** It is how many gene pairs a fish carries two different copies of, which is why a mixed-lineage fish grows faster and sells for more. The old text only said "hybrid vigor" and explained nothing.
+- **A favorite decoration must be in that fish's own tank.** A piece placed in another aquarium no longer comforts it. This was already true; it is now pinned by a test so it cannot regress.
+- Saves remain schema 23 / 6476 bytes. No new mechanics, save fields, framebuffer, PSRAM requirement, partition changes or factory reset. Back up before updating; do not downgrade to firmware older than 2.4.0.
 
 ### New in 2.4.2: a row of sword grass
 
