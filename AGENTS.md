@@ -161,6 +161,29 @@ old bullets only as history and evidence.
   pins the frozen prefix, distinctness, unique names, index round-trips and that
   every purchase and preview lands exactly on a palette entry. Never reorder or
   renumber the first 24 entries.
+- **Release 2.4.4 is published** at tag/source
+  `d65523626ea536ebd56a7678ccac762ef4c0a5e0` (96-color fish palette; dead code
+  and the unused event bus retired). Saves are unchanged at schema 23 / 6476
+  bytes, so no migration runs. Release run 41783938243 and release-pinned Pages
+  run 41785575518 both passed; the `main` push runs 41783117415 (checks) and
+  41783117442 (website) passed first. All 29 public assets are present across
+  the three families and the live site serves the `2.4.4: a 96-color palette`
+  badge; the live `unified-manifest.json` reports 2.4.4. The published
+  `pocket-tank-unified-app.bin` is 1,816,416 bytes, SHA256
+  `7e9a53bd15ea4f9ee068aa32730c8459af1f69b36070549692dbbf2d07f371a6`, and its
+  own app descriptor reads 2.4.4; that hash matches the release's
+  `unified-SHA256SUMS.txt` exactly. The local build is a separate artifact:
+  1,815,680 bytes, SHA256
+  `c96c1645658c3d717e0890645c863ffedf02664da1331b9b08bd01349ee380e2`. Never
+  equate the local hash with the CI asset.
+  Known flake: the tag-push `checks.yml` run 41783938286 failed at
+  `sim/run.py --cc gcc --smoke` in `sim/test_rpg.py:118` (completed campaign vs
+  save/reload round trip; fish advanced ~0.23 s across the restore). The same
+  commit passed that exact step on the `main` push and inside the release run,
+  and `d655236` does not touch clock/save/restore code. The existing mitigation
+  waits only until `time.time() % 1 <= 0.5`, leaving as little as ~0.5 s for
+  `tank_init` + `progression_boot` to land in the same wall-clock second. Widen
+  that margin before trusting a red X on a tag push as a real regression.
 - **Release 2.4.3 is published** at tag/source
   `9b4f9ecccddb8367d9aa75693642caa1a3f49d80` (calm retuned so it is earned,
   five per-stat Help topics, VIGOR rewritten, per-aquarium comfort pinned by a
