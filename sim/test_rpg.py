@@ -108,12 +108,18 @@ def exercise(lib, backup):
                 assert completed["tank"][field] == baseline["tank"][field], ("Story must not replace aquarium settings", field)
             assert lib.sim_save()
             saved = json.loads(backup(lib))
-            # sim_restore stamps wall time then boots; a second tick between them is 1 s of offline care.
-            while time.time() % 1 > 0.5:
-                time.sleep(0.05)
-            restore(saved)
-            open_story()
-            resumed = snapshot()
+            # sim_restore stamps saved_unix, then progression_boot reads now_unix. Both are whole
+            # seconds, so a boundary falling between them is 1 s of offline care (hunger +0.8/3600)
+            # and the round trip no longer matches. Restore just after a boundary so the whole
+            # restore plus boot has a full second to land in, and retry if it still straddles one.
+            for attempt in range(4):
+                while time.time() % 1 > 0.15:
+                    time.sleep(0.01)
+                restore(saved)
+                open_story()
+                resumed = snapshot()
+                if resumed == completed:
+                    break
             differences = {key: (completed[key], resumed[key]) for key in completed if completed[key] != resumed[key]}
             assert resumed == completed, ("Completed campaign survives a binary save and JSON reload", differences)
             for _ in range(4):

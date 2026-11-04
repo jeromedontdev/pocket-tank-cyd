@@ -176,14 +176,17 @@ old bullets only as history and evidence.
   1,815,680 bytes, SHA256
   `c96c1645658c3d717e0890645c863ffedf02664da1331b9b08bd01349ee380e2`. Never
   equate the local hash with the CI asset.
-  Known flake: the tag-push `checks.yml` run 41783938286 failed at
-  `sim/run.py --cc gcc --smoke` in `sim/test_rpg.py:118` (completed campaign vs
+  Fixed flake: the tag-push `checks.yml` run 41783938286 failed at
+  `sim/run.py --cc gcc --smoke` in `sim/test_rpg.py` (completed campaign vs
   save/reload round trip; fish advanced ~0.23 s across the restore). The same
   commit passed that exact step on the `main` push and inside the release run,
-  and `d655236` does not touch clock/save/restore code. The existing mitigation
-  waits only until `time.time() % 1 <= 0.5`, leaving as little as ~0.5 s for
-  `tank_init` + `progression_boot` to land in the same wall-clock second. Widen
-  that margin before trusting a red X on a tag push as a real regression.
+  and `d655236` does not touch clock/save/restore code. Cause:
+  `progression_restore_json` stamps `saved_unix` and `progression_boot` then
+  reads `now_unix`, both whole seconds, so a boundary falling between them is
+  one second of offline care (hunger +0.8/3600 = 0.000222, exactly the observed
+  delta). The old wait allowed restore anywhere in the first half second, so a
+  loaded runner could straddle a boundary. The test now restores within 0.15 s
+  of a boundary and retries up to four times. Do not narrow that window back.
 - **Release 2.4.3 is published** at tag/source
   `9b4f9ecccddb8367d9aa75693642caa1a3f49d80` (calm retuned so it is earned,
   five per-stat Help topics, VIGOR rewritten, per-aquarium comfort pinned by a
