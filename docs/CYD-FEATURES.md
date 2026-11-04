@@ -2,7 +2,7 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.4.3**
+**An illustrated tour of Pocket Tank CYD 2.4.4**
 
 **Latest source:** Main menu is Fish, Tank, Market, Games, **Casino**, Help;
 Settings moved to a cog in the bottom-right corner. Main > Fish is a Fish hub
@@ -20,6 +20,17 @@ once marking, trait and color mutations are all bred. Snail and urchin cards
 describe their roles (glass cleaner calm +10%, night grazer rest +20%), the
 jellyfish has slimmer tentacles, Games uses the standard menu backdrop and the
 rename keyboard sits lower with an unobstructed preview.
+
+**2.4.4 a 96-color palette:** fish bodies and markings now draw from **96
+colors** instead of a short list, so a bought fish can wear almost any hue
+rather than one of eight. The palette is 24 hues at three tones each (vivid,
+pastel and deep) on top of the original 24 entries, which stay byte-identical
+and keep their indices — so every saved hidden allele and every inherited color
+still resolves to exactly the same shade. **Inherited colors never reroll:** a
+fry keeps its parents' exact RGB, and only a purchase or a rare birth mutation
+introduces a new one. The family page names the new entries by tone and hue
+family ("VIVID TEAL", "DEEP ROSE") instead of a bare hex value. Saves are
+unchanged at schema 23 / 6476 bytes.
 
 **2.4.3 calm you have to earn, and Help that explains every stat:** calm used
 to sit pinned at 10.0 for every fish, which made a quarter of the sale price
@@ -2126,3 +2137,4 @@ Release 2.3.5 uses the `320` captures for those five guide/website images.
 
 For build instructions and live usage, see the [project README](../README.md)
 and [CYD hardware guide](../firmware/CYD.md).
+

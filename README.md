@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.4.3
+# Pocket Tank CYD 2.4.4
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.4.3**. Stable firmware,
+now versioned independently. This source targets **2.4.4**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -59,6 +59,17 @@ read grips from each piece's own art, so every standing decoration offers perche
 dive through rock gaps rather than a lane game like Fish Slalom, and **Reef
 Architect** is a real logic puzzle: plant six corals that match every row and
 column clue without touching.
+
+**2.4.4 a 96-color palette:** fish bodies and markings now draw from **96
+colors** instead of a short list, so a bought fish can wear almost any hue
+rather than one of eight. The palette is 24 hues at three tones each (vivid,
+pastel and deep) on top of the original 24 entries, which stay byte-identical
+and keep their indices — so every saved hidden allele and every inherited color
+still resolves to exactly the same shade. **Inherited colors never reroll:** a
+fry keeps its parents' exact RGB, and only a purchase or a rare birth mutation
+introduces a new one. The family page names the new entries by tone and hue
+family ("VIVID TEAL", "DEEP ROSE") instead of a bare hex value. Saves are
+unchanged at schema 23 / 6476 bytes.
 
 **2.4.3 calm you have to earn, and Help that explains every stat:** calm used
 to sit pinned at 10.0 for every fish, which made a quarter of the sale price
@@ -1896,3 +1907,4 @@ authoritative build/hardware contracts.
 Do not use upstream installers or release binaries on this fork. See
 [docs/OTA.md](docs/OTA.md) for offline SD packages, the opt-in fork channel
 and signing limitations.
+

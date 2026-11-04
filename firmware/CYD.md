@@ -8,7 +8,7 @@ framebuffer, flash-resident icons, and the rules-based fish advisor; the 4 MB fl
 layout has no model partition. Generic board support, model/training code, audio,
 battery/PMIC and IMU drivers have been removed from the source tree.
 
-**Pocket Tank CYD 2.4.3 is a distinct aquarium game, not just a board port.**
+**Pocket Tank CYD 2.4.4 is a distinct aquarium game, not just a board port.**
 
 ## 2.4.0: current trading revision
 

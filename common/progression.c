@@ -2333,12 +2333,12 @@ static void do_arrival(tank_t *t) {
 }
 
 /* ---- fry for sale (0.3.5) ---- */
-/* 0.4's nine colors (main: LOOK_COLORS, in its order), so a bought fry's
- * look snaps to a genome there exactly. The body comes from the first
- * eight - charcoal is a marking only on 0.3.x, whose fin rule would draw a
- * charcoal fish's fins black. */
-static const uint32_t FRY_COLORS[9] = { 0x38dcc7, 0xff725c, 0x78d67d, 0xa799ff, 0xffd166, 0xf48fb1, 0x4da3ff, 0xe8f1f2, 0x23262c };
-#define FRY_BODY_N 8
+/* 2.4.4: purchases roll from the shared wide palette instead of a short list.
+ * FISH_BODY_COLORS / FISH_MARKING_COLORS hold 96 entries (24 historical plus 72
+ * appended), so a bought fish can wear any of them and its hidden allele still
+ * resolves through the same index table that inheritance uses. The roll stays a
+ * pure function of the offer seed, so a preview and the fish it sells agree. */
+#define FRY_BODY_N FISH_COLOR_N
 static uint32_t fry_hash(uint32_t x) { x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
 int progression_market_price(const tank_t *t, int variety) {
     if (!t || variety < 0 || variety >= FISH_VARIETY_COUNT) return 0;
@@ -2349,7 +2349,7 @@ bool progression_market_preview(const tank_t *t, int variety, fish_t *out) {
     memset(out, 0, sizeof *out);
     out->variety = (uint8_t)variety;
     out->pattern = (uint8_t)((variety * 3 + 1) % FISH_PATTERN_COUNT);
-    tank_fish_set_look(out, FRY_COLORS[variety % FRY_BODY_N], FRY_COLORS[(variety + 3) % FRY_BODY_N]);
+    tank_fish_set_look(out, FISH_BODY_COLORS[variety % FRY_BODY_N], FISH_MARKING_COLORS[(variety + 3) % FRY_BODY_N]);
     out->stage = STAGE_ADULT;
     out->base_size = 12; out->turn_rate = 2.5f;
     out->bold = out->bold0 = 0.35f + (variety % 4) * 0.1f;
@@ -2428,16 +2428,18 @@ bool progression_fry_room(const tank_t *t) { return occupied_slots(t) < POP_CAP 
 int  progression_fry_left(void) { int n = 0; for (int k = 0; k < FRY_OFFER_N; k++) n += !(s_fry_sold >> k & 1); return n; }
 float progression_fry_new_in_s(void) { double s = FRY_OFFER_S - s_fry_age; return s > 0 ? (float)s : 0; }
 void progression_fry_offer(const tank_t *t, int k, fry_offer_t *o) {
-    /* three different bodies: the seed shuffles the eight and the first three are the offer */
+    /* three different bodies: the seed shuffles the whole palette and the first
+     * three are the offer. A partial Fisher-Yates over 96 entries costs a few
+     * dozen hashes and keeps the roll a pure function of the seed. */
     uint32_t h = fry_hash(s_fry_seed * 2654435761u + 0x5eed);
     int order[FRY_BODY_N];
     for (int i = 0; i < FRY_BODY_N; i++) order[i] = i;
     for (int i = FRY_BODY_N - 1; i > 0; i--) { h = fry_hash(h + (uint32_t)i); int j = (int)(h % (uint32_t)(i + 1)), x = order[i]; order[i] = order[j]; order[j] = x; }
     if (k < 0 || k >= FRY_OFFER_N) k = 0;
-    uint32_t body = FRY_COLORS[order[k]];
-    int a = (int)(fry_hash(h ^ (0xacce5u * (uint32_t)(k + 1))) % 9u);
-    if (FRY_COLORS[a] == body) a = (a + 1) % 9;              /* markings the body's own colour would vanish */
-    o->body = body; o->accent = FRY_COLORS[a]; o->sold = (s_fry_sold >> k & 1) != 0;
+    uint32_t body = FISH_BODY_COLORS[order[k]];
+    int a = (int)(fry_hash(h ^ (0xacce5u * (uint32_t)(k + 1))) % (uint32_t)FISH_COLOR_N);
+    if (FISH_MARKING_COLORS[a] == body) a = (a + 1) % FISH_COLOR_N;   /* markings the body's own colour would vanish */
+    o->body = body; o->accent = FISH_MARKING_COLORS[a]; o->sold = (s_fry_sold >> k & 1) != 0;
     uint8_t varieties[FISH_VARIETY_COUNT]; int count = 0;
     for (int i = 0; i < FISH_VARIETY_COUNT; i++)
         if (journal_variety_unlocked(t, i)) varieties[count++] = (uint8_t)i;

@@ -394,9 +394,23 @@ const char *tank_roster_name(int preset) { return preset >= 0 && preset < ROSTER
 const uint32_t LOOK_BODY[LOOK_N]   = { 0x38dcc7, 0xff725c, 0x78d67d, 0xa799ff, 0xffd166, 0xf48fb1, 0x4da3ff, 0xe8f1f2 };
 const uint32_t LOOK_ACCENT[LOOK_N] = { 0xffbd59, 0xffe08a, 0xa799ff, 0x78d67d, 0x38dcc7, 0xffffff, 0xf25b65, 0x1a2a30 };
 const uint32_t FISH_BODY_COLORS[FISH_COLOR_N] = {
+    /* 0..23: the historical table, frozen. Saved color2 alleles index these. */
     0x38dcc7, 0xff725c, 0x78d67d, 0xa799ff, 0xffd166, 0xf48fb1, 0x4da3ff, 0xe8f1f2,
     0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
-    0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xffffff, 0x263d50
+    0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xffffff, 0x263d50,
+    /* 24..95: appended 2.4.4 spread - 24 hues, each vivid / pastel / deep */
+    0xfa1414, 0xfc9292, 0x8c0707, 0xfa4d14, 0xfcad92, 0x8c2807,
+    0xfa8714, 0xfcc792, 0x8c4a07, 0xfac014, 0xfce292, 0x8c6b07,
+    0xfafa14, 0xfcfc92, 0x8c8c07, 0xc0fa14, 0xe2fc92, 0x6b8c07,
+    0x87fa14, 0xc7fc92, 0x4a8c07, 0x4dfa14, 0xadfc92, 0x288c07,
+    0x14fa14, 0x92fc92, 0x078c07, 0x14fa4d, 0x92fcad, 0x078c28,
+    0x14fa87, 0x92fcc7, 0x078c4a, 0x14fac0, 0x91fbe1, 0x078c6b,
+    0x14fafa, 0x92fcfc, 0x078c8c, 0x14c0fa, 0x92e2fc, 0x076b8c,
+    0x1487fa, 0x92c7fc, 0x074a8c, 0x144dfa, 0x92adfc, 0x07288c,
+    0x1414fa, 0x9292fc, 0x07078c, 0x4d14fa, 0xad92fc, 0x28078c,
+    0x8714fa, 0xc792fc, 0x4a078c, 0xc014fa, 0xe292fc, 0x6b078c,
+    0xfa14fa, 0xfc92fc, 0x8c078c, 0xfa14c0, 0xfc92e2, 0x8c076b,
+    0xfa1487, 0xfc92c7, 0x8c074a, 0xfa144d, 0xfc92ad, 0x8c0728
 };
 const char *const CREATURE_NAMES[CREATURE_COUNT] = {"SHRIMP", "SNAIL", "URCHIN", "SEAHORSE", "PEARL MUSSEL"};
 const char *const COSMETIC_COLOR_NAMES[COSMETIC_COLOR_COUNT] = {
@@ -409,17 +423,51 @@ uint32_t tank_cosmetic_color(unsigned color, uint32_t natural) {
     return color && color < COSMETIC_COLOR_COUNT ? FISH_BODY_COLORS[palette[color]] : natural;
 }
 const uint32_t FISH_MARKING_COLORS[FISH_COLOR_N] = {
+    /* 0..23: the historical table, frozen (index-aligned with the bodies) */
     0xffbd59, 0xffe08a, 0xa799ff, 0x78d67d, 0x38dcc7, 0xffffff, 0xf25b65, 0x1a2a30,
     0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
-    0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xe8f1f2, 0x263d50
+    0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xe8f1f2, 0x263d50,
+    /* 24..95: appended 2.4.4 spread, the same 24 hues at three tones */
+    0xfa1414, 0xfc9292, 0x8c0707, 0xfa4d14, 0xfcad92, 0x8c2807,
+    0xfa8714, 0xfcc792, 0x8c4a07, 0xfac014, 0xfce292, 0x8c6b07,
+    0xfafa14, 0xfcfc92, 0x8c8c07, 0xc0fa14, 0xe2fc92, 0x6b8c07,
+    0x87fa14, 0xc7fc92, 0x4a8c07, 0x4dfa14, 0xadfc92, 0x288c07,
+    0x14fa14, 0x92fc92, 0x078c07, 0x14fa4d, 0x92fcad, 0x078c28,
+    0x14fa87, 0x92fcc7, 0x078c4a, 0x14fac0, 0x91fbe1, 0x078c6b,
+    0x14fafa, 0x92fcfc, 0x078c8c, 0x14c0fa, 0x92e2fc, 0x076b8c,
+    0x1487fa, 0x92c7fc, 0x074a8c, 0x144dfa, 0x92adfc, 0x07288c,
+    0x1414fa, 0x9292fc, 0x07078c, 0x4d14fa, 0xad92fc, 0x28078c,
+    0x8714fa, 0xc792fc, 0x4a078c, 0xc014fa, 0xe292fc, 0x6b078c,
+    0xfa14fa, 0xfc92fc, 0x8c078c, 0xfa14c0, 0xfc92e2, 0x8c076b,
+    0xfa1487, 0xfc92c7, 0x8c074a, 0xfa144d, 0xfc92ad, 0x8c0728
 };
 /* Index-aligned with FISH_BODY_COLORS. These are the names the family page
  * prints beside the COLOR swatch, so a keeper reads "BORN WITH: BODY COLOR"
  * and then "COLOR  TURQUOISE" rather than a bare hex value. */
 const char *const FISH_BODY_COLOR_NAMES[FISH_COLOR_N] = {
+    /* 0..23: the historical names, frozen and index-aligned */
     "TURQUOISE", "CORAL", "GREEN", "LILAC", "GOLD", "PINK", "BLUE", "SILVER",
     "MAGENTA", "RED", "ORANGE", "YELLOW", "LIME", "MINT", "CYAN", "AZURE",
-    "INDIGO", "VIOLET", "FUCHSIA", "ROSE", "AQUA", "LAVENDER", "WHITE", "MIDNIGHT"
+    "INDIGO", "VIOLET", "FUCHSIA", "ROSE", "AQUA", "LAVENDER", "WHITE", "MIDNIGHT",
+    /* 24..95: tone + hue family, so a wide-palette fish still reads a name */
+    "VIVID RED", "PASTEL RED", "DEEP RED", "VIVID VERMILION",
+    "PASTEL VERMILION", "DEEP VERMILION", "VIVID ORANGE", "PASTEL ORANGE",
+    "DEEP ORANGE", "VIVID AMBER", "PASTEL AMBER", "DEEP AMBER",
+    "VIVID GOLD", "PASTEL GOLD", "DEEP GOLD", "VIVID YELLOW",
+    "PASTEL YELLOW", "DEEP YELLOW", "VIVID CHARTREUSE", "PASTEL CHARTREUSE",
+    "DEEP CHARTREUSE", "VIVID LIME", "PASTEL LIME", "DEEP LIME",
+    "VIVID GREEN", "PASTEL GREEN", "DEEP GREEN", "VIVID EMERALD",
+    "PASTEL EMERALD", "DEEP EMERALD", "VIVID SPRING", "PASTEL SPRING",
+    "DEEP SPRING", "VIVID MINT", "PASTEL MINT", "DEEP MINT",
+    "VIVID TEAL", "PASTEL TEAL", "DEEP TEAL", "VIVID CYAN",
+    "PASTEL CYAN", "DEEP CYAN", "VIVID AZURE", "PASTEL AZURE",
+    "DEEP AZURE", "VIVID SKY", "PASTEL SKY", "DEEP SKY",
+    "VIVID BLUE", "PASTEL BLUE", "DEEP BLUE", "VIVID COBALT",
+    "PASTEL COBALT", "DEEP COBALT", "VIVID INDIGO", "PASTEL INDIGO",
+    "DEEP INDIGO", "VIVID VIOLET", "PASTEL VIOLET", "DEEP VIOLET",
+    "VIVID PURPLE", "PASTEL PURPLE", "DEEP PURPLE", "VIVID MAGENTA",
+    "PASTEL MAGENTA", "DEEP MAGENTA", "VIVID FUCHSIA", "PASTEL FUCHSIA",
+    "DEEP FUCHSIA", "VIVID ROSE", "PASTEL ROSE", "DEEP ROSE"
 };
 /* the coral's swatches (2026-09-23): the reference art's orange first, then
  * reef colours - pink, magenta, violet, blue, teal, green, gold */

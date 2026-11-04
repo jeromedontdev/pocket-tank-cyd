@@ -407,8 +407,61 @@ static void test_creature_formats_and_aquariums(tank_t *t) {
     assert(t->sd_balance == wallet && !memcmp(&t->creatures, &second, sizeof second));
 }
 
+/* 2.4.4: purchases roll from the shared wide palette. The first 24 entries are
+ * the frozen historical table (saved color2 alleles index them), the appended
+ * 72 widen the spread, and every purchase must land exactly on an entry so its
+ * hidden allele resolves through the same table inheritance uses. */
+static void test_wide_palette(tank_t *t) {
+    static const uint32_t historical[24] = {
+        0x38dcc7, 0xff725c, 0x78d67d, 0xa799ff, 0xffd166, 0xf48fb1, 0x4da3ff, 0xe8f1f2,
+        0xff1493, 0xff3030, 0xff7a00, 0xffef00, 0x9dff00, 0x00ff66, 0x00ffff, 0x007bff,
+        0x483dff, 0x9f32ff, 0xff00ff, 0xffa8df, 0x97ffe0, 0xc8b8ff, 0xffffff, 0x263d50
+    };
+    assert(FISH_COLOR_N == 96);
+    for (int i = 0; i < 24; i++) assert(FISH_BODY_COLORS[i] == historical[i]);
+    /* every entry is distinct on the display and round-trips through its index */
+    for (int i = 0; i < FISH_COLOR_N; i++) {
+        assert(tank_body_index(FISH_BODY_COLORS[i]) == i);
+        for (int j = i + 1; j < FISH_COLOR_N; j++) {
+            assert(FISH_BODY_COLORS[i] != FISH_BODY_COLORS[j]);
+            assert(strcmp(FISH_BODY_COLOR_NAMES[i], FISH_BODY_COLOR_NAMES[j]));
+        }
+    }
+    /* a purchase's body is always a body-palette entry, so the hidden allele
+     * (index + 1) is meaningful and inheritance stays exact. The marking comes
+     * from the marking palette, which is index-aligned but not identical. */
+    start(t, GAME_MODE_NORMAL);
+    int seen[FISH_COLOR_N]; memset(seen, 0, sizeof seen);
+    int distinct = 0;
+    for (int round = 0; round < 400; round++) {
+        progression_fry_roll(t);
+        for (int k = 0; k < FRY_OFFER_N; k++) {
+            fry_offer_t o;
+            progression_fry_offer(t, k, &o);
+            int bi = tank_body_index(o.body);
+            assert(FISH_BODY_COLORS[bi] == o.body);
+            bool marking = false;
+            for (int m = 0; m < FISH_COLOR_N; m++) if (FISH_MARKING_COLORS[m] == o.accent) marking = true;
+            assert(marking);
+            if (!seen[bi]) { seen[bi] = 1; distinct++; }
+        }
+    }
+    /* 1200 offers must reach well past the old eight-body list */
+    assert(distinct > 60);
+    /* market previews land on the palettes too, for every variety */
+    for (int v = 0; v < FISH_VARIETY_COUNT; v++) {
+        fish_t p;
+        assert(progression_market_preview(t, v, &p));
+        assert(FISH_BODY_COLORS[tank_body_index(p.color)] == p.color);
+        bool marking = false;
+        for (int m = 0; m < FISH_COLOR_N; m++) if (FISH_MARKING_COLORS[m] == p.accent) marking = true;
+        assert(marking);
+    }
+}
+
 int main(void) {
     tank_t t;
+    test_wide_palette(&t);
     test_market_prices(&t);
     test_market_transactions(&t);
     test_fry_transactions(&t);
@@ -417,5 +470,6 @@ int main(void) {
     test_creature_market(&t);
     test_creature_formats_and_aquariums(&t);
     puts("PASS: fish/three-species creature markets, truthful previews, no instant resale profit, atomic failures, confirmed sales, inherited fish genes, one-per-tank creatures with rolled colors, legacy breeding retired, legacy paid/free migration, schema validation, Bank/travel and aquarium isolation");
+    puts("PASS: the 96-entry wide palette keeps its 24 historical entries frozen, stays distinct and named, and every purchase and preview lands exactly on an entry so inherited alleles resolve");
     return 0;
 }

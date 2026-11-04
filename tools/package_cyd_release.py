@@ -167,6 +167,7 @@ Only install trusted downloads; these images are not publisher-signed.
     instructions += "\n2.4.0 SAVE COMPATIBILITY: back up before updating. Saves become schema 23 /\n6476 bytes and migrate once; firmware before 2.4.0 cannot read them. Do not downgrade.\n"
     instructions += "\n2.4.2 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nA sword-plant copy may store the AMONG depth; firmware before 2.4.2 reads that\nbyte as IN FRONT, so a copy placed among the fish will look in front instead.\n"
     instructions += "\n2.4.3 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nNo new save fields. Calm is retuned, so existing fish will settle at a lower\nCALM reading than before; nothing is lost and no migration runs.\n"
+    instructions += "\n2.4.4 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nNo new save fields. The body/marking palette grows from 24 to 96 entries, but\nthe first 24 keep their exact values and indices, so every saved hidden allele\nand inherited colour resolves to the same shade. No migration runs.\n"
     (output / f"{asset_prefix}INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
@@ -178,6 +179,14 @@ The website uses one unified application with an explicit saved hardware profile
 Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
+
+### New in 2.4.4: a 96-color palette
+
+- **Fish bodies and markings draw from 96 colors**, not a short list. A bought fish can wear almost any hue instead of one of eight. The palette is 24 hues at three tones each (vivid, pastel and deep) added on top of the original 24 entries.
+- **The original 24 entries are byte-identical and keep their indices**, so every saved hidden allele and every inherited color still resolves to exactly the same shade. No save change and no migration.
+- **Inherited colors never reroll.** A fry keeps its parents' exact RGB; only a purchase or a rare birth mutation introduces a new color.
+- The family page names the new entries by tone and hue family ("VIVID TEAL", "DEEP ROSE") instead of a bare hex value, and Help's GENETICS & VIGOR topic notes the wider palette.
+- Saves remain schema 23 / 6476 bytes. No new mechanics, save fields, framebuffer, PSRAM requirement, partition changes or factory reset. Back up before updating; do not downgrade to firmware older than 2.4.0.
 
 ### New in 2.4.3: calm you have to earn
 

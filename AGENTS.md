@@ -150,6 +150,17 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
+- **2.4.4 widens the fish palette to 96 colors** (24 hues x vivid/pastel/deep
+  appended to the historical 24). `FISH_COLOR_N` is 96; the first 24 entries of
+  `FISH_BODY_COLORS`, `FISH_MARKING_COLORS` and `FISH_BODY_COLOR_NAMES` are
+  frozen and index-aligned, so every saved `fish_lineage_t.color2` allele and
+  every inherited RGB resolves to the same shade. `color2` is a `uint8_t`
+  index+1, so 96 fits with no save change (schema 23 / 6476 bytes). Purchases
+  roll from the whole palette (`FRY_BODY_N` is now `FISH_COLOR_N`); inheritance
+  is untouched and never rerolls. `test_fish_market.c`'s `test_wide_palette`
+  pins the frozen prefix, distinctness, unique names, index round-trips and that
+  every purchase and preview lands exactly on a palette entry. Never reorder or
+  renumber the first 24 entries.
 - **Release 2.4.3 is published** at tag/source
   `9b4f9ecccddb8367d9aa75693642caa1a3f49d80` (calm retuned so it is earned,
   five per-stat Help topics, VIGOR rewritten, per-aquarium comfort pinned by a

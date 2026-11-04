@@ -1100,7 +1100,13 @@ const char *tank_roster_name(int preset);
  * hold every roster colour, so an untouched fish always sits on a swatch. */
 extern const uint32_t LOOK_BODY[LOOK_N];
 extern const uint32_t LOOK_ACCENT[LOOK_N];
-#define FISH_COLOR_N 24
+/* 2.4.4: the shared body/marking palette grew from 24 to 96 entries so a
+ * purchase rolls from a wide spread instead of a short list. The first 24 are
+ * byte-identical to the historical table and keep their indices, so every
+ * saved fish_lineage_t.color2 allele and every inherited colour still resolves
+ * to exactly the same RGB. The appended 72 are 24 hues at three tones each.
+ * color2 is a uint8_t index+1, so 96 fits without a save change. */
+#define FISH_COLOR_N 96
 extern const uint32_t FISH_BODY_COLORS[FISH_COLOR_N];
 extern const uint32_t FISH_MARKING_COLORS[FISH_COLOR_N];
 /* the body palette's names, index-aligned with FISH_BODY_COLORS. The birth

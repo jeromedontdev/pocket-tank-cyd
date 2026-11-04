@@ -1024,7 +1024,7 @@ static const help_topic_t HELP_TOPICS[] = {
         "Fry inherit one allele of each gene from each parent. Pair carriers of hidden traits to reveal them. Check Fish > Family to follow a line."}},
     {"GENETICS & VIGOR", STAMP_GENES, {
         "Each fish has two marking alleles, two body-color alleles and four recessive traits. A trait shows only with two copies; one copy is carried silently.",
-        "VIGOR (0-10) counts mixed alleles and carried traits. Diverse lines grow faster and sell higher. Rare birth mutations change a marking, trait or color."}},
+        "VIGOR (0-10) counts mixed alleles and carried traits. Diverse lines grow faster and sell higher. Bodies and markings use a 96-color palette; inherited colors never reroll."}},
     {"MARKET PRICES", STAMP_COIN, {
         "Worth = stage x tier x care x genes. Care: 60-100%. Genes: +4% per vigor, +15% per shown trait, +25% per mutation, +10% for a rare marking.",
         "Grades: COMMON, FINE (125%), RARE (150%), PRIZED (190%). Market stock is plain and costs more than its resale, so profit comes from breeding and raising."}},
