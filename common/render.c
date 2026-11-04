@@ -7,7 +7,6 @@
 #include "progression.h"
 #include "companion.h"
 #include "weather.h"
-#include "tank_events.h"
 #include "setup.h"
 #include "notice.h"
 #include "version.h"
@@ -1060,10 +1059,10 @@ static float     g_scene_dim = -1;
 static unsigned  g_scene_epoch = 0;
 static const uint16_t *g_primed_fb = NULL;
 static unsigned  g_primed_epoch = 0;
-static uint8_t  *g_vig = NULL;                  /* per-pixel vignette alpha (static) */
-static bool      g_vig_filled = false;
+/* The optional per-pixel vignette alpha LUT (render_set_vignette_cache) was
+ * removed (2026-11): no platform ever installed one, so every vignette site
+ * now calls vig_alpha() directly. The scene cache still bakes the vignette. */
 void render_set_scene_cache(uint16_t *buf) { g_scene = buf; g_scene_dim = -1; }
-void render_set_vignette_cache(uint8_t *buf) { g_vig = buf; g_vig_filled = false; }
 
 const uint16_t *render_scene_buf(unsigned *epoch) {
     if (epoch) *epoch = g_scene_epoch;
@@ -1667,7 +1666,7 @@ static inline void castle_put(const cst_t *k, int x, int y, unsigned tone) {
     *p = (uint16_t)masks()->colors[k->layer][tone][y - (CASTLE_FY - CASTLE_ROWS)];
     if (k->final) {                          /* vignetted here, and untagged: the sweep must not darken it again */
         PK_LIGHT_PX(p, x, y);
-        int a = g_vig ? g_vig[y * TANK_W + x] : vig_alpha(x, y);
+        int a = vig_alpha(x, y);
         if (a) px_darken(p, a);
         if (g_dirty) g_dirty[y * DIRTY_WORDS_PER_ROW + (x >> 5)] &= ~(1u << (x & 31));
     } else dirty_px(x, y);
@@ -1886,7 +1885,6 @@ static void draw_castle(ctx_t *c, int cx, int front, bool final) {
 enum { CO_NONE = 0, CO_RIM, CO_BODY, CO_SHADE, CO_LIT, CO_TIP, CO_N };
 static int      g_coral_q = -1;               /* the growth step the sprite was built for (CORAL_Q steps) */
 #define CORAL_Q 128                           /* ~5.6 h per step over the 30 days: a rebuild each */
-static int      g_coral_cells;                /* filled cells in the sprite (the selftest) */
 static uint32_t g_coral_rgb = 1;              /* what the rows hold (1 = never) */
 static float    g_coral_dim = -1;
 /* the decor scratch (2026-09-24): every table the coral and the reef cluster
@@ -2001,7 +1999,6 @@ static inline int8_t sd_q(float d) { d *= 8; return (int8_t)(d < -127 ? -127 : d
 static void coral_build(float g) {
     int8_t  (*sd)[CORAL_CW] = ds()->co_sd;
     uint8_t (*tp)[(CORAL_CW + 7) / 8] = ds()->co_tp;
-    g_coral_cells = 0;
     for (int j = 0; j < CORAL_CH; j++)
         for (int i = 0; i < CORAL_CW; i++) {
             bool tip; sd[j][i] = sd_q(coral_sd(i + 0.5f, (CORAL_CH - 1 - j) + 0.5f, g, &tip));
@@ -2030,12 +2027,7 @@ static void coral_build(float g) {
                 }
             }
             ds()->co_sprite[j][i] = t;
-            g_coral_cells += t != CO_NONE;
         }
-}
-int render_coral_cells(float growth) {                       /* the selftest: how much coral there is at a growth */
-    coral_build(growth); g_coral_q = -1;
-    return g_coral_cells;
 }
 static void coral_tint_fill(uint32_t rgb, float dim) {
     if (g_coral_rgb == rgb && g_coral_dim == dim) return;
@@ -2188,7 +2180,7 @@ static void draw_floor_mound(ctx_t *c, int cx, int half_w, int rise, bool final)
             rec_px(x, y);
             if (final) {
                 PK_LIGHT_PX(p, x, y);
-                int a = g_vig ? g_vig[y * TANK_W + x] : vig_alpha(x, y);
+                int a = vig_alpha(x, y);
                 if (a) px_darken(p, a);
                 if (g_dirty) g_dirty[y * DIRTY_WORDS_PER_ROW + (x >> 5)] &= ~(1u << (x & 31));
             }
@@ -2219,7 +2211,7 @@ static void draw_coral(ctx_t *c, int cx, uint32_t rgb, float growth, bool final)
                     rec_px(x, y);
                     if (final) {
                         PK_LIGHT_PX(p, x, y);
-                        int a = g_vig ? g_vig[y * TANK_W + x] : vig_alpha(x, y);
+                        int a = vig_alpha(x, y);
                         if (a) px_darken(p, a);
                         if (g_dirty) g_dirty[y * DIRTY_WORDS_PER_ROW + (x >> 5)] &= ~(1u << (x & 31));
                     }
@@ -2499,7 +2491,8 @@ static void pk_casts(const tank_t *t, int pkx) {
     g_pk_cast_n = 0;
     int px0 = pkx - PUMPKIN_HALF_W, px1 = pkx + PUMPKIN_HALF_W;      /* the lantern's own patch of sand: lit, a 5 px half step either side */
     bool grass_above = g_pk_k >= 0 && tank_decor_z(t, 8) == DECOR_Z_BACK;   /* the grass beds stand in front of a lantern BEHIND */
-    for (int b = 3; b < tank_veg_beds(t); b++) {
+    const int veg_n = tank_veg_beds(t);                                     /* hoisted: sword_beds() walks the inventory */
+    for (int b = 3; b < veg_n; b++) {
         if (b == 3 ? !tank_decor_above(t, 0, 8) : !grass_above) continue;    /* (the sword plant: by its own rank) */
         float x0, x1; tank_veg_bed(t, b, &x0, &x1, NULL, NULL);
         int a = (int)x0, z = (int)x1;
@@ -2572,7 +2565,7 @@ static void pk_halo(uint16_t *sc) {
             if ((unsigned)x >= (unsigned)TANK_W || (unsigned)y >= (unsigned)TANK_H) continue;
             int i = pk_light_i(x, y);
             if (i < 0) continue;
-            int inv = 256 - (g_vig ? g_vig[y * TANK_W + x] : vig_alpha(x, y));
+            int inv = 256 - vig_alpha(x, y);
             if (g_pk_shadows) { int sh = pk_shade(x, y); if (sh == 3) continue; if (sh == 2) inv = (int)(inv * PK_SPILL); else if (sh == 1) inv = (int)(inv * PK_HALF); }   /* in a shadow */
             int lr = rgb[i][0] * inv >> 8, lg = rgb[i][1] * inv >> 8, lb = rgb[i][2] * inv >> 8;
             uint16_t *p = &sc[y * TANK_W + x];
@@ -3510,7 +3503,7 @@ static void draw_seahorse(ctx_t *c, const tank_t *t) {
 enum { CLE_ROCK, CLE_WEED, CLE_CORAL, CLE_TUBE, CLE_BRAIN, CLE_N };
 enum { CLV_BODY, CLV_LIT, CLV_RIM, CLV_SHADE, CLV_DEEP, CLV_N };
 #define CL_TONE(e, v) (1 + (e) * CLV_N + (v))
-static int      g_cl_q = -1, g_cl_cells;
+static int      g_cl_q = -1;
 static int      g_cl_scheme = -1; static float g_cl_dim = -1;
 /* geometry in unscaled cells: x from the left, y UP from the base row; the
  * size scales it about (36, 0) */
@@ -3632,10 +3625,7 @@ static void cl_build(float g) {
     for (int k = 0; k < 4; k++) cl_paint(CLE_TUBE, k, s);
     cl_paint(CLE_BRAIN, 0, s);
     cl_paint(CLE_WEED, 1, s);
-    g_cl_cells = 0;
-    for (int j = 0; j < CL_CH; j++) for (int i = 0; i < CL_CW; i++) g_cl_cells += ds()->cl_sprite[j][i] != 0;
 }
-int render_cluster_cells(float growth) { cl_build(growth); g_cl_q = -1; return g_cl_cells; }
 static void cl_tint_fill(int scheme, float dim) {
     if (g_cl_scheme == scheme && g_cl_dim == dim) return;
     const cluster_scheme_t *sc = &CLUSTER_SCHEMES[scheme];
@@ -3678,7 +3668,7 @@ static void draw_cluster(ctx_t *c, int cx, int scheme, float growth, bool final)
                     rec_px(x, y);
                     if (final) {
                         PK_LIGHT_PX(p, x, y);
-                        int a = g_vig ? g_vig[y * TANK_W + x] : vig_alpha(x, y);
+                        int a = vig_alpha(x, y);
                         if (a) px_darken(p, a);
                         if (g_dirty) g_dirty[y * DIRTY_WORDS_PER_ROW + (x >> 5)] &= ~(1u << (x & 31));
                     }
@@ -5646,7 +5636,8 @@ static void draw_simple_static(ctx_t *c, const tank_t *t) {
             if (g_pc[k].item == 4)
                 draw_cluster_crown(c, g_pc[k].cx, tank_cluster_scheme(t), tank_cluster_growth(t), 0, &x0, &y0, &x1, &y1);
         }
-        for (int b = 3; b < tank_veg_beds(t); b++) if (bed_z(t, b) == layer) {
+        const int veg_n = tank_veg_beds(t);                                 /* hoisted out of the layer test */
+        for (int b = 3; b < veg_n; b++) if (bed_z(t, b) == layer) {
             draw_veg(c, t, b, veg_seed_of(b), -1, false);
         }
     }
@@ -5729,7 +5720,8 @@ static void backdrop_prepare(const tank_t *t, float dim) {
     sig.simple = render_simple_scene() && !setup_is_place();
     if (sig.simple) {
         uint32_t hash = 2166136261u;
-        for (int b = 3; b < tank_veg_beds(t); b++) {
+        const int veg_n = tank_veg_beds(t);                                 /* hoisted: hashed per frame */
+        for (int b = 3; b < veg_n; b++) {
             int n; tank_veg_bed(t, b, NULL, NULL, NULL, &n);
             hash = (hash ^ (unsigned)bed_z(t, b)) * 16777619u;
             for (int i = 0; i < n; i++) {
@@ -5890,7 +5882,6 @@ static void bake_scene(const tank_t *t, uint16_t *sc, float dim) {
             uint32_t col = backdrop_rgb(x, y, water);
             int r = (int)(((col >> 16) & 255) * dim), g = (int)(((col >> 8) & 255) * dim), b = (int)((col & 255) * dim);
             int a = vig_alpha(x, y);
-            if (g_vig) g_vig[y * TANK_W + x] = (uint8_t)a;
             int inv = 256 - a, d = bayer[y & 3][x & 3];
             int rr = (r * inv) >> 8, gg = (g * inv) >> 8, bb = (b * inv) >> 8;
             int r5 = (rr + (d >> 1)) >> 3, g6 = (gg + (d >> 2)) >> 2, b5 = (bb + (d >> 1)) >> 3;
@@ -5906,7 +5897,7 @@ static void bake_scene(const tank_t *t, uint16_t *sc, float dim) {
         int top = sand_ridge(x);
         for (int y = top; y < TANK_H; y++) {
             uint32_t col = floor_rgb(x, y);
-            int inv = 256 - (g_vig ? g_vig[y * TANK_W + x] : vig_alpha(x, y));
+            int inv = 256 - vig_alpha(x, y);
             int r = (int)(((col >> 16) & 255) * dim) * inv >> 8;
             int g = (int)(((col >> 8) & 255) * dim) * inv >> 8;
             int b = (int)((col & 255) * dim) * inv >> 8;
@@ -6330,10 +6321,11 @@ void render_damage_begin(const tank_t *t, bool force_full) {
        silhouettes only once, including trims and moved/removed sword plants. */
     static struct { int16_t x, top; bool active; } fronds[VEG_BEDS_ALL][VEG_FRONDS_MAX];
     static float previous_veg_clock[VEG_BEDS_ALL];
+    const int veg_n = tank_veg_beds(t);                                     /* hoisted: sword_beds() walks the inventory */
     for (int b = 3; b < VEG_BEDS_ALL; b++) {
         float grass_clock = veg_clock(t, t->clock, veg_seed_of(b));
         int n = 0;
-        if (b < tank_veg_beds(t)) tank_veg_bed(t, b, NULL, NULL, NULL, &n);
+        if (b < veg_n) tank_veg_bed(t, b, NULL, NULL, NULL, &n);
         for (int i = 0; i < VEG_FRONDS_MAX; i++) {
             float x = 0; int segs = i < n ? tank_veg_frond(t, b, i, &x) : 0;
             int top = (int)(TANK_BOT - 16 - (segs - 1) * VEG_SEG_DY - VEG_SEG_RY) - 4;
@@ -6526,7 +6518,6 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
             /* rebuild the static scene with the vignette baked in (the
                per-frame pass then only re-darkens dynamic patches) */
             bake_scene(t, g_scene, dim);
-            if (g_vig) g_vig_filled = true;
             g_scene_dim = dim; g_scene_epoch++;
         }
         if (!(g_primed_fb == fb && g_primed_epoch == g_scene_epoch))
@@ -6573,7 +6564,8 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
        The alternating FRONT fronds draw after the fish, below. Each bed's
        spans skip the pieces above it (veg_skip_for), and a bed in front of
        the lantern is backlit (g_pk_shade_all). */
-    const int veg_n = tank_veg_beds(t) < VEG_BEDS_ALL ? tank_veg_beds(t) : VEG_BEDS_ALL;
+    const int veg_beds = tank_veg_beds(t);                                 /* one call, not two */
+    const int veg_n = veg_beds < VEG_BEDS_ALL ? veg_beds : VEG_BEDS_ALL;
 #define VEG_PASS(b, layer) do { g_veg_skip = veg_skip_for(t, (b)); \
         g_pk_shade_all = g_pk_lx >= 0 && ((b) >= 3 ? tank_veg_above(t, (b), 8) : pkz == DECOR_Z_BACK); \
         draw_veg(&c, t, (b), veg_seed_of(b), (layer), cached); g_pk_shade_all = false; } while (0)
@@ -6755,7 +6747,7 @@ static void render_tank_scene(const tank_t *t, uint16_t *fb, int stride) {
                         if (!w) { x |= 31; continue; }         /* nothing else in this word */
                         if (!(w & 1)) continue;
                         uint16_t *p = &c.fb[y * c.stride + x];
-                        int a = (g_vig && g_vig_filled) ? g_vig[y * TANK_W + x] : vig_alpha(x, y);
+                        int a = vig_alpha(x, y);
                         if (a) px_darken(p, a);
                     }
                 }
@@ -7388,10 +7380,6 @@ static void tools_draw(ctx_t *c, const tank_t *t) {
 bool render_lock_hit(float x, float y) {
     (void)x; (void)y;
     return false;
-}
-int render_tools_hit(float x, float y) {
-    (void)x; (void)y;
-    return -1;
 }
 int render_card_menu_hit(float x, float y) {
     (void)x; (void)y;
@@ -8476,17 +8464,6 @@ bool render_milestones_card(const tank_t *t, int *fish, int *rename_x, int *sell
     if (btn_y)    *btn_y    = render_frame_y(ms_card_btn_y(t) + MSP_HOW_H / 2);
     return true;
 }
-bool render_milestones_arrow(const tank_t *t, bool right, int *x, int *y) {
-    if (!g_ms_caption[0] || g_ms_tip) return false;
-    if (x) *x = render_frame_x(right ? MSP_MODAL_X + MSP_MODAL_W - MSP_ARROW_IN - MSP_ARROW_W / 2 : MSP_MODAL_X + MSP_ARROW_IN + MSP_ARROW_W / 2);
-    if (y) *y = render_frame_y(ms_modal_y(t) + MSP_ARROW_IN + MSP_ARROW_H / 2);
-    return true;
-}
-void render_milestones_row(int row, int *name_x, int *y) {
-    if (name_x) *name_x = render_frame_x(100);
-    if (y)      *y      = render_frame_y(MSP_ROW_Y0 + row * MSP_ROW_H + MSP_ROW_MID);
-}
-
 /* ---- announcement modal (notice.h, 2026-09-15) ----
  * The milestones page's detail modal, over the live tank: the badge art at
  * 2x (a fish's own sprite for a stage), the name, the caption, and a thin
@@ -10424,9 +10401,6 @@ void render_internal_rect_fill(render_ctx_t *c, int x, int y, int w, int h, uint
 }
 void render_internal_rect_edge(render_ctx_t *c, int x, int y, int w, int h, uint32_t rgb) {
     rect_edge(c, x, y, w, h, rgb);
-}
-void render_internal_ring(render_ctx_t *c, float cx, float cy, float r, uint32_t rgb) {
-    ring(c, cx, cy, r, rgb);
 }
 void render_internal_button(render_ctx_t *c, int x, int y, int w, int h,
                             uint32_t fill, uint32_t edge, const char *label, int scale) {

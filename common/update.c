@@ -820,8 +820,3 @@ void render_update(uint16_t *fb, int stride, float clock) {
     }
 }
 
-const char *net_err_name(int err) {
-    static const char *const N[] = { "none", "no signal", "wrong password", "no answer from the server", "bad manifest",
-                                     "download stopped", "not verified", "too big", "canceled", "no radio" };
-    return err >= 0 && err < (int)(sizeof N / sizeof N[0]) ? N[err] : "?";
-}

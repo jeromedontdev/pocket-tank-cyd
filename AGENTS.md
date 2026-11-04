@@ -1146,6 +1146,14 @@ old bullets only as history and evidence.
   `sim/testdata/saves`: they are source artwork, current screenshots and
   compatibility fixtures, not disposable legacy files. Leave build/cache/
   dependency directories alone unless cleanup of those is explicitly requested.
+- The 12 `firmware/backup-com4-*.bin` full-flash dumps (48 MB, untracked) were
+  deleted on 2026-11-04 at the user's request. The flash-evidence paragraphs
+  below still name four of them (`backup-com4-243-20261103.bin`,
+  `backup-com4-sworddepth-20261103.bin`,
+  `backup-com4-birthgen-20261102-125333.bin`,
+  `backup-com4-post-latch-creative-20261102.bin`) as the recovery images those
+  runs used; those names are now historical record only and the blobs no longer
+  exist locally. Re-flash evidence must cite a backup that is actually present.
 - Prior implementation commits: `551e771` (RPG/games/UI/docs) and `44cf7f0`
   (feature home, separate flasher, GCC signedness fix). Treat these as landmarks,
   not a substitute for current HEAD. Release publication is verified in Actions.

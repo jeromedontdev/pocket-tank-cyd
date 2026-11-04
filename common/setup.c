@@ -1,6 +1,5 @@
 /* setup.c — first-run setup flow (see setup.h). */
 #include "setup.h"
-#include "tank_events.h"
 #include "render.h"
 #include "progression.h"
 #include "companion.h"          /* companion_story_name: a parent's life identity */
@@ -20,7 +19,6 @@
 #define C_GO_E   C_EDGE
 #define C_FILL   0x5f8a92      /* a selected mode button's fill */
 #define C_GENE   0xa7c4ba      /* the family page's carried alleles: the Genes page's secondary ink */
-#define C_MUT    0xffd998      /* ... and a birth mutation, in the Genes page's gold */
 
 static bool s_active;
 static bool s_birth;           /* the birth flow (three pages about s_fish), not the first run */
@@ -285,7 +283,6 @@ void setup_begin(tank_t *t) {
     s_active = true; s_birth = false; s_place = false; s_rename = false; s_fish = -1; s_page = SETUP_PG_WELCOME; s_down = false;
     if (!progression_mode_chosen(t)) s_page = SETUP_PG_MODE;
     s_mode_pick = GAME_MODE_NORMAL; s_mode_error[0] = 0;
-    tank_emit(TEV_WELCOME, -1);
 }
 void setup_begin_birth(tank_t *t, int slot) {
     if (slot < 0 || slot >= t->n_fish) { s_active = false; return; }
@@ -699,7 +696,7 @@ void setup_activate(tank_t *t, int id) {
             s_remove_armed = false;
             s_place = false;
             bool ok = progression_inventory_store(t, s_item, s_extra);
-            if (ok) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
+            if (ok) { s_active = false; }
             else { s_place = true; s_save_error = true; s_place_error = progression_shop_notice(); }
             return;
         }
@@ -707,7 +704,7 @@ void setup_activate(tank_t *t, int id) {
         if (id == SETUP_HIT_NEXT) {
             s_place_error = NULL;
             s_place = false;
-            if (progression_save(t)) { s_active = false; tank_emit(TEV_CONFIRM, -1); }
+            if (progression_save(t)) { s_active = false; }
             else { s_place = true; s_save_error = true; }
         }
         else if (id == SETUP_HIT_BCK || id == SETUP_HIT_FWD) tank_decor_copy_shift(t, s_item, s_extra, id == SETUP_HIT_FWD ? 1 : -1);
@@ -721,18 +718,16 @@ void setup_activate(tank_t *t, int id) {
         return;
     }
     if (s_rename) {                                     /* one page: DONE keeps the name, CANCEL restores the original */
-        if (id == SETUP_HIT_NEXT) { rename_end(t, true); tank_emit(TEV_CONFIRM, -1); return; }
+        if (id == SETUP_HIT_NEXT) { rename_end(t, true); return; }
         if (id == SETUP_HIT_BACK) { rename_end(t, false); return; }
     }
     int name_key = id >= 'A' && id <= 'Z' ? id + ('a' - 'A') :
                    (id >= '0' && id <= '9') || id == '-' || id == ' ' || id == '\b' ? id : 0;
     if (page_is_name() && id == SETUP_HIT_SUGGEST) {
         tank_give_name(t, page_fish(), ++s_suggestions);
-        tank_emit(TEV_WHEEL_TICK, -1);
         return;
     }
     if (page_is_name() && name_key && setup_name_keyboard_apply(f->name, sizeof f->name, name_key)) {
-        tank_emit(TEV_WHEEL_TICK, -1);
         return;
     }
     if (id == SETUP_HIT_NEXT) {
@@ -741,7 +736,6 @@ void setup_activate(tank_t *t, int id) {
             bool saved = s_birth ? progression_newborn_done(t) : progression_setup_done(t);
             if (!saved) { s_save_error = true; return; }
             s_save_error = false; s_active = false; stage(t);
-            tank_emit(TEV_CONFIRM, -1);
             return;
         }
         s_page++;
@@ -1266,38 +1260,20 @@ void render_setup(const tank_t *t, uint16_t *fb, int stride, float clock) {
         if (ps > 1.2f) ps = 1.2f;                                    /* ... but a juvenile's ring must clear the name */
         render_ring(fb, stride, CX, SETUP_FAM_PORTRAIT_Y, 17 * ps + 6, f->color);
         render_fish_portrait(fb, stride, CX, SETUP_FAM_PORTRAIT_Y, ps, f, clock);
-        if (l && l->mutation) {                                      /* a birth mutation, in the Genes page's gold */
-            char mut[56];
-            bool pat = l->mutation & GENE_MUTANT_PATTERN, tra = l->mutation & GENE_MUTANT_TRAIT,
-                 col = l->mutation & GENE_MUTANT_COLOR;
-            /* "BORN WITH:" is the keeper's wording (2026-11): the old page
-             * showed BOLD and SOCIAL bars as if the fry were born with a
-             * rating. What a fry is actually born with is its look - the body
-             * colour, the marking and the traits - so the gold line names the
-             * mutation in those terms and the COLOR row below shows the body.
-             * "BORN WITH" already says the change is new, so the line lists
-             * only what changed.
-             *
-             * Width is the binding constraint: the panel is 384 px wide and
-             * scale-1 text advances 12 px a character at 240 px, so the line
-             * must stay at or under 30 characters to keep a 12 px margin
-             * inside the frame. "MARKING, TRAIT AND COLOR" is 35 and spilled
-             * past both borders, so the list joins with "+" (which the font
-             * has) and the longest form is exactly 30 - 358 px, centred at
-             * 45..403 inside the panel's 32..416. test_page_art.c's
-             * menu_test_text hook asserts every menu string stays inside the
-             * last opaque panel, so this cannot silently regress. */
-            snprintf(mut, sizeof mut, "BORN WITH: %s%s%s%s%s",
-                     pat ? "MARKING" : "", pat && (tra || col) ? "+" : "",
-                     tra ? "TRAIT" : "", tra && col ? "+" : "", col ? "COLOR" : "");
-            text_c(fb, stride, CX, SETUP_FAM_MUT_Y, 1, C_MUT, mut);
-        }
+        /* The "BORN WITH: MARKING+TRAIT+COLOR" gold line is gone (2026-11).
+         * It restated what the five rows below already say in full - COLOR,
+         * MARKING and TRAITS name the look the fry shows, CARRIES names the
+         * alleles it only holds - so the line was redundant, and its
+         * "BORN WITH" wording read as a rating the fry was born with. The
+         * rows are the truth; nothing above them needs to summarise them.
+         * (The old BOLD/SOCIAL bars went earlier for the same reason: they
+         * were personality drives, not inheritance.) */
         int y = SETUP_FAM_ROW_Y, vx = SETUP_FAM_VALUE_X;
         char list[64];
         /* COLOR: the body swatch and its nearest palette name. A fry's body is
          * an inherited RGB, so the swatch is the truth; the name is the nearest
-         * FISH_BODY_COLORS entry (tank_body_index), which is what the keeper
-         * reads as "born with" a colour. */
+         * FISH_BODY_COLORS entry (tank_body_index), the palette word a keeper
+         * would use for it. */
         render_text(fb, stride, SETUP_FAM_LABEL_X, y, 2, C_CAPT, "COLOR");
         render_rect(fb, stride, vx, y - 1, 16, 16, f->color);
         render_rect_edge(fb, stride, vx, y - 1, 16, 16, C_INNER);

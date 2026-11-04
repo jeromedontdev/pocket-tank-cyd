@@ -83,7 +83,6 @@ extern const char *const CARE_TASK_DETAILS[CARE_TASK_COUNT];
 extern const uint8_t CARE_COINS[CARE_TASK_COUNT], CARE_XP[CARE_TASK_COUNT];
 void progression_care_refresh(tank_t *t);
 bool progression_care_claim(tank_t *t, int task);
-void progression_care_greet(tank_t *t);
 int progression_game_payout(const tank_t *t, int game, int dollars);
 game_mode_t progression_mode(const tank_t *t);
 bool progression_mode_chosen(const tank_t *t);

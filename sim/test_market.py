@@ -61,9 +61,25 @@ def exercise(lib, output, mode):
         if mode == 1:
             assert lib.sim_page() == 9 and lib.sim_companion_section() == 26
             lib.sim_action(9)
+            # Creative Market purchases are FREE but real (AGENTS.md): the fish
+            # joins the tank and the wallet never moves. The five-fish cap still
+            # applies. (The old "stays in the sandbox" assertion predates the
+            # 2096a28 policy change and contradicted AGENTS.md.)
             before = snapshot()
             tap(100, 288)
-            assert snapshot()["tank"]["n_fish"] == before["tank"]["n_fish"], "Creative trading stays in the sandbox"
+            bought = snapshot()
+            assert bought["tank"]["n_fish"] == before["tank"]["n_fish"] + 1, "Creative buys the fish for real"
+            assert bought["tank"]["sd_balance"] == before["tank"]["sd_balance"], "Creative purchase is free"
+            # Fill to the five-fish cap, then prove the cap refuses and charges nothing.
+            for _ in range(5):
+                if snapshot()["tank"]["n_fish"] == 5:
+                    break
+                tap(100, 288)
+            full = snapshot()
+            assert full["tank"]["n_fish"] == 5, (mode, width, full["tank"]["n_fish"])
+            tap(100, 288)
+            assert snapshot()["tank"]["n_fish"] == 5, "Creative five-fish cap holds"
+            assert snapshot()["tank"]["sd_balance"] == full["tank"]["sd_balance"], "Capped purchase must not charge"
             continue
         else:
             assert lib.sim_page() == 9 and lib.sim_companion_section() == 26
@@ -177,7 +193,8 @@ def exercise(lib, output, mode):
         assert snapshot()["tank"]["n_fish"] == 5
         assert snapshot()["tank"]["sd_balance"] == full["tank"]["sd_balance"], "Full tank purchase must not charge"
     if mode == 1:
-        print("PASS: Creative at 320/240 blocks free fish styling and market purchase")
+        print("PASS: Creative at 320/240 blocks free fish styling, buys Market fish free "
+              "and still enforces the five-fish cap")
     else:
         print(f"PASS: market mode {mode}, 320/240, actual offers, pair/nursery, "
               "fish/creature/offspring buy/sale rollback, separate confirmation, capacity, startup/identity gating")

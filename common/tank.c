@@ -4,7 +4,6 @@
 #include "tank.h"
 #include "companion.h"
 #include <stdio.h>
-#include "tank_events.h"
 #include <math.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -49,14 +48,11 @@ const char *const GOAL_NAMES[GOAL_COUNT] = {
     "explore", "rest", "dart_play", "inspect_reef",
 };
 
-/* ---- the event bus (tank_events.h): one listener, synchronous ---- */
-const char *const TANK_EVENT_NAMES[TEV_COUNT] = {
-    "tap", "feed", "light_on", "light_off", "wipe", "snip", "eat", "spook", "investigate", "bubbles",
-    "welcome", "wheel_tick", "confirm",
-};
-static tank_event_fn s_ev_fn; static void *s_ev_ud;
-void tank_events_set(tank_event_fn fn, void *ud) { s_ev_fn = fn; s_ev_ud = ud; }
-void tank_emit(int ev, int fish) { if (s_ev_fn) s_ev_fn(ev, fish, s_ev_ud); }
+/* The event bus (tank_events.h: tank_events_set/TANK_EVENT_NAMES/tank_emit)
+ * was removed (2026-11): its only consumer was the board's speaker, and audio
+ * is permanently out of scope for this build (AGENTS.md). Nothing in the
+ * firmware, sim, web or tools ever installed a listener, so every emit was a
+ * no-op. The moments it marked are still commented where they happen. */
 
 const char *const STAGE_NAMES[4] = { "fry", "juv", "adult", "elder" };
 const char *const TRAINED_NAMES[N_TRAINED_NAMES] = { "mira", "bolt", "kelp", "nori" };
@@ -89,8 +85,6 @@ float tank_dist(float ax, float ay, float bx, float by) {
 
 /* ---- the glass (tank.h). The rectangle's is its frame; the bowl's is the
  * circle, with the flat bottom at TANK_BOT. ---- */
-float tank_glass_x0(float y) { (void)y; return 0; }
-float tank_glass_x1(float y) { (void)y; return TANK_W; }
 float tank_glass_top(float x) { (void)x; return 0; }
 void tank_glass_clamp(float *x, float *y, float m) {
     *x = clampf(*x, m, TANK_W - m); *y = clampf(*y, m, TANK_H - m);
@@ -442,8 +436,8 @@ const uint32_t FISH_MARKING_COLORS[FISH_COLOR_N] = {
     0xfa1487, 0xfc92c7, 0x8c074a, 0xfa144d, 0xfc92ad, 0x8c0728
 };
 /* Index-aligned with FISH_BODY_COLORS. These are the names the family page
- * prints beside the COLOR swatch, so a keeper reads "BORN WITH: BODY COLOR"
- * and then "COLOR  TURQUOISE" rather than a bare hex value. */
+ * prints beside the COLOR swatch, so a keeper reads "COLOR  TURQUOISE" rather
+ * than a bare hex value. */
 const char *const FISH_BODY_COLOR_NAMES[FISH_COLOR_N] = {
     /* 0..23: the historical names, frozen and index-aligned */
     "TURQUOISE", "CORAL", "GREEN", "LILAC", "GOLD", "PINK", "BLUE", "SILVER",
@@ -1229,24 +1223,10 @@ static void veg_sync(tank_t *t) {
         t->veg_growth[b] = sum / 4;
     }
 }
-/* a frond slot's own number in 0..1, one per salt. A full mix: the plain
- * multiply this replaced stepped ~0.05 per frond, so every grown bed was a
- * smooth slope and not a ragged skyline (2026-10-05) */
-static float veg_slot_rand(int b, int i, uint32_t salt) {
-    uint32_t h = (uint32_t)(b * VEG_FRONDS_MAX + i) * 0x9E3779B9u ^ salt;
-    h ^= h >> 16; h *= 0x7FEB352Du; h ^= h >> 15; h *= 0x846CA68Bu; h ^= h >> 16;
-    return (float)(h >> 8) / 16777215.0f;
-}
-/* frond i of bed b grows toward its own ceiling: a hash of the slot spread
- * over VEG_CAP_LO..VEG_CAP_HI (a different hash than the fresh tank's start
- * profile, so a tall start does not mean a tall ceiling) */
-float tank_veg_cap(int b, int i) {
-    float cap = VEG_CAP_LO + veg_slot_rand(b, i, 0x5EA62A55u) * (VEG_CAP_HI - VEG_CAP_LO);
-/* the bowl closes in over the outer fronds: a tip stops 12 px under the glass
-                                                              (the reef bed taken at its widest, the sword plant wherever it stands);
-                                                              the watch's and the square's upper corners do the same to the beds by its walls */
-    return cap;
-}
+/* tank_veg_cap() and its veg_slot_rand() hash were removed (2026-11): nothing
+ * called either. The per-slot ceiling they computed (VEG_CAP_LO..VEG_CAP_HI)
+ * is still documented in tank.h and still the intent for growth, but no growth
+ * tick consults it today, so the accessor was dead weight. */
 
 void tank_veg_sync(tank_t *t) { veg_sync(t); }
 void tank_veg_set(tank_t *t, int b, float g) {
@@ -1309,7 +1289,6 @@ void tank_reef_spot(const tank_t *t, float *x, float *y) {
 }
 
 /* Reserved diagnostic entry points for old console/save consumers. */
-int tank_algae_cells(void) { return ALGAE_CELLS; }
 float tank_algae_cover(const tank_t *t) { (void)t; return 0; }
 void tank_grow_algae(tank_t *t, int steps) { (void)t; (void)steps; }
 
@@ -1548,7 +1527,8 @@ static bool sh_pick(tank_t *t, float from_x, float from_y) {
         float score = -tank_dist(c.x, c.y, from_x, from_y) + 60 + tank_randf(t, 0, 30);
         if (!have || score > bs) { bs = score; best = c; have = true; }
     }
-    for (int b = 0; b < tank_veg_beds(t); b++) {
+    const int veg_n = tank_veg_beds(t);                                     /* hoisted: sword_beds() walks the inventory */
+    for (int b = 0; b < veg_n; b++) {
         float bx0; int n; veg_bed_base(t, b, &bx0, &n);
         for (int i = 0; i < n; i++) {
             if (!sh_frond_ok(t, b, i) || (t->sh_akind == SH_ANCHOR_BLADE && b == t->sh_bed && i == t->sh_frond)) continue;
@@ -1581,7 +1561,8 @@ static bool sh_any_hold(const tank_t *t) {
     sh_cand_t c[4];
     for (int item = 2; item < SD_ITEM_COUNT; item++)
         if (sh_posts(t, item, c) > 0) return true;
-    for (int b = 0; b < tank_veg_beds(t); b++) {
+    const int veg_n = tank_veg_beds(t);                                     /* hoisted: sword_beds() walks the inventory */
+    for (int b = 0; b < veg_n; b++) {
         float bx0; int n; veg_bed_base(t, b, &bx0, &n);
         for (int i = 0; i < n; i++) if (sh_frond_ok(t, b, i)) return true;
     }
@@ -1599,7 +1580,8 @@ static bool sh_another_hold(const tank_t *t) {
         for (int i = 0; i < n; i++)
             if (!(t->sh_akind == SH_ANCHOR_POST && fabsf(c[i].x - t->sh_ax) < 0.01f && fabsf(c[i].y - t->sh_ay) < 0.01f)) return true;
     }
-    for (int b = 0; b < tank_veg_beds(t); b++) {
+    const int veg_n = tank_veg_beds(t);                                     /* hoisted: sword_beds() walks the inventory */
+    for (int b = 0; b < veg_n; b++) {
         float bx0; int nn; veg_bed_base(t, b, &bx0, &nn);
         for (int i = 0; i < nn; i++)
             if (sh_frond_ok(t, b, i) && !(t->sh_akind == SH_ANCHOR_BLADE && b == t->sh_bed && i == t->sh_frond)) return true;
@@ -1698,7 +1680,6 @@ static void sh_snack(tank_t *t, float dt) {
                     t->bubble[k].x = mx; t->bubble[k].y = my - 2;
                     break;
                 }
-                tank_emit(TEV_EAT, -1);                                /* the fish's eat cue, at the plain pitch */
             }
             t->sh_snap_food = -1;
         }
@@ -2351,16 +2332,14 @@ bool tank_stroking(const tank_t *t) { return t->drag_has_prev && t->drag_dist >=
 void tank_feed(tank_t *t, float x, int n) {
     tank_handled(t);
     x = clampf(x, TANK_FX0 + 25, TANK_FX1 - 25);
-    int dropped = 0;
     for (int i = 0; i < MAX_FOOD && n > 0; i++) {
         if (t->food[i].alive) continue;
         t->food[i].alive = true; t->food[i].from_player = true;
         t->food[i].x = clampf(x + tank_randf(t, -14, 14), TANK_FX0 + 20, TANK_FX1 - 20);
         t->food[i].y = tank_glass_top(t->food[i].x) + tank_randf(t, 6, 18);
         t->food[i].age = 0; t->food[i].floor_s = 0; t->food[i].nibbled = 0;
-        n--; dropped++;
+        n--;
     }
-    if (dropped) tank_emit(TEV_FEED, -1);        /* the plink is for pellets, not for the tap (a full tank drops none) */
     t->feed_spot_x = t->feed_spot_x < 0 ? x : t->feed_spot_x + (x - t->feed_spot_x) * 0.3f;
     t->feed_open = true;                         /* a meal once somebody eats from it */
 }
@@ -2368,7 +2347,6 @@ void tank_feed(tank_t *t, float x, int n) {
 /* the triple tap: fish near it bolt (stress, a little trust lost) and the
  * shrimp scatter - from the water or from the school alike */
 static void tank_startle(tank_t *t, float x, float y) {
-    tank_emit(TEV_SPOOK, -1);
     t->startled = true; t->startle_x = x; t->startle_y = y; t->startle_cooldown = STARTLE_COOLDOWN;
     for (int i = 0; i < t->n_fish; i++) {
         fish_t *f = &t->fish[i];
@@ -2379,12 +2357,6 @@ static void tank_startle(tank_t *t, float x, float y) {
         }
     }
     shrimp_scatter(t, x, y, STARTLE_RADIUS);
-}
-bool tank_shrimp_hit(const tank_t *t, float x, float y) {
-    if (!(t->sd_unlocks & SD_ITEM_SHRIMP)) return false;
-    for (int i = 0; i < t->shrimp_n; i++)
-        if (tank_dist(t->shrimp[i].x, t->shrimp[i].y, x, y) <= SHRIMP_TAP_R) return true;
-    return false;
 }
 int tank_shrimp_tap(tank_t *t, float x, float y) {
     tank_handled(t);
@@ -2399,7 +2371,6 @@ void tank_touch_tap(tank_t *t, float x, float y) {
     if (y - tank_glass_top(x) < FEED_ZONE_Y) { tank_feed(t, x, 3); return; }     /* surface tap = feed (the bowl's surface is its top glass) */
     if (t->tap_burst_t > TAP_WINDOW) t->tap_count = 0;
     t->tap_count++; t->tap_burst_t = 0; t->tap_x = x; t->tap_y = y;
-    tank_emit(TEV_TAP, -1);
     if (t->startled) {                              /* chasing: keep them spooked */
         t->startle_x = x; t->startle_y = y; t->startle_cooldown = STARTLE_COOLDOWN;
         for (int i = 0; i < t->n_fish; i++) {
@@ -2458,7 +2429,7 @@ static void touch_tick(tank_t *t, float dt) {
              * tank's hold_approaches counter still counts the hold once. */
             if (draw_begins) f->hold_far = d >= HOLD_APPROACH_FROM;
             if (f->hold_far && d < HOLD_APPROACH_AT) {
-                if (!t->hold_approached) { t->hold_approached = true; t->hold_approaches++; tank_emit(TEV_INVESTIGATE, i); }
+                if (!t->hold_approached) { t->hold_approached = true; t->hold_approaches++; }
             }
         }
     } else {
@@ -2518,20 +2489,6 @@ bool tank_orient(tank_t *t, bool live_inverted) {
 }
 
 const int LIGHT_IDLE_CHOICES[LIGHT_IDLE_N] = { 5, 15, 30, 60, 180, 300, 600, 1800 };
-int tank_light_choice(const tank_t *t) {
-    if (!t->light_auto) return 0;
-    int best = 0;
-    for (int i = 1; i < LIGHT_IDLE_N; i++)
-        if (abs(LIGHT_IDLE_CHOICES[i] - t->light_idle_s) < abs(LIGHT_IDLE_CHOICES[best] - t->light_idle_s)) best = i;
-    return best + 1;
-}
-void tank_light_choice_set(tank_t *t, int choice) {
-    if (choice < 0) choice = 0;
-    if (choice > LIGHT_IDLE_N) choice = LIGHT_IDLE_N;
-    t->light_auto = choice > 0;
-    if (choice > 0) t->light_idle_s = LIGHT_IDLE_CHOICES[choice - 1];
-    t->light_manual_off = false;
-}
 
 void tank_scatter_food(tank_t *t, int n) {
     for (int i = 0; i < MAX_FOOD && n > 0; i++) {
@@ -2993,7 +2950,6 @@ static void eat_nearby_food(tank_t *t, fish_t *f) {
             f->curiosity = clampf(f->curiosity + 0.5f, 0, 10);   /* was 0.8: a trickle burst
                                                                      re-synced the school's curiosity */
             f->eaten++;
-            tank_emit(TEV_EAT, (int)(f - t->fish));
             if (t->food[i].from_player) {
                 f->eaten_player++;
                 if (t->feed_open) { t->player_feedings++; t->feed_open = false; }   /* the gesture became a meal */
@@ -3036,7 +2992,6 @@ static void update_fish(tank_t *t, int idx, float dt) {
             if (!bub) { tank_reef_spot(t, &sx, &sy); sy -= REEF_ORBIT_UP; }
             bool at = tank_dist(f->x, f->y, sx, sy) < CURIOSITY_SPEND_RADIUS;
             if (at) dc = -CURIOSITY_SPEND_PER_S;
-            if (bub && at && !f->at_bubbles) tank_emit(TEV_BUBBLES, idx);   /* arrival at the column: the play cue */
             f->at_bubbles = bub && at;
         } else f->at_bubbles = false;
         if (dc > 0 && (t->aquariums.stat_upgrades & STAT_ENRICHMENT)) dc *= 1.25f;
@@ -3483,13 +3438,11 @@ void tank_tick(tank_t *t, float dt, advisor_fn advise) {
      * director's / sim's manual override wins over both. */
     t->idle_s += dt;
     if (t->ui_cover) t->clock_idle_s = 0; else t->clock_idle_s += dt;
-    bool was_night = t->night;
     t->night = t->light_override ? !t->light_on
              : t->hold_light ? false
              : t->room_dark ? true
              : !t->light_auto ? t->light_manual_off              /* MANUAL (default): the double-tap's state */
              : t->idle_s > (float)t->light_idle_s;                      /* AUTO: the idle rule */
-    if (t->night != was_night) tank_emit(t->night ? TEV_LIGHT_OFF : TEV_LIGHT_ON, -1);
 
     touch_tick(t, dt);
 

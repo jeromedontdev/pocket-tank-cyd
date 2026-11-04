@@ -160,7 +160,4 @@ int  update_calib_target(int *x, int *y);                   /* the crosshair up 
  * every printable ASCII character; the tank's own font stays as it is */
 int  update_text_w(const char *s, int scale);
 void update_text(uint16_t *fb, int stride, int x, int y, int scale, uint32_t rgb, const char *s);
-
-/* the platform's one-line reason for the log */
-const char *net_err_name(int err);
 #endif

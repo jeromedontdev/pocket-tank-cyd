@@ -13,7 +13,6 @@ void brightness_init(void);              /* after nvs_flash_init */
 int  brightness_level(void);             /* 10..100 percent */
 bool brightness_preview_level(int pct);  /* live drag, no NVS writes */
 bool brightness_set_level(int pct);      /* saved once on release; rollback on failure */
-void brightness_cycle(void);             /* 100 -> 60 -> 30 -> 100; saved */
 bool brightness_save(void);              /* re-save after an NVS erase (reset) */
 void brightness_apply(bool night);       /* once per frame: pushes a changed target to the panel */
 #endif

@@ -98,11 +98,6 @@ int render_region_right(void);
 void render_work_caches(bool enabled);
 size_t render_work_cache_bytes(void);
 
-/* Optional vignette alpha cache (TANK_W*TANK_H bytes): with a scene cache the
- * porthole vignette is baked into the scene and re-applied per frame only on
- * dynamic pixels; this LUT removes the per-pixel float math. NULL = compute. */
-void render_set_vignette_cache(uint8_t *buf);
-
 /* Scene prefetch support: render_scene_buf returns the built scene cache (or
  * NULL) and its epoch (bumped on lighting rebuilds). A platform that copies
  * the scene into fb ahead of time (e.g. by DMA) calls render_fb_primed; the
@@ -183,13 +178,11 @@ int render_stats_next(const tank_t *t, int selected);
 #define RENDER_CARD_HIT(x, y) (RENDER_CARD_HIT_X(x) >= RENDER_CARD_X - RENDER_CARD_HIT_SIDE && RENDER_CARD_HIT_X(x) < RENDER_CARD_X + RENDER_CARD_W + RENDER_CARD_HIT_SIDE && \
                                RENDER_CARD_HIT_Y(y) >= RENDER_CARD_Y && RENDER_CARD_HIT_Y(y) < RENDER_CARD_Y + RENDER_CARD_H + RENDER_CARD_HIT_BELOW)
 void render_set_card_cache(uint16_t *buf);
-/* The old tool panel's footprint now holds FISH MENU and MAIN MENU.
- * Legacy render_tools_hit always returns -1; no hidden tool targets. */
+/* The old tool panel's footprint now holds FISH MENU and MAIN MENU. */
 #define RENDER_TOOLS_X RENDER_CARD_X
 #define RENDER_TOOLS_Y (RENDER_CARD_Y + RENDER_CARD_H + RENDER_TOOLS_GAP)
 #define RENDER_TOOLS_W RENDER_CARD_W
 #define RENDER_TOOLS_H 70
-int  render_tools_hit(float x, float y);
 enum { RENDER_CARD_MENU_NONE, RENDER_CARD_MENU_FISH, RENDER_CARD_MENU_MAIN };
 /* Frame coordinates; fish details and the two labelled navigation buttons. */
 int render_card_menu_hit(float x, float y);
@@ -279,8 +272,6 @@ void render_milestones_show_fish(const tank_t *t, int fish);   /* put a fish's c
  * tests and the director, so neither copies a board's layout: a fish's card
  * (false = none up) with the centres of RENAME and SELL; a point on a row's name */
 bool render_milestones_card(const tank_t *t, int *fish, int *rename_x, int *sell_x, int *btn_y);
-bool render_milestones_arrow(const tank_t *t, bool right, int *x, int *y);   /* the modal's left / right arrow (false = no modal up) */
-void render_milestones_row(int row, int *name_x, int *y);
 /* a sideways swipe on the milestones page (release - press dx): along the
  * TANK row, with more badges than one row holds, it turns the row's page
  * (2026-09-30). True = it did (or was a page swipe at the row's end);
@@ -328,8 +319,6 @@ void render_ornament_preview(uint16_t *fb, int stride, int item, int cx, int bot
 bool render_piece_covers(int item, int x, int y);
 int  render_shop_tap(const tank_t *t, float x, float y);
 void render_shop_leave(void);
-int  render_coral_cells(float growth);   /* the coral sprite's filled cells at a growth (the sim's selftest) */
-int  render_cluster_cells(float growth); /* the reef cluster's, likewise */
 /* the decor scratch (2026-09-24): the coral's and the cluster's tables in one
  * block the platform provides - PSRAM on the board (internal RAM is spoken
  * for); the sim leaves it unset and render calloc's it */

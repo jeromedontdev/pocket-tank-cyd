@@ -138,7 +138,8 @@ static void show_state(const tank_t *t) {
                  t->snail_heading * 57.3f, c >= 0 ? "after" : "no target,", c, c >= 0 ? (c % ALGAE_COLS) * ALGAE_CELL + 8 : -1,
                  c >= 0 ? (c / ALGAE_COLS) * ALGAE_CELL + 8 : -1, c >= 0 ? t->algae[c] : 0, cells, (int)t->snail_grazed);
     }
-    for (int b = 0; b < tank_veg_beds(t); b++) {   /* per-frond heights: which blades a sweep left standing */
+    const int veg_n = tank_veg_beds(t);            /* hoisted: sword_beds() walks the inventory */
+    for (int b = 0; b < veg_n; b++) {              /* per-frond heights: which blades a sweep left standing */
         char row[VEG_FRONDS_MAX * 5 + 1]; int len = 0, n; float x0, f0, f1;
         tank_veg_bed(t, b, &x0, NULL, NULL, &n);
         tank_veg_frond(t, b, 0, &f0); tank_veg_frond(t, b, 1, &f1);     /* the pitch: 12, the sword plant's 14 */

@@ -34,8 +34,6 @@ void tank_resolution(bool compact);
 #define TANK_SAND_TOP (TANK_BOT - 18)
 /* a floor x given as the rectangle's (0..448), on this build's floor */
 #define TANK_FLOOR_X(x448) (TANK_FX0 + (x448) * TANK_FW / 448.0f)
-float tank_glass_x0(float y);
-float tank_glass_x1(float y);
 float tank_glass_top(float x);                         /* the glass above x (0 in the rectangle) */
 void  tank_glass_clamp(float *x, float *y, float m);   /* (x,y) brought to at least m px inside the glass and above the bottom */
 
@@ -112,7 +110,6 @@ typedef enum { VEG_KIND_GRASS, VEG_KIND_SWORD } veg_kind_t;
  * 1.8's pitch on every build (VEG_PAY_PX): the same cut, the same sand dollars. */
 #define VEG_SEG_PX 3.2f
 #define VEG_PAY_PX 3.2f
-int tank_algae_cells(void);                    /* the cells that are on the glass: all of them in the rectangle, the circle's in the bowl */
 /* film on more of the glass than this =
                                                 * a DIRTY tank: no fry is conceived in
                                                 * it until it is wiped back under (a
@@ -998,8 +995,10 @@ void  tank_tick_sleep(tank_t *t, float seconds);
  * the nearest choice until the keeper steps the row. */
 #define LIGHT_IDLE_N 8
 extern const int LIGHT_IDLE_CHOICES[LIGHT_IDLE_N];
-int   tank_light_choice(const tank_t *t);            /* 0 = MANUAL, 1..LIGHT_IDLE_N = AUTO after LIGHT_IDLE_CHOICES[n - 1] */
-void  tank_light_choice_set(tank_t *t, int choice);  /* (clamped; the light comes on either way) */
+/* tank_light_choice()/tank_light_choice_set() were removed (2026-11): the
+ * settings page has no LIGHTS OUT row to drive them and nothing else read or
+ * wrote the choice. light_auto/light_idle_s stay saved fields (AGENTS.md: keep
+ * frozen save fields), set by the save load and read by the idle rule. */
 void  tank_handled(tank_t *t);
 void  tank_toggle_light(tank_t *t);
 void  tank_light_auto(tank_t *t);
@@ -1068,7 +1067,6 @@ float tank_reef_open_lane(const tank_t *t);
 bool  tank_reef_calm_near(const tank_t *t, float x, float y);
 bool  tank_reef_current(tank_t *t, float x0, float y0, float x1, float y1);
 void  tank_veg_sync(tank_t *t);                 /* veg_growth[] from veg_h[][] (after a load) */
-float tank_veg_cap(int b, int i);               /* frond i of bed b: the height it grows toward */
 void  tank_grow_algae(tank_t *t, int steps);
 
 /* helpers shared with advisor/render/progression */
@@ -1110,9 +1108,9 @@ extern const uint32_t LOOK_ACCENT[LOOK_N];
 extern const uint32_t FISH_BODY_COLORS[FISH_COLOR_N];
 extern const uint32_t FISH_MARKING_COLORS[FISH_COLOR_N];
 /* the body palette's names, index-aligned with FISH_BODY_COLORS. The birth
- * flow's family page prints one beside the COLOR swatch so "BORN WITH: BODY
- * COLOR" can say which colour; tank_body_index() maps an inherited RGB back to
- * its nearest entry. */
+ * flow's family page prints one beside the COLOR swatch so the row can say
+ * which colour; tank_body_index() maps an inherited RGB back to its nearest
+ * entry. */
 extern const char *const FISH_BODY_COLOR_NAMES[FISH_COLOR_N];
 void  tank_set_name(tank_t *t, int slot, const char *name);
 /* a fresh suggestion from the name pool (never a roster name, never a tankmate's) */
@@ -1228,7 +1226,6 @@ int tank_shrimp_display_count(const tank_t *t);
  * there never toggles the light - and returns the count: 1 = toggle its card,
  * 2 = nothing, 3+ = the startle, exactly the water's triple tap (the fish
  * spooked, the shrimp scatter): the platform drops the card. */
-bool  tank_shrimp_hit(const tank_t *t, float x, float y);
 int   tank_shrimp_tap(tank_t *t, float x, float y);
 void  tank_castle_place(tank_t *t);
 void  tank_coral_place(tank_t *t);

@@ -3,7 +3,6 @@
 #include "esp_heap_caps.h"   /* undo_take: IRAM, word-only heap */
 #endif
 #include "companion.h"
-#include "tank_events.h"
 #include "version.h"
 #include "setup.h"
 #include <stddef.h>
@@ -879,10 +878,6 @@ void progression_care_refresh(tank_t *t) {
         mark_dirty();
     }
     reef_refresh(t, new_day);
-}
-void progression_care_greet(tank_t *t) {
-    (void)t;
-    fprintf(stderr, "Greeting rewards are retired\n");
 }
 bool progression_care_claim(tank_t *t, int task) {
     progression_care_refresh(t);
@@ -1847,7 +1842,7 @@ static bool sell_fish_at(tank_t *t, int fish, int worth, uint8_t contract_mark, 
         memcpy(s_age, old_age, sizeof s_age); memcpy(s_starve_s, old_starve, sizeof s_starve_s);
         s_arrival_pending = arrival; s_spawn_in = spawn; s_sale_need = sale; s_sd_pending = pending;
         s_fry_seed = seed; s_fry_age = fry_seconds; s_fry_sold = sold;
-    } else tank_emit(TEV_CONFIRM, -1);
+    }
     free(old); return ok;
 }
 int progression_item_price_for(const tank_t *t, int item) {
@@ -2418,7 +2413,6 @@ bool progression_market_buy(tank_t *t, int variety) {
         undo_drop(before); s_shop_notice = "SAVE FAILED - NO FISH BOUGHT"; return false;
     }
     undo_drop(before);
-    tank_emit(TEV_CONFIRM, -1);
     return true;
 }
 bool progression_fry_for_sale(const tank_t *t) {

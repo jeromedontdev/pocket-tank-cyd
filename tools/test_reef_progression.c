@@ -297,14 +297,15 @@ static void test_environment_without_chore_debt(tank_t *t) {
     progression_slept(t, 14 * 86400);
     assert(t->n_fish == 2 && t->fish[0].hunger == 10);
     assert(t->profile.starvation_s[0] == 17); /* Offline hunger is not online starvation time. */
-    assert(tank_veg_beds(t) == 0);
+    /* The three grass beds always stand; only the sword plant is bought. */
+    assert(tank_veg_beds(t) == VEG_BEDS_MAX - 1);
     for (size_t i = 0; i < sizeof t->algae / sizeof t->algae[0]; i++) assert(!t->algae[i]);
     assert(t->trims == trims && t->cells_cleaned == cleaned);
     assert(progression_save(t));
     now += 14 * 86400;
     reload(t);
     assert(t->n_fish == 2 && t->fish[0].hunger == 10 && t->profile.starvation_s[0] == 17);
-    assert(t->trims == trims && t->cells_cleaned == cleaned && tank_veg_beds(t) == 0);
+    assert(t->trims == trims && t->cells_cleaned == cleaned && tank_veg_beds(t) == VEG_BEDS_MAX - 1);
     for (size_t i = 0; i < sizeof t->algae / sizeof t->algae[0]; i++) assert(!t->algae[i]);
     progression_tick(t, 1);
     assert(t->profile.starvation_s[0] == 18 && t->n_fish == 2); /* Awake night still counts in Hard. */

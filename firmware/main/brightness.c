@@ -41,7 +41,6 @@ bool brightness_set_level(int pct) {
     ESP_LOGI(TAG, "level %d%%", s_pct);
     return true;
 }
-void brightness_cycle(void) { brightness_set_level(s_pct == 100 ? 60 : s_pct == 60 ? 30 : 100); }
 void brightness_apply(bool night) {
     int target = ambient_brightness_pct(s_pct) * 255 / 100;
     if (night) target = target * 6 / 10;

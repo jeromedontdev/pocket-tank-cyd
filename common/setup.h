@@ -216,17 +216,17 @@ enum { SETUP_PG_MODE = SETUP_PG_CUSTOM + 1 };
 #define SETUP_SW_X  ((PAGE_W - (SETUP_SW_N - 1) * SETUP_SW_PX - SETUP_SW_W) / 2)
 #define SETUP_SW_Y  176
 #define SETUP_ACC_Y 276
-/* the family page (birth flow): the portrait ringed under the name, an
- * optional gold "NEW ..." line naming what the birth mutated, then five rows
- * of what the fry actually is - COLOR (its body swatch), MARKING (its accent
- * swatch and the marking it shows), TRAITS (the recessive traits it shows),
- * CARRIES (the hidden marking/colour alleles and the traits it only carries)
- * and PARENTS (both named in their own body colours); BACK + DONE at the
- * foot. Five rows at 25 px from SETUP_FAM_ROW_Y end at 260, clear of the
+/* the family page (birth flow): the portrait ringed under the name, then five
+ * rows of what the fry actually is - COLOR (its body swatch), MARKING (its
+ * accent swatch and the marking it shows), TRAITS (the recessive traits it
+ * shows), CARRIES (the hidden marking/colour alleles and the traits it only
+ * carries) and PARENTS (both named in their own body colours); BACK + DONE at
+ * the foot. Five rows at 25 px from SETUP_FAM_ROW_Y end at 260, clear of the
  * buttons at 288. The old BOLD/SOCIAL bars are gone: they were personality
- * drives, not inheritance, and read as unexplained ratings. */
+ * drives, not inheritance, and read as unexplained ratings. The gold "BORN
+ * WITH: ..." line above the rows is gone too (2026-11): it restated the rows
+ * and its wording read as a rating the fry was born with. */
 #define SETUP_FAM_PORTRAIT_Y (SETUP_Y + 78)
-#define SETUP_FAM_MUT_Y      (SETUP_Y + 106)
 #define SETUP_FAM_ROW_Y      (SETUP_Y + 128)
 #define SETUP_FAM_ROW_DY     25
 #define SETUP_FAM_LABEL_X    (SETUP_X + 20)

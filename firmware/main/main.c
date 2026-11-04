@@ -32,7 +32,6 @@
 #include "weather.h"
 #include "sd_port_cyd.h"
 #include "notice.h"
-#include "tank_events.h"
 #include "setup.h"
 #include "nvs_flash.h"
 #include "nvs.h"
