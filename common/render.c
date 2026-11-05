@@ -10873,7 +10873,7 @@ int render_life_tap(tank_t *t, float x, float y) {
         if (choice == 0 && progression_hard(t) && !t->n_fish) return HOME_RECOVERY;
         if (choice == 0) { g_home_category = 1; g_home_fish = 0; }
         if (choice == 1) g_home_category = 2;
-        if (choice == 2) { g_home_category = 3; home_companion(COMPANION_SECTION_MARKET); }
+        if (choice == 2) g_home_category = 3;
         if (choice == 3) return HOME_GAMES;
         if (choice == 4) return HOME_CASINO;
         if (choice == 5) { g_home_category = 5; home_companion(COMPANION_SECTION_HELP); }

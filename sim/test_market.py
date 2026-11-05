@@ -58,6 +58,8 @@ def exercise(lib, output, mode):
         if lib.sim_width() != width:
             lib.sim_action(2); tap(100, 100); tap(200, 140)
         lib.sim_action(7); tap(100, 180)
+        assert lib.sim_page() == 9 and lib.sim_companion_section() == -1, "Main Market opens the hub"
+        tap(100, 100)
         if mode == 1:
             assert lib.sim_page() == 9 and lib.sim_companion_section() == 26
             lib.sim_action(9)

@@ -76,7 +76,7 @@ async function main() {
       .sort((a, b) => a.price - b.price);
     assert.equal(catalog.length, 59);
     async function openCreatureMarket(kind) {
-      await native("game._sim_action(7)"); await tap(100, 180); await tap(224, 340);
+      await native("game._sim_action(7)"); await tap(100, 180); await tap(100, 100); await tap(224, 340);
       assert.equal(await native("return game._sim_companion_section()"), 29);
       for (let k = 0; k < kind; k++) await tap(400, 116);
     }
@@ -224,7 +224,11 @@ async function main() {
       assert.equal(await native("return game._sim_page()"), 0, "One Back closes direct fish Summary");
       await page.locator('[data-action="1"]').click();
       await tap(100, 180);
-      assert.equal(await native("return game._sim_companion_section()"), 26, "Main Market opens stock");
+      assert.equal(await native("return game._sim_page()"), 9, "Main Market opens the Market hub");
+      assert.equal(await native("return game._sim_companion_section()"), -1, "Main Market does not skip the hub");
+      await menuImage(`market-hub-${scale}`);
+      await tap(100, 100);
+      assert.equal(await native("return game._sim_companion_section()"), 26, "Market hub > Fish Market opens stock");
       assert.notEqual(await menuImage(`fish-stock-${scale}`), summaryImage);
       await tap(224, 100);
       assert.equal(await native("return game._sim_companion_section()"), 31, "Residents have their own roomy page");
@@ -316,7 +320,7 @@ async function main() {
       await checkArtHeader();
       await tap(375,25);
       await page.locator('[data-action="1"]').click();
-      await tap(330,100); await tap(100,180);
+      await tap(330,100); await tap(100,180); await tap(100,100);
       assert.equal(await native("return game._sim_companion_section()"), 34);
       const beforeFood = await snapshot();
       const oldTier = beforeFood.progression.food_tier;

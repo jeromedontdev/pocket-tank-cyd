@@ -221,7 +221,9 @@ def exercise(lib, backup):
                 ((330, 260), (60, 120), 9, 36, (380, 24))):
             main(); tap(*category)
             if category == (100, 180):
-                assert lib.sim_companion_section() == 26, "MARKET opens stock first"
+                assert lib.sim_page() == 9 and lib.sim_companion_section() == -1, "MARKET opens the hub first"
+                tap(100, 100)
+                assert lib.sim_companion_section() == 26, "Market hub > Fish Market opens stock"
                 tap(380, 24)
             parent = frame()
             tap(*child)
@@ -238,8 +240,6 @@ def exercise(lib, backup):
         for category, empty in (((330, 100), ((330, 260),)),
                                 ((100, 180), ((330, 260),))):
             main(); tap(*category)
-            if category == (100, 180):
-                tap(380, 24)
             parent = frame()
             for point in empty:
                 tap(*point)

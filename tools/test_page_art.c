@@ -1078,8 +1078,11 @@ static void check_companion_navigation(void) {
     assert(g_life_page && companion_current_section() == COMPANION_SECTION_RPG);
     assert(render_life_tap(&tank, render_frame_x(390), render_frame_y(24)) == HOME_GAMES);
     render_life_open();
+    /* Main > MARKET opens the Market hub, not the Fish Market directly. */
     assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(180)) == HOME_NONE);
-    assert(g_life_page);
+    assert(!g_life_page && g_home_category == 3);
+    assert(render_life_tap(&tank, render_frame_x(100), render_frame_y(100)) == HOME_NONE);
+    assert(g_life_page && companion_current_section() == COMPANION_SECTION_MARKET);
     assert(render_life_tap(&tank, render_frame_x(390), render_frame_y(24)) == HOME_NONE);
     assert(!g_life_page && g_home_category == 3);
     assert(!memcmp(&before, &tank, sizeof tank));

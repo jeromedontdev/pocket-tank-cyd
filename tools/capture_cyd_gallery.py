@@ -279,7 +279,7 @@ def main():
                 home(); tap(100, 100); tap(100, 260)
                 capture("fish-life")
                 home(); tap(100, 100); capture("my-fish")
-                home(); tap(100, 180); capture("fish-market")
+                home(); tap(100, 180); tap(100, 100); capture("fish-market")
                 tap(370, 100); capture("fish-nursery")
                 tap(224, 100); capture("fish-residents")
                 tap(224, 288); capture("fish-sale")
@@ -292,7 +292,7 @@ def main():
                     if not lib.sim_creature_adults(kind):
                         tap(224, 260)
                     capture("creature-market-" + species)
-                home(); tap(100, 180); tap(380, 24); capture("market-hub")
+                home(); tap(100, 180); capture("market-hub")
                 tap(330, 180); capture("trade-contract")
                 tap(380, 24); tap(100, 260); capture("trade-auction")
                 home(); tap(330, 100); tap(100, 100); tap(300, 338); capture("tank-identity")
@@ -449,7 +449,7 @@ def main():
                                        journal_grown=1, journal_theme=0,
                                        fish_variety=[0] * len(demo["tank"]["fish_variety"]))
                 restore(starter)
-                home(); tap(100, 180)
+                home(); tap(100, 180); tap(100, 100)
                 capture("market-starter-stock")
                 restore(demo)
                 lib.sim_action(1)
@@ -524,7 +524,7 @@ def main():
                     for _ in range(30):
                         lib.sim_frame(0.1)
                     capture("casino-" + name + "-result")
-                home(); tap(100, 180); tap(380, 24); tap(100, 180); capture("collection")
+                home(); tap(100, 180); tap(100, 100); tap(380, 24); tap(100, 180); capture("collection")
                 home(); tap(330, 260); capture("help")
                 tap(370, 338); capture("help-2")
                 tap(200, 100); capture("help-topic")

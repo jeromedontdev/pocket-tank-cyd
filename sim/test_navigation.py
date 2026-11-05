@@ -124,7 +124,9 @@ def exercise(lib):
         tap(380, 24)
         assert lib.sim_page() == 0
         lib.sim_action(1); tap(100, 180)
-        assert lib.sim_companion_section() == 26, "Main Market opens stock"
+        assert lib.sim_page() == 9 and lib.sim_companion_section() == -1, "Main Market opens the Market hub"
+        tap(100, 100)
+        assert lib.sim_companion_section() == 26, "Market hub > Fish Market opens stock"
         tap(224, 100)
         assert lib.sim_companion_section() == 31
         tap(370, 100)

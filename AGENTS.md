@@ -160,6 +160,26 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
+- **Main > MARKET opens the Market hub again** (unreleased local work on top of
+  2.4.4). `render_life_tap`'s Main-menu branch set `g_home_category = 3` and
+  then also called `home_companion(COMPANION_SECTION_MARKET)`, so the tile
+  skipped the hub and landed straight on the Fish Market page. It now only sets
+  the category, matching Fish and Tank: Main > MARKET shows the five-tile hub
+  (Fish Market, Creatures, Collection, Contracts, Auction) and one BACK returns
+  to Main. The Fish Market is one tap further in, and its own BACK still returns
+  to the hub. No save layout changed (schema 23 / 6476 bytes) and no other route
+  moved. `test_page_art.c::check_companion_navigation` now asserts the hub
+  appears first and that the Fish Market opens from it; `sim/test_navigation.py`,
+  `sim/test_life.py`, `sim/test_market.py` and `tools/test_browser.cjs` walk the
+  extra tap, and `tools/capture_cyd_gallery.py` stages `market-hub`,
+  `fish-market`, `market-starter-stock` and `collection` through the new route.
+  Local COM4 app is 1,816,448 bytes / 149,632 OTA-slot bytes free, SHA256
+  `d0891c186e7389f42e07c0002ce58b4f8c316e5b1e3fd5f0819d8da996b8b53b`, flashed
+  app-only to `ota_0` with esptool hash verification after a full 4 MiB backup
+  (`firmware/backup-com4-marketfix-20261105.bin`, SHA256
+  `7a2652383fbccf44ebeb6831782ae3d31cfb5a804fd8895f97b0c7b702457b8b`). Boot log
+  clean, five residents (bolt/pip/kelp/odie/scout) and wallet 5698 intact, and
+  the route was walked over serial: Main > MARKET > hub > BACK > Main > cog.
 - **Creative plays the casino as free practice** (unreleased local work on top
   of 2.4.4). `casino_can_bet` used to refuse every Creative stake with
   "CREATIVE MODE HAS NO BETS."; it now accepts any stake there, and
