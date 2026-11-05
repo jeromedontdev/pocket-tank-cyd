@@ -160,16 +160,31 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
-- **2.4.5 is the current release** (Market hub routing, Creative casino
-  practice, wider creature color rolls and Creative creature trading). Saves are
-  unchanged at schema 23 / 6476 bytes, so no migration runs. The three commits
-  it collects are `e6138b4` (Main > MARKET opens the hub), `a941297` (Creative
-  casino practice) and `3d28dcc` (creature color odds and Creative creature
-  removal). Local CYD image is 1,816,448 bytes / 149,632 OTA-slot bytes free,
-  SHA256 `06b2730cd40913a162030acf364db31a22848ebdbafece6a2540690bb04d285f`;
-  the ELEGOO image is 1,816,496 bytes and the unified image 1,817,168 bytes.
-  All three families package and stage through `prepare_web_installer.py` at
-  2.4.5. Never equate a local hash with the CI release asset.
+- **2.4.5 is published** at tag/source `07a7c53c9797fe52a0cdee7d2ad88941468e57cb`
+  (Market hub routing, Creative casino practice, wider creature color rolls and
+  Creative creature trading). Saves are unchanged at schema 23 / 6476 bytes, so
+  no migration runs. The three commits it collects are `e6138b4` (Main > MARKET
+  opens the hub), `a941297` (Creative casino practice) and `3d28dcc` (creature
+  color odds and Creative creature removal). Release run 42050150000 and the
+  release-dispatched Pages run 42051989540 both passed; the `main` push runs
+  42050118865 (checks) and 42050118956 (website) passed first. All 29 public
+  assets are present across the three families and the live site serves the
+  `2.4.5: the Market hub, and free casino practice` badge; the live
+  `unified-manifest.json`/`unified-update.json` report 2.4.5. The published
+  `pocket-tank-unified-app.bin` is 1,817,184 bytes, SHA256
+  `a7a2459650e645855a619ed1aedeeb7ca36c0403b792869a19b4bf0a84721581`, and the
+  published `pocket-tank-cyd-app.bin` is 1,816,480 bytes, SHA256
+  `d1f7402592ab857a3b55fabd920c08be5f099b40d9cdda7f840f3c7dd559578b`; both were
+  downloaded and hash-verified against their `SHA256SUMS.txt`. The local build
+  is a separate artifact: 1,816,448 bytes, SHA256
+  `06b2730cd40913a162030acf364db31a22848ebdbafece6a2540690bb04d285f`. Never
+  equate the local hash with the CI asset.
+  COM4 runs the local 2.4.5 build from `ota_0` (build `07a7c53`), flashed
+  app-only with esptool hash verification after a full 4 MiB backup
+  (`firmware/backup-com4-245-20261105.bin`, SHA256
+  `bd8b5bed15d1d781f2fd215a4085f3de57c9e5288da995bfc690cc19045eb691`). Boot log
+  clean, five residents (bolt/pip/kelp/odie/scout) and wallet 5698 intact, and
+  the route was walked over serial: Main > MARKET > hub > BACK > Main > cog.
 - **Main > MARKET opens the Market hub again** (in 2.4.5). `render_life_tap`'s
   Main-menu branch set `g_home_category = 3` and then also called
   `home_companion(COMPANION_SECTION_MARKET)`, so the tile skipped the hub and
