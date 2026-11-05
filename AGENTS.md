@@ -160,28 +160,31 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
-- **Main > MARKET opens the Market hub again** (unreleased local work on top of
-  2.4.4). `render_life_tap`'s Main-menu branch set `g_home_category = 3` and
-  then also called `home_companion(COMPANION_SECTION_MARKET)`, so the tile
-  skipped the hub and landed straight on the Fish Market page. It now only sets
-  the category, matching Fish and Tank: Main > MARKET shows the five-tile hub
-  (Fish Market, Creatures, Collection, Contracts, Auction) and one BACK returns
-  to Main. The Fish Market is one tap further in, and its own BACK still returns
-  to the hub. No save layout changed (schema 23 / 6476 bytes) and no other route
-  moved. `test_page_art.c::check_companion_navigation` now asserts the hub
-  appears first and that the Fish Market opens from it; `sim/test_navigation.py`,
+- **2.4.5 is the current release** (Market hub routing, Creative casino
+  practice, wider creature color rolls and Creative creature trading). Saves are
+  unchanged at schema 23 / 6476 bytes, so no migration runs. The three commits
+  it collects are `e6138b4` (Main > MARKET opens the hub), `a941297` (Creative
+  casino practice) and `3d28dcc` (creature color odds and Creative creature
+  removal). Local CYD image is 1,816,448 bytes / 149,632 OTA-slot bytes free,
+  SHA256 `06b2730cd40913a162030acf364db31a22848ebdbafece6a2540690bb04d285f`;
+  the ELEGOO image is 1,816,496 bytes and the unified image 1,817,168 bytes.
+  All three families package and stage through `prepare_web_installer.py` at
+  2.4.5. Never equate a local hash with the CI release asset.
+- **Main > MARKET opens the Market hub again** (in 2.4.5). `render_life_tap`'s
+  Main-menu branch set `g_home_category = 3` and then also called
+  `home_companion(COMPANION_SECTION_MARKET)`, so the tile skipped the hub and
+  landed straight on the Fish Market page. It now only sets the category,
+  matching Fish and Tank: Main > MARKET shows the five-tile hub (Fish Market,
+  Creatures, Collection, Contracts, Auction) and one BACK returns to Main. The
+  Fish Market is one tap further in, and its own BACK still returns to the hub.
+  No save layout changed and no other route moved.
+  `test_page_art.c::check_companion_navigation` asserts the hub appears first
+  and that the Fish Market opens from it; `sim/test_navigation.py`,
   `sim/test_life.py`, `sim/test_market.py` and `tools/test_browser.cjs` walk the
   extra tap, and `tools/capture_cyd_gallery.py` stages `market-hub`,
   `fish-market`, `market-starter-stock` and `collection` through the new route.
-  Local COM4 app is 1,816,448 bytes / 149,632 OTA-slot bytes free, SHA256
-  `d0891c186e7389f42e07c0002ce58b4f8c316e5b1e3fd5f0819d8da996b8b53b`, flashed
-  app-only to `ota_0` with esptool hash verification after a full 4 MiB backup
-  (`firmware/backup-com4-marketfix-20261105.bin`, SHA256
-  `7a2652383fbccf44ebeb6831782ae3d31cfb5a804fd8895f97b0c7b702457b8b`). Boot log
-  clean, five residents (bolt/pip/kelp/odie/scout) and wallet 5698 intact, and
-  the route was walked over serial: Main > MARKET > hub > BACK > Main > cog.
-- **Creative plays the casino as free practice** (unreleased local work on top
-  of 2.4.4). `casino_can_bet` used to refuse every Creative stake with
+- **Creative plays the casino as free practice** (in 2.4.5). `casino_can_bet`
+  used to refuse every Creative stake with
   "CREATIVE MODE HAS NO BETS."; it now accepts any stake there, and
   `casino_settle` sets `s_cas.practice` and skips `progression_wallet_settle`
   entirely, so a Creative round reveals its outcome without charging, paying or
@@ -197,10 +200,9 @@ old bullets only as history and evidence.
   `casino-creative-*`. Local COM4 app is 1,816,464 bytes, SHA256
   `657f37096c6d88ab8029875b1c0300f0eeb5662b61b70cccc47cc3d7750254af`, flashed
   app-only to `ota_0` with esptool hash verification; boot log clean, five
-  residents and wallet 5698 intact. Not committed or published at the time of
-  writing.
+  residents and wallet 5698 intact.
 - **Creature colors roll far more often and Creative trades creatures**
-  (unreleased local work on top of 2.4.4). `creature_palette_roll` thresholds
+  (in 2.4.5). `creature_palette_roll` thresholds
   moved from 45/75/95 to 25/65/90, so a purchase is NATURAL 25%, TINTED 40%,
   TWO-TONE 25% and PRIZED 10% (measured 25.06/39.89/24.55/10.50 over 400 rolls
   from the `tank_init` seed, stable across eight seeds). The average flip still
@@ -215,8 +217,7 @@ old bullets only as history and evidence.
   1,816,080 bytes, SHA256
   `e0afd895a1168061499b95e88323ca9cf852beca8ea70d705b4172cf3d5bbb3d`, flashed
   app-only to `ota_0` with esptool hash verification; boot log clean (0 `E (`
-  lines), five residents and wallet 5698 intact. Not committed or published at
-  the time of writing.
+  lines), five residents and wallet 5698 intact.
 - **2.4.4 widens the fish palette to 96 colors** (24 hues x vivid/pastel/deep
   appended to the historical 24). `FISH_COLOR_N` is 96; the first 24 entries of
   `FISH_BODY_COLORS`, `FISH_MARKING_COLORS` and `FISH_BODY_COLOR_NAMES` are

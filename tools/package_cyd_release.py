@@ -168,6 +168,7 @@ Only install trusted downloads; these images are not publisher-signed.
     instructions += "\n2.4.2 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nA sword-plant copy may store the AMONG depth; firmware before 2.4.2 reads that\nbyte as IN FRONT, so a copy placed among the fish will look in front instead.\n"
     instructions += "\n2.4.3 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nNo new save fields. Calm is retuned, so existing fish will settle at a lower\nCALM reading than before; nothing is lost and no migration runs.\n"
     instructions += "\n2.4.4 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nNo new save fields. The body/marking palette grows from 24 to 96 entries, but\nthe first 24 keep their exact values and indices, so every saved hidden allele\nand inherited colour resolves to the same shade. No migration runs.\n"
+    instructions += "\n2.4.5 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nNo new save fields. Navigation, Creative casino practice and creature colour\nodds changed; no stored value is reinterpreted and no migration runs.\n"
     (output / f"{asset_prefix}INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
@@ -179,6 +180,14 @@ The website uses one unified application with an explicit saved hardware profile
 Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
+
+### New in 2.4.5: the Market hub, and a fairer casino in Creative
+
+- **Main > MARKET opens the Market hub again.** Tapping MARKET used to jump straight to the Fish Market page, skipping the five-tile hub. It now shows Fish Market, Creatures, Collection, Contracts and Auction, and one BACK returns to Main. The Fish Market is one tap further in, and its own BACK still returns to the hub.
+- **Creative plays the casino as free practice.** The same rounds, odds and reveals play out, but no doubloons are charged, paid or saved. Result lines read PRACTICE WIN, PRACTICE: STAKE BACK or PRACTICE LOSS with NO PAY, the lobby hint reads PRACTICE BETS 5-50. NO PAYOUTS., and the Dive pot reads POT N (PRACTICE). Normal and Hard are unchanged.
+- **Creature colors roll far more often.** A purchase is now NATURAL 25%, TINTED 40%, TWO-TONE 25% and PRIZED 10%, up from 45/30/20/5. The average flip still loses (about 83% back, up from about 72%), so rerolling stays a lottery rather than an income.
+- **Creative trades creatures too.** The Creature Market buys and removes them free there, with ADD FOR FREE, OWNED - REMOVE TO REROLL and REMOVE - NO PAYOUT labels, so a keeper can reroll colors without spending. The one-per-tank limit and the five-fish cap still apply.
+- Saves remain schema 23 / 6476 bytes. No new save fields, framebuffer, PSRAM requirement, partition changes or factory reset. Back up before updating; do not downgrade to firmware older than 2.4.0.
 
 ### New in 2.4.4: a 96-color palette
 

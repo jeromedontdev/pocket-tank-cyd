@@ -2,7 +2,7 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.4.4**
+**An illustrated tour of Pocket Tank CYD 2.4.5**
 
 **Latest source:** Main menu is Fish, Tank, Market, Games, **Casino**, Help;
 Settings moved to a cog in the bottom-right corner. Main > Fish is a Fish hub
@@ -22,6 +22,15 @@ once marking, trait and color mutations are all bred. Snail and urchin cards
 describe their roles (glass cleaner calm +10%, night grazer rest +20%), the
 jellyfish has slimmer tentacles, Games uses the standard menu backdrop and the
 rename keyboard sits lower with an unobstructed preview.
+
+**2.4.5 the Market hub, and a fairer casino in Creative:** Main > MARKET opens
+the five-tile hub again (Fish Market, Creatures, Collection, Contracts,
+Auction) instead of jumping straight to the Fish Market, and one BACK returns
+to Main. Creative plays the casino as free practice: the same rounds, odds and
+reveals, but no doubloons are charged, paid or saved. Creature colors roll far
+more often (NATURAL 25%, TINTED 40%, TWO-TONE 25%, PRIZED 10%), and Creative
+buys and removes creatures free so a keeper can reroll colors without spending.
+Saves are unchanged at schema 23 / 6476 bytes.
 
 **2.4.4 a 96-color palette:** fish bodies and markings now draw from **96
 colors** instead of a short list, so a bought fish can wear almost any hue

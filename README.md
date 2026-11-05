@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.4.4
+# Pocket Tank CYD 2.4.5
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.4.4**. Stable firmware,
+now versioned independently. This source targets **2.4.5**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -59,6 +59,15 @@ read grips from each piece's own art, so every standing decoration offers perche
 dive through rock gaps rather than a lane game like Fish Slalom, and **Reef
 Architect** is a real logic puzzle: plant six corals that match every row and
 column clue without touching.
+
+**2.4.5 the Market hub, and a fairer casino in Creative:** Main > MARKET opens
+the five-tile hub again (Fish Market, Creatures, Collection, Contracts,
+Auction) instead of jumping straight to the Fish Market, and one BACK returns
+to Main. Creative plays the casino as free practice: the same rounds, odds and
+reveals, but no doubloons are charged, paid or saved. Creature colors roll far
+more often (NATURAL 25%, TINTED 40%, TWO-TONE 25%, PRIZED 10%), and Creative
+buys and removes creatures free so a keeper can reroll colors without spending.
+Saves are unchanged at schema 23 / 6476 bytes.
 
 **2.4.4 a 96-color palette:** fish bodies and markings now draw from **96
 colors** instead of a short list, so a bought fish can wear almost any hue
