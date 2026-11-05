@@ -115,9 +115,11 @@ old bullets only as history and evidence.
   tank.
 - Creatures do not breed. One of each per aquarium (the shrimp as one
   school). Legacy pairs/nurseries were retired once with a refund.
-- Colors roll at purchase: NATURAL 45%, TINTED 30% (x1.4 resale), TWO-TONE 20%
-  (x2), PRIZED 5% (x3.5). Resale = price / 2 x rarity, so rerolling is a
-  losing average with lottery-like upside. Selling clears that tank's colors.
+- Colors roll at purchase: NATURAL 25%, TINTED 40% (x1.4 resale), TWO-TONE 25%
+  (x2), PRIZED 10% (x3.5). Resale = price / 2 x rarity, so rerolling is a
+  losing average (~83% back) with lottery-like upside. Selling clears that
+  tank's colors. Creative buys and removes creatures free (no payout), so a
+  keeper can reroll colors there too.
 - Roles: shrimp forage fallen food; the snail keeps glass clear (calm
   recovers faster); the urchin grazes at night (resting fish settle faster);
   the seahorse perches on kelp, sword grass and the tops of standing decor and doubles trust from holds; the pearl mussel
@@ -154,6 +156,24 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
+- **Creature colors roll far more often and Creative trades creatures**
+  (unreleased local work on top of 2.4.4). `creature_palette_roll` thresholds
+  moved from 45/75/95 to 25/65/90, so a purchase is NATURAL 25%, TINTED 40%,
+  TWO-TONE 25% and PRIZED 10% (measured 25.06/39.89/24.55/10.50 over 400 rolls
+  from the `tank_init` seed, stable across eight seeds). The average flip still
+  loses: ~83% back, up from ~72%. `creature_trade_ready` lost its `sandbox`
+  argument - Creative is no longer blocked there - so
+  `progression_creature_sale_quote` works in Creative and pays 0, because
+  `progression_creature_value` still returns 0 for free stock. The Creature
+  Market labels that path ADD FOR FREE / OWNED - REMOVE TO REROLL / REMOVE - NO
+  PAYOUT, the sale page becomes REMOVE CREATURE? with CONFIRM REMOVE, and the
+  CREATURES help topic carries the new percentages plus "Creative: free
+  trades." No save layout changed (schema 23 / 6476 bytes). Local COM4 app is
+  1,816,080 bytes, SHA256
+  `e0afd895a1168061499b95e88323ca9cf852beca8ea70d705b4172cf3d5bbb3d`, flashed
+  app-only to `ota_0` with esptool hash verification; boot log clean (0 `E (`
+  lines), five residents and wallet 5698 intact. Not committed or published at
+  the time of writing.
 - **2.4.4 widens the fish palette to 96 colors** (24 hues x vivid/pastel/deep
   appended to the historical 24). `FISH_COLOR_N` is 96; the first 24 entries of
   `FISH_BODY_COLORS`, `FISH_MARKING_COLORS` and `FISH_BODY_COLOR_NAMES` are
@@ -1148,13 +1168,23 @@ old bullets only as history and evidence.
   additions (five including travelers) and confirmed removals (keep two).
   Every Market purchase is free in Creative - fish, fry and all five creatures
   (shrimp school, snail, urchin, seahorse, pearl mussel) - while the
-  one-per-tank creature limit and the five-fish cap still apply. The shrimp and
-  mussel have their own branches in `progression_creature_buy`; both must pass
-  `progression_creative(t)` as `creature_trade_ready`'s `sandbox` argument, and
-  both must call `creatures_migrate` BEFORE bumping `creatures.revision`. A v0
+  one-per-tank creature limit and the five-fish cap still apply. Creatures can
+  also be sold in Creative, so a keeper can reroll colors: the sale action
+  works and pays 0, because free stock never pays out. Permanent
+  diets are free there too: `progression_food_buy` takes any better tier for 0
+  doubloons when `progression_creative(t)`, and the Fish Food page labels those
+  rows FREE instead of a price. Normal/Hard still step up exactly one tier and
+  charge 250/750. The shrimp and
+  mussel have their own branches in `progression_creature_buy`; both must call
+  `creatures_migrate` BEFORE bumping `creatures.revision`. A v0
   creature struct with a non-zero revision fails `creatures_valid` (version 0
   must be all-zero), which then blocks every later creature purchase in every
-  mode. `test_fish_market.c` buys each creature in Creative and then the next
+  mode. `creature_trade_ready` no longer takes a `sandbox` flag: Creative is
+  allowed through it, and the price is zeroed at the call site instead.
+  `progression_creature_sale_quote` uses the same gate, so Creative sales are
+  allowed; `progression_creature_value` still returns 0 there, and the
+  Creature Market labels the action REMOVE - NO PAYOUT.
+  `test_fish_market.c` buys each creature in Creative and then the next
   one, so the ordering cannot regress silently.
   Hard permits online starvation deaths only: never offline or old-age deaths.
   Surface risks, death/save errors and recovery explicitly; keep death and

@@ -129,6 +129,21 @@ int main(void) {
     for (int i = 0; i < FISH_VARIETY_COUNT; i++) assert(journal_variety_unlocked(&t, i));
     for (int i = 0; i < JOURNAL_THEME_COUNT; i++) assert(journal_theme_unlocked(&t, i));
     assert(journal_set_theme(&t, JOURNAL_THEME_COUNT - 1)); wallet(&t, 37, 59, 0);
+    /* Creative buys every better diet for free, in any order, and never
+       charges the wallet or skips the save. */
+    assert(progression_food_tier(&t) == PROGRESSION_FOOD_BASE);
+    before = t; reject_write = true;
+    assert(!progression_food_buy(&t, PROGRESSION_FOOD_PREMIUM)); unchanged(&before, &t);
+    reject_write = false;
+    assert(progression_food_buy(&t, PROGRESSION_FOOD_PREMIUM));
+    wallet(&t, 37, 59, 0);
+    assert(progression_food_tier(&t) == PROGRESSION_FOOD_PREMIUM);
+    assert(progression_food_growth_multiplier(&t) == 1.5f);
+    assert(!progression_food_buy(&t, PROGRESSION_FOOD_PREMIUM));
+    assert(!progression_food_buy(&t, PROGRESSION_FOOD_PLUS));
+    reload(&t);
+    assert(progression_creative(&t) && progression_food_tier(&t) == PROGRESSION_FOOD_PREMIUM);
+    wallet(&t, 37, 59, 0);
     before = t; reject_write = true;
     assert(progression_creative_add_fish(&t, FISH_VARIETY_COUNT - 1)); unchanged(&before, &t);
     assert(!progression_buy(&t, 0)); unchanged(&before, &t);
@@ -183,10 +198,17 @@ int main(void) {
         assert(progression_creature_adults(&t, species) == 1 && !progression_buy(&t, item));
         assert(!t.creatures.paid_adults[species - CREATURE_SNAIL]);
         creature_sale_t quote;
-        assert(!progression_creature_sale_quote(&t, species, false, &quote));
         assert(!progression_creature_sale_quote(&t, species, true, &quote));
         /* Creative allows free first purchases, but one per tank still applies. */
         assert(!progression_creature_buy(&t, species));
+        assert(progression_creature_adults(&t, species) == 1);
+        /* Creative sells too, so a keeper can reroll colors; free stock pays nothing. */
+        assert(progression_creature_sale_quote(&t, species, false, &quote) && quote.value == 0);
+        assert(progression_creature_sale_confirm(&t, &quote));
+        assert(!progression_creature_adults(&t, species));
+        wallet(&t, 37, 59, 0);
+        /* ... and it comes back free with a fresh roll. */
+        assert(progression_creature_buy(&t, species));
         assert(progression_creature_adults(&t, species) == 1);
         wallet(&t, 37, 59, 0);
     }

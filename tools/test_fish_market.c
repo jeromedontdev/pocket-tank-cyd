@@ -300,7 +300,8 @@ static void test_creature_market(tank_t *t) {
         assert(progression_creature_sale_confirm(t, &sale)); back += sale.value;
     }
     for (int r = 0; r < CREATURE_RARITY_COUNT; r++) assert(seen[r] > 0);
-    assert(seen[0] > seen[3] && back < spent && back * 2 > spent);
+    /* Natural is the minority roll: three purchases in four come out colored. */
+    assert(seen[0] * 2 < 400 && seen[0] > seen[3] && back < spent && back * 2 > spent);
     /* Legacy pairs and nurseries retire once, refunding today's quotes. */
     start(t, GAME_MODE_NORMAL); t->sd_balance = 1000;
     assert(progression_creature_buy(t, CREATURE_SNAIL));
@@ -326,7 +327,11 @@ static void test_creature_market(tank_t *t) {
     start(t, GAME_MODE_CREATIVE);
     assert(progression_creature_buy(t, CREATURE_SNAIL));
     assert(progression_creature_adults(t, CREATURE_SNAIL) == 1);
-    assert(!progression_creature_sale_quote(t, CREATURE_SNAIL, false, &quote));
+    /* Creative sells too, so a keeper can reroll colors; free stock pays nothing. */
+    assert(progression_creature_sale_quote(t, CREATURE_SNAIL, false, &quote) && quote.value == 0);
+    assert(progression_creature_sale_confirm(t, &quote));
+    assert(!progression_creature_adults(t, CREATURE_SNAIL) && !companion_creature_colors(&t->companion, CREATURE_SNAIL));
+    assert(!progression_creature_sale_quote(t, CREATURE_SNAIL, false, &quote)); /* Nothing left to remove. */
     /* Creative buys every creature for zero dubloons, in any order. The shrimp
      * and mussel have their own branches, and both must migrate the creature
      * state before bumping its revision: a v0 struct with a non-zero revision

@@ -135,6 +135,21 @@ static void check_menu_layout(const char *gallery) {
         snprintf(name, sizeof name, "companion-%d", section); menu_begin(name);
         companion_render(&t, full_frame, TANK_W); menu_end(gallery);
     }
+    {   /* Creative shows every better diet as FREE, not a price it cannot pay. */
+        tank_t food = t;
+        food.profile = (profile_state_t){.marker = 0x50524631u, .version = 1,
+            .mode = GAME_MODE_CREATIVE, .chosen = 1, .reserved = 2};
+        food.creative = (creative_state_t){0x43525631u, 1, 1, 0};
+        assert(progression_creative(&food));
+        food.progression.food_tier = PROGRESSION_FOOD_BASE;
+        companion_open_section(COMPANION_SECTION_FOOD);
+        menu_begin("companion-food-creative");
+        companion_render(&food, full_frame, TANK_W); menu_end(gallery);
+        food.progression.food_tier = PROGRESSION_FOOD_PREMIUM;
+        menu_begin("companion-food-creative-owned");
+        companion_render(&food, full_frame, TANK_W); menu_end(gallery);
+        companion_open_section(COMPANION_SECTION_FOOD);
+    }
     fish_lineage_t lineage_before = t.story.active[0];
     t.story.active[0].mutation = GENE_MUTANT_PATTERN | GENE_MUTANT_TRAIT | GENE_MUTANT_COLOR;
     t.story.active[0].traits = 0x77;
@@ -267,6 +282,33 @@ static void check_menu_layout(const char *gallery) {
         snprintf(name, sizeof name, "creature-market-%d", kind); menu_begin(name);
         companion_render(&t, full_frame, TANK_W); menu_end(gallery);
         companion_tap(&t, render_frame_x(400), render_frame_y(116));
+    }
+    {   /* Creative buys and removes creatures free, so the page must say so
+           instead of quoting a payout it will never pay. */
+        tank_t sandbox = t;
+        sandbox.profile = (profile_state_t){.marker = 0x50524631u, .version = 1,
+            .mode = GAME_MODE_CREATIVE, .chosen = 1, .reserved = 2};
+        sandbox.creative = (creative_state_t){0x43525631u, 1, 1, 0};
+        assert(progression_creative(&sandbox));
+        sandbox.sd_unlocks |= SD_ITEM_SNAIL | SD_ITEM_URCHIN | SD_ITEM_SEAHORSE;
+        sandbox.creatures.version = 1;
+        for (int stock = 0; stock < CREATURE_STOCK_COUNT; stock++) sandbox.creatures.stock[stock].adults = 1;
+        sandbox.companion.creature_colors[CREATURE_SNAIL] = 0x53;
+        companion_open_creature(CREATURE_SNAIL);
+        menu_begin("creature-market-creative-owned");
+        companion_render(&sandbox, full_frame, TANK_W); menu_end(gallery);
+        /* The sale page renders the pending quote; this harness has no storage,
+         * so it shows the zeroed default (shrimp, 0) - enough to audit the
+         * Creative REMOVE layout at both scales. */
+        companion_open_section(COMPANION_SECTION_CREATURE_SALE);
+        menu_begin("creature-sale-creative");
+        companion_render(&sandbox, full_frame, TANK_W); menu_end(gallery);
+        sandbox.sd_unlocks &= ~SD_ITEM_SNAIL;
+        sandbox.creatures.stock[0].adults = 0;
+        companion_open_creature(CREATURE_SNAIL);
+        menu_begin("creature-market-creative-empty");
+        companion_render(&sandbox, full_frame, TANK_W); menu_end(gallery);
+        companion_open_section(COMPANION_SECTION_CREATURE_MARKET);
     }
     static const int trade_pages[2] = {COMPANION_SECTION_CONTRACT, COMPANION_SECTION_AUCTION};
     for (int k = 0; k < 2; k++) {

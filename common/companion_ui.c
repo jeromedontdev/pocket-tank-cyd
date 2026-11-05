@@ -905,22 +905,27 @@ static void market_render(const tank_t *t, uint16_t *fb, int stride) {
         market_button(fb, stride, 304, 80, 132, "NURSERY");
     }
     if (page == COMPANION_SECTION_CREATURE_SALE) {
-        snprintf(line, sizeof line, "SELL %s FOR %d DOUBLOONS?",
-                 creature_sale.species == CREATURE_SHRIMP ? "SHRIMP SCHOOL" : CREATURE_NAMES[creature_sale.species],
-                 creature_sale.value);
+        bool sandbox = progression_creative(t);
+        if (sandbox) snprintf(line, sizeof line, "REMOVE %s FROM THIS TANK?",
+                              creature_sale.species == CREATURE_SHRIMP ? "SHRIMP SCHOOL" : CREATURE_NAMES[creature_sale.species]);
+        else snprintf(line, sizeof line, "SELL %s FOR %d DOUBLOONS?",
+                      creature_sale.species == CREATURE_SHRIMP ? "SHRIMP SCHOOL" : CREATURE_NAMES[creature_sale.species],
+                      creature_sale.value);
         render_text_wrap(fb, stride, 14, 96, 420, 0xffd998, line);
         snprintf(line, sizeof line, "COLORS: %s",
                  CREATURE_RARITY_NAMES[progression_creature_rarity_of(t, creature_sale.species)]);
         text(fb, stride, 14, 150, 0xe7f4dc, line);
-        paragraph(fb, stride, 180, 0xa7c4ba,
+        paragraph(fb, stride, 180, 0xa7c4ba, sandbox ?
+                  "Creative stock is free, so removing it pays nothing. A new one rolls fresh colors at purchase." :
                   "It leaves this aquarium. A new one rolls fresh colors at purchase. The quote is rechecked before saving.");
         button(fb, stride, 12, 274, 205, "CANCEL");
-        button(fb, stride, 231, 274, 205, "CONFIRM SALE");
+        button(fb, stride, 231, 274, 205, sandbox ? "CONFIRM REMOVE" : "CONFIRM SALE");
         return;
     }
     if (page == COMPANION_SECTION_CREATURE_MARKET) {
         int kind = market_creature;
         bool owned = progression_creature_adults(t, kind) > 0;
+        bool sandbox = progression_creative(t);
         render_creature_portrait(fb, stride, 224, 118, kind,
                                  owned ? companion_creature_colors(&t->companion, kind) : 0, 0);
         market_button(fb, stride, 12, 96, 70, "<");
@@ -931,18 +936,22 @@ static void market_render(const tank_t *t, uint16_t *fb, int stride) {
         if (owned) {
             int r = progression_creature_rarity_of(t, kind);
             static const char *const mult[CREATURE_RARITY_COUNT] = {"x1.0", "x1.4", "x2.0", "x3.5"};
-            snprintf(line, sizeof line, "COLORS: %s %s", CREATURE_RARITY_NAMES[r], mult[r]);
+            if (sandbox) snprintf(line, sizeof line, "COLORS: %s", CREATURE_RARITY_NAMES[r]);
+            else snprintf(line, sizeof line, "COLORS: %s %s", CREATURE_RARITY_NAMES[r], mult[r]);
         } else snprintf(line, sizeof line, "COLORS ROLLED AT PURCHASE");
         render_text(fb, stride, 14, 186, 1, owned ? 0xd8c3f2 : 0xa7c4ba, line);
         snprintf(line, sizeof line, "%s", progression_creature_status(t, kind));
         render_text(fb, stride, 14, 210, 1, 0xa7c4ba, line);
-        snprintf(line, sizeof line, owned ? "OWNED - SELL TO REROLL" : "BUY FOR %d DOUBLOONS",
-                 progression_creature_price(t, kind));
+        if (owned) snprintf(line, sizeof line, sandbox ? "OWNED - REMOVE TO REROLL" : "OWNED - SELL TO REROLL");
+        else if (sandbox) snprintf(line, sizeof line, "ADD FOR FREE");
+        else snprintf(line, sizeof line, "BUY FOR %d DOUBLOONS", progression_creature_price(t, kind));
         market_button(fb, stride, 12, 242, 424, line);
-        if (owned) snprintf(line, sizeof line, "SELL FOR +%d DOUBLOONS", progression_creature_value(t, kind, false));
-        else snprintf(line, sizeof line, "NOTHING TO SELL");
+        if (!owned) snprintf(line, sizeof line, "NOTHING TO SELL");
+        else if (sandbox) snprintf(line, sizeof line, "REMOVE - NO PAYOUT");
+        else snprintf(line, sizeof line, "SELL FOR +%d DOUBLOONS", progression_creature_value(t, kind, false));
         market_button(fb, stride, 12, 290, 424, line);
-        render_text(fb, stride, 14, 344, 1, 0xa7c4ba, "RARER COLORS RESELL FOR MORE.");
+        render_text(fb, stride, 14, 344, 1, 0xa7c4ba,
+                    sandbox ? "CREATIVE: FREE STOCK, FREE REMOVAL." : "RARER COLORS RESELL FOR MORE.");
         return;
     }    if (page == COMPANION_SECTION_SALE) {
         snprintf(line, sizeof line, "SELL %s FOR %d DOUBLOONS?",
@@ -1037,7 +1046,7 @@ static const help_topic_t HELP_TOPICS[] = {
         "Without it the fish stays a little restless and grows 10% slower. Store pieces instead of selling them to switch favorites quickly."}},
     {"GROWTH & FOOD", STAMP_FISH, {
         "Fry become juveniles after 2 growth hours, adults after 12 and elders after 96. Asleep or away, a tank grows at a quarter of awake speed.",
-        "Permanent diets multiply growth: Pellets 1x, Flakes 1.25x (250), Bloodworms 1.5x (750). Favorite decor adds or removes 10%; hybrid vigor adds up to 10%."}},
+        "Permanent diets multiply growth: Pellets 1x, Flakes 1.25x (250), Bloodworms 1.5x (750); Creative buys them free. Favorite decor adds or removes 10%; hybrid vigor adds up to 10%."}},
     {"BREEDING", STAMP_FAMILY, {
         "Two healthy adults or elders of the SAME variety can breed when there is room and you have fed them. Varieties never cross. Name each new fry with the keyboard; SUGGEST rolls a fresh name.",
         "Fry inherit one allele of each gene from each parent. Pair carriers of hidden traits to reveal them. Check Fish > Family to follow a line."}},
@@ -1051,8 +1060,8 @@ static const help_topic_t HELP_TOPICS[] = {
         "Market > Contracts: every 3 days a visitor orders one variety you have unlocked, bred by you, at FINE+ or RARE+ grade or with a mutation. Filling it pays the quote x1.6 + 50, once per order.",
         "Market > Auction: on Saturdays one RARE+ or 2nd-generation adult can be sold to rival bidders. Commit first; the hammer lands at 95-165% of the quote. One lot a week."}},
     {"CREATURES", STAMP_SHELL, {
-        "One of each per tank: shrimp school, snail, urchin, seahorse and pearl mussel. No breeding. Colors roll at purchase: Natural, Tinted x1.4, Two-tone x2 or Prized x3.5 resale.",
-        "Shrimp eat fallen food. Snail: calm +10%. Urchin: night rest +20%. Seahorse: double hold trust; perches on kelp, sword grass and decor tops. Mussel: pays while fish stay fed."}},
+        "One of each per tank: shrimp school, snail, urchin, seahorse and pearl mussel. No breeding. Colors roll at purchase: Natural 25%, Tinted 40% x1.4, Two-tone 25% x2 or Prized 10% x3.5 resale.",
+        "Shrimp eat fallen food. Snail: calm +10%. Urchin: night rest +20%. Seahorse: double hold trust; perches on kelp, sword grass and decor tops. Mussel: pays while fish stay fed. Creative: free trades."}},
     {"TANKS & IDENTITY", STAMP_FLAG, {
         "Keep up to eight aquariums, each with its own residents, decor and theme. Tank > Tank Summary switches, adds and reviews tanks.",
         "Tank Summary > Name & Identity renames a tank and picks one of many subtitles and illustrated emblems, enough for every tank to have its own."}},
@@ -1136,7 +1145,7 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
                         page == COMPANION_SECTION_FOOD ? "FISH FOOD" :
                         page == COMPANION_SECTION_RESIDENTS ? "YOUR RESIDENTS" :
                         page == COMPANION_SECTION_CREATURE_MARKET ? "CREATURE MARKET" :
-                        page == COMPANION_SECTION_CREATURE_SALE ? "SELL CREATURE?" :
+                        page == COMPANION_SECTION_CREATURE_SALE ? (progression_creative(t) ? "REMOVE CREATURE?" : "SELL CREATURE?") :
                         page == COMPANION_SECTION_MARKET ? "FISH MARKET" :
                         page == COMPANION_SECTION_NURSERY ? "PAIR & NURSERY" :
                         page == COMPANION_SECTION_SALE ? "CONFIRM FISH SALE" :
@@ -1234,8 +1243,10 @@ void companion_render(const tank_t *t, uint16_t *fb, int stride) {
                   "Buy once for all tanks. Feed your best recipe forever. Faster growth, with no refill purchases.");
         static const char *const names[] = {"PELLETS / 1.00X", "FLAKES / 1.25X", "BLOODWORMS / 1.50X"};
         unsigned tier = progression_food_tier(t);
+        bool sandbox = progression_creative(t);
         for (unsigned j = 0; j < 3; j++) {
             if (j <= tier) snprintf(line, sizeof line, "%s / %s", names[j], j == tier ? "ACTIVE" : "OWNED");
+            else if (sandbox) snprintf(line, sizeof line, "%s / FREE", names[j]);
             else snprintf(line, sizeof line, "%s / %d", names[j], progression_food_price(j));
             int y = 204 + (int)j * 52;
             market_button(fb, stride, 12, y, 424, "");
@@ -1442,9 +1453,14 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
     } else if (page == COMPANION_SECTION_FOOD) {
         if (x >= 12 && x < 436 && y >= 204 && y < 350 && (int)(y - 204) % 52 < 42) {
             unsigned tier = (unsigned)(y - 204) / 52;
+            bool sandbox = progression_creative(t);
             if (tier <= progression_food_tier(t)) snprintf(notice, sizeof notice, "Already owned; your best tier is active.");
-            else snprintf(notice, sizeof notice, "%s", progression_food_buy(t, tier) ?
-                          "Permanent food upgrade saved." : progression_shop_notice());
+            else if (!sandbox && t->sd_balance < progression_food_price(tier))
+                snprintf(notice, sizeof notice, "NOT ENOUGH DOUBLOONS");
+            else if (progression_food_buy(t, tier))
+                snprintf(notice, sizeof notice, sandbox ?
+                         "Creative: diet upgraded for free." : "Permanent food upgrade saved.");
+            else snprintf(notice, sizeof notice, "SAVE FAILED - DIET NOT CHANGED");
         }
     } else if ((page == COMPANION_SECTION_MARKET || page == COMPANION_SECTION_RESIDENTS ||
                 page == COMPANION_SECTION_NURSERY) && y >= 80 && y < 122) {
@@ -1454,12 +1470,14 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
         notice[0] = 0;
     } else if (page == COMPANION_SECTION_CREATURE_MARKET) {
         int kind = market_creature;
+        bool sandbox = progression_creative(t);
         if (y >= 96 && y < 138) {
             if (x >= 12 && x < 82) { market_creature = (market_creature + CREATURE_COUNT - 1) % CREATURE_COUNT; notice[0] = 0; }
             else if (x >= 366 && x < 436) { market_creature = (market_creature + 1) % CREATURE_COUNT; notice[0] = 0; }
         } else if (x >= 12 && x < 436 && y >= 242 && y < 284) {
             bool bought = progression_creature_buy(t, kind);
-            snprintf(notice, sizeof notice, "%s", bought ? "Bought and saved. Colors rolled!" : progression_shop_notice());
+            snprintf(notice, sizeof notice, "%s", bought ? (sandbox ? "Added free. Colors rolled!" : "Bought and saved. Colors rolled!")
+                                                          : progression_shop_notice());
         } else if (y >= 290 && y < 332 && x >= 12 && x < 436) {
             if (progression_creature_sale_quote(t, kind, false, &creature_sale)) {
                 creature_sale_parent = page;
@@ -1472,7 +1490,9 @@ bool companion_tap(tank_t *t, float frame_x, float frame_y) {
             else if (x >= 231 && x < 436) {
                 bool sold = progression_creature_sale_confirm(t, &creature_sale);
                 page = creature_sale_parent;
-                snprintf(notice, sizeof notice, "%s", sold ? "Creature sold and saved." : "Sale not saved. Review stock and retry.");
+                snprintf(notice, sizeof notice, "%s", sold ? (progression_creative(t) ? "Creature removed and saved."
+                                                                                       : "Creature sold and saved.")
+                                                           : "Sale not saved. Review stock and retry.");
             }
         }
     } else if (page == COMPANION_SECTION_MARKET || page == COMPANION_SECTION_RESIDENTS) {

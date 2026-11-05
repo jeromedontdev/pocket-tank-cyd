@@ -80,10 +80,11 @@ def exercise(lib, output, mode):
             tap(100, 288)
             assert snapshot()["tank"]["n_fish"] == 5, "Creative five-fish cap holds"
             assert snapshot()["tank"]["sd_balance"] == full["tank"]["sd_balance"], "Capped purchase must not charge"
-            continue
         else:
             assert lib.sim_page() == 9 and lib.sim_companion_section() == 26
-        # Creatures: one of each per tank (one shrimp school), colors rolled at purchase, confirmed sales.
+        # Creatures: one of each per tank (one shrimp school), colors rolled at
+        # purchase, confirmed sales. Creative buys and sells them free, so a
+        # keeper can reroll colors there too.
         tap(224, 340)
         assert lib.sim_companion_section() == 29
         for kind in (0, 1, 2, 3, 4):
@@ -95,8 +96,11 @@ def exercise(lib, output, mode):
             tap(224, 260)
             assert lib.sim_creature_adults(kind) == 0
             os.environ["POCKET_TANK_SAVE"] = path
+            wallet = snapshot()["tank"]["sd_balance"]
             tap(224, 260)
             assert lib.sim_creature_adults(kind) == 1, (mode, width, kind)
+            if mode == 1:
+                assert snapshot()["tank"]["sd_balance"] == wallet, "Creative creature purchase is free"
             balance = snapshot()["tank"]["sd_balance"]
             tap(224, 260)
             assert snapshot()["tank"]["sd_balance"] == balance and lib.sim_creature_adults(kind) == 1, "One per tank"
@@ -112,12 +116,17 @@ def exercise(lib, output, mode):
             os.environ["POCKET_TANK_SAVE"] = path
             tap(100, 310); tap(330, 288)
             assert lib.sim_creature_adults(kind) == 0
-            assert snapshot()["tank"]["sd_balance"] > balance
+            if mode == 1:
+                assert snapshot()["tank"]["sd_balance"] == balance, "Creative removal pays nothing"
+            else:
+                assert snapshot()["tank"]["sd_balance"] > balance
             tap(100, 310)
             assert lib.sim_companion_section() == 29, "Nothing left to sell"
             tap(400, 116)
         tap(380, 24)
         assert lib.sim_companion_section() == 26, "Creature Market Back returns to Fish Market"
+        if mode == 1:
+            continue  # Creative fish sales stay blocked; only creatures trade there.
         # Restore fish trading fixture so creature spending cannot alter its assertions.
         restore(original)
         if lib.sim_width() != width:
@@ -193,8 +202,8 @@ def exercise(lib, output, mode):
         assert snapshot()["tank"]["n_fish"] == 5
         assert snapshot()["tank"]["sd_balance"] == full["tank"]["sd_balance"], "Full tank purchase must not charge"
     if mode == 1:
-        print("PASS: Creative at 320/240 blocks free fish styling, buys Market fish free "
-              "and still enforces the five-fish cap")
+        print("PASS: Creative at 320/240 blocks free fish styling, buys Market fish free, "
+              "trades creatures free and still enforces the five-fish cap")
     else:
         print(f"PASS: market mode {mode}, 320/240, actual offers, pair/nursery, "
               "fish/creature/offspring buy/sale rollback, separate confirmation, capacity, startup/identity gating")

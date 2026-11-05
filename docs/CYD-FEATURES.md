@@ -157,9 +157,11 @@ are rejected before changing the roster or RNG, including direct spawning.
 **Creature Market** (Market hub, or the link on Fish Market) trades every
 creature in one place: the shrimp school, snail, urchin, seahorse and pearl
 mussel. Creatures do not breed; each aquarium keeps one of each (shrimp as one
-school). Colors roll at purchase: NATURAL 45%, TINTED 30% (x1.4 resale),
-TWO-TONE 20% (x2) or PRIZED 5% (x3.5), so rare colors are worth reselling and
-rerolling is a gamble that loses on average. Roles: shrimp forage fallen food,
+school). Colors roll at purchase: NATURAL 25%, TINTED 40% (x1.4 resale),
+TWO-TONE 25% (x2) or PRIZED 10% (x3.5), so most purchases come out colored
+and rerolling is a gamble that still loses on average (~83% back). Creative
+buys and removes creatures free, so colors can be rerolled there too. Roles:
+shrimp forage fallen food,
 snails keep the glass clear (calm +10%), urchins graze at night (rest +20%),
 seahorses perch on kelp, sword grass and the tops of decor (trust from holds doubles) and the pearl mussel pays
 doubloons while your fish stay fed. Legacy creature pairs and nursery stock
@@ -228,7 +230,8 @@ doubloons and shark tails are updated in the actual aquarium renderer.
 
 Permanent **Pellets / Flakes / Bloodworms** diets have distinct live art and
 multiply growth by **1x / 1.25x / 1.5x** across aquariums. Upgrade
-prices are **250** for Flakes and **750 more** for Bloodworms.
+prices are **250** for Flakes and **750 more** for Bloodworms; Creative buys
+both for free.
 Gold doubloon icons accompany the main wallet and submenu purses.
 The current save
 format is schema 23 / 6476 bytes, preserving the old prefix and appending

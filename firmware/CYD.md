@@ -50,7 +50,8 @@ JSON keys `collection` and `statue`; there is no save-schema bump.
 Contracts and Auction. The Creature Market (section 29) trades all five
 creatures: shrimp school, snail, urchin, seahorse and pearl mussel. There is no
 creature breeding; one of each per aquarium, and colors roll at purchase
-(Natural 45% / Tinted 30% x1.4 / Two-tone 20% x2 / Prized 5% x3.5 resale).
+(Natural 25% / Tinted 40% x1.4 / Two-tone 25% x2 / Prized 10% x3.5 resale).
+Creative buys and removes creatures free, so colors can be rerolled there.
 Decor no longer lists creature items (59 shop rows). Contracts (section 37)
 renew every three days and pay quote x1.6 + 50; the Saturday Auction (section
 38) takes five rival bids between 95% and 165% of the quote. The casino adds

@@ -558,10 +558,14 @@ float progression_food_growth_multiplier(const tank_t *t) {
     return multipliers[progression_food_tier(t)];
 }
 bool progression_food_buy(tank_t *t, unsigned tier) {
-    if (!t || tier != progression_food_tier(t) + 1 || tier >= PROGRESSION_FOOD_TIER_COUNT ||
+    if (!t || tier >= PROGRESSION_FOOD_TIER_COUNT ||
         !progression_state_valid(&t->progression)) return false;
-    int price = progression_food_price(tier);
-    if (price <= 0 || t->sd_balance < price) return false;
+    unsigned current = progression_food_tier(t);
+    /* Creative buys any better diet for free; Normal/Hard step up one tier. */
+    bool sandbox = progression_creative(t);
+    if (sandbox ? tier <= current : tier != current + 1) return false;
+    int price = sandbox ? 0 : progression_food_price(tier);
+    if ((price <= 0 && !sandbox) || t->sd_balance < price) return false;
     progression_state_t old = t->progression;
     t->progression.food_tier = (uint8_t)tier;
     t->sd_balance -= price;
@@ -673,7 +677,8 @@ static uint8_t *creature_color_slot(tank_t *t, int species) {
 }
 /* Creature colors are rolled at purchase (low nibble body, high nibble
  * detail; 0 = natural). Rarer rolls resell for more, so buying and selling
- * stock is a small lottery with a negative expected flip (~72% back). */
+ * stock is a small lottery with a negative expected flip (~83% back). A
+ * natural roll is the minority: three purchases in four come out colored. */
 static const uint8_t creature_prized_palettes[] = {0x15, 0x5c, 0xda, 0x1e};
 const char *const CREATURE_RARITY_NAMES[CREATURE_RARITY_COUNT] = {"NATURAL", "TINTED", "TWO-TONE", "PRIZED"};
 static const int creature_rarity_pct[CREATURE_RARITY_COUNT] = {100, 140, 200, 350};
@@ -689,9 +694,9 @@ static void creature_palette_roll(tank_t *t, int species) {
     if (!colors) return;
     float r = tank_randf(t, 0, 100);
     unsigned body = 1u + (unsigned)tank_randf(t, 0, 15) % 15u;
-    if (r < 45) *colors = 0;
-    else if (r < 75) *colors = (uint8_t)body;
-    else if (r < 95) {
+    if (r < 25) *colors = 0;
+    else if (r < 65) *colors = (uint8_t)body;
+    else if (r < 90) {
         unsigned detail = 1u + (body + (unsigned)tank_randf(t, 0, 14) % 14u) % 15u;
         *colors = (uint8_t)(detail << 4 | body);
     } else *colors = creature_prized_palettes[(unsigned)tank_randf(t, 0, 4) % sizeof creature_prized_palettes];
@@ -777,7 +782,6 @@ int progression_creature_value(const tank_t *t, int species, bool offspring) {
 }
 const char *progression_creature_status(const tank_t *t, int species) {
     if (!t || !creature_traded(species)) return "NOT TRADED";
-    if (progression_creative(t)) return "CREATIVE - NO CREATURE TRADE";
     static const char *const role[CREATURE_COUNT] = {
         "SCHOOL FORAGES FALLEN FOOD", "KEEPS GLASS CLEAR: CALMER FISH", "NIGHT GRAZER: FISH REST BETTER",
         "PERCHES ON KELP: MORE TRUST", "EARNS PEARLS WHEN FISH ARE FED"};
@@ -1229,10 +1233,10 @@ static void undo_put(tank_t *t, const uint32_t *u) {
 }
 static void undo_drop(uint32_t *u) { free(u); }
 
-static bool creature_trade_ready(const tank_t *t, bool sandbox) {
+static bool creature_trade_ready(const tank_t *t) {
     if (!t || !progression_storage_ready()) { s_shop_notice = "SAVE UNAVAILABLE"; return false; }
-    if ((!sandbox && progression_creative(t)) || s_setup_pending || s_newborn >= 0) {
-        s_shop_notice = progression_creative(t) ? "CREATIVE - NO CREATURE TRADE" : "FINISH WELCOMING YOUR FISH";
+    if (s_setup_pending || s_newborn >= 0) {
+        s_shop_notice = "FINISH WELCOMING YOUR FISH";
         return false;
     }
     if (!creatures_valid(&t->creatures, t->sd_unlocks) || t->creatures.revision == UINT32_MAX) {
@@ -1243,7 +1247,7 @@ static bool creature_trade_ready(const tank_t *t, bool sandbox) {
 static bool creature_buy(tank_t *t, int species, bool sandbox) {
     s_shop_notice = NULL;
     int i = creature_index(species), item = creature_item(species);
-    if (i < 0 || !creature_trade_ready(t, sandbox)) return false;
+    if (i < 0 || !creature_trade_ready(t)) return false;
     if (progression_creature_adults(t, species) >= 1) { s_shop_notice = "ONE PER TANK - SELL TO REROLL"; return false; }
     int price = sandbox && progression_creative(t) ? 0 : progression_creature_price(t, species);
     if (t->sd_balance < price) { s_shop_notice = "NOT ENOUGH DOUBLOONS"; return false; }
@@ -1270,10 +1274,9 @@ static bool creature_buy(tank_t *t, int species, bool sandbox) {
 bool progression_creature_buy(tank_t *t, int species) {
     if (species == CREATURE_SHRIMP) {
         s_shop_notice = NULL;
-        /* Creative allows free creature purchases: sandbox=true skips the
-         * Creative trade block. The shrimp's own price is already zero there
-         * (progression_item_price_for), so the wallet never moves. */
-        if (!creature_trade_ready(t, progression_creative(t))) return false;
+        /* Creative buys creatures free: the shrimp's own price is already zero
+         * there (progression_item_price_for), so the wallet never moves. */
+        if (!creature_trade_ready(t)) return false;
         if (progression_creature_adults(t, species)) { s_shop_notice = "ONE SCHOOL PER TANK"; return false; }
         bool ok = progression_buy(t, 5);
         /* Migrate BEFORE bumping the revision. A v0 struct with a non-zero
@@ -1290,7 +1293,7 @@ bool progression_creature_buy(tank_t *t, int species) {
         s_shop_notice = NULL;
         /* Same Creative exemption as the shrimp: the mussel's price is zero
          * there, and its passive income stays disabled in Creative. */
-        if (!creature_trade_ready(t, progression_creative(t))) return false;
+        if (!creature_trade_ready(t)) return false;
         if (progression_creature_adults(t, species)) { s_shop_notice = "ONE COLONY PER TANK"; return false; }
         if (t->sd_balance < progression_item_price_for(t, SD_SHOP_MUSSEL)) { s_shop_notice = "NOT ENOUGH DOUBLOONS"; return false; }
         bool ok = progression_buy(t, SD_SHOP_MUSSEL);
@@ -1303,13 +1306,15 @@ bool progression_creature_buy(tank_t *t, int species) {
         else if (!ok && !s_shop_notice) s_shop_notice = "SAVE FAILED - NO CREATURE BOUGHT";
         return ok;
     }
-    /* Creative mode allows free creature purchases - sandbox=true skips the
-     * Creative trade block and sets the price to zero. */
+    /* Creative mode buys creatures free: sandbox=true sets the price to zero. */
     return creature_buy(t, species, progression_creative(t));
 }
 bool progression_creature_sale_quote(const tank_t *t, int species, bool offspring, creature_sale_t *out) {
+    /* Creative sells too, so a keeper can reroll colors. The quote is zero
+     * there because free stock never pays out; removing it still clears the
+     * colors so the next purchase rolls a fresh palette. */
     if (!out || offspring || !creature_traded(species) ||
-        !creature_trade_ready(t, false) || !progression_creature_adults(t, species)) return false;
+        !creature_trade_ready(t) || !progression_creature_adults(t, species)) return false;
     int value = progression_creature_value(t, species, offspring);
     if (t->sd_balance > INT_MAX - value || t->sd_earned > INT_MAX - value) return false;
     *out = (creature_sale_t){.revision = t->creatures.revision, .species = species, .value = value,
