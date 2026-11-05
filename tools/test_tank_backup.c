@@ -3396,6 +3396,25 @@ static void test_collection_economy(void) {
     assert(d >= 0 && d < FISH_VARIETY_COUNT);
     for (int i = 0; i < loaded.n_fish; i++) assert(progression_fish_pedigree_pct(&loaded, i) >= 0 &&
                                                    progression_fish_pedigree_pct(&loaded, i) <= 30);
+    /* Creative casino rounds are free practice: they play, but never touch the
+     * wallet and never write a save. */
+    tank_init(&t, 614); boot_enlarged(&t); setup_cancel(&t);
+    t.profile = (profile_state_t){.marker = 0x50524631u, .version = 1, .mode = GAME_MODE_CREATIVE, .chosen = 1, .reserved = 2};
+    t.creative = (creative_state_t){0x43525631u, 1, 1, 0};
+    assert(progression_creative(&t));
+    t.sd_balance = 7;
+    render_casino_open();
+    assert(!render_games_tap(&t, render_frame_x(320), render_frame_y(140)));   /* REEF REELS */
+    int creative_writes = writes;
+    assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));   /* SPIN */
+    for (int i = 0; i < 30; i++) render_games_tick(0.1f);
+    assert(t.sd_balance == 7 && writes == creative_writes);
+    assert(!render_games_tap(&t, render_frame_x(390), render_frame_y(24)));    /* lobby */
+    assert(!render_games_tap(&t, render_frame_x(100), render_frame_y(266)));   /* TREASURE DIVE */
+    assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));   /* DIVE */
+    assert(!render_games_tap(&t, render_frame_x(330), render_frame_y(234)));   /* SURFACE */
+    assert(t.sd_balance == 7 && writes == creative_writes);
+    render_games_open();
     puts("PASS: casino wallet settles atomically, variety collections unlock and persist the champion statue through saves and JSON");
 }
 static void test_home_navigation(void) {

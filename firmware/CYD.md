@@ -41,7 +41,9 @@ cog at the bottom right. Main > Fish is a hub (Summary, Rename, Family, Genes,
 Life, Wardrobe, arrows, Fish Bank); Fish Summary shows five meters including
 Vigor. Casino races (fixed x2-x6, ~89.5% per lane) and reels (~94.1% RTP)
 settle each 5-50 doubloon bet once through `wallet_settle`, which saves and
-rolls back on failure. Daily demand (+25% for bred fish), pedigree bonuses
+rolls back on failure. Creative plays the same rounds as free practice: the
+stake is accepted, the reveal happens, and `casino_settle` skips the wallet, so
+no doubloons are charged, paid or saved. Daily demand (+25% for bred fish), pedigree bonuses
 (2%/generation, 6% for RARE+, max five) and per-variety mutation collection
 bits plus the displayed statue reuse existing story fields, saved as optional
 JSON keys `collection` and `statue`; there is no save-schema bump.

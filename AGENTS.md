@@ -133,7 +133,11 @@ old bullets only as history and evidence.
 - Casino games: Fish Races, Reef Reels, Pearl Hi-Lo, Shell Game, Treasure
   Dive and Tide Wheel. Bets are 5/10/25/50 doubloons, settled once per play via
   `progression_wallet_settle` (transactional; failure shows SAVE FAILED).
-  Keep every game's return below 100% and betting off in Creative.
+  Keep every game's return below 100%. Creative plays the same rounds as free
+  practice: `casino_can_bet` accepts any stake there and `casino_settle` skips
+  the wallet entirely, so no doubloons are charged, paid or saved and the
+  result line reads PRACTICE. Never let a Creative round write a save or move
+  `sd_balance`; `test_page_art.c` and `test_tank_backup.c` pin both.
 - Casino art uses the existing bounded ellipse/annulus/polygon kit: wheel rim,
   recessed reels and faceted stars must not add image buffers. The fixed wheel
   pointer must agree with the winning color, not just its text label.
@@ -156,6 +160,25 @@ old bullets only as history and evidence.
   predates the rebalance and is not in the matrix.
 ### Handoff baseline
 
+- **Creative plays the casino as free practice** (unreleased local work on top
+  of 2.4.4). `casino_can_bet` used to refuse every Creative stake with
+  "CREATIVE MODE HAS NO BETS."; it now accepts any stake there, and
+  `casino_settle` sets `s_cas.practice` and skips `progression_wallet_settle`
+  entirely, so a Creative round reveals its outcome without charging, paying or
+  saving anything. The result line reads PRACTICE WIN +N, NO PAY / PRACTICE:
+  STAKE BACK, NO PAY / PRACTICE LOSS N, NO PAY, the header reads CREATIVE -
+  FREE PRACTICE BETS, the lobby hint reads PRACTICE BETS 5-50. NO PAYOUTS., the
+  Dive pot reads POT N (PRACTICE) with PRACTICE DIVE instead of STAKE HELD, and
+  the Dive hint becomes SHARKS END IT. BACK EXITS. so it never promises a loss.
+  `casino_footer` now takes the tank to pick those strings. No save layout
+  changed (schema 23 / 6476 bytes) and no odds changed. `test_page_art.c` plays
+  every Creative page and asserts the wallet is untouched, `test_tank_backup.c`
+  asserts a Creative round writes no save, and both scales are captured as
+  `casino-creative-*`. Local COM4 app is 1,816,464 bytes, SHA256
+  `657f37096c6d88ab8029875b1c0300f0eeb5662b61b70cccc47cc3d7750254af`, flashed
+  app-only to `ota_0` with esptool hash verification; boot log clean, five
+  residents and wallet 5698 intact. Not committed or published at the time of
+  writing.
 - **Creature colors roll far more often and Creative trades creatures**
   (unreleased local work on top of 2.4.4). `creature_palette_roll` thresholds
   moved from 45/75/95 to 25/65/90, so a purchase is NATURAL 25%, TINTED 40%,
@@ -491,7 +514,8 @@ old bullets only as history and evidence.
   (400,334). Main > Fish opens the Fish hub (Summary/Rename/Family/Genes/Life/
   Wardrobe, `<`/`>` and Fish Bank); Fish Summary has no action grid, only five
   meters (Vigor added) and info lines. Casino bets go through `wallet_settle`
-  once per play; keep RTP below 100% and betting off in Creative. Collection
+  once per play; keep RTP below 100%. Creative plays the same rounds as free
+  practice with no wallet movement or save. Collection
   bits/statue live in `tank_story_t` (JSON `collection`/`statue`), with no
   schema bump. At 240 px, keep scale-1 lines within ~33 characters and avoid
   multi-line `draw_text_wrap` paragraphs (16 px pitch overlaps).

@@ -10,8 +10,10 @@ Settings moved to a cog in the bottom-right corner. Main > Fish is a Fish hub
 Fish Summary is now just five shaded bars (adding **Vigor**) with worth,
 favorite-decor, pedigree and daily-demand lines. Casino offers six games:
 Fish Races (x2-x6 lanes), Reef Reels, Pearl Hi-Lo, the Shell Game, Treasure
-Dive and the Tide Wheel, with 5-50 doubloon bets, a small house edge and no
-betting in Creative. The Market hub adds **Contracts** (timed orders that pay
+Dive and the Tide Wheel, with 5-50 doubloon bets and a small house edge.
+Creative plays the same rounds as free practice: the odds and reveals are
+unchanged, but no doubloons are charged or paid. The Market hub adds
+**Contracts** (timed orders that pay
 a premium) and a Saturday **Auction** with rival bids; every creature,
 including the pearl mussel, is traded one-per-tank in the Creature Market. A daily **demand** variety pays
 +25% for bred fish; sale pages carry a **pedigree certificate**; Decor rows
@@ -878,6 +880,8 @@ confirmed removal. It does not award spendable coins or progression XP.
 Every Market purchase is free in Creative: fish, fry, and all five creatures
 (shrimp school, snail, urchin, seahorse and pearl mussel) cost zero doubloons,
 while the one-per-tank creature limit and the five-fish cap still apply.
+Casino rounds are free practice there: the same odds and reveals play out, but
+no doubloons are charged, paid or saved.
 **Normal** retains progression without deaths. **Hard** disables Comfort Assist:
 six hours of severe starvation while running can be fatal, with an hour's
 warning, but there are no offline or old-age deaths. Auto Feed starts off;

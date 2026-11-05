@@ -225,7 +225,7 @@ The following sections are historical release context, not the current menu or s
 - Fish Market: buy tiered stock, breed same-variety pairs and sell with confirmed quotes. Price depends on genes, vigor, care, a favorite decoration, pedigree and the daily demand variety.
 - Market hub: Collections (a statue for every variety you complete), breeding Contracts every three days (quote x1.6 + 50) and a Saturday Auction with five rival bids.
 - Creature Market: shrimp school, snail, urchin, seahorse and pearl mussel in one place. Creatures do not breed, each tank keeps one of each, and colors roll at purchase (Natural, Tinted, Two-tone, Prized), with rarer colors reselling for more.
-- Casino: Fish Races, Reef Reels, Pearl Hi-Lo, Shell Game, Treasure Dive and Tide Wheel, with 5-50 doubloon bets and a small house edge. Betting is disabled in Creative.
+- Casino: Fish Races, Reef Reels, Pearl Hi-Lo, Shell Game, Treasure Dive and Tide Wheel, with 5-50 doubloon bets and a small house edge. Creative plays the same rounds as free practice: no doubloons are charged or paid.
 - Ground cover and kelp, pellet/flake/bloodworm diets, buyable themes, redesigned clock and weather glass, a QWERTY keyboard for names and quieter scenery.
 - Saves are now schema 23 / 6476 bytes. Older saves load and migrate once, with a refund for retired creature stock. Back up first and do not downgrade after saving with 2.4.0.
 

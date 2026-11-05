@@ -987,6 +987,8 @@ static void check_casino(void) {
         }
     /* Each new page: refusal, stake selection, one settlement and no replay
      * on result ticks or BACK. Tests use revealed outcomes, not wallet deltas. */
+    extern bool casino_test_practice(void);
+    extern bool casino_test_played(void);
     render_casino_open();
     for (int game = 0; game < 4; game++) {
         t.sd_balance = 1000;
@@ -997,8 +999,18 @@ static void check_casino(void) {
         t.creative = (creative_state_t){0x43525631u, 1, 1, 0};
         before = (int)t.sd_balance;
         assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));
+        /* Creative plays the round for free: the reveal happens, the wallet does not move. */
+        assert(casino_test_played());
+        if (game == 2) assert(!render_games_tap(&t, render_frame_x(330), render_frame_y(234)));  /* SURFACE settles */
+        assert(casino_test_practice());
+        assert(t.sd_balance == before);
+        for (int i = 0; i < 30; i++) render_games_tick(0.1f);
+        render_games(&t, full_frame, TANK_W);
+        assert(t.sd_balance == before);
+        assert(!render_games_tap(&t, render_frame_x(390), render_frame_y(24)));
         assert(t.sd_balance == before);
         t.profile = saved; memset(&t.creative, 0, sizeof t.creative);
+        assert(!render_games_tap(&t, render_frame_x(game % 2 ? 320 : 100), render_frame_y(game < 2 ? 190 : 266)));
         t.sd_balance = 3;
         assert(!render_games_tap(&t, render_frame_x(350), render_frame_y(285)));
         assert(t.sd_balance == 3);
@@ -1656,6 +1668,47 @@ static void check_casino_story_art(const char *gallery) {
         }
     }
     render_tile(0, 0); render_games_open();
+    /* Creative practice pages must fit too: the header, lobby hint and result
+     * line all change wording when no doubloons are at stake. */
+    {
+        profile_state_t saved = t.profile;
+        creative_state_t saved_creative = t.creative;
+        t.profile = (profile_state_t){.marker = 0x50524631u, .version = 1, .mode = GAME_MODE_CREATIVE, .chosen = 1, .reserved = 2};
+        t.creative = (creative_state_t){0x43525631u, 1, 1, 0};
+        assert(progression_creative(&t));
+        menu_width = TANK_W;
+        render_casino_open();
+        for (int surface = 0; surface < 7; surface++) {
+            render_casino_open();
+            if (surface) render_games_tap(&t, render_frame_x(100 + (surface - 1) % 2 * 204),
+                                          render_frame_y(110 + (surface - 1) / 2 * 76));
+            for (int state = 0; state < (surface ? 3 : 1); state++) {
+                if (surface && state == 1) {
+                    render_games_tap(&t, render_frame_x(350), render_frame_y(285));
+                    render_games_tick(.2f);
+                } else if (surface && state == 2) {
+                    /* Dive (page 5) holds its stake until SURFACE, so cash out to
+                     * reach the practice result line; every other game settles on its own. */
+                    if (surface == 5) render_games_tap(&t, render_frame_x(330), render_frame_y(234));
+                    for (int i = 0; i < 80; i++) render_games_tick(.1f);
+                }
+                tank_t before = t;
+                render_tile(0, 0); render_region(0, 0);
+                char name[64];
+                snprintf(name, sizeof name, "casino-creative-%d-%d", surface, state);
+                menu_begin(name);
+                render_games(&t, full_frame, TANK_W);
+                menu_end(gallery);
+                memset(tile_frame, 0, sizeof tile_frame);
+                render_tile(0, 40);
+                render_games(&t, tile_frame, TANK_W);
+                assert(!memcmp(tile_frame, full_frame, (size_t)40 * TANK_W * sizeof *full_frame));
+                assert(!memcmp(&t, &before, sizeof t));
+            }
+        }
+        render_games_open();
+        t.profile = saved; t.creative = saved_creative;
+    }
     for (int variant = 0; variant < 4; variant++) {
         memset(&t.rpg, 0, sizeof t.rpg);
         t.rpg.chapter = variant ? 6 : 0;

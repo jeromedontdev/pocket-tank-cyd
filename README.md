@@ -250,7 +250,9 @@ Bank); the Fish Summary itself shows only Trust, Energy, Fullness, Calm and
 **Casino** has six games: Fish Races (pick one of four lanes, fixed x2-x6
 odds, ~90% return), Reef Reels (three reels, ~94% return), Pearl Hi-Lo, the
 Shell Game, Treasure Dive and the Tide Wheel; bets are 5-50 doubloons,
-settled once and saved, and are disabled in Creative. One fish variety is in
+settled once and saved. Creative plays the same rounds as free practice, so
+the odds and reveals are there but no doubloons are charged or paid. One fish
+variety is in
 **demand** each day: bred (generation 1+) fish of it sell for +25%. Sale pages
 show a **pedigree certificate**; bloodlines add 2% per generation (6% for
 RARE+ genes, up to five generations). Decor shop rows mark items your fish love
@@ -978,7 +980,9 @@ fish portraits instead of relying on text alone:
   Fish Bank moves fish between tanks with their families, genes and bonds.
 - Creative makes fish, looks, themes, wearables, frames and shop choices free.
   Add fish up to five active including travelers; confirmed removal keeps two
-  residents. Creative cannot grant spendable progression rewards.
+  residents. Creative cannot grant spendable progression rewards, and casino
+  rounds there are free practice: the odds and reveals play out, but no
+  doubloons are charged or paid.
 - Hard disables Comfort Assist and starts Auto Feed off. Six hours at severe
   hunger while running can kill fish, with a warning an hour before danger.
   No offline or old-age deaths; extinction offers a free rescue pair without

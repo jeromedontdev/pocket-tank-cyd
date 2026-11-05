@@ -1076,7 +1076,7 @@ static const help_topic_t HELP_TOPICS[] = {
         "Each game pays its score reward plus 2 doubloons for up to five rounds a day. Current Run is a tap-to-rise dive through rock gaps; Reef Architect is a coral logic grid."}},
     {"CASINO", STAMP_COIN, {
         "Main Menu > Casino holds Fish Races, Reef Reels, Pearl Hi-Lo, a Shell Game, Treasure Dive and the Tide Wheel. Choose a bet of 5, 10, 25 or 50 doubloons before each round.",
-        "Results are random, and every win or loss is saved at once. Bet only spare doubloons; your fish, decor and creatures are never at stake."}},
+        "Results are random and saved at once. Bet only spare doubloons; fish, decor and creatures are never at stake. Creative plays the same rounds as free practice: no doubloons change."}},
     {"CLOCK & WEATHER", STAMP_CLOCK, {
         "Settings > Clock chooses a face, style, text size and time, and whether the clock and weather box show over the tank. Analog faces keep a brass dial; the others sit on rounded sea glass.",
         "Set a weather city to show live conditions. The same city decides which hemisphere's seasonal accents appear."}},

@@ -49,7 +49,7 @@ GAME_LOCAL const int casino_triple_pay[5] = {3, 6, 10, 20, 50};
 GAME_LOCAL const int casino_depth_pay[5] = {14, 16, 20, 26, 34};
 static const char *const casino_titles[7] = {"CASINO", "FISH RACES", "REEF REELS", "PEARL HI-LO", "SHELL GAME", "TREASURE DIVE", "TIDE WHEEL"};
 static struct {
-    bool active, running, shown, diving, pending_end;
+    bool active, running, shown, diving, pending_end, practice;
     int page, bet, pick, winner, delta, pearl, next, depth, stake, payout;
     float t, finish[4];
     int racer[4];
@@ -100,19 +100,30 @@ static void casino_new_field(void) {
     for (int i = 0; i < 4; i++) s_cas.racer[i] = (v + step[i]) % FISH_VARIETY_COUNT;
     s_cas.pick = 0; s_cas.running = false; s_cas.shown = false; s_cas.t = 0;
 }
+/* Creative has no wallet economy, so its bets are free practice: the same
+ * odds and reveals play out, but no doubloons are charged, paid or saved. */
 static bool casino_can_bet(tank_t *t, int bet) {
-    if (progression_creative(t)) { snprintf(s_cas.msg, sizeof s_cas.msg, "CREATIVE MODE HAS NO BETS."); return false; }
+    if (progression_creative(t)) return true;
     if (t->sd_balance < bet) { snprintf(s_cas.msg, sizeof s_cas.msg, "YOU NEED %d DOUBLOONS TO BET.", bet); return false; }
     return true;
 }
 static bool casino_settle(tank_t *t, int stake, int payout) {
     if (!casino_can_bet(t, stake)) return false;
-    if (!progression_wallet_settle(t, payout - stake)) { snprintf(s_cas.msg, sizeof s_cas.msg, "SAVE FAILED. TRY AGAIN."); return false; }
+    s_cas.practice = progression_creative(t);
+    if (!s_cas.practice && !progression_wallet_settle(t, payout - stake)) {
+        snprintf(s_cas.msg, sizeof s_cas.msg, "SAVE FAILED. TRY AGAIN."); return false;
+    }
     s_cas.delta = payout - stake; s_cas.msg[0] = 0;
     return true;
 }
 static void casino_result(void) {
     s_cas.running = false; s_cas.shown = true;
+    if (s_cas.practice) {
+        if (s_cas.delta > 0) snprintf(s_cas.msg, sizeof s_cas.msg, "PRACTICE WIN +%d, NO PAY", s_cas.delta);
+        else if (!s_cas.delta) snprintf(s_cas.msg, sizeof s_cas.msg, "PRACTICE: STAKE BACK, NO PAY");
+        else snprintf(s_cas.msg, sizeof s_cas.msg, "PRACTICE LOSS %d, NO PAY", s_cas.delta);
+        return;
+    }
     if (s_cas.delta > 0) snprintf(s_cas.msg, sizeof s_cas.msg, "A WIN! +%d DOUBLOONS", s_cas.delta);
     else if (!s_cas.delta) snprintf(s_cas.msg, sizeof s_cas.msg, "YOUR STAKE COMES BACK.");
     else snprintf(s_cas.msg, sizeof s_cas.msg, "NO LUCK. %d DOUBLOONS", s_cas.delta);
@@ -218,6 +229,9 @@ int casino_test_return(void) {
     default: return 0;
     }
 }
+/* Creative rounds must still play out; only the wallet is untouched. */
+bool casino_test_practice(void) { return s_cas.practice; }
+bool casino_test_played(void) { return s_cas.running || s_cas.shown || s_cas.diving; }
 #endif
 static void game_lights_toggle(int cell) {
     for (int i = 0; i < 16; i++)
@@ -1665,7 +1679,7 @@ static void casino_controls(render_ctx_t *c, const char *go) {
     render_internal_button(c, 290, 268, 134, 34, s_cas.running ? 0x10282e : 0x1c3a2a,
                            s_cas.running ? MSP_DIM : 0x8ed9a5, s_cas.running ? "..." : go, 2);
 }
-static void casino_footer(render_ctx_t *c) {
+static void casino_footer(render_ctx_t *c, const tank_t *t) {
     const char *go = s_cas.page == CASINO_RACES ? "RACE" : s_cas.page == CASINO_HILO ? "PLAY" :
         s_cas.page == CASINO_SHELLS ? "SHUFFLE" : s_cas.page == CASINO_DIVE ? (s_cas.pending_end ? "RETRY" : "DIVE") : "SPIN";
     casino_controls(c, go);
@@ -1680,8 +1694,17 @@ static void casino_footer(render_ctx_t *c) {
         {"PICK A SHELL. WIN x2.8.", "THE PEARL HIDES IN ONE OF THREE."},
         {"DIVE DEEPER OR SURFACE.", "SHARKS LOSE ALL. BACK CASHES OUT."},
         {"RED / BLUE x2. GOLD x12.", "PICK A COLOR, THEN SPIN."}};
-    render_internal_text(c, 24, 314, 1, 0x8c9f9a, hints[s_cas.page][0]);
-    render_internal_text(c, 24, 334, 1, 0x8c9f9a, hints[s_cas.page][1]);
+    /* Creative stakes nothing, so the Dive hint must not promise a loss. */
+    static const char *const practice_hints[7][2] = {
+        {"", ""}, {"TAP A LANE, PICK A BET, RACE.", "LONG SHOTS PAY MORE."},
+        {"PICK A BET, THEN SPIN.", "ANY PAIR RETURNS THE STAKE."},
+        {"HIGH OR LOW? TIES LOSE.", "ODDS FOLLOW THE PEARL VALUE."},
+        {"PICK A SHELL. WIN x2.8.", "THE PEARL HIDES IN ONE OF THREE."},
+        {"DIVE DEEPER OR SURFACE.", "SHARKS END IT. BACK EXITS."},
+        {"RED / BLUE x2. GOLD x12.", "PICK A COLOR, THEN SPIN."}};
+    bool practice = progression_creative(t);
+    render_internal_text(c, 24, 314, 1, 0x8c9f9a, practice ? practice_hints[s_cas.page][0] : hints[s_cas.page][0]);
+    render_internal_text(c, 24, 334, 1, 0x8c9f9a, practice ? practice_hints[s_cas.page][1] : hints[s_cas.page][1]);
 }
 static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
     render_ctx_t c = render_internal_page_ctx(fb, stride);
@@ -1692,7 +1715,7 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
     render_internal_text(&c, 54, 14, 2, 0xffffff, title);
     render_internal_button(&c, 326, 8, 112, 36, 0x1c2f36, MSP_TEAL, "BACK", 2);
     render_doubloon(fb, stride, 24, 52);
-    if (progression_creative(t)) snprintf(text, sizeof text, "CREATIVE MODE - BETS ARE OFF");
+    if (progression_creative(t)) snprintf(text, sizeof text, "CREATIVE - FREE PRACTICE BETS");
     else snprintf(text, sizeof text, "%ld DOUBLOONS", (long)t->sd_balance);
     render_internal_text(&c, 48, 56, 1, 0xffe29a, text);
     if (s_cas.page == CASINO_LOBBY) {
@@ -1705,7 +1728,8 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
             render_internal_text(&c, x + 10, y + 44, 1, MSP_TEAL, subs[i]);
             casino_symbol(&c, t, fb, stride, x + 172, y + 45, symbols[i], t->clock);
         }
-        render_internal_text(&c, 24, 326, 1, 0xa7c4ba, "BETS 5-50. SMALL HOUSE EDGE.");
+        render_internal_text(&c, 24, 326, 1, 0xa7c4ba,
+            progression_creative(t) ? "PRACTICE BETS 5-50. NO PAYOUTS." : "BETS 5-50. SMALL HOUSE EDGE.");
         return;
     }
     if (s_cas.page == CASINO_RACES) {
@@ -1729,7 +1753,7 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
             fish_t f = {0}; progression_market_preview(t, s_cas.racer[i], &f);
             render_fish_portrait(fb, stride, 50 + p * 318, (float)(y + 29), 0.42f, &f, t->clock);
         }
-        casino_footer(&c);
+        casino_footer(&c, t);
         return;
     }
     if (s_cas.page == CASINO_HILO) {
@@ -1750,7 +1774,7 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
             render_internal_button(&c, 24 + i * 204, 214, 196, 38, 0x10282e,
                 s_cas.pick == i ? GA_GOLD : MSP_DIM, i ? "LOWER" : "HIGHER", 1);
         }
-        casino_footer(&c); return;
+        casino_footer(&c, t); return;
     }
     if (s_cas.page == CASINO_SHELLS) {
         render_internal_text(&c, 66, 88, 1, MSP_TEAL, "WHICH SHELL HIDES THE PEARL?");
@@ -1763,7 +1787,7 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
             render_internal_button(&c, x, 214, 128, 38, 0x10282e,
                 s_cas.pick == i ? GA_GOLD : MSP_DIM, text, 1);
         }
-        casino_footer(&c); return;
+        casino_footer(&c, t); return;
     }
     if (s_cas.page == CASINO_DIVE) {
         for (int i = 0; i < 5; i++) {
@@ -1779,12 +1803,14 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
         } else casino_symbol(&c, t, fb, stride, 62, 184, 3, t->clock);
         int pot = s_cas.depth ? (s_cas.diving ? s_cas.stake : casino_bets[s_cas.bet]) * casino_depth_pay[s_cas.depth - 1] / 10 : 0;
         if (s_cas.shown && s_cas.delta < 0) pot = 0;
-        snprintf(text, sizeof text, "POT %d DOUBLOONS", pot);
+        if (progression_creative(t)) snprintf(text, sizeof text, "POT %d (PRACTICE)", pot);
+        else snprintf(text, sizeof text, "POT %d DOUBLOONS", pot);
         render_internal_text(&c, 104, 178, 1, GA_GOLD, text);
-        render_internal_text(&c, 24, 226, 1, MSP_TEAL, s_cas.diving ? "STAKE HELD" : "SHARKS AHEAD");
+        render_internal_text(&c, 24, 226, 1, MSP_TEAL,
+            s_cas.diving ? (progression_creative(t) ? "PRACTICE DIVE" : "STAKE HELD") : "SHARKS AHEAD");
         render_internal_button(&c, 236, 214, 188, 38, 0x10282e,
             s_cas.diving ? GA_GOLD : MSP_DIM, "SURFACE", 1);
-        casino_footer(&c); return;
+        casino_footer(&c, t); return;
     }
     if (s_cas.page == CASINO_WHEEL) {
         static const uint32_t colors[3] = {0xda6970, 0x5ba9e8, GA_GOLD};
@@ -1795,7 +1821,7 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
         if (s_cas.shown) render_internal_text(&c, 294, 142, 1, colors[s_cas.winner], labels[s_cas.winner]);
         for (int i = 0; i < 3; i++) render_internal_button(&c, 24 + i * 136, 214, 128, 38,
             s_cas.pick == i ? 0x353126 : 0x10282e, s_cas.pick == i ? GA_GOLD : colors[i], labels[i], 1);
-        casino_footer(&c); return;
+        casino_footer(&c, t); return;
     }
     for (int k = 0; k < 3; k++) {
         int x = 84 + k * 100;
@@ -1814,7 +1840,7 @@ static void render_casino(const tank_t *t, uint16_t *fb, int stride) {
                                         "3 COINS x50", "COIN PAIR x2", "ANY PAIR x1", "(STAKE BACK)"};
     for (int i = 0; i < 8; i++)
         render_internal_text(&c, 24 + (i % 2) * 212, 184 + (i / 2) * 20, 1, i >= 5 ? 0xa7c4ba : 0xe7f4dc, pays[i]);
-    casino_footer(&c);
+    casino_footer(&c, t);
 }
 void render_games(const tank_t *t, uint16_t *fb, int stride) {
     if (s_cas.active) { render_casino(t, fb, stride); return; }
