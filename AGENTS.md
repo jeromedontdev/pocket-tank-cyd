@@ -18,6 +18,10 @@ or deployment is published. Update this file when its contracts change.
 4. Validate the exact behavior and error/rollback paths. Record what actually
    passed, what was not tested, and any remaining work in the final response.
 
+[Handing work to another AI agent](docs/HANDOFF.md) is the prompt template and
+the verified local toolchain facts (no gcc/clang, `--cc zig`, no Node.js, the
+ESP-IDF path). Read it when starting a fresh session on an unfamiliar machine.
+
 ## Game direction and design (2.4.1, authoritative)
 
 This section is the current design contract. Where an older bullet below

@@ -1152,6 +1152,10 @@ save/memory constraints, safe hardware workflows, test commands, and the complet
 documentation/release checklist. Keep it current when those contracts change.
 It is project guidance, not a private file or part of the firmware.
 
+[Handing work to another AI agent](docs/HANDOFF.md) is the prompt template for a
+fresh session, plus the verified local toolchain facts (no gcc/clang, use
+`--cc zig`; no Node.js; the ESP-IDF path).
+
 ### Install from your browser
 
 **[Explore the website](https://jeromedontdev.github.io/pocket-tank-cyd/)**
