@@ -1273,6 +1273,16 @@ python tools\test_tank_backup.py --cc clang
 python -m unittest discover -s tools -p "test_*.py"
 ```
 
+That is the quick subset. The full matrix is 30 commands and is listed in
+[AGENTS.md](AGENTS.md) under "Build and validation"; use it when a change
+touches persistence, rendering, hardware or release packaging. There is no
+aggregate runner script. Two invocation quirks that look like failures but are
+not: all 24 native runners need `--cc` (without it they fail with
+`FileNotFoundError`, not a test failure), and nine `tools/test_*.py` files are
+unittest-style and reject `--cc` - they are covered by the `unittest discover`
+line instead. `test_reef_progression.py` also compiles
+`test_profile_v21_migration.c`, so 24 runners cover 25 test programs.
+
 `--cc` also accepts the path to Zig (the runner adds `cc`). The preview uses
 Python's Tk window, so SDL/LVGL are no longer required. Mouse gestures act as
 touches; toolbar buttons open Keeper, Settings and Shop. It has its own

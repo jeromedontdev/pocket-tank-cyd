@@ -1,3 +1,10 @@
+"""Unified full-flash backup validation and slot detection.
+
+Covers flash_unified.detect_slot, validate_backup and validate_image: the 4 MiB
+backup layout, OTA slot and image-size guards, and the same-hardware/legacy/
+unified-only acceptance rules. Run via
+`python -m unittest discover -s tools -p "test_*.py"`; unittest-style, no --cc.
+"""
 import struct
 import unittest
 

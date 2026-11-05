@@ -1,3 +1,10 @@
+"""Factory image provisioning: only blank NVS may differ.
+
+Covers provision_factory.provision_factory: the application image must be
+byte-identical across profiles and only the blank NVS partition carries the
+profile stamp. Factory images are for new boards only. Run via
+`python -m unittest discover -s tools -p "test_*.py"`; unittest-style, no --cc.
+"""
 from pathlib import Path
 import unittest
 from unittest.mock import patch

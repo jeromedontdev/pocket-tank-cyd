@@ -1,3 +1,10 @@
+"""Icon bank packing: planes, offsets, alignment and CRC.
+
+Covers pack_cyd_icons.pack and gen_icons.cname: the packed icon bank layout the
+firmware reads, plus the rejections for bad planes, invalid compressed alpha and
+invalid indexed RGB. Run via `python -m unittest discover -s tools -p "test_*.py"`;
+unittest-style, no --cc. Needs Pillow.
+"""
 import pathlib
 import re
 import struct

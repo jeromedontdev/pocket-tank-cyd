@@ -1,3 +1,30 @@
+# build_cyd.ps1 - the one build entry point for all three board families.
+#
+#   .\tools\build_cyd.ps1                          # build the CYD image
+#   .\tools\build_cyd.ps1 -Board elegoo            # build the ELEGOO image
+#   .\tools\build_cyd.ps1 -Board unified           # build the shared-profile image
+#   .\tools\build_cyd.ps1 -Flash -Port COM4        # build, then app-only flash
+#
+# Requires an ESP-IDF PowerShell terminal (IDF_PATH set); it throws otherwise.
+# Each board gets its own build_<board> directory and sdkconfig, so the three
+# never share stale configuration.
+#
+# Flashing is app-only and deliberately conservative. It queries the running
+# slot over serial and refuses when the pending boot slot differs, when the
+# installed board marker does not match the built image, or when the slot cannot
+# be detected. NVS, the partition table and SD are never rewritten, so saves and
+# the OTA selection survive. Never assume ota_0 (0x20000) versus ota_1
+# (0x200000) by hand.
+#
+# -Board unified additionally requires -HardwareProfile cyd|elegoo and a new
+# -Backup file, and delegates to flash_unified.py, which takes a full 4 MiB dump
+# and verifies readback. There is no migration bypass and no explicit-slot
+# shortcut for unified images.
+#
+# -AllowBoardMigration -AppSlot ota_0|ota_1 is the deliberate local recovery path
+# for converting a board's identity. It is not a general cross-board bypass: it
+# still demands a full-flash backup and an explicit slot, and it warns loudly.
+# Factory flashing is destructive and is never a fallback for a refused update.
 param(
     [ValidateSet('cyd', 'elegoo', 'unified')]
     [string]$Board = 'cyd',

@@ -1,3 +1,9 @@
+"""SD-card update package format and integrity.
+
+Covers make_sd_update.package: header layout, per-board identity, size limits and
+the refusals that stop a wrong-board or corrupt card from being accepted. Run via
+`python -m unittest discover -s tools -p "test_*.py"`; unittest-style, no --cc.
+"""
 import hashlib
 import unittest
 

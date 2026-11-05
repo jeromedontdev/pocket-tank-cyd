@@ -1667,22 +1667,24 @@ python sim\run.py --cc gcc --smoke
 git diff --check
 ```
 
-That list is the same matrix `.github/workflows/release.yml` runs, so a green
-local run is the closest thing to a green release. There is no aggregate runner
-script: run the lines above, or copy them from the workflow. Three invocation
-quirks that look like failures but are not:
+That list is the release matrix minus the packaging steps, so a green local run
+is the closest thing to a green release. There is no aggregate runner script:
+run the lines above, or copy them from the workflow. Three invocation quirks
+that look like failures but are not:
 
-- Seven runners need `--cc` (`test_cyd_display`, `test_cyd_settings`,
-  `test_cyd_touch_defaults`, `test_cyd_sd_backup`, `test_cyd_sd_init`,
-  `test_board_hardware`, `test_ota`). Without it they fail to find a compiler.
-- Seven are unittest-style and reject `--cc` (`test_harbor_icons`,
-  `test_cyd_build_contract`, `test_make_ota_manifest`, `test_make_sd_update`,
-  `test_pack_cyd_icons`, `test_package_cyd_release`,
-  `test_prepare_web_installer`). They are covered by the `unittest discover`
-  line, not by a direct call.
+- All 24 native runners above accept `--cc` and need it: without a compiler
+  argument they fail with `FileNotFoundError` rather than a test failure. Pass
+  `--cc gcc`, `--cc clang`, or the path to Zig.
+- Nine `tools/test_*.py` files are unittest-style and reject `--cc` with
+  `unrecognized arguments` (exit 2): `test_cyd_build_contract`,
+  `test_harbor_icons`, `test_make_ota_manifest`, `test_make_sd_update`,
+  `test_pack_cyd_icons`, `test_package_cyd_release`, `test_prepare_web_installer`,
+  plus `test_flash_unified` and `test_provision_factory`, which ignore extra
+  arguments. All nine are covered by the `unittest discover` line; never call
+  them directly with `--cc`.
 - `test_reef_progression.py` also compiles and runs
-  `tools/test_profile_v21_migration.c`, which has no `.py` of its own, so 13
-  runners cover 14 test programs.
+  `tools/test_profile_v21_migration.c`, which has no `.py` of its own, so 24
+  runners cover 25 test programs.
 
 - Choose the smallest relevant subset for a focused change; releases run the
   full matrix in CI. GCC treats warnings as errors; Clang-only success is not
@@ -1724,6 +1726,36 @@ quirks that look like failures but are not:
   Preserve DTR/RTS behavior when using serial diagnostics.
 - Prefer read-only diagnostics and separate simulator staging. If visual proof
   from a webcam is unavailable, say so; do not claim a renderer image is hardware.
+
+## Script inventory
+
+Every script under `tools/` and `sim/` carries a header or module docstring
+stating its purpose and how to invoke it. The map below is the index; read the
+file header before changing one. Nothing here is a hidden build step - if a
+script is not listed in "Build and validation" or in this table, it is a
+one-off authoring tool, not part of the release matrix.
+
+| Script | Purpose |
+| --- | --- |
+| `tools/build_cyd.ps1` | The single build entry point for all three board families; app-only flashing with slot/board verification. |
+| `tools/board_profiles.py` | The two release identities and the unified profile: markers, image/asset prefixes. Import this instead of hard-coding a board string. |
+| `tools/package_cyd_release.py` | Assembles per-board release bundles and checksums; carries the release notes. |
+| `tools/make_ota_manifest.py` | Builds the on-device GitHub updater manifest. |
+| `tools/make_sd_update.py` | Builds the SD-card update package. |
+| `tools/prepare_web_installer.py` | Stages `_site` for Pages: manifests, checksums, feature images. |
+| `tools/provision_factory.py` | Stamps a blank-NVS factory image with an explicit profile. New boards only. |
+| `tools/flash_unified.py` | Full 4 MiB backup plus verified unified flash; called by `build_cyd.ps1 -Board unified -Flash`. |
+| `tools/touch_calib.py` | Drives the nine-crosshair `ota calib` pass over USB serial and fits the affine map. Finds the board by USB serial, never by port name. |
+| `tools/upload_cyd_icons.py` | Uploads a packed icon bank to the device. |
+| `tools/pack_cyd_icons.py`, `gen_icons.py` | Pack source art into the icon bank the firmware reads. |
+| `tools/capture_cyd_gallery.py` | Actual-renderer screenshots into `docs/media/cyd-features/`, separate demonstration tank. |
+| `tools/capture_decoration_art.py` | Ornament/wardrobe art review captures. |
+| `tools/draw_ground_cover.py`, `draw_harbor_icons.py` | Authoring tools for scenery and harbor art. |
+| `tools/build_browser.py` | Builds the WASM web game into `_site`. |
+| `tools/director.py` | Serial staging/debug driver for the device diagnostics commands. |
+| `sim/run.py` | Desktop preview and the `--smoke` regression entry point. |
+| `tools/test_*.py`, `tools/test_*.c`, `sim/test_*.py` | Regressions; see "Build and validation" for the exact invocation matrix. |
+| `tools/test_browser.cjs`, `test_usb_installer.cjs`, `test_usb_migration.cjs`, `test_usb_updater.mjs` | Real-browser checks against staged `_site`; need Playwright in `.browser-tools`. |
 
 ## Documentation and release checklist
 

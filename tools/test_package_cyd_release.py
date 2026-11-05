@@ -1,3 +1,10 @@
+"""Release bundle assembly and checksums.
+
+Covers package_cyd_release.create_bundle and release_version: per-board bundle
+identity and file names, the generated checksums, and the refusal to bundle an
+image built for the wrong board. Run via
+`python -m unittest discover -s tools -p "test_*.py"`; unittest-style, no --cc.
+"""
 import hashlib
 import json
 from pathlib import Path

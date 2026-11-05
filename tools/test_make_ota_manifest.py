@@ -1,3 +1,11 @@
+"""Manifest generation for the on-device GitHub updater.
+
+Covers make_ota_manifest.make_manifest: the CYD fork-only manifest without a
+model field, signed ELEGOO manifests, and the refusals that keep a bad update
+from ever being offered - wrong board, unsigned image, oversized image and a
+non-release channel. Run via `python -m unittest discover -s tools -p "test_*.py"`;
+it is unittest-style and takes no --cc.
+"""
 import unittest
 from make_ota_manifest import make_manifest
 from board_profiles import BOARDS

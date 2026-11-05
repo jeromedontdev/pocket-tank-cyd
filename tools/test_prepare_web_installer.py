@@ -1,3 +1,11 @@
+"""Web installer staging: manifests, checksums and slot safety.
+
+Covers prepare_web_installer.stage_site: verified factory manifests, refusal of
+corrupt or missing checksums before any output is written, per-board identity
+checks, the shared unified app with profile-specific factories, and the
+JavaScript slot-safety guard. Run via
+`python -m unittest discover -s tools -p "test_*.py"`; unittest-style, no --cc.
+"""
 import hashlib
 import json
 from pathlib import Path
