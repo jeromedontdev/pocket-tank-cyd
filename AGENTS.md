@@ -1370,6 +1370,9 @@ old bullets only as history and evidence.
 | Screenshots | `tools/capture_cyd_gallery.py` -> `docs/media/cyd-features/`: actual renderer, separate demonstration tank |
 | Web | `web/index.html`: features; `flash.html`: USB flashing; `viewer.html`: local backup viewer; `usb-update.mjs`: safety-critical updater |
 | Release | `common/version.h`, `tools/package_cyd_release.py`, `make_sd_update.py`, `prepare_web_installer.py`, `.github/workflows/` |
+| Board identity | `tools/board_profiles.py`: the two release identities (`cyd2432s028`, `elegoo28`) plus the unified `cydesp32profiles`, their image/asset prefixes and the `PTBOARD` marker. Import this rather than hard-coding a board string. |
+| Factory images | `tools/provision_factory.py`: stamps a blank-NVS factory image with an explicit profile. New boards only - never flash one onto an existing aquarium. |
+| Touch calibration | `tools/touch_calib.py`: drives the nine-crosshair `ota calib` pass over USB serial and fits the affine map. Finds the board by USB serial, never by port name. |
 
 Follow existing helpers and naming. Companion page IDs have named constants
 in `companion.h`; preserve their selector values. Keep page-family membership
@@ -1635,21 +1638,51 @@ ESP-IDF setup and managed cJSON are needed by the corresponding builds.
 python -m unittest discover -s tools -p "test_*.py"
 python tools\test_tank_backup.py --cc gcc
 python tools\test_tank_backup.py --cc gcc --flat-edges
+python tools\test_setup_placement.py
+python tools\test_wardrobe.py --cc gcc
+python tools\test_frame_pacing.py --cc gcc
 python tools\test_rpg.py --cc gcc
 python tools\test_fish_behavior.py --cc gcc
 python tools\test_companion_feedback.py --cc gcc
 python tools\test_page_art.py --cc gcc
+python tools\test_page_art.py --cc gcc --board elegoo
 python tools\test_renderer_stress.py --cc gcc --frames 1200 --seconds 30
 python tools\test_creative.py --cc gcc
+python tools\test_reef_progression.py --cc gcc --trade-only
 python tools\test_profiles.py --cc gcc
+python tools\test_profile_storage.py --cc gcc
+python tools\test_internal_tanks.py --cc gcc
 python tools\test_cyd_display.py --cc gcc
+python tools\test_cyd_sd_init.py --cc gcc
+python tools\test_cyd_sd_backup.py --cc gcc
 python tools\test_cyd_settings.py --cc gcc
+python tools\test_cyd_touch_defaults.py --cc gcc
+python tools\test_board_hardware.py --cc gcc
 python tools\test_ambient.py --cc gcc
+python tools\test_brightness.py --cc gcc
 python tools\test_weather.py --cc gcc
+python tools\test_ota.py --cc gcc
 python sim\run.py --cc gcc --smoke
 .\tools\build_cyd.ps1
 git diff --check
 ```
+
+That list is the same matrix `.github/workflows/release.yml` runs, so a green
+local run is the closest thing to a green release. There is no aggregate runner
+script: run the lines above, or copy them from the workflow. Three invocation
+quirks that look like failures but are not:
+
+- Seven runners need `--cc` (`test_cyd_display`, `test_cyd_settings`,
+  `test_cyd_touch_defaults`, `test_cyd_sd_backup`, `test_cyd_sd_init`,
+  `test_board_hardware`, `test_ota`). Without it they fail to find a compiler.
+- Seven are unittest-style and reject `--cc` (`test_harbor_icons`,
+  `test_cyd_build_contract`, `test_make_ota_manifest`, `test_make_sd_update`,
+  `test_pack_cyd_icons`, `test_package_cyd_release`,
+  `test_prepare_web_installer`). They are covered by the `unittest discover`
+  line, not by a direct call.
+- `test_reef_progression.py` also compiles and runs
+  `tools/test_profile_v21_migration.c`, which has no `.py` of its own, so 13
+  runners cover 14 test programs.
 
 - Choose the smallest relevant subset for a focused change; releases run the
   full matrix in CI. GCC treats warnings as errors; Clang-only success is not

@@ -1,3 +1,19 @@
+/* weather.c - optional online time and weather: the HTTPS fetch, the cached
+ * condition, and the city list used for the season hemisphere.
+ *
+ * Acquisition is boot + hourly, including failures, with bounded offline
+ * attempts. Do not restore a 15-minute poll or keep the radio/caches competing
+ * while idle: the net worker task exits when nothing is leased and the radio is
+ * down, returning its 12 KB stack, and begin()/net_port_weather() recreate it.
+ * Weather results and the city list are heap-allocated only while in use.
+ *
+ * TLS needs roughly 24 KB of contiguous internal RAM. Never weaken certificate
+ * verification to work around a PSA allocation failure - free optional caches
+ * first (see AGENTS.md "FPS, internal RAM, PSRAM, and storage budgets").
+ *
+ * Season comes from the saved weather-city latitude even when weather is
+ * disabled; without a city show no season. Preserve legacy SOUTH data but never
+ * let it override the city. */
 #include "weather.h"
 #include "render.h"
 #include "update.h"

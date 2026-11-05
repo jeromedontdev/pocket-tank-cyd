@@ -1,3 +1,22 @@
+/* companion_ui.c - the Home menu and every companion subpage: Fish hub, Tank,
+ * Market, Games, Casino, Help, Settings and their children.
+ *
+ * Page identity is the `page` static here, mirrored by companion_current_section().
+ * Page IDs are named constants in companion.h; keep them stable because the
+ * simulator, browser port and tests select pages by number. Coordinates are page
+ * space (448 x ~362), not framebuffer space, and are scaled by the caller's
+ * stride/width - see AGENTS.md "UI and hardware traps" before moving a control.
+ *
+ * Shared drawing helpers live here so every page keeps the crafted look:
+ * page_backdrop() (water gradient, stepped rays, sandy foot), button()/key_face()
+ * (bevelled keys), shop_row_card()/SHP_WELL (raised slates with sunk previews)
+ * and stamp() (12x12 indexed goal/header art). Keep new pages on these helpers
+ * rather than flat fills, and keep them opaque so still-page skipping and tile
+ * culling stay cheap.
+ *
+ * Text must fit at 240 px: scale-1 lines stay within about 33 characters and
+ * Main/hub hints within about 14. tools/test_page_art.py asserts against clipped
+ * text at both scales, so run it after any label change. */
 #include "companion.h"
 #include "render.h"
 #include "progression.h"

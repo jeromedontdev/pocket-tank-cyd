@@ -1,3 +1,22 @@
+/* companion.c - the living side of the aquarium: fish life stages and growth,
+ * bonds and remembered swim buddies, family/lineage records, visitors and
+ * seasons, the optional Lost Current story campaign, and game records.
+ *
+ * This file owns the rules; companion_ui.c owns the pages that show them. Keep
+ * that split - a page must not invent a threshold that lives here.
+ *
+ * Persistence: everything here is serialized through progression.c into the
+ * frozen save layout. New state goes in an append-only tail with an explicit
+ * migration and a _Static_assert lock; never reorder existing fields. See
+ * AGENTS.md "Persistence and memory: hard constraints".
+ *
+ * Time: growth, seasons and offline care use clock_port_now_unix(), which is
+ * whole seconds. A boundary between two reads is one second of elapsed care -
+ * that is real behaviour, not a bug, but tests that compare a save/reload round
+ * trip must not straddle a boundary (see sim/test_rpg.py).
+ *
+ * The Lost Current is optional and must never hurt a real fish, alter care
+ * stats, impose deadlines or add background aquarium AI. */
 #include "companion.h"
 #include "weather.h"
 #include "progression.h"
