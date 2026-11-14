@@ -4,6 +4,11 @@
 #include <stdint.h>
 #include "tank.h"
 bool touch_port_init(void);
+bool touch_port_boot_logo_needed(const uint8_t image_sha256[32]);
+void touch_port_boot_logo_shown(const uint8_t image_sha256[32]);
+bool touch_port_boot_calibration_needed(const uint8_t image_sha256[32]);
+void touch_port_boot_calibration_start(const uint8_t image_sha256[32]);
+void touch_port_boot_intro_reset(void);
 void touch_port_poll(tank_t *t);
 int  touch_port_selected(void);   /* tapped fish for the stats card, RENDER_CARD_SNAIL for the snail's, -1 = none */
 /* milestones page: a tap ON the open stats card (its MORE button, or any of

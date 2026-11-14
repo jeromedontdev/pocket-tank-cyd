@@ -129,7 +129,7 @@ int main(int argc, char **argv) {
     char *query[] = {"hardware"};
     char *invalid[] = {"hardware", "unknown"};
     char *extra[] = {"hardware", "cyd", "extra"};
-    char *select[] = {"hardware", hardware->id == BOARD_HARDWARE_CYD ? "cyd" : "elegoo"};
+    char *select[] = {"hardware", hardware->id == BOARD_HARDWARE_CYD ? "cyd" : "esp32-32e"};
     old_writes = writes;
     hardware_command(NULL, 1, query);
     hardware_command(&tank, 2, invalid);
@@ -178,7 +178,7 @@ def main():
                                       f"-DPT_BOARD_UNIFIED={unified}", "-I" + str(folder),
                                       "-I" + str(root / "common"), str(test), "-o", str(exe)], check=True)
             for scenario in range(6):
-                serial_input = "hardware elegoo\n"
+                serial_input = "hardware esp32-32e\n"
                 if scenario == 4:
                     serial_input = "hardware unknown\n" + "x" * 80 + "\nhardware elegoo\n"
                 subprocess.run([str(exe), str(scenario)], input=serial_input, text=True, check=True)

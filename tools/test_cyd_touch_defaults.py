@@ -41,7 +41,7 @@ int main(void) {
         assert(fabsf(y - (TANK_H - 1 - upright_y)) < 0.001f);
         s_inverted = false;
     }
-    /* Previously working ELEGOO calibration has negative X and positive Y.
+    /* Previously working ESP32-32E calibration has negative X and positive Y.
        A fresh default must agree in direction, not flip the opposite axis. */
     if (PT_BOARD_ELEGOO) {
         const cyd_cal_t measured = {

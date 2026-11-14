@@ -4,7 +4,7 @@
 
 ## Save-preserving browser USB updates
 
-Since 2.3.6, select the exact **original CYD** or **ELEGOO ESP32-32E 2.8-inch
+Since 2.3.6, select the exact **original CYD** or **ESP32-32E 2.8-inch
 ILI9341V** first. Both choices download the same unified application;
 there is no preselected installer choice and no reliable automatic hardware
 detection on these tested displays. First setup saves the selected profile on
@@ -14,11 +14,11 @@ The manifest binds its `cydesp32profiles` family and the explicit hardware
 profile. Existing legacy firmware must match that hardware's old identity;
 an existing unified image must report the matching saved runtime profile.
 Unknown families and mismatched profiles are refused.
-Legacy ELEGOO firmware still uses
+Legacy ESP32-32E firmware still uses
 `pocket-tank-elegoo-app.bin`, `elegoo-update.ptu`, `elegoo-ota.json` and
 `elegoo-SHA256SUMS.txt`, with a separate ZIP/factory image. Original CYD asset
 names remain unchanged. If original CYD firmware was mistakenly installed on
-ELEGOO, use the backed-up [explicit app-only conversion](../firmware/CYD.md#recovering-a-wrong-cyd-image-on-elegoo-without-resetting-fish),
+ESP32-32E, use the backed-up [explicit app-only conversion](../firmware/CYD.md#recovering-a-wrong-cyd-image-on-esp32-32e-without-resetting-fish),
 not a factory reset or an unrestricted cross-board update.
 
 Migrate legacy firmware to unified once over USB. After the app checksum is
@@ -59,7 +59,7 @@ Download the bundle, read `INSTALL.txt`, and verify `SHA256SUMS.txt`.
 Copy `update.ptu` to
 `pocket-tank/update.ptu` while powered off. Follow steps 3 and 4 below.
 For unified firmware on either board, copy **unified-update.ptu** to that same
-`pocket-tank/update.ptu` path. For legacy ELEGOO use **elegoo-update.ptu**;
+`pocket-tank/update.ptu` path. For legacy ESP32-32E use **elegoo-update.ptu**;
 legacy original CYD uses **update.ptu**. Family checks refuse a different
 package; SD updates do not perform legacy-to-unified migration.
 Artwork is embedded in firmware; no SD icons are needed.
@@ -157,7 +157,7 @@ certificate and image verification are never disabled to recover memory.
 
 The stable channel is
 `https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/ota.json`.
-The ELEGOO build instead defaults to
+The ESP32-32E build instead defaults to
 `https://github.com/jeromedontdev/pocket-tank-cyd/releases/latest/download/elegoo-ota.json`.
 Both channels enforce their distinct board marker.
 Each release workflow packages this small manifest alongside the application.

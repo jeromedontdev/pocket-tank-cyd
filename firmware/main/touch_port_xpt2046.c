@@ -61,6 +61,8 @@ static void cyd_cal_default(void) {
         (cyd_cal_t){{-1, 0, 239}, {0, 1, 0}} : (cyd_cal_t){{1, 0, 0}, {0, 1, 0}};
 }
 static int s_cal_target = -1;
+static uint8_t s_boot_image_sha256[32];
+static bool s_boot_calibration;
 static float s_cal_x[5], s_cal_y[5], s_cal_sum_x, s_cal_sum_y;
 static unsigned s_cal_samples;
 static bool s_cal_wait_release, s_cal_inverted;
@@ -71,6 +73,68 @@ static bool cyd_cal_valid(const cyd_cal_t *cal) {
         if (!isfinite(cal->x[i]) || !isfinite(cal->y[i])) return false;
     float det = cal->x[0] * cal->y[1] - cal->x[1] * cal->y[0];
     return fabsf(det) > 0.1f && fabsf(det) < 10;
+}
+static bool boot_marker_matches(const char *key, const uint8_t image_sha256[32]) {
+    if (!image_sha256) return false;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("cyd_touch", NVS_READONLY, &h);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "boot marker %s open: %s", key, esp_err_to_name(err));
+        return false;
+    }
+    uint8_t saved[32];
+    size_t size = sizeof saved;
+    err = nvs_get_blob(h, key, saved, &size);
+    nvs_close(h);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "invalid boot marker %s: %s", key, esp_err_to_name(err));
+        return false;
+    }
+    if (size != sizeof saved) {
+        ESP_LOGE(TAG, "invalid boot marker %s size: %u", key, (unsigned)size);
+        return false;
+    }
+    return memcmp(saved, image_sha256, sizeof saved) == 0;
+}
+bool touch_port_boot_logo_needed(const uint8_t image_sha256[32]) {
+    return !boot_marker_matches("boot_logo", image_sha256);
+}
+void touch_port_boot_logo_shown(const uint8_t image_sha256[32]) {
+    if (!image_sha256) return;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("cyd_touch", NVS_READWRITE, &h);
+    if (err == ESP_OK) {
+        err = nvs_set_blob(h, "boot_logo", image_sha256, 32);
+        if (err == ESP_OK) err = nvs_commit(h);
+        nvs_close(h);
+    }
+    if (err != ESP_OK) ESP_LOGE(TAG, "boot logo marker save failed: %s", esp_err_to_name(err));
+}
+bool touch_port_boot_calibration_needed(const uint8_t image_sha256[32]) {
+    return !boot_marker_matches("boot_cal", image_sha256);
+}
+void touch_port_boot_calibration_start(const uint8_t image_sha256[32]) {
+    if (!image_sha256) return;
+    memcpy(s_boot_image_sha256, image_sha256, sizeof s_boot_image_sha256);
+    s_boot_calibration = true;
+    touch_port_calibrate();
+    ESP_LOGI(TAG, "first boot for this firmware image: calibrate touch before using the aquarium");
+}
+void touch_port_boot_intro_reset(void) {
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("cyd_touch", NVS_READWRITE, &h);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return;
+    if (err == ESP_OK) {
+        esp_err_t logo = nvs_erase_key(h, "boot_logo");
+        esp_err_t cal = nvs_erase_key(h, "boot_cal");
+        if (logo != ESP_OK && logo != ESP_ERR_NVS_NOT_FOUND) err = logo;
+        if (cal != ESP_OK && cal != ESP_ERR_NVS_NOT_FOUND) err = cal;
+        if (err == ESP_OK) err = nvs_commit(h);
+        nvs_close(h);
+    }
+    if (err != ESP_OK) ESP_LOGE(TAG, "resetting boot intro markers failed: %s", esp_err_to_name(err));
 }
 static void cyd_cal_load(void) {
     nvs_handle_t h;
@@ -112,15 +176,24 @@ static void cyd_cal_finish(void) {
     esp_err_t err = nvs_open("cyd_touch", NVS_READWRITE, &h);
     if (err == ESP_OK) {
         err = nvs_set_blob(h, "affine_v1", &cal, sizeof cal);
+        if (err == ESP_OK && s_boot_calibration)
+            err = nvs_set_blob(h, "boot_cal", s_boot_image_sha256, sizeof s_boot_image_sha256);
         if (err == ESP_OK) err = nvs_commit(h);
         nvs_close(h);
     }
     if (err != ESP_OK) { ESP_LOGE(TAG, "saving calibration failed: %s; retrying", esp_err_to_name(err)); s_cal_target = 0; return; }
-    s_calibration = cal; s_cal_target = -1;
+    s_calibration = cal; s_cal_target = -1; s_boot_calibration = false;
     ESP_LOGI(TAG, "touch calibration saved; validation error %.1f px", error);
 }
 static void cyd_cal_poll(bool touched, float x, float y) {
     if (esp_timer_get_time() > s_cal_deadline || s_inverted != s_cal_inverted) {
+        if (s_boot_calibration) {
+            ESP_LOGW(TAG, "first-boot touch calibration paused: restarting after timeout or orientation change");
+            s_cal_target = 0; s_cal_samples = 0; s_cal_sum_x = s_cal_sum_y = 0;
+            s_cal_wait_release = touched; s_cal_inverted = s_inverted;
+            s_cal_deadline = esp_timer_get_time() + 90000000;
+            return;
+        }
         ESP_LOGW(TAG, "touch calibration canceled: timeout or orientation change");
         s_cal_target = -1; s_down = false; return;
     }

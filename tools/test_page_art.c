@@ -101,6 +101,27 @@ static void menu_end(const char *gallery) {
     }
     menu_screen = NULL;
 }
+static void check_boot_logo(const char *gallery) {
+    memset(full_frame, 0, (size_t)TANK_W * TANK_H * sizeof *full_frame);
+    render_tile(0, 0); render_region(0, 0);
+    render_boot_logo(full_frame, TANK_W);
+    int gold = 0, fish = 0;
+    for (int i = 0; i < TANK_W * TANK_H; i++) {
+        gold += full_frame[i] == rgb565(0xf4c430, 1);
+        fish += full_frame[i] == rgb565(0xff725c, 1);
+    }
+    uint16_t water = full_frame[(TANK_H * 20 / 96) * TANK_W + TANK_W * 26 / 128];
+    unsigned red = (water >> 11) & 31, green = (water >> 5) & 63, blue = water & 31;
+    assert(full_frame[0] == rgb565(0x031015, 1));
+    assert(gold > TANK_W * TANK_H / 8 && fish > 40 && blue > red && green > red);
+    if (gallery) {
+        char path[1024];
+        snprintf(path, sizeof path, "%s/boot-logo-%d.raw", gallery, TANK_W);
+        FILE *file = fopen(path, "wb"); assert(file);
+        assert(fwrite(full_frame, 2, (size_t)TANK_W * TANK_H, file) == (size_t)TANK_W * TANK_H);
+        assert(!fclose(file));
+    }
+}
 static void check_menu_layout(const char *gallery) {
     menu_width = TANK_W;
     tank_t t = {0}; tank_init(&t, 77); tank_new_population(&t);
@@ -3290,6 +3311,7 @@ int main(int argc, char **argv) {
     check_tank_materials();
     for (int resolution = 0; resolution < 2; resolution++) {
         tank_resolution(resolution != 0);
+        check_boot_logo(gallery);
         check_fish_material();
         check_font_coverage();
         check_font_clock_cache();

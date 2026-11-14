@@ -855,7 +855,7 @@ old bullets only as history and evidence.
   Live Pages home/flasher/viewer/play, all 33 home images, board manifests,
   app hashes and browser release/commit passed. Recheck before future claims.
   COM4 still runs the measured pre-release image below; publication did not
-  flash or reset it. ELEGOO at 80 MHz remains unbenchmarked on hardware.
+  flash or reset it. ESP32-32E at 80 MHz remains unbenchmarked on hardware.
 - COM4's current local image supersedes the release acceptance image below:
   the post-2.3.18 edge-steering, fluid-motion/save-pacing and decoration
   edit-mode/mirror/save-speed, menu-performance, minigame-art, menu-art,
@@ -960,17 +960,17 @@ old bullets only as history and evidence.
   derive its tap coordinate. Keep the x formula exactly; crawl character lives
   in y and `tank_mussel_rock`. The whole y motion stays inside the 2 px sand
   band test_page_art.c asserts.
-  User physically confirmed v2.3.7 touch and trophies fixed; ELEGOO dimness was
+  User physically confirmed v2.3.7 touch and trophies fixed; ESP32-32E dimness was
   identified as reflective screens/poor viewing angles, not backlight duty.
 - 2.3.7 starts new aquariums with companion trophy decor disabled in all modes.
   Preserve existing saved decor preferences; Life > Rewards can enable trophies.
-  ELEGOO fresh affine defaults reverse X/preserve Y; saved calibration is untouched.
-  Brightness diagnostics on the local ELEGOO already request duty255 without
+  ESP32-32E fresh affine defaults reverse X/preserve Y; saved calibration is untouched.
+  Brightness diagnostics on the local ESP32-32E already request duty255 without
   night/room dimming, matching vendor PWM/panel setup; no brightness fix is claimed.
 - 2.3.6 development adds `PT_BOARD_VARIANT=cyd|elegoo|unified`, separate build
   directories and `PT_BOARD_ELEGOO=1` propagated from tankcore to HAL.
-  Original CYD `cyd2432s028` keeps its custom LCD sequence; ELEGOO `elegoo28`
-  uses ELEGOO's ILI9341V power/gamma sequence/BGR with the same LCD/touch/SD pins,
+  Original CYD `cyd2432s028` keeps its custom LCD sequence; ESP32-32E `elegoo28`
+  uses the ILI9341V power/gamma sequence/BGR with the same LCD/touch/SD pins,
   red LED22 and audio-enable4 high. GPIO34 is battery sensing: never initialize
   its ADC as an LDR; report room-light controls unavailable, retain manual
   brightness. An ESP32-32E module label alone does not identify a display.
@@ -978,14 +978,14 @@ old bullets only as history and evidence.
   Preserve all partitions/saves. Normal USB/SD/Wi-Fi updates refuse board
   mismatches; deliberate local recovery requires a full dump, positively
   detected slot and `-AllowBoardMigration -AppSlot ...`. Do not make a general
-  cross-board bypass. Separate ELEGOO assets use `pocket-tank-elegoo-*`,
+  cross-board bypass. Separate ESP32-32E assets use `pocket-tank-elegoo-*`,
   `elegoo-update.ptu`, `elegoo-ota.json` and `elegoo-SHA256SUMS.txt`;
   SD discovery still uses `update.ptu` so rename when copying. Website has an
   explicit selector; freeze selection during USB operations and bind fetched
   manifest, banner and app marker to that identity. Compile/runtime tests
   cannot establish physical LCD colors/touch: require a view of the actual
   board or user confirmation. The user moved COM8 into the authorized webcam
-  view during ELEGOO testing; COM8 backlight off/on was verified on camera.
+  view during ESP32-32E testing; COM8 backlight off/on was verified on camera.
   Do not assume it still views COM4. Port numbers are local,
   not a public hardware identifier.
   Current validation status: both local boards have run the byte-identical
@@ -1004,11 +1004,11 @@ old bullets only as history and evidence.
   Controller IDs 04/D3/DA/DB/DC are zero despite valid status/RGB GRAM reads:
   never use those zero IDs for automatic profile detection.
   The recovered 1 MHz diagnostic UI was mirrored/upside-down and slow.
-  Restored 40 MHz and automatic CS; ELEGOO mirror(true, false) now gives
+  Restored 40 MHz and automatic CS; ESP32-32E mirror(true, false) now gives
   upright/readable text on the webcam. Measured 16.5-16.6 fps, 60-61 ms/frame,
   17.5-18.1 ms flush on the full-resolution saved welcome screen.
   User reported backwards touch and then fixed it using the calibration tool.
-  ELEGOO's uncalibrated affine default flips logical X: {{-1,0,239},{0,1,0}},
+  ESP32-32E's uncalibrated affine default flips logical X: {{-1,0,239},{0,1,0}},
   matching the negative-X/positive-Y axes of the previously working calibration.
   This corrects the earlier Y-only default, which reversed the wrong axis.
   Keep the raw XPT coordinate basis unchanged so existing saved affine_v1
@@ -1034,8 +1034,8 @@ old bullets only as history and evidence.
   runtime implementation is in common/board_hardware.h and
   firmware/main/board_hardware_esp.c. Unified family identity is
   `cydesp32profiles`; NVS namespace/key is `pt_hardware` / `profile`
-  (1 CYD, 2 ELEGOO). Missing/unknown IDs wait for explicit `hardware cyd`
-  or `hardware elegoo` over USB before hardware init; NVS read failures
+  (1 CYD, 2 ESP32-32E). Missing/unknown IDs wait for explicit `hardware cyd`
+  or `hardware esp32-32e` over USB before hardware init; NVS read failures
   stop startup with an error. Running `hardware` queries the profile;
   a change saves the aquarium first, commits the profile and reboots.
   Network setup/update mode allows queries only. Saved affine_v1 remains
@@ -1430,9 +1430,16 @@ old bullets only as history and evidence.
 ## Product constraints
 
 - Supported boards: **ESP32-2432S028 CYD** (existing revision) and
-  **ELEGOO ESP32-32E 2.8-inch ILI9341V**, ESP32, 4 MB flash, no PSRAM,
+  **ESP32-32E 2.8-inch ILI9341V**, ESP32, 4 MB flash, no PSRAM,
   320x240 SPI LCD, XPT2046 resistive touch. Do not restore generic-board,
   model inference/training, audio, battery/PMIC, or IMU dependencies.
+- User-facing board choices are **CYD** and **ESP32-32E**. Keep the historical
+  `elegoo28` profile, `elegoo` build/artifact names and old serial alias for
+  compatibility; do not present the former vendor name as a third board.
+- A new firmware image shows the website's aquarium logo once, then requires
+  validated touch calibration before normal aquarium use. A confirmed tank
+  reset re-arms both; successful calibration is saved alongside the affine
+  mapping, and the Settings calibration control remains available afterward.
 - This is a quiet, local, rules-based aquarium. Wi-Fi is optional for normal
   care; time/weather may use it. Keep new games/stories optional.
 - Preserve fish identities, genetics, family, Bank, aquariums, settings, and
@@ -1903,7 +1910,7 @@ For feature work, update the relevant entries in:
   web/flash.html, web/board-profiles.mjs display names and their installer UI test
   for copy-only fixes. Keep internal hardware keys/paths and update logic
   compatible with the release; do not use this exception for behavioral changes.
-  Public labels are CYD / ELEGOO CYD, not model numbers. Verify
+  Public labels are CYD / ESP32-32E. Verify
   the release tag/commit and browser version against the staged installer. Display the
   tag/commit. Test normal/fullscreen/letterboxed and both resolutions, exact
   pellet columns, mobile touch and ignored margins; preserve the pellet cap.

@@ -26,7 +26,7 @@
 <main>
   <nav aria-label="Main navigation"><a href="./">Features &amp; home</a> &middot; <a href="./play.html">Play in browser</a> &middot; <a href="./viewer.html">Save viewer</a></nav>
   <header class="brand"><img src="./logo.svg" alt="" width="128" height="96"><h1>Pocket Tank CYD</h1></header>
-  <p>For <strong>CYD</strong> and <strong>ELEGOO CYD</strong>
+  <p>For <strong>CYD</strong> and <strong>ESP32-32E</strong>
     (2.8-inch resistive touch, 4 MB flash). Other CYD variants are not yet verified.
     The factory installer checks the ESP32 chip family, but cannot identify your display model.
     The save-preserving updater additionally verifies Pocket Tank CYD's identity and layout.</p>
@@ -34,7 +34,7 @@
   <select id="board">
     <option value="" selected disabled>Choose once: which CYD do you have?</option>
     <option value="cyd2432s028">CYD</option>
-    <option value="elegoo28">ELEGOO CYD</option>
+    <option value="elegoo28">ESP32-32E</option>
   </select>
   <p>The unified application is the same for both boards; your selection sets the
     saved hardware profile. The board remembers it across reboots and updates.
@@ -43,8 +43,11 @@
     When returning to this page for an update, select the matching board so the
     updater can verify its saved profile; it will not silently replace a different profile.
     The module label alone does not identify the LCD.
-    ELEGOO CYD has no room-light sensor; GPIO34 measures battery voltage instead.</p>
-  <p>If an ELEGOO board already has the original CYD firmware and shows white,
+    ESP32-32E has no room-light sensor; GPIO34 measures battery voltage instead.</p>
+  <p>After a new firmware image is installed, its first normal boot shows this
+    aquarium logo and then requires touch calibration. The saved calibration
+    setting remains available later.</p>
+  <p>If an ESP32-32E board already has the original CYD firmware and shows white,
     its installed identity is wrong for the selected board. The safe updater will
     refuse it. Use an expert app-only conversion with a full-flash backup;
     do not factory-reset an aquarium you want to keep.</p>
@@ -151,7 +154,7 @@
     updateAcknowledgement.dispatchEvent(new Event("change"));
     installer.hidden = true;
     if (!board.value) {
-      status.textContent = "Choose CYD or ELEGOO CYD above before installing. The same firmware runs on both; your board remembers the profile.";
+      status.textContent = "Choose CYD or ESP32-32E above before installing. The same firmware runs on both; your board remembers the profile.";
       document.querySelector("#update-status").textContent = "Choose your board above. No default hardware profile is assumed.";
       updateAcknowledgement.disabled = true;
       updateAcknowledgement.dispatchEvent(new Event("change"));

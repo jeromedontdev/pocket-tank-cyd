@@ -7765,6 +7765,81 @@ void render_menu_backdrop(uint16_t *fb, int stride, int x, int y, int w, int h) 
 void render_doubloon(uint16_t *fb, int stride, int x, int y) {
     ctx_t c = ctx_page(fb, stride); blit_icon(&c, x, y, &icon_shop_sand_dollar_16, 255);
 }
+static float logo_x(float x) { return x * PAGE_W / 128.0f; }
+static float logo_y(float y) { return y * PAGE_H / 96.0f; }
+static void logo_rect(ctx_t *c, float x, float y, float w, float h, uint32_t color) {
+    rect_fill(c, (int)lroundf(logo_x(x)), (int)lroundf(logo_y(y)),
+              (int)lroundf(logo_x(w)), (int)lroundf(logo_y(h)), color);
+}
+static void logo_ellipse(ctx_t *c, float x, float y, float rx, float ry, uint32_t color) {
+    render_internal_ellipse(c, logo_x(x), logo_y(y), logo_x(rx), logo_y(ry), color, 255);
+}
+static void logo_poly(ctx_t *c, const float *x, const float *y, int n, uint32_t color) {
+    float px[16], py[16];
+    if (n < 3 || n > (int)(sizeof px / sizeof px[0])) return;
+    for (int i = 0; i < n; i++) { px[i] = logo_x(x[i]); py[i] = logo_y(y[i]); }
+    render_internal_poly(c, px, py, n, color, 255);
+}
+static void logo_round_rect(ctx_t *c, float x, float y, float w, float h,
+                            float rx, float ry, uint32_t color) {
+    rect_fill(c, (int)lroundf(logo_x(x + rx)), (int)lroundf(logo_y(y)),
+              (int)lroundf(logo_x(w - 2 * rx)), (int)lroundf(logo_y(h)), color);
+    rect_fill(c, (int)lroundf(logo_x(x)), (int)lroundf(logo_y(y + ry)),
+              (int)lroundf(logo_x(w)), (int)lroundf(logo_y(h - 2 * ry)), color);
+    logo_ellipse(c, x + rx, y + ry, rx, ry, color);
+    logo_ellipse(c, x + w - rx, y + ry, rx, ry, color);
+    logo_ellipse(c, x + rx, y + h - ry, rx, ry, color);
+    logo_ellipse(c, x + w - rx, y + h - ry, rx, ry, color);
+}
+void render_boot_logo(uint16_t *fb, int stride) {
+    ctx_t c = ctx_page(fb, stride);
+    rect_fill(&c, 0, 0, PAGE_W, PAGE_H, 0x031015);
+    logo_round_rect(&c, 2, 2, 124, 92, 10, 10, 0x9c7a12);
+    logo_round_rect(&c, 4, 4, 120, 88, 8, 8, 0xf4c430);
+
+    logo_round_rect(&c, 18, 12, 92, 72, 3, 3, 0x081c25);
+    logo_rect(&c, 21, 15, 86, 66, 0x0d4f6b);
+    for (int y = 0; y < 66; y++)
+        logo_rect(&c, 21, 15 + y, 86, 1.1f, mix(0x3fc7d6, 0x0d4f6b, y / 65.0f));
+
+    const float plant1_x[] = {27, 30, 32, 30, 28, 29, 31, 33, 35, 36, 34, 32};
+    const float plant1_y[] = {72, 69, 64, 59, 54, 49, 46, 49, 54, 59, 64, 72};
+    const float plant2_x[] = {32, 35, 37, 37, 35, 34, 36, 38};
+    const float plant2_y[] = {72, 70, 65, 60, 57, 63, 68, 72};
+    const float plant3_x[] = {94, 97, 99, 98, 96, 97, 99};
+    const float plant3_y[] = {72, 68, 63, 58, 53, 49, 72};
+    logo_poly(&c, plant1_x, plant1_y, 12, 0x3fae5a);
+    logo_poly(&c, plant2_x, plant2_y, 8, 0x3fae5a);
+    logo_poly(&c, plant3_x, plant3_y, 7, 0x3fae5a);
+
+    const float sand_x[] = {21, 29, 37, 45, 53, 61, 69, 77, 85, 93, 101, 107, 107, 21};
+    const float sand_y[] = {72, 70, 68, 68, 71, 72, 71, 69, 69, 71, 70, 69, 81, 81};
+    logo_poly(&c, sand_x, sand_y, 14, 0xe8c27a);
+
+    const float tail_x[] = {50, 39, 39, 50};
+    const float tail_y[] = {42, 33, 51, 42};
+    const float fin_x[] = {60, 67, 72};
+    const float fin_y[] = {33, 25, 33};
+    logo_poly(&c, tail_x, tail_y, 4, 0xffb347);
+    logo_poly(&c, fin_x, fin_y, 3, 0xffb347);
+    logo_ellipse(&c, 66, 42, 17, 11, 0xff725c);
+    logo_rect(&c, 58, 31.5f, 3.5f, 21, 0xfff4e0);
+    logo_rect(&c, 66, 31, 3.5f, 22, 0xfff4e0);
+    logo_ellipse(&c, 76, 39, 3, 3, 0xffffff);
+    logo_ellipse(&c, 76.8f, 39, 1.6f, 1.6f, 0x031015);
+
+    render_internal_annulus(&c, logo_x(88), logo_y(32),
+                            logo_x(2.5f), logo_x(1.3f), 0xe0f7ff, 255);
+    render_internal_annulus(&c, logo_x(92), logo_y(24),
+                            logo_x(1.8f), logo_x(0.9f), 0xe0f7ff, 255);
+    render_internal_annulus(&c, logo_x(87), logo_y(19),
+                            logo_x(1.3f), logo_x(0.65f), 0xe0f7ff, 255);
+
+    logo_ellipse(&c, 11, 11, 3, 3, 0x9c7a12);
+    logo_ellipse(&c, 117, 11, 3, 3, 0x9c7a12);
+    logo_ellipse(&c, 11, 85, 3, 3, 0x9c7a12);
+    logo_ellipse(&c, 117, 85, 3, 3, 0x9c7a12);
+}
 void render_food_sample(uint16_t *fb, int stride, int x, int y, unsigned tier) {
     ctx_t c = ctx_page(fb, stride);
     fill_ellipse(&c, x, y + 5, 17, 7, 0x060f15, 255);

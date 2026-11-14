@@ -220,7 +220,7 @@ def main():
             subprocess.run(command + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
                                       "-I" + str(root / "common"), str(test), "-o", str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
-        print("PASS: CYD LDR works; ELEGOO never reads battery ADC or persists unsupported DIM/NIGHT")
+        print("PASS: CYD LDR works; ESP32-32E never reads battery ADC or persists unsupported DIM/NIGHT")
 
 
 if __name__ == "__main__":

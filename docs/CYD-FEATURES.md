@@ -2,7 +2,7 @@
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="../web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
-**An illustrated tour of Pocket Tank CYD 2.4.5**
+**An illustrated tour of Pocket Tank CYD 2.4.6**
 
 **Latest source:** Main menu is Fish, Tank, Market, Games, **Casino**, Help;
 Settings moved to a cog in the bottom-right corner. Main > Fish is a Fish hub
@@ -22,6 +22,13 @@ once marking, trait and color mutations are all bred. Snail and urchin cards
 describe their roles (glass cleaner calm +10%, night grazer rest +20%), the
 jellyfish has slimmer tentacles, Games uses the standard menu backdrop and the
 rename keyboard sits lower with an unobstructed preview.
+
+**2.4.6 first-boot setup:** the first normal boot after installing a firmware
+image displays the website aquarium logo and then requires five-point touch
+calibration before the tank opens. A confirmed tank reset re-arms the
+introduction while preserving the previous calibration until a new one is
+validated. The second supported display is identified to keepers as
+**ESP32-32E**; legacy profile and download identifiers remain unchanged.
 
 **2.4.5 the Market hub, and a fairer casino in Creative:** Main > MARKET opens
 the five-tile hub again (Fish Market, Creatures, Collection, Contracts,
@@ -467,23 +474,28 @@ by older firmware, so do not downgrade after saving with 2.3.10.
 
 **2.3.7 display defaults:** trophies start hidden in new aquariums, including
 Creative mode. Enable them in **Life > Rewards > Trophies**. Existing saved
-preferences are preserved. ELEGOO's fresh touch default now uses the same axis
+preferences are preserved. The ESP32-32E's fresh touch default now uses the same axis
 directions as the previously working calibration; saved calibrations are unchanged.
 
 **2.3.6 board support:** the website installer uses one shared application for
-the original CYD and ELEGOO ESP32-32E 2.8-inch ILI9341V, with saved hardware profiles.
+the original CYD and ESP32-32E 2.8-inch ILI9341V, with saved hardware profiles.
 Both boards are supported, but their displays cannot be reliably autodetected.
-The installer requires an explicit CYD or ELEGOO CYD choice, with no default.
+The installer requires an explicit CYD or ESP32-32E choice, with no default.
 The board retains that profile across reboots and updates; later web updates
 ask you to select the matching board for verification, not to reconfigure it.
 Existing tanks migrate by app-only USB update; new-board factory images differ
 only in their blank NVS profile. Both run the same aquarium;
-ELEGOO uses different LCD initialization and has no room-light sensor.
+ESP32-32E uses different LCD initialization and has no room-light sensor.
 Select the exact board for USB. Once unified, both use unified-update.ptu /
 unified-ota.json; legacy board-specific SD/Wi-Fi downloads remain separate.
 A module's ESP32-32E
 label alone is not enough to identify it. See the
 [hardware/board-conversion guide](../firmware/CYD.md#supported-board-variants).
+
+On the first boot of a new firmware image, the device displays the same aquarium
+logo used by this website, then starts five-point touch calibration. The
+calibration is saved only after validation; **Settings > Touch Calibration**
+remains available for later adjustments.
 
 **2.3.5 menu cleanup:** use **Settings > Device >
 Firmware Updates** for both SD and GitHub Wi-Fi updates (called **SD Updates**
@@ -768,7 +780,7 @@ not merely the original game on a different board. It credits and retains
 Pocket Tank's feeding, growth, personality, trust and
 aquarium care, while adding more ways to decorate, collect, progress and
 keep favorite fish. It is built specifically for the **ESP32-2432S028
-Cheap Yellow Display** and **ELEGOO ESP32-32E 2.8-inch ILI9341V**,
+Cheap Yellow Display** and **ESP32-32E 2.8-inch ILI9341V**,
 rather than trying to fit every ESP32 display.
 
 The headline additions:
@@ -909,7 +921,7 @@ The story artwork adds no new quest obligations; game modes are separately
 chosen at first run.
 These are independently versioned CYD-only releases, not upstream multi-board releases.
 Read the included `INSTALL.txt` and check `SHA256SUMS.txt`.
-For ELEGOO use `elegoo-INSTALL.txt` and `elegoo-SHA256SUMS.txt` instead.
+For ESP32-32E use `elegoo-INSTALL.txt` and `elegoo-SHA256SUMS.txt` instead.
 
 **New-board browser flashing:** the
 [USB web installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html) works in
@@ -926,7 +938,7 @@ when Wi-Fi is unavailable. Standard releases are not publisher-signed.
 - **Already using this CYD fork:** back up your active aquarium, power off
   before moving SD, copy `update.ptu` to `pocket-tank/update.ptu`, then install
   through Settings > Device > Firmware Updates > Check SD Card. No SD artwork is required.
-  ELEGOO uses `elegoo-update.ptu`, renamed to `pocket-tank/update.ptu` on the card.
+  ESP32-32E uses `elegoo-update.ptu`, renamed to `pocket-tank/update.ptu` on the card.
 - **New board:** use the factory image at `0x0`; all artwork is embedded in firmware.
   **Factory flashing overwrites saved tanks, Wi-Fi credentials, calibration
   and collection identity. Never use it for a normal upgrade.**
@@ -2153,4 +2165,3 @@ Release 2.3.5 uses the `320` captures for those five guide/website images.
 
 For build instructions and live usage, see the [project README](../README.md)
 and [CYD hardware guide](../firmware/CYD.md).
-

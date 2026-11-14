@@ -166,7 +166,7 @@ static void show_state(const tank_t *t) {
 }
 
 static void help(void) {
-    ESP_LOGI(TAG, "hardware [cyd|elegoo] (query profile, or save aquarium/profile and restart; calibration preserved)");
+    ESP_LOGI(TAG, "hardware [cyd|esp32-32e] (query profile, or save aquarium/profile and restart; calibration preserved)");
     ESP_LOGI(TAG, "help | state | hungry [N] [level=9] (N fish starving, water cleared, trickle held)");
     ESP_LOGI(TAG, "fed [level=1] (everyone full, trickle back on) | set <hunger|energy|stress|curiosity|trust> <0-10> [fish name|idx]");
     ESP_LOGI(TAG, "feed [n=3] [x] (keeper drops pellets; trickle back on) | trickle on|off | pellets clear");
@@ -245,8 +245,9 @@ static void run(tank_t *t, char *line) {
             return;
         }
         unsigned id = argc == 2 && !strcmp(argv[1], "cyd") ? BOARD_HARDWARE_CYD :
-                      argc == 2 && !strcmp(argv[1], "elegoo") ? BOARD_HARDWARE_ELEGOO : 0;
-        if (!id) { ESP_LOGE(TAG, "use hardware [cyd|elegoo]"); return; }
+                      argc == 2 && (!strcmp(argv[1], "esp32-32e") || !strcmp(argv[1], "elegoo")) ?
+                          BOARD_HARDWARE_ELEGOO : 0;
+        if (!id) { ESP_LOGE(TAG, "use hardware [cyd|esp32-32e]"); return; }
         if (!t) { ESP_LOGE(TAG, "profile changes unavailable during network update/setup"); return; }
         if (!progression_save(t)) { ESP_LOGE(TAG, "profile change canceled: aquarium save failed"); return; }
         if (!board_hardware_save(id)) return;

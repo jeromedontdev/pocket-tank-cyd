@@ -110,9 +110,9 @@ class WebInstallerTests(unittest.TestCase):
             self.assertIn(theme, home)
         self.assertIn("distinct aquarium game", home)
         for text in (home, flasher):
-            self.assertNotRegex(text, r"ESP32-2432S028|ESP32-32E|ILI9341V")
+            self.assertNotRegex(text, r"ESP32-2432S028|ILI9341V")
         self.assertIn('value="cyd2432s028">CYD</option>', flasher)
-        self.assertIn('value="elegoo28">ELEGOO CYD</option>', flasher)
+        self.assertIn('value="elegoo28">ESP32-32E</option>', flasher)
         self.assertIn('value="" selected disabled', flasher)
         self.assertIn("Reliable automatic board detection is not available", home)
         self.assertIn("updater can verify its saved profile", flasher)

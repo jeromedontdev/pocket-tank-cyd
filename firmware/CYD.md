@@ -1,4 +1,4 @@
-# CYD and ELEGOO 2.8-inch display boards
+# CYD and ESP32-32E 2.8-inch display boards
 
 <p align="center"><img src="../web/logo.svg" width="200" alt="Pocket Tank CYD aquarium logo"></p>
 
@@ -220,7 +220,7 @@ This adds **1,264 bytes** to the optimization-only image and is still **3,344
 bytes smaller** than the preceding baseline. `.bss` remains **62,838 bytes**.
 SHA256: `3e14881af07a0f658871f53aa8785cd830bf900dc46714a5baefb27efad59fed`.
 
-Both CYD and ELEGOO page-art builds pass at both framebuffer sizes. Added checks
+Both CYD and ESP32-32E page-art builds pass at both framebuffer sizes. Added checks
 cover all casino idle/play/result pages, all eighteen chapter encounters,
 detours/endings without lost text, all three choice targets and ignored gaps,
 unchanged tank state during rendering and exact guarded 1/17/40-row pixels.
@@ -857,7 +857,7 @@ board/version/DIO-80-MHz markers.
 | Published app | Bytes | OTA-slot headroom |
 |---|---:|---:|
 | CYD | 1,776,800 | 189,280 |
-| ELEGOO | 1,776,816 | 189,264 |
+| ESP32-32E | 1,776,816 | 189,264 |
 | Unified | 1,777,456 | 188,624 |
 
 Unified SHA256:
@@ -1404,7 +1404,7 @@ Save compatibility is schema 20 / 6424 bytes; back up before updating, and do
 not downgrade after saving. No partitions or calibration changed.
 
 COM4 retains the measured 80 MHz pre-release image described below. Publication
-is separate from a physical flash. ELEGOO at 80 MHz has not been separately
+is separate from a physical flash. ESP32-32E at 80 MHz has not been separately
 benchmarked on hardware.
 
 Publication verified: v2.3.19 points to
@@ -1412,7 +1412,7 @@ Publication verified: v2.3.19 points to
 release-pinned Pages passed (runs 40799910228 / 40801238113 / 40802367853).
 All 29 public assets were downloaded and checked against their SHA256 lists;
 ZIP contents, PTUs, OTA metadata and embedded board/version/DIO-80MHz markers
-passed. Published app sizes are 1,785,296 (CYD), 1,785,312 (ELEGOO) and
+passed. Published app sizes are 1,785,296 (CYD), 1,785,312 (ESP32-32E) and
 1,785,968 (unified) bytes. Unified SHA256:
 `4bb3758636cc48ccb36c3859e485fdf634e9782a3c7d27addb6e9f0586091aec`.
 Live home/flasher/viewer/play, all 33 home images, board manifests, application
@@ -1808,7 +1808,7 @@ COM4 at 80 MHz:
 - App 1,785,968 bytes, SHA256
   `b23e72b4d083d275705432cc218b2217133ba46801cbc470ba75f7bd5d038d05`,
   backup `flash80-com4-backup.bin`.
-- The ELEGOO board shares this image and is NOT yet verified at 80 MHz: run
+- The ESP32-32E board shares this image and is NOT yet verified at 80 MHz: run
   `benchmark` plus a soak on one before publishing.
 
 ### 2.3.18 frame-pacing and snapshot follow-up
@@ -2199,11 +2199,22 @@ were verified after the benchmark.
 
 ## Supported board variants
 
+User-facing choices are **CYD** and **ESP32-32E**. The build selector and
+published legacy asset names still use `elegoo` for compatibility.
+
 | Build choice | Board identity | LCD initialization | Red LED | GPIO34 |
 |---|---|---|---|---|
 | `cyd` (default) | `cyd2432s028` | Existing CYD custom ST7789-style sequence | 4 | LDR |
-| `elegoo` | `elegoo28` | ELEGOO ILI9341V power/gamma sequence, BGR | 22 | Battery sensing, never read as light |
+| `elegoo` (ESP32-32E) | `elegoo28` | ILI9341V power/gamma sequence, BGR | 22 | Battery sensing, never read as light |
 | `unified` | `cydesp32profiles` | Saved `cyd` or `elegoo` runtime profile | Profile-specific | Profile-specific |
+
+On the first normal boot of a firmware image, the device shows the same
+aquarium-logo artwork used by the website, then enters five-point touch
+calibration before starting the aquarium. The calibration result and the image
+identity are committed together only after validation; a failed calibration
+or save keeps the calibration screen active. A confirmed tank reset re-arms
+the logo and calibration without erasing the saved affine mapping. The
+**Touch Calibration** setting remains available later.
 
 **Hardware validation:** physical testing identified the white/striped-screen cause: after
 an absent/failed SD card, freeing SPI3 disrupted the already-running SPI2
@@ -2212,10 +2223,10 @@ error without formatting the card and retains the SPI3 bus for the boot's
 lifetime. Independent display tests and the full UI then displayed correctly.
 The small retained bus allocation is intentional, not a mounted SD card.
 SD features still report unavailable when mounting fails.
-Normal 40 MHz SPI and automatic chip-select are restored. ELEGOO-specific
+Normal 40 MHz SPI and automatic chip-select are restored. ESP32-32E-specific
 panel mirroring produces upright, readable text on the webcam; the measured
 full-resolution welcome screen runs at 16.5-16.6 fps (60-61 ms/frame).
-The user corrected backwards touch using calibration. ELEGOO's uncalibrated
+The user corrected backwards touch using calibration. ESP32-32E's uncalibrated
 default reverses logical X and preserves Y, matching the axis directions in
 the previously working five-point calibration. The earlier Y-only default
 reversed the wrong axis; saved affine
@@ -2227,7 +2238,7 @@ Use the built-in calibration tool if your individual panel needs adjustment.
 App-only updates preserve saved calibration, so a default correction does not
 replace an existing calibration.
 
-For ELEGOO brightness diagnosis, the reference demo and this firmware both use
+For ESP32-32E brightness diagnosis, the reference demo and this firmware both use
 GPIO21 with an 8-bit maximum PWM duty of 255. If diagnostics already report
 `bright 255` with night and room dimming off, increasing the configured
 percentage cannot make the backlight brighter. Compare white menu text as well
@@ -2237,7 +2248,7 @@ panel power or gamma registers without hardware evidence.
 The `unified` image implements saved hardware profiles for these
 two compatible ESP32/4 MiB boards. The same application bytes have been
 provided for both boards, not separate game binaries. The web installer starts
-with no hardware selected and requires an explicit CYD / ELEGOO CYD choice.
+with no hardware selected and requires an explicit CYD / ESP32-32E choice.
 It cannot reliably autodetect these displays. Once set, the profile stays on
 the board across reboots and updates; later web updates verify the user's
 matching selection against the saved profile rather than overwriting it.
@@ -2245,19 +2256,20 @@ The same application bytes have been
 installed on both local boards and checked by full app readback and reboot,
 with their aquariums preserved. When no profile has been provisioned, first
 boot waits for `hardware cyd` or
-`hardware elegoo` over USB serial at 115200 baud, before LCD/peripheral startup.
+`hardware esp32-32e` over USB serial at 115200 baud, before LCD/peripheral startup.
 The profile is persisted as `pt_hardware` / `profile` in NVS (1 = CYD,
-2 = ELEGOO). It is independent of the application slot and aquarium saves.
+2 = ESP32-32E). It is independent of the application slot and aquarium saves.
 Unknown saved IDs require explicit selection; NVS read failures stop startup
 with an error rather than guessing hardware.
 
 Once running, `hardware` reports the profile and image identity.
-`hardware cyd` / `hardware elegoo` first save the aquarium successfully, then
+`hardware cyd` / `hardware esp32-32e` first save the aquarium successfully, then
 persist the selected profile and restart. This recovery command needs no
 readable screen and does not overwrite touch calibration. Profile changes
 are refused in network setup/update mode; queries remain available. Legacy
 board-specific images refuse a saved profile belonging to the other board.
-No automatic controller probing is used: the ELEGOO test board returns zero
+The older `hardware elegoo` command remains accepted for compatibility.
+No automatic controller probing is used: the ESP32-32E test board returns zero
 IDs even though status/GRAM reads work. Different ESP32 families, display
 buses, pins or framebuffer budgets may still require separate builds.
 
@@ -2290,11 +2302,11 @@ unified by USB once. Thereafter use `unified-ota.json` or rename
 `unified-update.ptu` to `pocket-tank/update.ptu` on SD. Subsequent updates retain
 the NVS profile and existing family checks. No schema/partition change.
 
-The ELEGOO ESP32-32E 2.8-inch resistive-touch board is documented by
-[ELEGOO](https://wiki.elegoo.com/oshw-parts-&-accessories/esp32-dispaly-introduction).
+The ESP32-32E 2.8-inch resistive-touch board is documented by its
+[manufacturer](https://wiki.elegoo.com/oshw-parts-&-accessories/esp32-dispaly-introduction).
 LCD CS15/DC2/SCLK14/MOSI13/MISO12/backlight21 and
 XPT2046 CS33/clock25/MOSI32/MISO39/IRQ36 match the existing CYD pins.
-LCD reset is tied to EN. ELEGOO audio enable GPIO4 is held high (disabled);
+LCD reset is tied to EN. ESP32-32E audio enable GPIO4 is held high (disabled);
 green/blue LEDs are 16/17. The SD SPI pins also match. There is no LDR,
 so room-light settings report unavailable; manual brightness still works.
 An ESP32-32E module label alone is not sufficient to identify other boards.
@@ -2312,12 +2324,12 @@ From an ESP-IDF PowerShell environment:
 Separate `build_cyd`/`build_elegoo`/`build_unified` directories prevent cached board settings
 from contaminating the other build. Normal app-only flashing verifies the
 installed marker against the built image; web, SD and Wi-Fi updates also
-refuse another board. ELEGOO release assets use `pocket-tank-elegoo-app.bin`,
+refuse another board. ESP32-32E legacy release assets use `pocket-tank-elegoo-app.bin`,
 `pocket-tank-elegoo-factory.bin`, `elegoo-update.ptu`, `elegoo-ota.json`,
 `elegoo-SHA256SUMS.txt` and a separate ZIP. The original names remain unchanged.
 Rename `elegoo-update.ptu` to `update.ptu` when placing it at an SD search path.
 
-### Recovering a wrong CYD image on ELEGOO without resetting fish
+### Recovering a wrong CYD image on ESP32-32E without resetting fish
 
 First make a complete 4 MiB flash backup and save the running aquarium.
 Positively detect its running and next-boot slots using the `ota` serial command;

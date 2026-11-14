@@ -1,7 +1,7 @@
 # build_cyd.ps1 - the one build entry point for all three board families.
 #
 #   .\tools\build_cyd.ps1                          # build the CYD image
-#   .\tools\build_cyd.ps1 -Board elegoo            # build the ELEGOO image
+#   .\tools\build_cyd.ps1 -Board elegoo            # build the ESP32-32E image
 #   .\tools\build_cyd.ps1 -Board unified           # build the shared-profile image
 #   .\tools\build_cyd.ps1 -Flash -Port COM4        # build, then app-only flash
 #

@@ -4,11 +4,11 @@ export const BOARDS = Object.freeze({
     update: "./update.json", app: "pocket-tank-cyd-app.bin",
   }),
   elegoo28: Object.freeze({
-    name: "ELEGOO CYD", manifest: "./elegoo-manifest.json",
+    name: "ESP32-32E", manifest: "./elegoo-manifest.json",
     update: "./elegoo-update.json", app: "pocket-tank-elegoo-app.bin",
   }),
   cydesp32profiles: Object.freeze({
-    name: "CYD / ELEGOO saved hardware profiles", manifest: "./unified-manifest.json",
+    name: "CYD / ESP32-32E saved hardware profiles", manifest: "./unified-manifest.json",
     update: "./unified-update.json", app: "pocket-tank-unified-app.bin",
   }),
 });

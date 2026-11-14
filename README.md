@@ -1,9 +1,9 @@
-# Pocket Tank CYD 2.4.5
+# Pocket Tank CYD 2.4.6
 
 <p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="web/logo.svg" width="320" alt="Pocket Tank CYD: a little aquarium inside a yellow display"></a></p>
 
 A CYD-only fork of [mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-now versioned independently. This source targets **2.4.5**. Stable firmware,
+now versioned independently. This source targets **2.4.6**. Stable firmware,
 update packages and the browser installer are published through GitHub Releases;
 check the latest release and the website's displayed version before installing.
 Originally based on upstream v0.3.8.
@@ -14,10 +14,13 @@ It retains the original aquarium simulation and credits its origins, but is no
 longer just upstream Pocket Tank running on another display. Older release
 downloads and tags remain unchanged.
 Targets the **ESP32-2432S028 Cheap Yellow Display** and
-**ELEGOO ESP32-32E 2.8-inch ILI9341V**, with one application and saved hardware profiles:
+**ESP32-32E 2.8-inch ILI9341V**, with one application and saved hardware profiles:
 4 MB flash, no PSRAM, 320x240 SPI LCD and XPT2046 resistive touch.
 Other boards, model inference/training, audio, battery/PMIC and IMU drivers
 are not included. See [LICENSE](LICENSE) for the original project license.
+On the first boot of a firmware image, the device shows the website's aquarium
+logo and then calibrates touch; the existing **Touch Calibration** setting
+remains available for later adjustment.
 
 **Take the illustrated tour:** [CYD features and screenshots](docs/CYD-FEATURES.md)
 covers named tanks, the bank, inherited fish, mini-games,
@@ -59,6 +62,13 @@ read grips from each piece's own art, so every standing decoration offers perche
 dive through rock gaps rather than a lane game like Fish Slalom, and **Reef
 Architect** is a real logic puzzle: plant six corals that match every row and
 column clue without touching.
+
+**2.4.6 first-boot logo and touch calibration:** the first normal boot after
+installing a firmware image displays the website aquarium logo, then requires
+five-point touch calibration before the tank opens. A confirmed tank reset
+re-arms the introduction without erasing the saved calibration. The installer
+and serial profile command now identify the second board as **ESP32-32E**;
+historical profile and firmware asset IDs remain compatible.
 
 **2.4.5 the Market hub, and a fairer casino in Creative:** Main > MARKET opens
 the five-tile hub again (Fish Market, Creatures, Collection, Contracts,
@@ -346,7 +356,7 @@ The flash now runs at **80 MHz** (DIO), the ESP32's standard rate, instead of
 ESP-IDF's conservative 40 MHz default. On the CYD the controlled fixtures went
 from 17.4/16.7/13.9/14.9 to **21.9/21.2/17.3/18.7 FPS**, beating the earlier
 2.3.18-era build, with no memory cost. This was measured on the
-ESP32-2432S028; the ELEGOO board uses the same module class and image but was
+ESP32-2432S028; the ESP32-32E board uses the same module class and image but was
 not separately benchmarked.
 
 **Saves are now schema 20 / 6424 bytes** (an 88-byte movable-scenery tail
@@ -597,28 +607,28 @@ screen or daily-task unlock. Previously earned mussels and banked income migrate
 After buying a mussel in 2.3.8, do not downgrade that profile to older firmware:
 the per-aquarium resident mask requires the new reader.
 
-## 2.3.7: quieter defaults and ELEGOO touch correction
+## 2.3.7: quieter defaults and ESP32-32E touch correction
 
 New aquariums start with trophy decorations hidden, including Creative mode.
 Enable them in **Life > Rewards > Trophies**; existing saved choices are preserved.
-ELEGOO's fresh touch default now reverses X and preserves Y, matching the
+The ESP32-32E's fresh touch default now reverses X and preserves Y, matching the
 previously working calibration. App-only updates keep saved calibration intact.
 Brightness investigation found maximum backlight already applied with dimming
-off; this release does not claim an increase in ELEGOO backlight brightness.
+off; this release does not claim an increase in ESP32-32E backlight brightness.
 
-## Unified CYD and ELEGOO display support
+## Unified CYD and ESP32-32E display support
 
 Runtime hardware profiles now let the same
 `unified` application image run on both tested boards. A saved profile selects
 LCD initialization, orientation, touch defaults and peripheral capabilities.
 Physical tests traced the white/striped display to failed-SD
 cleanup disturbing LCD DMA; retaining the SD bus restores visible output.
-The ELEGOO UI is upright at normal speed. Its default touch transform is
+The ESP32-32E UI is upright at normal speed. Its default touch transform is
 corrected without invalidating existing calibration; the user confirmed their
 calibrated touch works. Fresh uncalibrated touch still needs physical testing.
 The installer uses one app for both boards and provisions the explicitly
 selected hardware profile. There is no preselected installer profile: new
-installations must choose CYD or ELEGOO CYD explicitly. The board remembers
+installations must choose CYD or ESP32-32E explicitly. The board remembers
 that profile across reboots and updates; reliable first-boot autodetection is
 not available on the tested displays. Existing tanks migrate by save-preserving USB;
 on later web-updater visits, select the matching board to verify its saved
@@ -626,7 +636,7 @@ profile, not to reset it.
 Legacy board-specific SD/Wi-Fi packages remain available.
 
 Choose your exact board in the [website installer](https://jeromedontdev.github.io/pocket-tank-cyd/flash.html).
-The ELEGOO uses the same LCD/touch SPI pins but an **ILI9341V**, not the original
+The ESP32-32E uses the same LCD/touch SPI pins but an **ILI9341V**, not the original
 supported CYD revision's custom initialization. Its red LED is GPIO22; GPIO4
 is held high to disable the audio amplifier. GPIO34 is battery sensing, **not
 a room-light sensor**: automatic room dimming/night detection is unavailable.
@@ -642,7 +652,7 @@ blank NVS profiles; never use them to migrate existing aquariums.
 The unconfigured factory image waits for explicit USB serial selection before
 initializing board-dependent hardware. The original CYD retains its existing
 display initialization.
-If an ELEGOO was already flashed with the original CYD image and shows white,
+If an ESP32-32E was already flashed with the original CYD image and shows white,
 the save-preserving web updater will intentionally refuse that identity
 mismatch. A backed-up, explicit **app-only board conversion** is needed;
 do not use factory installation to preserve an existing aquarium.
@@ -1937,4 +1947,3 @@ authoritative build/hardware contracts.
 Do not use upstream installers or release binaries on this fork. See
 [docs/OTA.md](docs/OTA.md) for offline SD packages, the opt-in fork channel
 and signing limitations.
-

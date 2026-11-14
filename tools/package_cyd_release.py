@@ -118,7 +118,7 @@ Source, build instructions, full feature guide and screenshots:
 https://github.com/jeromedontdev/pocket-tank-cyd
 """
     if board == "unified":
-        instructions = f"""Pocket Tank CYD {version}: one application for CYD and ELEGOO
+        instructions = f"""Pocket Tank CYD {version}: one application for CYD and ESP32-32E
 
 EXISTING AQUARIUM: back up first. Use the website save-preserving USB updater,
 selecting the actual hardware. It verifies the running slot, partition layout,
@@ -127,7 +127,7 @@ Legacy board-specific firmware must migrate by USB; its Wi-Fi/SD channels stay
 board-specific. Never use a factory image to migrate an existing aquarium.
 Local alternative: tools\\build_cyd.ps1 -Board unified -HardwareProfile cyd
   -Port YOUR_PORT -Flash -Backup YOUR_NEW_BACKUP_FILE
-Choose elegoo instead of cyd for the ELEGOO 2.8-inch ILI9341V board.
+Choose the ESP32-32E profile instead of cyd for the 2.8-inch ILI9341V board.
 
 ONCE UNIFIED: use unified-ota.json for Wi-Fi, or rename unified-update.ptu to
 pocket-tank/update.ptu on SD. Updates preserve the saved hardware profile,
@@ -138,14 +138,14 @@ The unified-cyd-factory and unified-elegoo-factory images contain the EXACT
 SAME application but different blank NVS hardware profiles. Choose the actual
 board. Flash the chosen merged image at 0x0; THIS ERASES EXISTING SAVES.
 The unconfigured pocket-tank-unified-factory.bin waits over USB at 115200 baud
-for hardware cyd or hardware elegoo before initializing the display.
+for hardware cyd or hardware esp32-32e before initializing the display.
 
 SCREEN-INDEPENDENT RECOVERY at 115200 baud:
 hardware                  query saved profile and image family
 hardware cyd              save aquarium, persist CYD profile and restart
-hardware elegoo           save aquarium, persist ELEGOO profile and restart
+hardware esp32-32e        save aquarium, persist ESP32-32E profile and restart
 Calibration is not erased. Do not guess pins or rely on all-zero controller IDs.
-ELEGOO GPIO34 is battery sensing, not an LDR. Manual brightness works.
+ESP32-32E GPIO34 is battery sensing, not an LDR. Manual brightness works.
 This supports only the two tested ESP32/4 MiB/SPI/XPT2046 boards, not all CYDs.
 
 Backups/photos/offline updates remain optional SD features. Eight aquariums
@@ -161,7 +161,7 @@ Only install trusted downloads; these images are not publisher-signed.
         instructions = instructions.replace("tools\\build_cyd.ps1 -Flash", "tools\\build_cyd.ps1 -Board elegoo -Port YOUR_PORT -Flash")
         instructions = instructions.replace("--port COM4", "--port YOUR_PORT")
         instructions = instructions.replace("Read INSTALL.txt", "Read elegoo-INSTALL.txt")
-        instructions += "\nSelect ELEGOO in the web installer. Do not use the original CYD image.\nReplace YOUR_PORT with the verified ELEGOO port; never guess another aquarium's port.\nIf the board already has the wrong CYD identity/white LCD, use the documented backed-up app-only board conversion, not factory reset.\nGPIO34 is battery sensing, not room light; audio and battery charging are not game features.\n"
+        instructions += "\nSelect ESP32-32E in the web installer. Do not use the original CYD image.\nReplace YOUR_PORT with the verified ESP32-32E port; never guess another aquarium's port.\nIf the board already has the wrong CYD identity/white LCD, use the documented backed-up app-only board conversion, not factory reset.\nGPIO34 is battery sensing, not room light; audio and battery charging are not game features.\n"
     instructions += "\n2.3.10 SAVE COMPATIBILITY: back up before updating. The version-6 companion\nrecord stores mussel colors in a reserved byte; save size/offsets are unchanged.\nOlder firmware cannot read this record. Do not downgrade after saving with 2.3.10.\n"
     instructions += "\n2.3.19 SAVE COMPATIBILITY: back up before updating. Saves grow to schema 20 /\n6424 bytes to remember where movable scenery stands. Older saves load unchanged;\nfirmware before 2.3.19 cannot read the new save. Do not downgrade after saving.\n"
     instructions += "\n2.4.0 SAVE COMPATIBILITY: back up before updating. Saves become schema 23 /\n6476 bytes and migrate once; firmware before 2.4.0 cannot read them. Do not downgrade.\n"
@@ -169,17 +169,25 @@ Only install trusted downloads; these images are not publisher-signed.
     instructions += "\n2.4.3 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nNo new save fields. Calm is retuned, so existing fish will settle at a lower\nCALM reading than before; nothing is lost and no migration runs.\n"
     instructions += "\n2.4.4 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nNo new save fields. The body/marking palette grows from 24 to 96 entries, but\nthe first 24 keep their exact values and indices, so every saved hidden allele\nand inherited colour resolves to the same shade. No migration runs.\n"
     instructions += "\n2.4.5 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nNo new save fields. Navigation, Creative casino practice and creature colour\nodds changed; no stored value is reinterpreted and no migration runs.\n"
+    instructions += "\n2.4.6 SAVE COMPATIBILITY: unchanged from 2.4.0 (schema 23 / 6476 bytes).\nFirst-boot logo and touch calibration markers are stored in device NVS, not\naquarium saves. A confirmed tank reset re-arms the introduction; no save\nmigration runs. The second board is labeled ESP32-32E; legacy asset names remain.\n"
     (output / f"{asset_prefix}INSTALL.txt").write_text(instructions, encoding="utf-8")
     notes = f"""<p align="center"><a href="https://jeromedontdev.github.io/pocket-tank-cyd/"><img src="https://raw.githubusercontent.com/jeromedontdev/pocket-tank-cyd/main/web/logo.svg" width="320" alt="Pocket Tank CYD aquarium logo"></a></p>
 
 ## Pocket Tank CYD {version}
 
-Release for the **ESP32-2432S028 CYD and ELEGOO 2.8-inch ILI9341V**.
+Release for the **ESP32-2432S028 CYD and ESP32-32E 2.8-inch ILI9341V**.
 The website uses one unified application with an explicit saved hardware profile.
 
 Pocket Tank CYD began as a board port of upstream Pocket Tank v0.3.8. It is
 now **a distinct aquarium game**, retaining and crediting that simulation
 while adding its own modes, shared progression, genetics, stories and games.
+
+### New in 2.4.6: first-boot logo and touch calibration
+
+- **A new firmware image introduces itself.** On its first normal boot, the device displays the website's aquarium logo, then requires five-point touch calibration before opening the tank. The validated affine calibration and image marker are saved together; a failed calibration keeps retrying rather than allowing uncalibrated use.
+- **A confirmed tank reset re-arms the introduction** without deleting the previously saved calibration. The regular Touch Calibration setting remains available later.
+- **The second supported board is labeled ESP32-32E** in the installer, site, release copy and serial guidance. Existing profile IDs, firmware artifact paths and the legacy `hardware elegoo` command remain compatible.
+- Saves remain schema 23 / 6476 bytes. No aquarium save fields, migration, framebuffer, PSRAM requirement, partition change or factory reset. Back up before updating; do not downgrade to firmware older than 2.4.0.
 
 ### New in 2.4.5: the Market hub, and a fairer casino in Creative
 
@@ -251,7 +259,7 @@ The following sections are historical release context, not the current menu or s
 - The eighteen mini-games and their thumbnails share an illustrated art kit (water gradients, light shafts, kelp, sand, bevelled blocks, game-specific props, HUD plates). Every menu shares the same backdrop, bevelled buttons and full-colour shop previews. Hit boxes are unchanged; games still run at 27-30 FPS.
 - Every decoration can be moved, including the fourteen sand pieces and surface floats. Buying a piece opens its placement page; the shop's MOVE reopens it. MIRROR flips a piece, BEHIND / IN FRONT only consider nearby pieces, and floats can sit behind or in front of the fish. DONE saves; CANCEL was removed.
 - Still menu pages skip redundant redraws, sampling touch two to four times as often in the shop and Milestones. Routine saves coalesce to at least two minutes apart and take about 120-250 ms; purchases, renames, rewards, sleep and updates still save immediately. Internal RAM was trimmed so purchases and HTTPS weather keep working memory.
-- The flash runs at 80 MHz (DIO), the ESP32 standard, instead of the conservative 40 MHz default. Controlled CYD fixtures improved from 17.4/16.7/13.9/14.9 to 21.9/21.2/17.3/18.7 FPS with no memory cost. Measured on the ESP32-2432S028; the ELEGOO board uses the same image but was not separately benchmarked.
+- The flash runs at 80 MHz (DIO), the ESP32 standard, instead of the conservative 40 MHz default. Controlled CYD fixtures improved from 17.4/16.7/13.9/14.9 to 21.9/21.2/17.3/18.7 FPS with no memory cost. Measured on the ESP32-2432S028; the ESP32-32E board uses the same image but was not separately benchmarked.
 - Saves are now schema 20 / 6424 bytes: an 88-byte movable-scenery tail after the unchanged 6336-byte prefix. Older saves and schema 1-19 backups load unchanged. Firmware before 2.3.19 cannot read the new save or schema-20 exports: back up first and do not downgrade. Partitions, calibration, hardware profiles and companion version 7 are unchanged.
 
 ### Retained from 2.3.18: aquarium-first polish
@@ -329,20 +337,20 @@ The following sections are historical release context, not the current menu or s
 - The resident mask requires 2.3.8 or newer after purchasing a mussel; do not downgrade that profile, even though the save size/schema remain unchanged.
 - Verified native save/migration and Creative regressions, 428 menu screens at both scales, actual browser purchase/storage/passive-income flows, and the unified firmware build.
 
-### Retained from 2.3.7: quieter defaults and ELEGOO touch correction
+### Retained from 2.3.7: quieter defaults and ESP32-32E touch correction
 
 - Trophies are hidden by default in new aquariums, including Creative mode. Enable them in Life > Rewards > Trophies; existing saved preferences are preserved.
-- ELEGOO's fresh affine touch default reverses X and preserves Y, matching the previously working calibration rather than reversing the wrong axis. Raw coordinates and saved calibrations remain unchanged.
+- The ESP32-32E's fresh affine touch default reverses X and preserves Y, matching the previously working calibration rather than reversing the wrong axis. Raw coordinates and saved calibrations remain unchanged.
 - Touch defaults are regression-tested for both board profiles, unified runtime selection, both UI sizes and rotation. The user confirmed touch and trophy defaults fixed; existing calibration is preserved.
-- ELEGOO brightness diagnostics already show maximum duty255 with night/room dimming off, using the vendor panel/PWM settings. No brightness increase is claimed in this release.
+- ESP32-32E brightness diagnostics already show maximum duty255 with night/room dimming off, using the panel/PWM settings. No brightness increase is claimed in this release.
 
-### Unified CYD / ELEGOO profiles
+### Unified CYD / ESP32-32E profiles
 
-- The unified application is byte-identical on the original CYD and ELEGOO ESP32-32E 2.8-inch ILI9341V. The website selects a saved hardware profile, not a different game binary. New-board factory downloads contain that same app and a board-specific blank NVS profile.
+- The unified application is byte-identical on the original CYD and ESP32-32E 2.8-inch ILI9341V. The website selects a saved hardware profile, not a different game binary. New-board factory downloads contain that same app and a board-specific blank NVS profile.
 - Existing tanks migrate through the save-preserving USB updater. Legacy board-specific Wi-Fi/SD assets remain available; once unified, use unified-update.ptu / unified-ota.json. Unrelated family markers, unknown hardware, pending slots and unexpected partitions are still refused.
-- ELEGOO's corrected default touch transform preserves existing saved calibration. Screen-independent USB commands hardware cyd / hardware elegoo save the aquarium before switching profiles and rebooting.
-- Failed SD mounting no longer tears down the bus and disrupts LCD DMA; normal 40 MHz rendering and upright ELEGOO orientation are restored.
-- ELEGOO uses ILI9341 initialization, red LED GPIO22 and disabled audio enable GPIO4. GPIO34 is battery sensing, not an LDR; automatic room-light dimming is unavailable. Touch and SD use the documented matching pins. No battery charging/audio application is added.
+- The ESP32-32E's corrected default touch transform preserves existing saved calibration. Screen-independent USB commands hardware cyd / hardware esp32-32e save the aquarium before switching profiles and rebooting.
+- Failed SD mounting no longer tears down the bus and disrupts LCD DMA; normal 40 MHz rendering and upright ESP32-32E orientation are restored.
+- ESP32-32E uses ILI9341 initialization, red LED GPIO22 and disabled audio enable GPIO4. GPIO34 is battery sensing, not an LDR; automatic room-light dimming is unavailable. Touch and SD use the documented matching pins. No battery charging/audio application is added.
 - The original CYD keeps its proven display initialization and pins. Both boards retain the same saves, partitions, games and menu fixes.
 
 ### Previously in 2.3.5: consistent menus and clearer updates
@@ -610,7 +618,7 @@ Read INSTALL.txt before flashing. Do not downgrade to upstream firmware.
 """
     if board == "unified":
         notes = (f"## Pocket Tank CYD {version}: unified firmware\n\n"
-                 "Use the website to select the actual CYD or ELEGOO profile. "
+                 "Use the website to select the actual CYD or ESP32-32E profile. "
                  "The application bytes are identical; factory NVS profiles differ. "
                  "Existing aquariums must use save-preserving USB migration, not factory flashing.\n\n"
                  "After migration use unified-update.ptu (rename to update.ptu on SD) "

@@ -284,6 +284,7 @@ static void reset_tank(void) {
         render_backup_status("WIPE FAILED - CHECK STORAGE", false);
         if (!progression_setup_pending()) { touch_port_show_settings(true); return; }
     }
+    touch_port_boot_intro_reset();
     notice_sync(&tank);                         /* a fresh tank has nothing to announce */
     brightness_save();                          /* the erase took the setting with it */
     ambient_save_all();
@@ -1030,7 +1031,23 @@ void app_main(void) {
     if (network_mode) display_port_set_brightness(0);
     display_port_init();
     ambient_init();
-    touch_port_init();
+    bool touch_ready = touch_port_init();
+    const esp_app_desc_t *boot_app = esp_app_get_description();
+    bool boot_logo_due = boot_app &&
+        touch_port_boot_logo_needed(boot_app->app_elf_sha256);
+    bool boot_calibration_due = boot_app &&
+        touch_port_boot_calibration_needed(boot_app->app_elf_sha256);
+    if (!network_mode && fb[0] && boot_logo_due) {
+        render_boot_logo(fb[0], TANK_W);
+        display_port_flush(fb[0]);
+        vTaskDelay(pdMS_TO_TICKS(1800));
+        touch_port_boot_logo_shown(boot_app->app_elf_sha256);
+    }
+    if (!network_mode && ((boot_logo_due && !fb[0]) ||
+                          (boot_calibration_due && (!touch_ready || !fb[0])))) {
+        ESP_LOGE(TAG, "first-boot logo/touch calibration unavailable; startup stopped");
+        return;
+    }
     weather_init();
     if (network_mode) update_mode_run(fb[0]);
     else if (provision_mode_wanted()) provision_mode_run(fb[0]);   /* just installed, no network yet: the page's Wi-Fi step, the glass dark */
@@ -1097,6 +1114,19 @@ void app_main(void) {
     if (progression_setup_pending()) {           /* a new tank (fresh install, or a reset mid-flow): the welcome */
         setup_begin(&tank);
         ESP_LOGI(TAG, "first-run setup: welcome, names, colours (director `setup off` drops it)");
+    }
+    if (!network_mode && fb[0] && touch_ready && boot_calibration_due && boot_app) {
+        touch_port_boot_calibration_start(boot_app->app_elf_sha256);
+        while (touch_port_calibrating()) {
+            render_tile(0, 0);
+            render_region(0, 0);
+            touch_port_render_calibration(fb[0], TANK_W);
+            display_port_flush(fb[0]);
+            touch_port_poll(&tank);
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        render_tile(0, 0);
+        render_region(0, 0);
     }
     if (network_mode && update_mode_wifi_only() && !progression_setup_pending()) {
         render_settings_open();

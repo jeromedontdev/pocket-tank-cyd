@@ -138,7 +138,7 @@ async function confirmProfile(port, hardware) {
         const writer = port.writable.getWriter();
         try {
           await writer.write(new TextEncoder().encode(needsProfile ?
-            `hardware ${hardware === "elegoo28" ? "elegoo" : "cyd"}\n` : "\nhardware\n"));
+            `hardware ${hardware === "elegoo28" ? "esp32-32e" : "cyd"}\n` : "\nhardware\n"));
         } finally { writer.releaseLock(); }
         if (needsProfile) sent = true;
         nextQuery = Date.now() + 1500;
@@ -150,7 +150,7 @@ async function confirmProfile(port, hardware) {
       }
       await pause(50);
     }
-    throw new Error("Profile setup was not confirmed. Reconnect at 115200 baud and send hardware cyd or hardware elegoo for the actual board.");
+    throw new Error("Profile setup was not confirmed. Reconnect at 115200 baud and send hardware cyd or hardware esp32-32e for the actual board.");
   } finally {
     closing = true;
     await reader.cancel().catch(() => {});

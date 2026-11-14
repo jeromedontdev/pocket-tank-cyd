@@ -52,7 +52,7 @@ async function main() {
                   if (line === "ota" && !device.waiting) ota();
                   if (line === "hardware" && !device.waiting && device.board === "cydesp32profiles")
                     emit(`I (1234) director: hardware profile ${device.profile} | image cydesp32profiles`);
-                  if (line === "hardware cyd" || line === "hardware elegoo") {
+                  if (line === "hardware cyd" || line === "hardware esp32-32e" || line === "hardware elegoo") {
                     assertWaiting();
                     device.profile = line === "hardware cyd" ? "cyd2432s028" : "elegoo28";
                     device.provisioned.push(device.profile);
@@ -65,7 +65,7 @@ async function main() {
             async setSignals(signals) {
               if (signals.requestToSend === false) {
                 if (device.flashed && device.waiting)
-                  emit("W (100) hardware: profile required: send 'hardware cyd' or 'hardware elegoo' over USB serial");
+                  emit("W (100) hardware: profile required: send 'hardware cyd' or 'hardware esp32-32e' over USB serial");
                 else banner();
               }
             },

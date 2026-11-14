@@ -41,7 +41,7 @@ static bool provision_profile(uint8_t *id) {
     char line[64];
     unsigned used = 0;
     bool overflow = false;
-    ESP_LOGW(TAG, "profile required: send 'hardware cyd' or 'hardware elegoo' over USB serial");
+    ESP_LOGW(TAG, "profile required: send 'hardware cyd' or 'hardware esp32-32e' over USB serial");
     for (;;) {
         int c = getchar();
         if (c == EOF) {
@@ -59,12 +59,12 @@ static bool provision_profile(uint8_t *id) {
         const board_hardware_t *profile = NULL;
         if (!overflow && !strcmp(line, "hardware cyd"))
             profile = board_hardware_lookup(BOARD_HARDWARE_CYD);
-        if (!overflow && !strcmp(line, "hardware elegoo"))
+        if (!overflow && (!strcmp(line, "hardware esp32-32e") || !strcmp(line, "hardware elegoo")))
             profile = board_hardware_lookup(BOARD_HARDWARE_ELEGOO);
         used = 0;
         overflow = false;
         if (!profile) {
-            ESP_LOGE(TAG, "invalid profile command; use 'hardware cyd' or 'hardware elegoo'");
+            ESP_LOGE(TAG, "invalid profile command; use 'hardware cyd' or 'hardware esp32-32e'");
             continue;
         }
         if (!board_hardware_save(profile->id)) continue;

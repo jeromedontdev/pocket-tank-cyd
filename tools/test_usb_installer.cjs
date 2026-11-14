@@ -70,7 +70,7 @@ async function main() {
       assert.equal(await page.locator("#update-acknowledge").isDisabled(), true);
       assert.equal(await page.locator("#safe-update").isDisabled(), true);
       finishFactoryLoad();
-      await page.waitForFunction(() => document.querySelector("#status").textContent.includes("for ELEGOO"));
+      await page.waitForFunction(() => document.querySelector("#status").textContent.includes("for ESP32-32E"));
       assert.equal(await page.locator("esp-web-install-button").getAttribute("manifest"), "./elegoo-manifest.json");
       await page.locator("#acknowledge").check();
       assert.equal(await page.locator("esp-web-install-button").isVisible(), true);

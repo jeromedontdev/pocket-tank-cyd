@@ -81,7 +81,7 @@
         <a class="button" href="#features">Explore the features</a>
       </div>
       <p>Made for <strong>CYD</strong> and
-        <strong>ELEGOO CYD</strong>: 2.8-inch resistive touchscreen,
+        <strong>ESP32-32E</strong>: 2.8-inch resistive touchscreen,
         4 MB flash, no PSRAM required.</p>
     </div>
     <figure>
@@ -103,17 +103,16 @@
   </aside>
 
   <section id="latest-features" aria-labelledby="latest-heading">
-    <span class="badge">2.4.5: the Market hub, and free casino practice</span>
+    <span class="badge">2.4.6: first-boot logo and touch calibration</span>
     <h2 id="latest-heading">A harbor market around your aquarium.</h2>
     <p>Market groups the Fish Market, one Creature Market for every creature,
       variety Collections, timed breeding Contracts and a Saturday Auction.
       Creatures stay one per tank with colors rolled at purchase, and the
       Casino offers six small games for doubloons.</p>
-    <p>The latest polish gives the casino shaded brass rims and recessed reels,
-      the story chapters more distinctive scenery, and weather symbols clearer
-      materials. Selected seabed pieces gain finer detail; the good decor keeps
-      its familiar look. Exact rendering optimizations preserve the aquarium's
-      artwork without new mechanics, buffers or save-format changes.</p>
+    <p>The first normal boot after a firmware image is installed displays the
+      aquarium logo, then requires touch calibration before opening the tank.
+      A confirmed tank reset can re-arm this introduction without erasing the
+      existing calibration. Board choices are labeled CYD and ESP32-32E.</p>
     <figure class="demo-video">
       <video controls preload="metadata" playsinline width="1280" height="720" style="width:100%;height:auto;max-width:960px;display:block;border-radius:8px">
         <source src="./media/pocket-tank-2.4.0-demo.mp4" type="video/mp4">
@@ -371,7 +370,7 @@
   <section class="card" aria-labelledby="boards-heading">
     <p class="eyebrow">Supported boards</p>
     <h2 id="boards-heading">Two displays, the same little aquarium</h2>
-    <p>CYD and ELEGOO CYD use the same firmware application. Choose your hardware
+    <p>CYD and ESP32-32E use the same firmware application. Choose your hardware
       profile in the USB installer; it remembers the correct display setup.
       Reliable automatic board detection is not available on these displays.
       Setup requires an explicit choice, with no preselected default; the board
@@ -379,11 +378,13 @@
       web updater again, select the matching board so it can verify the saved profile.
       Factory images set that profile for new boards. Both use the same SD
       update and GitHub Wi-Fi channel; legacy update downloads remain available.</p>
-    <p>ELEGOO CYD needs different LCD initialization, not different touch pins.
+    <p>ESP32-32E needs different LCD initialization, not different touch pins.
       Its GPIO34 senses a battery, so automatic room-light dimming is unavailable;
       manual brightness, touch, games and internal tanks still work.
       No battery or audio application is included. CYD is a family of boards,
       not a guarantee that every display variant is compatible.</p>
+    <p>A new firmware image's first normal boot displays this aquarium logo,
+      then requires touch calibration. You can recalibrate later in Settings.</p>
     <a href="./flash.html">Choose your exact board in the installer</a>
   </section>
 
@@ -424,7 +425,7 @@
   <section class="card" aria-labelledby="install-heading">
     <h2 id="install-heading">Ready to give your CYD a little world?</h2>
     <ol>
-      <li>Choose the <strong>CYD</strong> or <strong>ELEGOO CYD</strong>
+      <li>Choose the <strong>CYD</strong> or <strong>ESP32-32E</strong>
         hardware profile matching your board in the flasher.</li>
       <li>Use desktop Chrome or Edge and a USB data cable.</li>
       <li>Open the flasher and choose a save-preserving update for an existing tank,
@@ -463,4 +464,3 @@
 </script>
 </body>
 </html>
-
